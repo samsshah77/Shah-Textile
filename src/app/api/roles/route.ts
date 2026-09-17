@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      roles: roles.map((r) => ({
+      roles: roles.map((r: any) => ({
         id: r.id,
         key: r.key,
         label: r.label,
