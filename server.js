@@ -4,11 +4,11 @@ const { parse } = require('url')
 const next = require('next')
 
 const dev = process.env.NODE_ENV !== 'production'
-const hostname = process.env.HOSTNAME || '0.0.0.0'
-const port = parseInt(process.env.PORT || '3000', 10)
-
-const app = next({ dev, hostname, port })
+const app = next({ dev, dir: __dirname })
 const handle = app.getRequestHandler()
+
+// In Passenger, process.env.PORT can be a string, pipe, or port number
+const port = process.env.PORT || 3000
 
 app.prepare().then(() => {
   createServer(async (req, res) => {
@@ -18,10 +18,13 @@ app.prepare().then(() => {
     } catch (err) {
       console.error('Error occurred handling', req.url, err)
       res.statusCode = 500
-      res.end('internal server error')
+      res.end('Internal Server Error')
     }
   }).listen(port, (err) => {
     if (err) throw err
-    console.log(`> Sara Textile ERP Ready on port ${port}`)
+    console.log(`> Sara Textile ERP ready on ${port}`)
   })
+}).catch((err) => {
+  console.error('Next.js preparation failed:', err)
+  process.exit(1)
 })
