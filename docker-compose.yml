@@ -1,0 +1,47 @@
+services:
+  # -------------------------------------------------------------
+  # PostgreSQL Database Service
+  # Runs locally (dev) and on VPS (prod)
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: sara-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sara_textile}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sara_textile}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Next.js Application Service (Used for Production / VPS)
+  # -------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sara-nextjs-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sara_textile}?schema=public"
+      JWT_SECRET: ${JWT_SECRET:-sara_textile_super_secure_jwt_secret_key_2026}
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - prod
+      - full
+
+volumes:
+  postgres_data:
