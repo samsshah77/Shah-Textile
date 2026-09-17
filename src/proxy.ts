@@ -6,6 +6,7 @@ const secretKey = new TextEncoder().encode(JWT_SECRET)
 
 // Public routes that unauthenticated users can access
 const PUBLIC_PATHS = [
+  '/',
   '/login',
   '/api/auth/login',
   '/api/auth/signup',
