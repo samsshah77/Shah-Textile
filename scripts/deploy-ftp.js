@@ -64,6 +64,13 @@ async function deploy() {
 
     console.log(`Target remote directory: ${remoteRoot || '/'}`)
 
+    // Upload production server.js directly to app root
+    if (fs.existsSync('server.js')) {
+      console.log('Uploading server.js to app root...')
+      await client.uploadFrom('server.js', `${remoteRoot}/server.js`)
+      console.log('server.js uploaded successfully!')
+    }
+
     // Upload deploy-unpack.php to public directory
     if (fs.existsSync('public/deploy-unpack.php')) {
       console.log('Uploading deploy-unpack.php to public/...')
@@ -81,6 +88,14 @@ async function deploy() {
       console.error('ERROR: sara-build.zip not found in workspace.')
       process.exit(1)
     }
+
+    // Touch tmp/restart.txt to restart Phusion Passenger immediately
+    await client.ensureDir(`${remoteRoot}/tmp`)
+    const tempRestart = path.join(__dirname, 'restart.txt')
+    fs.writeFileSync(tempRestart, Date.now().toString())
+    await client.uploadFrom(tempRestart, `${remoteRoot}/tmp/restart.txt`)
+    fs.unlinkSync(tempRestart)
+    console.log('Phusion Passenger restart signal sent via tmp/restart.txt!')
 
     console.log('FTP Deployment transfer completed successfully!')
   } catch (err) {
