@@ -66,32 +66,32 @@ function ProductionWorkspaceContent() {
   return (
     <div className="space-y-6 pb-12">
       {/* Header section */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
+      <div className="flex flex-col gap-3.5 sm:gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl lg:text-3xl">
               Production Workspace
             </h1>
-            <span className="erp-badge-blue">
-              34 Rapier & PU Looms
+            <span className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2.5 py-0.5 text-[11px] font-semibold text-[#0066cc] dark:text-blue-300">
+              34 Rapier &amp; PU Looms
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
             Real mill floor operations: Daily shifts, efficiency, 34-loom monthly matrix, beam stock, and weft yarn logs.
           </p>
         </div>
 
         {/* Date Selector & Challan Quick Link */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
           <Link
             href="/floor/challan"
-            className="erp-btn-secondary"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors shadow-xs"
           >
             <Truck className="size-3.5 text-[#0066cc]" />
             <span>Delivery Challan #001414</span>
           </Link>
 
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-xs">
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-xs">
             <Clock className="size-3.5 text-slate-400" />
             <span>Wednesday, 09-Sept-2026</span>
           </div>

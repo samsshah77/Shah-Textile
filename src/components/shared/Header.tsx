@@ -283,37 +283,37 @@ function HeaderContent() {
       </header>
 
       {/* 2. SUB-HEADER BAR: Right-corner Role-Gated Module Switcher */}
-      <div className="flex h-11 w-full items-center justify-between border-b border-border/70 bg-card/60 px-3 sm:px-4 lg:px-6">
-        {/* Subheader Left Title / Context */}
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
-          <span className="size-2 rounded-full bg-[#0066cc] animate-pulse" />
-          <span className="hidden sm:inline">Module Workspace:</span>
-          <span className="text-foreground font-bold">
+      <div className="flex min-h-[42px] sm:h-11 w-full items-center justify-between border-b border-border/70 bg-card/80 px-2.5 sm:px-4 lg:px-6 gap-2 py-1 sm:py-0">
+        {/* Subheader Left Title / Context (compact on mobile) */}
+        <div className="hidden xs:flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 truncate shrink-0">
+          <span className="size-2 rounded-full bg-[#0066cc] animate-pulse shrink-0" />
+          <span className="hidden sm:inline">Module:</span>
+          <span className="text-foreground font-bold truncate max-w-[130px] sm:max-w-none">
             {isAdminSection
-              ? 'Administration & Staff Approvals'
+              ? 'Administration'
               : isProduction
               ? 'Floor Operations'
               : isAccounts
-              ? 'Accounts & Ledgers'
+              ? 'Accounts'
               : 'Salary & Wages'}
           </span>
         </div>
 
         {/* Subheader Right: Salary & Wages, Accounts & Production Tabs */}
-        <div className="flex items-center rounded-xl border border-border bg-muted/60 p-0.5 sm:p-1 shadow-xs">
+        <div className="flex items-center rounded-lg border border-border bg-muted/60 p-0.5 shadow-xs overflow-x-auto no-scrollbar shrink-0 ml-auto">
           {/* Salary & Wages Tab: Visible to Admin and Accountant */}
           {canViewAccounts && (
             <Link
               href="/payroll/employees"
               className={cn(
-                'flex items-center gap-1.5 sm:gap-2 rounded-lg px-2.5 sm:px-3.5 py-1 text-xs font-semibold transition-all cursor-pointer',
+                'flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0',
                 isPayroll
                   ? 'bg-[#0066cc] text-white shadow-xs font-bold'
                   : 'text-muted-foreground hover:text-foreground hover:bg-card/60'
               )}
             >
-              <DollarSign className="size-3.5 sm:size-4" />
-              <span>Salary & Wages</span>
+              <DollarSign className="size-3 sm:size-3.5 shrink-0" />
+              <span><span className="hidden sm:inline">Salary &amp; </span>Wages</span>
             </Link>
           )}
 
@@ -322,13 +322,13 @@ function HeaderContent() {
             <Link
               href="/accounts/cost-statement"
               className={cn(
-                'flex items-center gap-1.5 sm:gap-2 rounded-lg px-2.5 sm:px-3.5 py-1 text-xs font-semibold transition-all cursor-pointer',
+                'flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0',
                 isAccounts
                   ? 'bg-[#0066cc] text-white shadow-xs font-bold'
                   : 'text-muted-foreground hover:text-foreground hover:bg-card/60'
               )}
             >
-              <Calculator className="size-3.5 sm:size-4" />
+              <Calculator className="size-3 sm:size-3.5 shrink-0" />
               <span>Accounts</span>
             </Link>
           )}
@@ -337,13 +337,13 @@ function HeaderContent() {
           <Link
             href="/floor/production"
             className={cn(
-              'flex items-center gap-1.5 sm:gap-2 rounded-lg px-2.5 sm:px-3.5 py-1 text-xs font-semibold transition-all cursor-pointer',
+              'flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0',
               isProduction
                 ? 'bg-[#0066cc] text-white shadow-xs font-bold'
                 : 'text-muted-foreground hover:text-foreground hover:bg-card/60'
             )}
           >
-            <Factory className="size-3.5 sm:size-4" />
+            <Factory className="size-3 sm:size-3.5 shrink-0" />
             <span>Production</span>
           </Link>
         </div>
