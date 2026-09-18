@@ -1,9 +1,19 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useAuth } from '@/context/AuthContext'
 
 export default function HomePage() {
+  const { isAuthenticated } = useAuth()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isLoggedIn = mounted && isAuthenticated
+
   useEffect(() => {
     const cards = document.querySelectorAll('.machine')
     if (!cards.length || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -150,12 +160,33 @@ export default function HomePage() {
           letter-spacing: 0.02em;
           transition: all 0.25s var(--ease);
           backdrop-filter: blur(8px);
+          white-space: nowrap;
+          flex-shrink: 0;
         }
         .nav-portal-btn:hover {
           background: var(--accent);
           border-color: var(--accent);
           color: #041416;
           transform: translateY(-1px);
+        }
+
+        @media (max-width: 640px) {
+          .top-nav {
+            padding: 0.85rem 0;
+          }
+          .top-nav__inner {
+            width: min(100% - 1.25rem, var(--max));
+            gap: 0.75rem;
+          }
+          .nav-brand {
+            font-size: 1.05rem;
+            white-space: nowrap;
+          }
+          .nav-portal-btn {
+            padding: 0.42rem 0.8rem;
+            font-size: 0.82rem;
+            gap: 0.35rem;
+          }
         }
 
         /* —— Hero —— */
@@ -712,11 +743,26 @@ export default function HomePage() {
             <li><a href="#parts">Spares &amp; Looms</a></li>
             <li><a href="#contact">Contact</a></li>
           </ul>
-          <Link href="/login" className="nav-portal-btn">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-            </svg>
-            Staff ERP Login
+          <Link
+            href={isLoggedIn ? '/floor/production' : '/login'}
+            className="nav-portal-btn"
+          >
+            {isLoggedIn ? (
+              <>
+                <span className="nav-dot" style={{ width: 6, height: 6, margin: 0 }} />
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+                Staff ERP
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1"/>
+                </svg>
+                Login
+              </>
+            )}
           </Link>
         </div>
       </nav>
@@ -739,11 +785,25 @@ export default function HomePage() {
           <div className="cta-row">
             <a className="btn btn--solid" href="#line">View the line</a>
             <a className="btn btn--ghost" href="#contact">Request capacity</a>
-            <Link className="btn btn--portal" href="/login">
-              <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-              </svg>
-              Staff ERP Portal &rarr;
+            <Link
+              className="btn btn--portal"
+              href={isLoggedIn ? '/floor/production' : '/login'}
+            >
+              {isLoggedIn ? (
+                <>
+                  <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                  </svg>
+                  Staff ERP &rarr;
+                </>
+              ) : (
+                <>
+                  <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1"/>
+                  </svg>
+                  Login &rarr;
+                </>
+              )}
             </Link>
           </div>
         </div>
@@ -910,11 +970,25 @@ export default function HomePage() {
       <footer>
         <div className="wrap">
           <span><strong>Sara Textiles Weaving</strong> — greige, electronics, spares &amp; used looms</span>
-          <Link className="footer-portal-link" href="/login">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-            </svg>
-            Staff ERP Portal &rarr;
+          <Link
+            className="footer-portal-link"
+            href={isLoggedIn ? '/floor/production' : '/login'}
+          >
+            {isLoggedIn ? (
+              <>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+                Staff ERP &rarr;
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1"/>
+                </svg>
+                Login &rarr;
+              </>
+            )}
           </Link>
           <span>saratextilesweaving.com</span>
         </div>
