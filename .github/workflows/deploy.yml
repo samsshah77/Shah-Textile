@@ -38,36 +38,13 @@ jobs:
           rm -rf .next/cache
           zip -r -q sara-build.zip .next public server.js package.json package-lock.json next.config.ts tsconfig.json prisma prisma.config.ts
 
-      - name: 🚀 Upload Bundle to Plesk via LFTP
+      - name: 🚀 Upload Bundle to Plesk via Node.js
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
-
-          REMOTE_LIST=$(lftp -u "$FTP_USERNAME","$FTP_PASSWORD" -e "set ssl:verify-certificate false; set ftp:ssl-allow true; set ftp:prefer-epsv false; set net:timeout 15; ls; quit" "$FTP_SERVER" 2>&1 || true)
-          
-          if echo "$REMOTE_LIST" | grep -q "httpdocs"; then
-            TARGET_DIR="/httpdocs"
-          else
-            TARGET_DIR="/"
-          fi
-          
-          echo "Uploading to target: $TARGET_DIR"
-
-          lftp -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER" <<EOF
-            set ssl:verify-certificate false
-            set ftp:ssl-allow true
-            set ftp:passive-mode true
-            set ftp:prefer-epsv false
-            set net:timeout 60
-            set net:max-retries 5
-            put -O "\$TARGET_DIR" sara-build.zip
-            mkdir -p "\$TARGET_DIR/public"
-            put -O "\$TARGET_DIR/public" public/deploy-unpack.php
-            quit
-          EOF
+          node scripts/deploy-ftp.js
 
       - name: ⚡ Trigger Instant Server Unpack & Restart
         run: |
