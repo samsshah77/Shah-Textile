@@ -18,14 +18,14 @@ function MainContent({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Quality Controller cannot access accounts or payroll routes
     if (isQualityController) {
-      if (pathname.startsWith('/payroll') || pathname.startsWith('/accounts') || pathname === '/') {
+      if (pathname.startsWith('/payroll') || pathname.startsWith('/accounts')) {
         router.replace('/floor/production')
       }
     }
   }, [isQualityController, pathname, router])
 
   const isAdminRoute = pathname.startsWith('/admin')
-  const isPayrollRoute = pathname.startsWith('/payroll') || pathname === '/'
+  const isPayrollRoute = pathname.startsWith('/payroll')
   const showExcelTabBar = !isAdminRoute && (!isQualityController || !isPayrollRoute)
 
   return (
@@ -49,15 +49,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
   const router = useRouter()
 
+  const isPublicLandingPage = pathname === '/'
   const isLoginPage = pathname === '/login'
 
   useEffect(() => {
-    if (!isLoading && !user && !isLoginPage) {
+    if (!isLoading && !user && !isLoginPage && !isPublicLandingPage) {
       router.replace('/login')
     }
-  }, [user, isLoading, isLoginPage, router])
+  }, [user, isLoading, isLoginPage, isPublicLandingPage, router])
 
-  if (isLoginPage) {
+  // Public Landing Page and Login Page render clean without ERP Dashboard layout
+  if (isLoginPage || isPublicLandingPage) {
     return <>{children}</>
   }
 
