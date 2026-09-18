@@ -18,11 +18,23 @@ export async function POST(req: NextRequest) {
 
     const normalizedEmail = email.trim().toLowerCase()
 
-    // 1. Query user from PostgreSQL with related Role
-    const dbUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      include: { role: true },
-    })
+    // 1. Query user from PostgreSQL with related Role (auto-seed if table is new)
+    let dbUser: any = null
+    try {
+      dbUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        include: { role: true },
+      })
+    } catch (dbErr: any) {
+      console.log('Encountered DB query issue, auto-initializing database tables...', dbErr.message)
+      const { ensureDatabaseSeeded } = await import('@/app/api/auth/seed/route')
+      await ensureDatabaseSeeded()
+      
+      dbUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        include: { role: true },
+      })
+    }
 
     if (!dbUser) {
       return NextResponse.json(
