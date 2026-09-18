@@ -23,9 +23,17 @@ import { RoleOption } from '@/types/auth'
 import { AlertModal, ModalType } from '@/components/ui/AlertModal'
 
 function LoginForm() {
-  const { login } = useAuth()
+  const { login, isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Immediately redirect if already authenticated (prevents Back button returning to login)
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      const redirectPath = searchParams.get('redirect') || '/floor/production'
+      router.replace(redirectPath)
+    }
+  }, [isLoading, isAuthenticated, router, searchParams])
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
 

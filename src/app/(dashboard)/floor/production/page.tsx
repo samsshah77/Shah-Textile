@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { productionService } from '@/services/productionService'
 import { ProductionTable } from '@/components/floor/ProductionTable'
-import { ProductionCharts } from '@/components/floor/ProductionCharts'
 import { MonthlyMatrixTable } from '@/components/floor/MonthlyMatrixTable'
 import { BeamStockTable } from '@/components/floor/BeamStockTable'
 import { WeftStockTable } from '@/components/floor/WeftStockTable'
@@ -19,7 +18,6 @@ import {
   Gauge,
   Layers,
   DollarSign,
-  Calculator,
   Calendar,
   Truck,
   Receipt,
@@ -170,43 +168,6 @@ function ProductionWorkspaceContent() {
                 label: '1st Fortnight Met',
               }}
             />
-          </div>
-
-          {/* Visual Analytics & Interactive Production Charts */}
-          <ProductionCharts />
-
-          {/* Formula Banner */}
-          <div className="erp-card p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 mt-0.5">
-                <Calculator className="size-4" />
-              </div>
-              <div className="space-y-1 text-xs">
-                <div className="font-semibold text-slate-900 dark:text-white">
-                  Mathematical Production & Stop Loss Calculation Rules
-                </div>
-                <div className="grid grid-cols-1 gap-2 text-slate-500 dark:text-slate-400 sm:grid-cols-3 pt-1">
-                  <div>
-                    <span className="font-medium text-slate-700 dark:text-slate-300">1. Theoretical Meters:</span>
-                    <span className="font-mono text-[11px] block text-slate-600 dark:text-slate-400">
-                      (RPM × 60 × Hours) / (Pick × 39.3701)
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-700 dark:text-slate-300">2. Efficiency Ratio:</span>
-                    <span className="font-mono text-[11px] block text-slate-600 dark:text-slate-400">
-                      (Actual Total Meters / Theoretical Meters) × 100
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-700 dark:text-slate-300">3. Weave Stop Loss:</span>
-                    <span className="font-mono text-[11px] block text-slate-600 dark:text-slate-400">
-                      Theoretical Meters - Actual Produced Meters
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Main 34-Loom Production Table */}

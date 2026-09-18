@@ -141,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem('sara_user_session', JSON.stringify(u))
           }
           setIsEditModeEnabled(false)
-          router.push('/floor/production')
+          router.replace('/floor/production')
           return { success: true }
         }
 
@@ -154,8 +154,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setIsEditModeEnabled(false)
 
-      // Default navigation upon login: Open Production Workspace first
-      router.push('/floor/production')
+      // Default navigation upon login: Replace history to prevent Back button returning to login
+      router.replace('/floor/production')
 
       return { success: true }
     } catch (err: any) {
@@ -176,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem('sara_user_session', JSON.stringify(u))
         }
         setIsEditModeEnabled(false)
-        router.push('/floor/production')
+        router.replace('/floor/production')
         return { success: true }
       }
 
@@ -195,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem('sara_user_session')
       }
       setIsEditModeEnabled(false)
-      router.push('/login')
+      router.replace('/login')
     }
   }
 
