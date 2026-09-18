@@ -1,7 +1,7 @@
 <?php
 /**
- * Sara Textiles CI/CD Instant Unpacker
- * Unpacks the single production bundle and restarts Passenger / Node.js in < 1 second.
+ * Sara Textiles Production Deploy Unpacker
+ * Location: /httpdocs/public/deploy-unpack.php
  */
 header('Content-Type: text/plain');
 
@@ -10,55 +10,52 @@ $providedKey = isset($_GET['key']) ? $_GET['key'] : (isset($_POST['key']) ? $_PO
 
 if ($providedKey !== $SECRET) {
     http_response_code(403);
-    die("FORBIDDEN: Invalid authentication key.\n");
+    die("FORBIDDEN: Invalid key\n");
 }
 
-$dir = __DIR__;
-$zipFile = $dir . '/sara-build.zip';
+// Target is parent directory (/httpdocs/) since document root is /httpdocs/public
+$publicDir = __DIR__;
+$appDir = dirname($publicDir);
 
+$zipFile = $appDir . '/sara-build.zip';
 if (!file_exists($zipFile)) {
-    // Check if in parent directory
-    if (file_exists(dirname($dir) . '/sara-build.zip')) {
-        $zipFile = dirname($dir) . '/sara-build.zip';
-        $dir = dirname($dir);
-    }
+    $zipFile = $publicDir . '/sara-build.zip';
 }
 
 if (!file_exists($zipFile)) {
     http_response_code(404);
-    die("NOT_FOUND: sara-build.zip does not exist in $dir\n");
+    die("NOT_FOUND: sara-build.zip not found at $zipFile\n");
 }
 
-if (!class_exists('ZipArchive')) {
-    // Fallback if ZipArchive PHP extension is disabled: use shell unzip
-    exec("unzip -o $zipFile -d $dir 2>&1", $out, $ret);
+$extracted = false;
+
+if (class_exists('ZipArchive')) {
+    $zip = new ZipArchive();
+    if ($zip->open($zipFile) === TRUE) {
+        $zip->extractTo($appDir);
+        $zip->close();
+        @unlink($zipFile);
+        $extracted = true;
+    }
+}
+
+if (!$extracted) {
+    exec("unzip -o $zipFile -d $appDir 2>&1", $out, $ret);
     if ($ret === 0) {
         @unlink($zipFile);
-        restartServer($dir);
-        echo "SUCCESS: Extracted via shell unzip in " . round(microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"], 2) . "s\n";
-        exit(0);
+        $extracted = true;
     }
-    http_response_code(500);
-    die("ERROR: ZipArchive not available and shell unzip failed.\n" . implode("\n", $out));
 }
 
-$zip = new ZipArchive();
-if ($zip->open($zipFile) === TRUE) {
-    $zip->extractTo($dir);
-    $zip->close();
-    @unlink($zipFile);
-    
-    restartServer($dir);
-    echo "SUCCESS: Production build extracted successfully in " . round(microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"], 2) . "s\n";
-} else {
-    http_response_code(500);
-    die("ERROR: Failed to open sara-build.zip.\n");
-}
-
-function restartServer($baseDir) {
-    $tmpDir = $baseDir . '/tmp';
+if ($extracted) {
+    // Restart Node.js Passenger process
+    $tmpDir = $appDir . '/tmp';
     if (!is_dir($tmpDir)) {
         @mkdir($tmpDir, 0755, true);
     }
     @touch($tmpDir . '/restart.txt');
+    echo "SUCCESS: Production build extracted and Passenger restarted in " . round(microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"], 2) . "s\n";
+} else {
+    http_response_code(500);
+    die("ERROR: Failed to extract sara-build.zip\n");
 }

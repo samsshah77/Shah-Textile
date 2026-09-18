@@ -7,7 +7,7 @@ on:
 
 jobs:
   web-deploy:
-    name: ⚡ Fast Build & Deploy (Under 1 Min)
+    name: ⚡ Build & Deploy (< 45s)
     runs-on: ubuntu-latest
 
     steps:
@@ -34,11 +34,11 @@ jobs:
 
       - name: 🗜️ Package Single Deployment Bundle
         run: |
-          # Strip build cache to keep package lightweight (~15MB)
+          # Remove cache to keep archive lightweight
           rm -rf .next/cache
-          zip -r -q sara-build.zip .next public server.js package.json package-lock.json next.config.ts tsconfig.json prisma prisma.config.ts deploy-unpack.php
+          zip -r -q sara-build.zip .next public server.js package.json package-lock.json next.config.ts tsconfig.json prisma prisma.config.ts
 
-      - name: 🚀 Upload Bundle to Plesk VPS via LFTP
+      - name: 🚀 Upload Bundle to Plesk via LFTP
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
@@ -54,7 +54,7 @@ jobs:
             TARGET_DIR="/"
           fi
           
-          echo "Uploading single build package to: $TARGET_DIR"
+          echo "Uploading to target: $TARGET_DIR"
 
           lftp -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER" <<EOF
             set ssl:verify-certificate false
@@ -64,12 +64,13 @@ jobs:
             set net:timeout 60
             set net:max-retries 5
             put -O "\$TARGET_DIR" sara-build.zip
-            put -O "\$TARGET_DIR" deploy-unpack.php
+            mkdir -p "\$TARGET_DIR/public"
+            put -O "\$TARGET_DIR/public" public/deploy-unpack.php
             quit
           EOF
 
-      - name: ⚡ Unpack & Restart Production Server (< 1s)
+      - name: ⚡ Trigger Instant Server Unpack & Restart
         run: |
-          echo "Triggering server unpack hook..."
-          UNPACK_RESULT=$(curl -s -k "https://saratextilesweaving.com/deploy-unpack.php?key=sara_deploy_secret_key_2026" || curl -s -k "http://72.62.255.78/deploy-unpack.php?key=sara_deploy_secret_key_2026" || true)
-          echo "Result: $UNPACK_RESULT"
+          echo "Triggering live unpack..."
+          UNPACK_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/deploy-unpack.php?key=sara_deploy_secret_key_2026" || curl -s -k "http://72.62.255.78/deploy-unpack.php?key=sara_deploy_secret_key_2026" || true)
+          echo "Server Response: $UNPACK_RESPONSE"
