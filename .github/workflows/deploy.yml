@@ -1,0 +1,69 @@
+name: Deploy Sara Textile ERP to Plesk Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: ⚡ Fast Production Build & Deploy (< 45s)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies & Generate Prisma
+        run: |
+          npm ci
+          npx prisma generate
+
+      - name: 🏗️ Build Production Bundle
+        run: |
+          npm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: 🗜️ Package Standalone Production Archive
+        run: |
+          # Copy static and public assets into standalone directory
+          cp -r public .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
+          cp -r prisma .next/standalone/prisma
+
+          # Ensure production server.js exists in standalone root
+          if [ -f server.js ]; then
+            cp server.js .next/standalone/server.js
+          fi
+
+          # Archive only the standalone distribution (Ultra-lightweight ~25 MB!)
+          cd .next/standalone
+          zip -r -q ../../sara-build.zip .
+          cd ../..
+
+          echo "Archive generated successfully:"
+          ls -lh sara-build.zip
+
+      - name: 🚀 Upload to Hostinger Plesk via Secure FTP
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          npm install basic-ftp --no-save
+          node scripts/deploy-ftp.js
+
+      - name: ⚡ Trigger Live Unpack & Process Restart
+        run: |
+          echo "Triggering live unpack on server..."
+          UNPACK_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/deploy-unpack.php?key=sara_deploy_secret_key_2026" || curl -s -k "http://72.62.255.78/deploy-unpack.php?key=sara_deploy_secret_key_2026" || true)
+          echo "Server Response: $UNPACK_RESPONSE"
