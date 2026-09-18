@@ -1,16 +1,39 @@
-import Link from 'next/link'
-import Image from 'next/image'
+'use client'
 
-export const metadata = {
-  title: 'Sara Textiles Weaving — Mill Weaving & Loom Electronics',
-  description: 'Sara Textiles Weaving: dye-ready greige, loom electronic card repair, spare parts, and used weaving machines—commissioned part work at labour cost.',
-}
+import { useEffect } from 'react'
+import Link from 'next/link'
 
 export default function HomePage() {
+  useEffect(() => {
+    const cards = document.querySelectorAll('.machine')
+    if (!cards.length || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      cards.forEach((el) => el.classList.add('is-in'))
+      return
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-in')
+            io.unobserve(entry.target)
+          }
+        })
+      },
+      { threshold: 0.3, rootMargin: '0px 0px -6% 0px' }
+    )
+    cards.forEach((el, i) => {
+      ;(el as HTMLElement).style.transitionDelay = `${i * 80}ms`
+      io.observe(el)
+    })
+    return () => io.disconnect()
+  }, [])
+
   return (
-    <div className="landing-page">
+    <div className="sara-home">
       <style>{`
-        .landing-page {
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+        .sara-home {
           --ink: #0e1218;
           --ink-soft: #4a5563;
           --panel: #f2f4f6;
@@ -20,27 +43,54 @@ export default function HomePage() {
           --accent: #0d9488;
           --accent-hover: #14b8a6;
           --accent-2: #f59e0b;
+          --greige: #d6d0c4;
           --max: 74rem;
           --ease: cubic-bezier(0.22, 1, 0.36, 1);
           color: var(--ink);
           background: var(--panel);
-          font-family: var(--font-inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+          font-family: "IBM Plex Sans", sans-serif;
           font-size: 1.05rem;
           line-height: 1.55;
+          -webkit-font-smoothing: antialiased;
           min-height: 100vh;
+          overflow-x: hidden;
+        }
+
+        .sara-home *, .sara-home *::before, .sara-home *::after {
+          box-sizing: border-box;
+        }
+
+        .sara-home img {
+          display: block;
+          max-width: 100%;
+          height: auto;
+        }
+
+        .sara-home a {
+          color: inherit;
+          text-decoration: none;
+        }
+
+        /* Precision grid like modern machine HMI / loom shed */
+        .tech-grid {
+          background-color: var(--panel);
+          background-image:
+            linear-gradient(rgba(14, 18, 24, 0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(14, 18, 24, 0.04) 1px, transparent 1px);
+          background-size: 48px 48px;
         }
 
         /* —— Navigation Bar —— */
-        .landing-nav {
+        .top-nav {
           position: absolute;
           top: 0;
           left: 0;
           right: 0;
           z-index: 50;
           padding: 1.25rem 0;
-          background: linear-gradient(180deg, rgba(8, 12, 18, 0.9) 0%, rgba(8, 12, 18, 0) 100%);
+          background: linear-gradient(180deg, rgba(8, 12, 18, 0.85) 0%, rgba(8, 12, 18, 0) 100%);
         }
-        .landing-nav__inner {
+        .top-nav__inner {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
           display: flex;
@@ -48,17 +98,17 @@ export default function HomePage() {
           justify-content: space-between;
           gap: 1.5rem;
         }
-        .landing-brand {
+        .nav-brand {
+          font-family: "Space Grotesk", sans-serif;
           font-weight: 700;
-          font-size: 1.2rem;
+          font-size: 1.25rem;
           color: #eef2f6;
           display: flex;
           align-items: center;
           gap: 0.6rem;
-          text-decoration: none;
           letter-spacing: -0.02em;
         }
-        .landing-dot {
+        .nav-dot {
           width: 8px;
           height: 8px;
           border-radius: 50%;
@@ -66,7 +116,7 @@ export default function HomePage() {
           box-shadow: 0 0 10px #10b981;
           display: inline-block;
         }
-        .landing-links {
+        .nav-links {
           display: none;
           align-items: center;
           gap: 2rem;
@@ -74,36 +124,34 @@ export default function HomePage() {
           margin: 0;
           padding: 0;
         }
-        @media (min-width: 900px) {
-          .landing-links { display: flex; }
+        @media (min-width: 920px) {
+          .nav-links { display: flex; }
         }
-        .landing-links a {
-          font-size: 0.9rem;
+        .nav-links a {
+          font-size: 0.92rem;
           font-weight: 500;
-          color: rgba(238, 242, 246, 0.75);
-          text-decoration: none;
+          color: rgba(238, 242, 246, 0.8);
           transition: color 0.2s var(--ease);
         }
-        .landing-links a:hover {
-          color: #fff;
+        .nav-links a:hover {
+          color: #ffffff;
         }
-        .btn-portal-pill {
+        .nav-portal-btn {
           display: inline-flex;
           align-items: center;
           gap: 0.5rem;
           padding: 0.55rem 1.15rem;
-          background: rgba(13, 148, 136, 0.15);
-          border: 1px solid rgba(13, 148, 136, 0.55);
+          background: rgba(13, 148, 136, 0.2);
+          border: 1px solid rgba(13, 148, 136, 0.6);
           color: #2dd4bf;
-          border-radius: 6px;
-          font-size: 0.86rem;
+          border-radius: 4px;
+          font-size: 0.88rem;
           font-weight: 600;
           letter-spacing: 0.02em;
-          text-decoration: none;
           transition: all 0.25s var(--ease);
           backdrop-filter: blur(8px);
         }
-        .btn-portal-pill:hover {
+        .nav-portal-btn:hover {
           background: var(--accent);
           border-color: var(--accent);
           color: #041416;
@@ -111,7 +159,7 @@ export default function HomePage() {
         }
 
         /* —— Hero —— */
-        .landing-hero {
+        .hero {
           position: relative;
           min-height: 100svh;
           display: grid;
@@ -119,18 +167,30 @@ export default function HomePage() {
           overflow: hidden;
           color: #eef2f6;
           isolation: isolate;
-          padding-top: 6rem;
-          background: #0d131d;
+          padding-top: 5rem;
         }
-        .landing-hero__scan {
+        .hero__media {
+          position: absolute;
+          inset: 0;
+          z-index: -2;
+        }
+        .hero__media img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: 42% center;
+          filter: saturate(0.78) contrast(1.08) brightness(0.92);
+          transform: scale(1.05);
+          animation: heroPan 32s var(--ease) infinite alternate;
+        }
+        .hero__scan {
           position: absolute;
           inset: 0;
           z-index: -1;
           pointer-events: none;
           background:
-            radial-gradient(ellipse at 80% 20%, rgba(13, 148, 136, 0.18), transparent 50%),
-            radial-gradient(ellipse at 20% 80%, rgba(245, 158, 11, 0.12), transparent 45%),
-            linear-gradient(180deg, rgba(8, 12, 18, 0.5) 0%, rgba(8, 12, 18, 0.3) 40%, rgba(8, 12, 18, 0.95) 100%),
+            linear-gradient(180deg, rgba(8, 12, 18, 0.45) 0%, rgba(8, 12, 18, 0.2) 35%, rgba(8, 12, 18, 0.88) 100%),
+            linear-gradient(90deg, rgba(8, 12, 18, 0.55) 0%, transparent 50%),
             repeating-linear-gradient(
               0deg,
               transparent,
@@ -139,105 +199,121 @@ export default function HomePage() {
               rgba(13, 148, 136, 0.03) 4px
             );
         }
-        .landing-hero__inner {
+        .hero__inner {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
           padding: 5rem 0 3.5rem;
         }
-        .landing-brand-title {
+        .brand {
+          font-family: "Space Grotesk", sans-serif;
           font-weight: 700;
           font-size: clamp(2.2rem, 6.5vw, 4.85rem);
-          line-height: 0.95;
+          line-height: 0.94;
           letter-spacing: -0.04em;
           margin: 0 0 1.1rem;
           max-width: 12ch;
-          color: #ffffff;
+          animation: rise 0.9s var(--ease) both;
         }
-        .landing-headline {
+        .hero__headline {
+          font-family: "Space Grotesk", sans-serif;
           font-weight: 600;
-          font-size: clamp(1.2rem, 2.4vw, 1.75rem);
+          font-size: clamp(1.15rem, 2.4vw, 1.7rem);
           line-height: 1.25;
           letter-spacing: -0.02em;
           margin: 0 0 0.8rem;
-          max-width: 26ch;
-          color: #e2e8f0;
+          max-width: 24ch;
+          animation: rise 0.9s var(--ease) 0.1s both;
         }
-        .landing-lede {
-          margin: 0 0 1.8rem;
-          max-width: 38ch;
-          color: rgba(238, 242, 246, 0.85);
-          font-size: 1.05rem;
+        .hero__lede {
+          margin: 0 0 1.6rem;
+          max-width: 36ch;
+          color: rgba(238, 242, 246, 0.84);
+          animation: rise 0.9s var(--ease) 0.18s both;
         }
-        .landing-cta-row {
+        .cta-row {
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          gap: 0.8rem;
+          gap: 0.75rem;
+          animation: rise 0.9s var(--ease) 0.24s both;
         }
-        .landing-btn {
+        .btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 0.5rem;
           min-height: 3rem;
-          padding: 0.65rem 1.35rem;
+          padding: 0.65rem 1.25rem;
           border: 1px solid transparent;
-          font-weight: 600;
-          font-size: 0.92rem;
+          font: 600 0.92rem/1 "IBM Plex Sans", sans-serif;
           text-decoration: none;
-          border-radius: 4px;
-          transition: all 0.25s var(--ease);
+          border-radius: 3px;
+          transition: background 0.25s var(--ease), border-color 0.25s var(--ease), transform 0.25s var(--ease), color 0.25s var(--ease);
         }
-        .landing-btn:hover { transform: translateY(-1px); }
-        .landing-btn--solid {
+        .btn:hover { transform: translateY(-1px); }
+        .btn--solid {
           background: var(--accent);
           color: #041416;
         }
-        .landing-btn--solid:hover { background: var(--accent-hover); }
-        .landing-btn--ghost {
+        .btn--solid:hover { background: #14b8a6; }
+        .btn--ghost {
           background: transparent;
           color: #eef2f6;
           border-color: rgba(238, 242, 246, 0.4);
         }
-        .landing-btn--ghost:hover {
+        .btn--ghost:hover {
           border-color: #eef2f6;
           background: rgba(238, 242, 246, 0.08);
         }
-        .landing-btn--portal {
+        .btn--portal {
           background: #1e293b;
           color: #38bdf8;
-          border: 1px solid rgba(56, 189, 248, 0.4);
+          border: 1px solid rgba(56, 189, 248, 0.45);
         }
-        .landing-btn--portal:hover {
+        .btn--portal:hover {
           background: #0284c7;
           color: #ffffff;
           border-color: #0284c7;
         }
+        .btn--ink {
+          background: var(--machine);
+          color: #eef2f6;
+        }
+        .btn--ink:hover { background: #2a3444; }
+        .btn--line {
+          background: transparent;
+          color: var(--ink);
+          border-color: rgba(14, 18, 24, 0.28);
+        }
+        .btn--line:hover {
+          border-color: var(--ink);
+          background: rgba(14, 18, 24, 0.05);
+        }
 
-        /* —— Live Ticker —— */
-        .landing-ticker {
+        /* —— Live strip —— */
+        .telemetry {
           background: var(--machine);
           color: #9aa6b5;
           overflow: hidden;
           border-block: 1px solid rgba(13, 148, 136, 0.35);
         }
-        .landing-ticker__track {
+        .telemetry__track {
           display: flex;
           width: max-content;
           gap: 2.25rem;
           padding: 0.85rem 0;
-          font-size: 0.76rem;
+          font-size: 0.74rem;
           font-weight: 600;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          animation: tickerScroll 26s linear infinite;
+          animation: scrollX 26s linear infinite;
           white-space: nowrap;
         }
-        .landing-ticker__track strong {
+        .telemetry__track strong {
           color: var(--accent);
           font-weight: 600;
         }
-        .landing-ticker__track span::after {
+        .telemetry__track span::after {
           content: "";
           display: inline-block;
           width: 0.35rem;
@@ -248,298 +324,348 @@ export default function HomePage() {
           vertical-align: middle;
         }
 
-        @keyframes tickerScroll {
-          from { transform: translateX(0); }
-          to { transform: translateX(-50%); }
+        /* —— Process —— */
+        .process {
+          padding: clamp(3.25rem, 7vw, 5.75rem) 0;
         }
-
-        /* —— Process Section —— */
-        .landing-process {
-          padding: clamp(3.5rem, 7vw, 6rem) 0;
-          background-color: var(--panel);
-          background-image:
-            linear-gradient(rgba(14, 18, 24, 0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(14, 18, 24, 0.04) 1px, transparent 1px);
-          background-size: 48px 48px;
-        }
-        .landing-process__inner {
+        .process__inner {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
         }
-        .landing-eyebrow {
+        .eyebrow {
           margin: 0 0 0.7rem;
           font-size: 0.75rem;
-          font-weight: 700;
+          font-weight: 600;
           letter-spacing: 0.14em;
           text-transform: uppercase;
           color: var(--accent);
         }
-        .landing-section-title {
+        .section-title {
+          font-family: "Space Grotesk", sans-serif;
           font-weight: 700;
-          font-size: clamp(1.7rem, 3.8vw, 2.6rem);
+          font-size: clamp(1.65rem, 3.8vw, 2.55rem);
           letter-spacing: -0.03em;
-          line-height: 1.1;
+          line-height: 1.08;
           margin: 0 0 0.7rem;
-          max-width: 20ch;
-          color: var(--ink);
+          max-width: 18ch;
         }
-        .landing-section-lede {
+        .section-lede {
           margin: 0 0 2.5rem;
-          max-width: 44ch;
+          max-width: 40ch;
           color: var(--ink-soft);
         }
-        .landing-machines {
+        .machines {
           display: grid;
-          gap: 1.25rem;
-          grid-template-columns: 1fr;
+          gap: 1px;
+          background: rgba(14, 18, 24, 0.1);
+          border: 1px solid rgba(14, 18, 24, 0.1);
         }
         @media (min-width: 860px) {
-          .landing-machines { grid-template-columns: repeat(3, 1fr); }
+          .machines { grid-template-columns: repeat(3, 1fr); }
         }
-        .landing-machine-card {
-          background: #ffffff;
-          padding: 2rem 1.5rem;
-          border-radius: 6px;
-          border: 1px solid rgba(14, 18, 24, 0.08);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-          transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease);
+        .machine {
+          background: #fff;
+          padding: 1.6rem 1.35rem 1.7rem;
+          opacity: 0;
+          transform: translateY(1rem);
+          transition: opacity 0.65s var(--ease), transform 0.65s var(--ease);
         }
-        .landing-machine-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+        .machine.is-in {
+          opacity: 1;
+          transform: none;
         }
-        .landing-machine-code {
+        .machine__code {
+          font-family: "Space Grotesk", sans-serif;
           font-size: 0.8rem;
-          font-weight: 700;
+          font-weight: 600;
           letter-spacing: 0.08em;
           color: var(--accent);
           margin: 0 0 1rem;
         }
-        .landing-machine-card h3 {
-          font-size: 1.25rem;
+        .machine h3 {
+          font-family: "Space Grotesk", sans-serif;
+          font-size: 1.2rem;
           font-weight: 700;
           letter-spacing: -0.02em;
-          margin: 0 0 0.5rem;
-          color: var(--ink);
+          margin: 0 0 0.45rem;
         }
-        .landing-machine-card p {
+        .machine p {
           margin: 0;
           color: var(--ink-soft);
           font-size: 0.98rem;
-          line-height: 1.6;
+        }
+
+        /* —— Floor —— */
+        .floor {
+          position: relative;
+          min-height: min(72svh, 40rem);
+          display: grid;
+          align-items: end;
+          overflow: hidden;
+          color: #eef2f6;
+        }
+        .floor__media {
+          position: absolute;
+          inset: 0;
+          z-index: -2;
+        }
+        .floor__media img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center 40%;
+          filter: saturate(0.82) contrast(1.05);
+        }
+        .floor__shade {
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          background:
+            linear-gradient(180deg, rgba(8, 12, 18, 0.15), rgba(8, 12, 18, 0.78)),
+            linear-gradient(90deg, rgba(8, 12, 18, 0.4), transparent 55%);
+        }
+        .floor__copy {
+          width: min(100% - 2.25rem, var(--max));
+          margin: 0 auto;
+          padding: 3.25rem 0;
+        }
+        .floor__copy h2 {
+          font-family: "Space Grotesk", sans-serif;
+          font-weight: 700;
+          font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+          letter-spacing: -0.03em;
+          line-height: 1.1;
+          margin: 0 0 0.65rem;
+          max-width: 16ch;
+        }
+        .floor__copy p {
+          margin: 0;
+          max-width: 38ch;
+          color: rgba(238, 242, 246, 0.86);
         }
 
         /* —— Specs band —— */
-        .landing-specs {
-          padding: clamp(3rem, 6vw, 5rem) 0;
+        .specs {
+          padding: clamp(2.75rem, 6vw, 4.5rem) 0;
           background: var(--machine);
           color: #c5ced8;
         }
-        .landing-specs__inner {
+        .specs__inner {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
           display: grid;
-          gap: 2.5rem;
+          gap: 1.75rem;
         }
-        @media (min-width: 860px) {
-          .landing-specs__inner {
-            grid-template-columns: 1fr 1.2fr;
-            align-items: center;
-            gap: 4rem;
-          }
+        @media (min-width: 800px) {
+          .specs__inner { grid-template-columns: 1fr 1.2fr; align-items: center; gap: 3rem; }
         }
-        .landing-specs h2 {
+        .specs h2 {
+          font-family: "Space Grotesk", sans-serif;
           font-weight: 700;
-          font-size: clamp(1.6rem, 3.2vw, 2.3rem);
+          font-size: clamp(1.5rem, 3.2vw, 2.2rem);
           color: #eef2f6;
           letter-spacing: -0.03em;
-          line-height: 1.15;
-          margin: 0 0 0.75rem;
+          line-height: 1.12;
+          margin: 0 0 0.6rem;
         }
-        .landing-specs p {
+        .specs > .specs__inner > div:first-child p {
           margin: 0;
+          max-width: 34ch;
           color: #9aa6b5;
-          line-height: 1.6;
         }
         .spec-list {
           list-style: none;
           margin: 0;
           padding: 0;
           display: grid;
-          gap: 0.85rem;
+          gap: 0.75rem;
         }
         .spec-list li {
           display: grid;
           grid-template-columns: 7.5rem 1fr;
           gap: 1rem;
-          padding: 0.95rem 0;
-          border-bottom: 1px solid rgba(154, 166, 181, 0.18);
+          padding: 0.85rem 0;
+          border-bottom: 1px solid rgba(154, 166, 181, 0.2);
           font-size: 0.95rem;
         }
         .spec-list span {
-          font-size: 0.74rem;
-          font-weight: 700;
+          font-size: 0.72rem;
+          font-weight: 600;
           letter-spacing: 0.1em;
           text-transform: uppercase;
           color: var(--accent);
         }
 
-        /* —— Electronics Department —— */
-        .landing-electronics {
-          padding: clamp(3.5rem, 7vw, 6rem) 0;
+        /* —— Electronics —— */
+        .electronics {
+          padding: clamp(3.25rem, 7vw, 5.5rem) 0;
           background:
             linear-gradient(135deg, rgba(13, 148, 136, 0.06), transparent 42%),
             radial-gradient(ellipse at 100% 0%, rgba(245, 158, 11, 0.08), transparent 45%),
             var(--panel);
           border-block: 1px solid rgba(14, 18, 24, 0.08);
         }
-        .landing-electronics__inner {
+        .electronics__inner {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
           display: grid;
-          gap: 2.5rem;
+          gap: 2rem;
         }
         @media (min-width: 860px) {
-          .landing-electronics__inner {
+          .electronics__inner {
             grid-template-columns: 1.1fr 1fr;
-            align-items: center;
-            gap: 4rem;
+            align-items: end;
+            gap: 3.5rem;
           }
         }
+        .electronics .section-title { max-width: 16ch; }
+        .electronics .section-lede { margin-bottom: 0; }
         .board-rail {
           display: grid;
           gap: 0;
           border-left: 2px solid var(--accent);
-          padding-left: 1.5rem;
+          padding-left: 1.25rem;
           margin: 0;
         }
         .board-rail li {
           list-style: none;
-          padding: 1rem 0;
+          padding: 0.95rem 0;
           border-bottom: 1px solid rgba(14, 18, 24, 0.1);
         }
         .board-rail li:last-child { border-bottom: 0; }
         .board-rail strong {
           display: block;
-          font-size: 1.05rem;
+          font-family: "Space Grotesk", sans-serif;
+          font-size: 1.02rem;
           font-weight: 700;
           letter-spacing: -0.02em;
-          margin: 0 0 0.3rem;
-          color: var(--ink);
+          margin: 0 0 0.25rem;
         }
         .board-rail span {
           color: var(--ink-soft);
           font-size: 0.95rem;
-          line-height: 1.55;
         }
 
-        /* —— Parts & Looms —— */
-        .landing-parts {
-          padding: clamp(3.5rem, 7vw, 6rem) 0;
+        /* —— Parts & used machines —— */
+        .parts {
+          padding: clamp(3.25rem, 7vw, 5.5rem) 0;
           background: var(--machine);
           color: #c5ced8;
         }
-        .landing-parts__inner {
+        .parts__inner {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
         }
+        .parts .eyebrow { color: var(--accent-2); }
+        .parts .section-title {
+          color: #eef2f6;
+          max-width: 18ch;
+        }
+        .parts .section-lede {
+          color: #9aa6b5;
+          margin-bottom: 2.25rem;
+          max-width: 48ch;
+        }
         .parts-grid {
           display: grid;
-          gap: 2rem;
-          grid-template-columns: 1fr;
+          gap: 1.75rem 2.5rem;
         }
         @media (min-width: 800px) {
           .parts-grid { grid-template-columns: repeat(3, 1fr); }
         }
         .parts-item {
-          padding-top: 1.25rem;
-          border-top: 1px solid rgba(154, 166, 181, 0.25);
+          padding-top: 1rem;
+          border-top: 1px solid rgba(154, 166, 181, 0.28);
         }
         .parts-item__code {
-          font-size: 0.8rem;
-          font-weight: 700;
+          font-family: "Space Grotesk", sans-serif;
+          font-size: 0.78rem;
+          font-weight: 600;
           letter-spacing: 0.1em;
           text-transform: uppercase;
           color: var(--accent);
           margin: 0 0 0.65rem;
         }
         .parts-item h3 {
-          font-size: 1.2rem;
+          font-family: "Space Grotesk", sans-serif;
+          font-size: 1.15rem;
           font-weight: 700;
           letter-spacing: -0.02em;
           color: #eef2f6;
-          margin: 0 0 0.5rem;
+          margin: 0 0 0.45rem;
         }
         .parts-item p {
           margin: 0;
           font-size: 0.95rem;
           color: #9aa6b5;
-          line-height: 1.55;
         }
         .parts-note {
-          margin: 2.5rem 0 0;
-          padding: 1.25rem 0 0;
+          margin: 2rem 0 0;
+          padding: 1rem 0 0;
           border-top: 1px solid rgba(13, 148, 136, 0.35);
           font-size: 0.95rem;
           color: #eef2f6;
-          max-width: 54ch;
+          max-width: 52ch;
         }
         .parts-note strong { color: var(--accent-2); font-weight: 600; }
 
         /* —— Contact —— */
-        .landing-contact {
-          padding: clamp(3.5rem, 7vw, 6rem) 0;
+        .contact {
+          padding: clamp(3.25rem, 7vw, 5.5rem) 0;
           background: var(--panel-2);
         }
-        .landing-contact__inner {
+        .contact__inner {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
           display: grid;
-          gap: 2rem;
+          gap: 1.4rem;
         }
         @media (min-width: 800px) {
-          .landing-contact__inner {
+          .contact__inner {
             grid-template-columns: 1.35fr auto;
-            align-items: center;
+            align-items: end;
           }
         }
-        .landing-contact h2 {
+        .contact h2 {
+          font-family: "Space Grotesk", sans-serif;
           font-weight: 700;
-          font-size: clamp(1.6rem, 3.4vw, 2.4rem);
+          font-size: clamp(1.55rem, 3.4vw, 2.35rem);
           letter-spacing: -0.03em;
           line-height: 1.1;
-          margin: 0 0 0.6rem;
-          color: var(--ink);
+          margin: 0 0 0.55rem;
+          max-width: 18ch;
         }
-        .landing-contact p {
+        .contact p {
           margin: 0;
           color: var(--ink-soft);
-          max-width: 44ch;
+          max-width: 42ch;
         }
-        .landing-contact__actions {
+        .contact__actions {
           display: flex;
           flex-wrap: wrap;
-          gap: 0.75rem;
+          gap: 0.7rem;
+          justify-content: flex-start;
+        }
+        @media (min-width: 800px) {
+          .contact__actions { justify-content: flex-end; }
         }
 
-        /* —— Footer —— */
-        .landing-footer {
-          padding: 1.75rem 0 2.25rem;
+        footer {
+          padding: 1.25rem 0 1.6rem;
           background: var(--ink);
-          color: rgba(238, 242, 246, 0.6);
-          font-size: 0.88rem;
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          color: rgba(238, 242, 246, 0.55);
+          font-size: 0.86rem;
         }
-        .landing-footer__wrap {
+        footer .wrap {
           width: min(100% - 2.25rem, var(--max));
           margin: 0 auto;
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          gap: 1rem 2rem;
+          gap: 0.5rem 1.5rem;
           justify-content: space-between;
         }
-        .landing-footer strong { color: #eef2f6; font-weight: 600; }
+        footer strong { color: #eef2f6; font-weight: 600; }
         .footer-portal-link {
           color: var(--accent);
           font-weight: 600;
@@ -550,23 +676,43 @@ export default function HomePage() {
           transition: color 0.2s ease;
         }
         .footer-portal-link:hover { color: #5eead4; }
+
+        @keyframes heroPan {
+          from { transform: scale(1.05) translate3d(0, 0, 0); }
+          to { transform: scale(1.1) translate3d(-1.4%, 0.5%, 0); }
+        }
+        @keyframes rise {
+          from { opacity: 0; transform: translateY(1.1rem); }
+          to { opacity: 1; transform: none; }
+        }
+        @keyframes scrollX {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .hero__media img,
+          .telemetry__track,
+          .brand, .hero__headline, .hero__lede, .cta-row { animation: none; }
+          .machine { opacity: 1; transform: none; transition: none; }
+        }
       `}</style>
 
-      {/* Navigation Header */}
-      <nav className="landing-nav">
-        <div className="landing-nav__inner">
-          <Link href="/" className="landing-brand">
-            <span className="landing-dot"></span>
+      {/* Header Navigation */}
+      <nav className="top-nav">
+        <div className="top-nav__inner">
+          <Link href="/" className="nav-brand">
+            <span className="nav-dot"></span>
             Sara Textiles Weaving
           </Link>
-          <ul className="landing-links">
+          <ul className="nav-links">
             <li><a href="#line">Process</a></li>
             <li><a href="#machinery">Machinery</a></li>
-            <li><a href="#electronics">Electronics Bench</a></li>
-            <li><a href="#parts">Parts &amp; Looms</a></li>
+            <li><a href="#electronics">Electronics</a></li>
+            <li><a href="#parts">Spares &amp; Looms</a></li>
             <li><a href="#contact">Contact</a></li>
           </ul>
-          <Link href="/login" className="btn-portal-pill">
+          <Link href="/login" className="nav-portal-btn">
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
             </svg>
@@ -576,18 +722,24 @@ export default function HomePage() {
       </nav>
 
       {/* Hero Section */}
-      <header className="landing-hero">
-        <div className="landing-hero__scan" aria-hidden="true"></div>
-        <div className="landing-hero__inner">
-          <p className="landing-brand-title">Sara Textiles Weaving</p>
-          <h1 className="landing-headline">Modern weaving machinery. Greige fabric out.</h1>
-          <p className="landing-lede">
-            High-speed looms convert yarn into clean, dye-ready cloth—controlled, inspected, and released for the dye house.
-          </p>
-          <div className="landing-cta-row">
-            <a className="landing-btn landing-btn--solid" href="#line">View the line</a>
-            <a className="landing-btn landing-btn--ghost" href="#contact">Request capacity</a>
-            <Link className="landing-btn landing-btn--portal" href="/login">
+      <header className="hero">
+        <div className="hero__media" aria-hidden="true">
+          <img
+            src="/media/modern-loom.jpg"
+            alt="Modern textile weaving looms on the mill floor"
+            width="2200"
+            height="1467"
+          />
+        </div>
+        <div className="hero__scan" aria-hidden="true"></div>
+        <div className="hero__inner">
+          <p className="brand">Sara Textiles Weaving</p>
+          <h1 className="hero__headline">Modern weaving machinery. Greige fabric out.</h1>
+          <p className="hero__lede">High-speed looms convert yarn into clean, dye-ready cloth—controlled, inspected, and released for the dye house.</p>
+          <div className="cta-row">
+            <a className="btn btn--solid" href="#line">View the line</a>
+            <a className="btn btn--ghost" href="#contact">Request capacity</a>
+            <Link className="btn btn--portal" href="/login">
               <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
               </svg>
@@ -597,9 +749,9 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Telemetry Strip */}
-      <div className="landing-ticker" aria-hidden="true">
-        <div className="landing-ticker__track">
+      {/* Live Strip */}
+      <div className="telemetry" aria-hidden="true">
+        <div className="telemetry__track">
           <span><strong>Warp</strong> beam set</span>
           <span><strong>Weft</strong> insertion</span>
           <span><strong>Pick</strong> density lock</span>
@@ -624,25 +776,25 @@ export default function HomePage() {
       </div>
 
       {/* Process Section */}
-      <section className="landing-process" id="line">
-        <div className="landing-process__inner">
-          <p className="landing-eyebrow">Production sequence</p>
-          <h2 className="landing-section-title">Machinery built for weave, not for dye</h2>
-          <p className="landing-section-lede">Color happens downstream. On our floor, modern weaving systems turn yarn into stable greige fabric.</p>
+      <section className="process tech-grid" id="line">
+        <div className="process__inner">
+          <p className="eyebrow">Production sequence</p>
+          <h2 className="section-title">Machinery built for weave, not for dye</h2>
+          <p className="section-lede">Color happens downstream. On our floor, modern weaving systems turn yarn into stable greige fabric.</p>
 
-          <div className="landing-machines">
-            <article className="landing-machine-card">
-              <p className="landing-machine-code">STG-01</p>
+          <div className="machines">
+            <article className="machine">
+              <p className="machine__code">STG-01</p>
               <h3>Yarn preparation</h3>
               <p>Packages are staged for warping—count, tension, and creel layout matched to the fabric construction.</p>
             </article>
-            <article className="landing-machine-card">
-              <p className="landing-machine-code">STG-02</p>
+            <article className="machine">
+              <p className="machine__code">STG-02</p>
               <h3>Warp &amp; loom run</h3>
               <p>Beams feed contemporary weaving machines. Pick rate, width, and structure stay locked to the order profile.</p>
             </article>
-            <article className="landing-machine-card">
-              <p className="landing-machine-code">STG-03</p>
+            <article className="machine">
+              <p className="machine__code">STG-03</p>
               <h3>Greige for dyeing</h3>
               <p>Cloth is inspected and released undyed—ready for bleaching, dyeing, or finishing partners.</p>
             </article>
@@ -650,11 +802,29 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Floor Section */}
+      <section className="floor" aria-label="Fabric output">
+        <div className="floor__media" aria-hidden="true">
+          <img
+            src="/media/loom-warp.jpg"
+            alt="Warp threads on a modern industrial weaving loom"
+            width="1800"
+            height="1200"
+            loading="lazy"
+          />
+        </div>
+        <div className="floor__shade" aria-hidden="true"></div>
+        <div className="floor__copy">
+          <h2>On the loom: greige takes form</h2>
+          <p>Warp and weft lock into structured cloth—released undyed so dye houses get clean, consistent greige fabric.</p>
+        </div>
+      </section>
+
       {/* Specs Section */}
-      <section className="landing-specs" id="machinery">
-        <div className="landing-specs__inner">
+      <section className="specs" id="machinery">
+        <div className="specs__inner">
           <div>
-            <p className="landing-eyebrow" style={{ color: 'var(--accent-2)' }}>Machine profile</p>
+            <p className="eyebrow" style={{ color: 'var(--accent-2)' }}>Machine profile</p>
             <h2>What the mill is set up to do</h2>
             <p>A weaving-first plant: controlled insertion, consistent fabric architecture, and clean handoff to dye houses.</p>
           </div>
@@ -669,14 +839,12 @@ export default function HomePage() {
       </section>
 
       {/* Electronics Section */}
-      <section className="landing-electronics" id="electronics">
-        <div className="landing-electronics__inner">
+      <section className="electronics" id="electronics">
+        <div className="electronics__inner">
           <div>
-            <p className="landing-eyebrow">Electronics department</p>
-            <h2 className="landing-section-title">Loom electronic cards, repaired to run</h2>
-            <p className="landing-section-lede">
-              Sara Textiles runs a strong electronics bench that can be commissioned for weaving-machinery board and card repair—diagnosis, component work, and return-to-service for loom control electronics.
-            </p>
+            <p className="eyebrow">Electronics department</p>
+            <h2 className="section-title">Loom electronic cards, repaired to run</h2>
+            <p className="section-lede">Sara Textiles runs a strong electronics bench that can be commissioned for weaving-machinery board and card repair—diagnosis, component work, and return-to-service for loom control electronics.</p>
           </div>
           <ul className="board-rail">
             <li>
@@ -695,14 +863,12 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Parts Section */}
-      <section className="landing-parts" id="parts">
-        <div className="landing-parts__inner">
-          <p className="landing-eyebrow" style={{ color: 'var(--accent-2)' }}>Parts &amp; machines</p>
-          <h2 className="landing-section-title" style={{ color: '#eef2f6' }}>Loom spares and pre-owned weaving machines</h2>
-          <p className="landing-section-lede" style={{ color: '#9aa6b5' }}>
-            We sell textile weaving loom spare parts and used or pre-owned machines—sourced from real mill operations, ready for mills that need capacity or replacements without waiting on long OEM lead times.
-          </p>
+      {/* Parts & Used Machines */}
+      <section className="parts" id="parts">
+        <div className="parts__inner">
+          <p className="eyebrow">Parts &amp; machines</p>
+          <h2 className="section-title">Loom spares and pre-owned weaving machines</h2>
+          <p className="section-lede">We sell textile weaving loom spare parts and used or pre-owned machines—sourced from real mill operations, ready for mills that need capacity or replacements without waiting on long OEM lead times.</p>
           <div className="parts-grid">
             <article className="parts-item">
               <p className="parts-item__code">INV-01</p>
@@ -720,37 +886,29 @@ export default function HomePage() {
               <p>When a part needs bench or fitting work before it ships or goes back on the loom, commissioned labour is available at labour cost.</p>
             </article>
           </div>
-          <p className="parts-note">
-            <strong>Labour-cost commissioning:</strong> if the part is available and needs work, we can take it on at labour cost—parts priced separately where applicable.
-          </p>
+          <p className="parts-note"><strong>Labour-cost commissioning:</strong> if the part is available and needs work, we can take it on at labour cost—parts priced separately where applicable.</p>
         </div>
       </section>
 
       {/* Contact Section */}
-      <section className="landing-contact" id="contact">
-        <div className="landing-contact__inner">
+      <section className="contact" id="contact">
+        <div className="contact__inner">
           <div>
-            <p className="landing-eyebrow">Capacity &amp; supply</p>
+            <p className="eyebrow">Capacity &amp; supply</p>
             <h2>Weave, repair, or source parts</h2>
             <p>Ask about greige capacity, electronic card repair, loom spare parts, used machines, or commissioned part work at labour cost.</p>
           </div>
-          <div className="landing-contact__actions">
-            <a className="landing-btn" style={{ background: 'var(--machine)', color: '#eef2f6' }} href="mailto:info@saratextilesweaving.com">
-              Email production
-            </a>
-            <a className="landing-btn landing-btn--solid" href="#contact">
-              Inquire parts &amp; machines
-            </a>
-            <a className="landing-btn" style={{ background: 'transparent', color: 'var(--ink)', borderColor: 'rgba(14, 18, 24, 0.28)' }} href="#electronics">
-              Commission electronics
-            </a>
+          <div className="contact__actions">
+            <a className="btn btn--ink" href="mailto:info@saratextilesweaving.com">Email production</a>
+            <a className="btn btn--solid" href="#contact">Inquire parts &amp; machines</a>
+            <a className="btn btn--line" href="#electronics">Commission electronics</a>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="landing-footer">
-        <div className="landing-footer__wrap">
+      <footer>
+        <div className="wrap">
           <span><strong>Sara Textiles Weaving</strong> — greige, electronics, spares &amp; used looms</span>
           <Link className="footer-portal-link" href="/login">
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
