@@ -27,12 +27,23 @@ jobs:
           npm ci
           npx prisma generate
 
-      - name: 🚀 Sync Files to Plesk VPS via FTPS
+      - name: 🏗️ Build Next.js Production Bundle
+        run: |
+          npm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: 🚀 Sync Files to Plesk VPS via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          port: 21
+          security: loose
+          timeout: 120000
           server-dir: /httpdocs/
           exclude: |
             **/.git*
@@ -41,3 +52,5 @@ jobs:
             **/.next/cache/**
             **/*.zip
             **/*.log
+            **/.env*
+            **/clean_bare_git/**
