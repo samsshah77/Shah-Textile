@@ -16,10 +16,15 @@ export function ChallanPrintPreview({ challan }: ChallanPrintPreviewProps) {
     }
   }
 
+  const hasFoiItems = Boolean(challan.foiItems && challan.foiItems.length > 0)
+  const foiThaanTotal = challan.foiItems?.reduce((s, it) => s + (it.thaan || 0), 0) || 0
+  const foiMetersTotal = challan.foiItems?.reduce((s, it) => s + (it.totalMeters || 0), 0) || 0
+  const foiKgTotal = Number((challan.foiItems?.reduce((s, it) => s + (it.totalKg || 0), 0) || 0).toFixed(1))
+
   const firstItem = challan.items?.[0]
-  const totalMetersAll = challan.items?.reduce((s, it) => s + (it.totalMeters || 0), 0) || 0
-  const totalWeightAll = challan.items?.reduce((s, it) => s + (it.totalWeightKg || 0), 0) || 0
-  const totalPiecesCount = challan.items?.reduce((s, it) => s + (it.pieces?.length || 0), 0) || 0
+  const totalMetersAll = hasFoiItems ? foiMetersTotal : challan.items?.reduce((s, it) => s + (it.totalMeters || 0), 0) || 0
+  const totalWeightAll = hasFoiItems ? foiKgTotal : challan.items?.reduce((s, it) => s + (it.totalWeightKg || 0), 0) || 0
+  const totalPiecesCount = hasFoiItems ? foiThaanTotal : challan.items?.reduce((s, it) => s + (it.pieces?.length || 0), 0) || 0
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -30,7 +35,7 @@ export function ChallanPrintPreview({ challan }: ChallanPrintPreviewProps) {
           className="flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="size-4" />
-          <span>Back to Challan Builder</span>
+          <span>Back to Chalan FOI</span>
         </Link>
         <button
           onClick={handlePrint}
@@ -109,54 +114,117 @@ export function ChallanPrintPreview({ challan }: ChallanPrintPreviewProps) {
           </div>
         </div>
 
-        {/* Pieces Table */}
+        {/* Dispatched Rolls / Pieces Table */}
         <div className="mt-4">
-          <table className="w-full text-left border-collapse border border-black text-xs font-mono">
-            <thead>
-              <tr className="bg-gray-100 border-b border-black text-[11px] font-bold uppercase">
-                <th className="border-r border-black py-2 px-3 text-center">Piece / Roll #</th>
-                <th className="border-r border-black py-2 px-4 text-right">Length (Meters)</th>
-                <th className="border-r border-black py-2 px-4 text-right">Weight (kg)</th>
-                <th className="py-2 px-3 text-left">Quality Remarks</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-300">
-              {challan.items.flatMap((item) =>
-                item.pieces.map((piece) => (
-                  <tr key={piece.pieceNumber} className="text-black">
-                    <td className="border-r border-black py-1.5 px-3 text-center font-bold">
-                      #{piece.pieceNumber.toString().padStart(2, '0')}
+          {hasFoiItems && challan.foiItems ? (
+            <table className="w-full text-left border-collapse border border-black text-xs font-mono">
+              <thead>
+                <tr className="bg-gray-100 border-b border-black text-[10px] font-bold uppercase">
+                  <th className="border-r border-black py-2 px-2 text-center w-12">S.No</th>
+                  <th className="border-r border-black py-2 px-3">Name</th>
+                  <th className="border-r border-black py-2 px-3">Type</th>
+                  <th className="border-r border-black py-2 px-2 text-center">Beam</th>
+                  <th className="border-r border-black py-2 px-3">SWL #</th>
+                  <th className="border-r border-black py-2 px-2 text-right">Thaan</th>
+                  <th className="border-r border-black py-2 px-3 text-right">Total Meter</th>
+                  <th className="py-2 px-3 text-right">Total KG</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-300">
+                {challan.foiItems.map((it) => (
+                  <tr key={it.id} className="text-black">
+                    <td className="border-r border-black py-1.5 px-2 text-center font-bold">
+                      {it.sNo}
                     </td>
-                    <td className="border-r border-black py-1.5 px-4 text-right font-bold">
-                      {piece.meters.toFixed(1)} m
+                    <td className="border-r border-black py-1.5 px-3 font-semibold">
+                      {it.name}
                     </td>
-                    <td className="border-r border-black py-1.5 px-4 text-right">
-                      {piece.weightKg.toFixed(2)} kg
+                    <td className="border-r border-black py-1.5 px-3 text-gray-700">
+                      {it.type}
                     </td>
-                    <td className="py-1.5 px-3 text-[11px] text-gray-700 font-sans">
-                      Fresh Grey Fabric Piece
+                    <td className="border-r border-black py-1.5 px-2 text-center font-bold">
+                      {it.beam}
+                    </td>
+                    <td className="border-r border-black py-1.5 px-3">
+                      {it.swlNo}
+                    </td>
+                    <td className="border-r border-black py-1.5 px-2 text-right font-bold">
+                      {it.thaan === 0 ? '—' : it.thaan}
+                    </td>
+                    <td className="border-r border-black py-1.5 px-3 text-right font-bold">
+                      {it.totalMeters === 0 ? '—' : `${formatNumber(it.totalMeters, 1)} m`}
+                    </td>
+                    <td className="py-1.5 px-3 text-right font-bold">
+                      {it.totalKg === 0 ? '—' : `${formatNumber(it.totalKg, 1)} kg`}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-black bg-gray-100 font-bold text-black text-xs">
-                <td className="border-r border-black py-2.5 px-3 text-center">
-                  TOTAL PIECES: {totalPiecesCount}
-                </td>
-                <td className="border-r border-black py-2.5 px-4 text-right text-sm">
-                  {formatNumber(totalMetersAll, 1)} m
-                </td>
-                <td className="border-r border-black py-2.5 px-4 text-right text-sm">
-                  {formatNumber(totalWeightAll, 2)} kg
-                </td>
-                <td className="py-2.5 px-3 text-xs">
-                  Grey State Dispatch Certified
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-black bg-gray-100 font-bold text-black text-xs">
+                  <td colSpan={5} className="border-r border-black py-2.5 px-3 font-black uppercase text-left">
+                    GRAND TOTAL DISPATCHED
+                  </td>
+                  <td className="border-r border-black py-2.5 px-2 text-right font-black">
+                    {foiThaanTotal} Thaan
+                  </td>
+                  <td className="border-r border-black py-2.5 px-3 text-right font-black text-sm">
+                    {formatNumber(foiMetersTotal, 1)} m
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-black text-sm">
+                    {formatNumber(foiKgTotal, 1)} kg
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
+            <table className="w-full text-left border-collapse border border-black text-xs font-mono">
+              <thead>
+                <tr className="bg-gray-100 border-b border-black text-[11px] font-bold uppercase">
+                  <th className="border-r border-black py-2 px-3 text-center">Piece / Roll #</th>
+                  <th className="border-r border-black py-2 px-4 text-right">Length (Meters)</th>
+                  <th className="border-r border-black py-2 px-4 text-right">Weight (kg)</th>
+                  <th className="py-2 px-3 text-left">Quality Remarks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-300">
+                {challan.items.flatMap((item) =>
+                  item.pieces.map((piece) => (
+                    <tr key={piece.pieceNumber} className="text-black">
+                      <td className="border-r border-black py-1.5 px-3 text-center font-bold">
+                        #{piece.pieceNumber.toString().padStart(2, '0')}
+                      </td>
+                      <td className="border-r border-black py-1.5 px-4 text-right font-bold">
+                        {piece.meters.toFixed(1)} m
+                      </td>
+                      <td className="border-r border-black py-1.5 px-4 text-right">
+                        {piece.weightKg.toFixed(2)} kg
+                      </td>
+                      <td className="py-1.5 px-3 text-[11px] text-gray-700 font-sans">
+                        Fresh Grey Fabric Piece
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-black bg-gray-100 font-bold text-black text-xs">
+                  <td className="border-r border-black py-2.5 px-3 text-center">
+                    TOTAL PIECES: {totalPiecesCount}
+                  </td>
+                  <td className="border-r border-black py-2.5 px-4 text-right text-sm">
+                    {formatNumber(totalMetersAll, 1)} m
+                  </td>
+                  <td className="border-r border-black py-2.5 px-4 text-right text-sm">
+                    {formatNumber(totalWeightAll, 2)} kg
+                  </td>
+                  <td className="py-2.5 px-3 text-xs">
+                    Grey State Dispatch Certified
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
 
         {/* Declaration & Signatures */}

@@ -12,6 +12,30 @@ enum UserStatus {
   REJECTED
 }
 
+enum PermissionAction {
+  VIEW
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  POST
+  EXPORT
+  ASSIGN
+  MANAGE
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+enum PermissionScope {
+  ALL
+  OWN
+  DEPARTMENT
+  ASSIGNED
+}
+
 model Role {
   id          String   @id @default(uuid())
   key         String   @unique // e.g. "ACCOUNTANT", "QUALITY_CONTROLLER", "ADMIN", or custom "WEAVING_SUPERVISOR"
@@ -22,7 +46,9 @@ model Role {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  users       User[]
+  users            User[]
+  rolePermissions  RolePermission[]
+  roleModuleGrants RoleModuleGrant[]
 
   @@map("roles")
 }
@@ -43,5 +69,240 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  userPermissions UserPermission[]
+
   @@map("users")
 }
+
+model Module {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  label       String
+  description String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  resources        Resource[]
+  roleModuleGrants RoleModuleGrant[]
+
+  @@map("modules")
+}
+
+model Resource {
+  id          String  @id @default(uuid())
+  moduleId    String
+  module      Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  key         String
+  label       String
+  description String?
+  sensitive   Boolean @default(false)
+
+  permissions Permission[]
+
+  @@unique([moduleId, key])
+  @@map("resources")
+}
+
+model Permission {
+  id         String           @id @default(uuid())
+  resourceId String
+  resource   Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  action     PermissionAction
+
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+
+  @@unique([resourceId, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String           @id @default(uuid())
+  roleId       String
+  role         Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  effect       PermissionEffect @default(ALLOW)
+  scope        PermissionScope  @default(ALL)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserPermission {
+  id           String           @id @default(uuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  effect       PermissionEffect @default(ALLOW)
+  scope        PermissionScope  @default(ALL)
+
+  @@unique([userId, permissionId])
+  @@map("user_permissions")
+}
+
+model RoleModuleGrant {
+  id       String           @id @default(uuid())
+  roleId   String
+  role     Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  moduleId String
+  module   Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  action   PermissionAction
+  effect   PermissionEffect @default(ALLOW)
+  scope    PermissionScope  @default(ALL)
+
+  @@unique([roleId, moduleId, action])
+  @@map("role_module_grants")
+}
+
+model PermissionAuditLog {
+  id           String            @id @default(uuid())
+  actorUserId  String
+  roleId       String?
+  permissionId String?
+  moduleKey    String
+  resourceKey  String?
+  action       PermissionAction
+  effect       PermissionEffect?
+  scope        PermissionScope?
+  operation    String
+  metadata     Json?
+  createdAt    DateTime          @default(now())
+
+  @@map("permission_audit_logs")
+}
+
+model LoginThrottle {
+  fingerprint     String    @id
+  failures        Int       @default(0)
+  windowStartedAt DateTime  @default(now())
+  blockedUntil    DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@map("login_throttles")
+}
+
+// ==========================================
+// FLOOR PRODUCTION, LOOMS & STORE RELATIONS
+// ==========================================
+
+model Loom {
+  id            Int               @id @default(autoincrement())
+  loomNumber    Int               @unique // 1 to 34
+  model         String            // "G6200", "G6300", "PU"
+  category      String            @default("G6200")
+  defaultRpm    Int               @default(340)
+  shed          String?           @default("Main Floor")
+  isActive      Boolean           @default(true)
+  currentStatus String            @default("RUNNING") // RUNNING, STOPPED, KNOTTING, BEAM_END, BREAKDOWN
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  productions   DailyProduction[]
+  beams         BeamStock[]
+
+  @@map("looms")
+}
+
+model FabricQuality {
+  id           String            @id @default(uuid())
+  qualityName  String            @unique // "PARCOPV", "DESIGN-2x1", etc.
+  fabricType   String            // "Suiting", "Ribstop", etc.
+  warpYarn     String            // "20/1-Pv-China"
+  weftYarn     String            // "20/1-Pv-China"
+  reed         Int               // 120
+  pick         Int               // 60
+  widthInch    Float             // 66
+  gsm          Float?            // 1.77
+  ratePerPick  Float             @default(0.95)
+  targetMeters Float             @default(10000)
+  lot          String?
+  warpRepeat   String?
+  weftRepeat   String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  productions  DailyProduction[]
+
+  @@map("fabric_qualities")
+}
+
+model BeamStock {
+  id            String            @id @default(uuid())
+  beamNo        String            @unique
+  warpYarn      String
+  reedWidth     String
+  ends          Int
+  lengthMeters  Float
+  loomType      String            // "G6200", "G6300"
+  status        String            @default("IN_STOCK") // "IN_STOCK", "MOUNTED", "EXHAUSTED"
+  mountedLoomId Int?
+  mountedLoom   Loom?             @relation(fields: [mountedLoomId], references: [loomNumber])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@map("beam_stocks")
+}
+
+model DailyProduction {
+  id                   String        @id @default(uuid())
+  date                 DateTime      @db.Date
+  loomNumber           Int
+  loom                 Loom          @relation(fields: [loomNumber], references: [loomNumber])
+  qualityId            String
+  quality              FabricQuality @relation(fields: [qualityId], references: [id])
+
+  shiftAMeters         Float         @default(0)
+  shiftBMeters         Float         @default(0)
+  totalMeters          Float         @default(0)
+  rollerHours          Int           @default(24)
+  runningHours         Float         @default(24)
+  rpm                  Int
+  pick                 Int
+  theoreticalMeters    Float
+  efficiencyPercentage Float
+  stopLossMeters       Float
+  status               String        @default("RUNNING") // RUNNING, STOPPED, KNOTTING, BEAM_END, BREAKDOWN
+  remarks              String?
+  lot                  String?
+
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@unique([date, loomNumber])
+  @@map("daily_productions")
+}
+
+model WeftStockRecord {
+  id                   String        @id @default(uuid())
+  date                 DateTime      @db.Date
+  yarnType             String        // "20/1-Pv-China"
+  quantityKg           Float         @default(0)
+  issuedToLoomNumber   Int?
+  balanceKg            Float?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@map("weft_stock_records")
+}
+
+model YarnStock {
+  id             String    @id @default(uuid())
+  yarnType       String    @unique // e.g. "20/1-Pv-China", "45/1-Pv-China", "40/1-Pv-China"
+  fiberBlend     String?   @default("Polyester Viscose")
+  lotNumber      String?
+  totalBags      Int       @default(0)
+  receivedKg     Float     @default(0)
+  issuedKg       Float     @default(0)
+  balanceKg      Float     @default(0)
+  unitPriceKg    Float?    @default(650) // PKR per Kg
+  minThresholdKg Float?    @default(500)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("yarn_stocks")
+}
+

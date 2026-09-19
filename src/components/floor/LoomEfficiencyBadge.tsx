@@ -21,9 +21,9 @@ export function LoomEfficiencyBadge({
   const isSuboptimal = efficiency < 70
 
   const sizeClasses = {
-    sm: 'px-1.5 py-0.5 text-[10px]',
-    md: 'px-2.5 py-1 text-xs',
-    lg: 'px-3 py-1.5 text-sm',
+    sm: 'px-2 py-0.5 text-xs font-bold',
+    md: 'px-2.5 py-1 text-xs sm:text-sm font-bold',
+    lg: 'px-3.5 py-1.5 text-sm sm:text-base font-bold',
   }
 
   return (
@@ -39,24 +39,24 @@ export function LoomEfficiencyBadge({
       >
         <span
           className={cn(
-            'size-1.5 rounded-full',
+            'size-2 rounded-full shrink-0',
             isHigh && 'bg-blue-500',
             isNormal && 'bg-sky-500',
             isSuboptimal && 'bg-rose-500'
           )}
         />
         <span>{efficiency.toFixed(1)}%</span>
-        {isHigh && <Sparkles className="size-3 text-blue-600 dark:text-blue-400" />}
-        {isSuboptimal && <AlertCircle className="size-3 text-rose-600 dark:text-rose-400" />}
+        {isHigh && <Sparkles className="size-3.5 text-blue-600 dark:text-blue-400 shrink-0" />}
+        {isSuboptimal && <AlertCircle className="size-3.5 text-rose-600 dark:text-rose-400 shrink-0" />}
       </div>
 
       {showBonus && (
         <span
           className={cn(
-            'font-mono text-[10px] font-semibold',
+            'font-mono text-xs font-semibold',
             bonusPercentage > 0
               ? 'text-blue-600 dark:text-blue-400'
-              : 'text-muted-foreground'
+              : 'text-slate-400 dark:text-slate-500'
           )}
         >
           {bonusPercentage > 0 ? `Bonus: +${bonusPercentage}%` : 'No Bonus (<70%)'}

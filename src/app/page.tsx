@@ -773,7 +773,7 @@ export default function HomePage() {
           {isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Link
-                href="/floor/production"
+                href="/dashboard"
                 className="nav-portal-btn"
                 title="Go to Sara Textile ERP Workspace"
               >
@@ -829,7 +829,7 @@ export default function HomePage() {
             <a className="btn btn--ghost" href="#contact">Request capacity</a>
             <Link
               className="btn btn--portal"
-              href={isLoggedIn ? '/floor/production' : '/login'}
+              href={isLoggedIn ? '/dashboard' : '/login'}
             >
               {isLoggedIn ? (
                 <>
@@ -1014,7 +1014,7 @@ export default function HomePage() {
           <span><strong>Sara Textiles Weaving</strong> — greige, electronics, spares &amp; used looms</span>
           {isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <Link className="footer-portal-link" href="/floor/production">
+              <Link className="footer-portal-link" href="/dashboard">
                 <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
                 </svg>

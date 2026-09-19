@@ -10,6 +10,8 @@ interface MonthlyMatrixTableProps {
   loomTotals: Record<number, number>
   grandTotalMeters: number
   avgPerDay: number
+  selectedMonth?: string
+  onMonthChange?: (month: string) => void
 }
 
 export function MonthlyMatrixTable({
@@ -17,9 +19,12 @@ export function MonthlyMatrixTable({
   loomTotals,
   grandTotalMeters,
   avgPerDay,
+  selectedMonth = '2026-09',
+  onMonthChange,
 }: MonthlyMatrixTableProps) {
   const [selectedLoom, setSelectedLoom] = useState<number | 'ALL'>('ALL')
   const loomNumbers = Array.from({ length: 34 }, (_, i) => i + 1)
+  const monthName = selectedMonth === '2026-08' ? 'August 2026' : 'September 2026'
 
   const exportCsv = () => {
     let csv = 'Date / Day,' + loomNumbers.map((n) => `Loom ${n}`).join(',') + ',Total (m)\n'
@@ -37,7 +42,7 @@ export function MonthlyMatrixTable({
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', 'Sara_Textile_Loom_Monthly_Production_Matrix_Total.csv')
+    link.setAttribute('download', `Sara_Textile_Loom_${monthName.replace(' ', '_')}_Matrix_Total.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -53,15 +58,26 @@ export function MonthlyMatrixTable({
           </div>
           <div>
             <h3 className="text-sm font-bold text-foreground">
-              Sheet: Total • 34 Looms Daily Meter Matrix (September 2026)
+              Sheet: Total • 34 Looms Daily Meter Matrix ({monthName})
             </h3>
             <p className="text-xs text-muted-foreground">
-              Day-by-day floor production meterage verified from physical mill production book.
+              Day-by-day floor production meterage verified from physical mill production book ({days.length} Days).
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {onMonthChange && (
+            <select
+              value={selectedMonth}
+              onChange={(e) => onMonthChange(e.target.value)}
+              className="h-9 rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/40 px-3 text-xs font-bold text-[#0066cc] dark:text-blue-300 focus:outline-none cursor-pointer"
+            >
+              <option value="2026-09">September 2026 (30 Days)</option>
+              <option value="2026-08">August 2026 (31 Days)</option>
+            </select>
+          )}
+
           <select
             value={selectedLoom}
             onChange={(e) =>
@@ -91,7 +107,7 @@ export function MonthlyMatrixTable({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-border bg-card p-3 space-y-1">
           <span className="text-[10px] uppercase font-bold text-muted-foreground">
-            Grand Total (Days 2-9)
+            Full Month Total ({days.length} Days)
           </span>
           <div className="font-mono text-xl font-black text-foreground">
             {formatNumber(grandTotalMeters, 0)} m
@@ -109,10 +125,10 @@ export function MonthlyMatrixTable({
 
         <div className="rounded-xl border border-border bg-card p-3 space-y-1">
           <span className="text-[10px] uppercase font-bold text-muted-foreground">
-            1st Fortnight Total
+            Average Per Loom (Month)
           </span>
           <div className="font-mono text-xl font-black text-emerald-600 dark:text-emerald-400">
-            {formatNumber(grandTotalMeters, 0)} m
+            {formatNumber(grandTotalMeters / 34, 0)} m
           </div>
         </div>
 
@@ -165,7 +181,7 @@ export function MonthlyMatrixTable({
               {days.map((d) => (
                 <tr key={d.day} className="hover:bg-muted/50 transition-colors">
                   <td className="sticky left-0 z-10 bg-card px-3 py-2 font-bold text-foreground border-r border-border whitespace-nowrap">
-                    Day {d.day} (Sept 0{d.day})
+                    Day {d.day} (Sept {String(d.day).padStart(2, '0')})
                   </td>
                   {loomNumbers
                     .filter((n) => selectedLoom === 'ALL' || selectedLoom === n)

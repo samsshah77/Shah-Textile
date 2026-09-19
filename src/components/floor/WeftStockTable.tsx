@@ -20,6 +20,10 @@ export function WeftStockTable({ yarnColumns, days }: WeftStockTableProps) {
   })
 
   const grandTotalKg = days.reduce((s, d) => s + d.totalKg, 0)
+  const peakDay = days.reduce(
+    (max, d) => (d.totalKg > (max?.totalKg || 0) ? d : max),
+    days[0]
+  )
 
   const activeYarns = yarnColumns.filter((y) => yarnTotals[y] > 0)
   const displayedYarns =
@@ -93,7 +97,7 @@ export function WeftStockTable({ yarnColumns, days }: WeftStockTableProps) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-border bg-card p-3 space-y-1">
           <span className="text-[10px] uppercase font-bold text-muted-foreground">
-            Total Weft Issued (Kg)
+            Total Weft Issued ({days.length} Days)
           </span>
           <div className="font-mono text-xl font-black text-foreground">
             {formatNumber(grandTotalKg, 1)} kg
@@ -123,7 +127,7 @@ export function WeftStockTable({ yarnColumns, days }: WeftStockTableProps) {
             Peak Issue Day
           </span>
           <div className="font-mono text-xl font-black text-emerald-600 dark:text-emerald-400">
-            Day 5 (1,381.5 kg)
+            Day {peakDay?.day || 1} ({formatNumber(peakDay?.totalKg || 0, 1)} kg)
           </div>
         </div>
       </div>
@@ -156,7 +160,7 @@ export function WeftStockTable({ yarnColumns, days }: WeftStockTableProps) {
               {days.map((d) => (
                 <tr key={d.day} className="hover:bg-muted/50 transition-colors">
                   <td className="sticky left-0 z-10 bg-card px-3 py-2 font-bold text-foreground border-r border-border whitespace-nowrap">
-                    Day {d.day} (Sept 0{d.day})
+                    Day {d.day} (Sept {String(d.day).padStart(2, '0')})
                   </td>
                   {displayedYarns.map((y) => {
                     const kg = d.consumption[y] || 0

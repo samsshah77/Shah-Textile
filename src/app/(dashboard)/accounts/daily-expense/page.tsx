@@ -24,6 +24,7 @@ import {
   X,
   Check,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 const STORAGE_KEY_DAILY_EXPENSE = 'sara_textile_daily_inward_v2'
 
@@ -240,63 +241,40 @@ export default function DailyExpensePage() {
 
   return (
     <div className="space-y-6 pb-16">
-      {/* ========================================================================= */}
-      {/* 1. HEADER SECTION                                                         */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Accounts Module • Dynamic Inward Register
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• August 2026</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 mt-1.5">
-            Daily Expense & Inward Record
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Excel Formula Engine: <code className="font-mono text-[#0066cc]">Total = Qty * Rate</code> • <code className="font-mono text-purple-600">Balance = Prev + Sara AP</code> • <code className="font-mono text-emerald-600">Grand Total = =SUM(...)</code>
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Add Item Button */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="erp-btn-primary"
-          >
-            <PlusCircle className="size-3.5" />
-            <span>Add Inward Bill / Item</span>
-          </button>
-
-          {/* Reset Button */}
-          <button
-            onClick={handleReset}
-            title="Reset to Excel authentic data"
-            className="erp-btn-secondary"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          {/* Export CSV */}
-          <button
-            onClick={exportCSV}
-            className="erp-btn-secondary"
-          >
-            <Download className="size-3.5 text-emerald-600" />
-            <span>Export CSV</span>
-          </button>
-
-          {/* Print */}
-          <button
-            onClick={handlePrint}
-            className="erp-btn-secondary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print Register</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Daily Expense & Inward Record"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/daily-expense' },
+            { label: 'Daily Expense' },
+          ]}
+          actions={
+            <>
+              <button type="button" onClick={() => setShowAddModal(true)} className="erp-btn-primary">
+                <PlusCircle className="size-3.5" />
+                <span>Add Inward Bill / Item</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                title="Reset to Excel authentic data"
+                className="erp-btn-secondary"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button type="button" onClick={exportCSV} className="erp-btn-secondary">
+                <Download className="size-3.5 text-emerald-600" />
+                <span>Export CSV</span>
+              </button>
+              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
+                <Printer className="size-3.5" />
+                <span>Print Register</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Save Toast Notification */}

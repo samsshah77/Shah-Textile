@@ -1,13 +1,13 @@
-import type { Metadata } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import type { Metadata, Viewport } from 'next'
+import { Source_Sans_3, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { AppLayout } from '@/components/shared/AppLayout'
 
-const inter = Inter({
+const sourceSans = Source_Sans_3({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
-  weight: ['300', '400', '500', '600', '700', '800'],
+  weight: ['300', '400', '500', '600', '700'],
 })
 
 const jetbrainsMono = JetBrains_Mono({
@@ -16,6 +16,13 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ['400', '500', '600', '700'],
   display: 'swap',
 })
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+}
 
 export const metadata: Metadata = {
   title: 'Sara Textile ERP • Weaving Mill Floor Management',
@@ -33,11 +40,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-[#0066cc]/15 selection:text-[#0066cc]">
+    <html
+      lang="en"
+      data-bs-theme="light"
+      data-lte-color-mode="off"
+      className={`${sourceSans.variable} ${jetbrainsMono.variable}`}
+      style={{ colorScheme: 'light' }}
+    >
+      <body className="min-h-screen font-sans antialiased" suppressHydrationWarning>
         <AppLayout>{children}</AppLayout>
       </body>
     </html>
   )
 }
-

@@ -3,8 +3,6 @@
 import { useRef, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 export interface SheetTabInfo {
   sheetNumber: number
@@ -194,7 +192,8 @@ export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
     sheetNumber: 3,
     name: 'Chalan FOI',
     href: '/floor/challan',
-    activeCheck: (p) => p.startsWith('/floor/challan'),
+    activeCheck: (p, sp) =>
+      p.startsWith('/floor/challan') || (p === '/floor/production' && sp.get('tab') === 'challan'),
   },
   {
     sheetNumber: 4,
@@ -219,12 +218,6 @@ export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
     name: 'Active Qualities',
     href: '/floor/production?tab=qualities',
     activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'qualities',
-  },
-  {
-    sheetNumber: 8,
-    name: 'Fabric Report',
-    href: '/floor/production?tab=fabric-report',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'fabric-report',
   },
 ]
 
@@ -307,59 +300,45 @@ function ExcelSheetTabBarContent() {
   }
 
   return (
-    <div className="w-full border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111c2d] text-slate-700 dark:text-slate-300 print:hidden select-none">
-      {/* Main Excel Sheet Tabs Ribbon */}
-      <div className="flex items-stretch relative h-9">
-        {/* Left Scroll Button */}
+    <div className="sara-sheet-tabs d-print-none">
+      <div className="d-flex align-items-stretch">
         <button
+          type="button"
           onClick={scrollLeft}
-          title="Scroll Sheets Left"
-          className="flex items-center justify-center w-7 bg-white dark:bg-[#111c2d] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-800 dark:hover:text-white border-r border-slate-200 dark:border-slate-800 transition-colors shrink-0 cursor-pointer z-10"
+          className="sara-sheet-tabs__scroll"
+          title="Scroll left"
         >
-          <ChevronLeft className="size-3.5" />
+          <i className="bi bi-chevron-left" />
         </button>
-
-        {/* Horizontal Scrollable Tabs Container */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 flex items-stretch overflow-x-auto no-scrollbar scroll-smooth"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          className="flex-grow-1 overflow-auto"
+          style={{ scrollbarWidth: 'none' }}
         >
-          {currentSheets.map((sheet) => {
-            const isActive = sheet.activeCheck(pathname, searchParams)
-            return (
-              <Link
-                key={sheet.sheetNumber}
-                href={sheet.href}
-                ref={isActive ? activeTabRef : undefined}
-                className={cn(
-                  'group flex items-center px-3.5 text-xs transition-colors shrink-0 cursor-pointer relative border-r border-slate-100 dark:border-slate-800/60',
-                  isActive
-                    ? 'text-[#0066cc] dark:text-sky-400 font-semibold bg-blue-50/50 dark:bg-sky-950/30'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/50 font-normal'
-                )}
-              >
-                {/* Active Indicator Bar on bottom (Plesk style) */}
-                {isActive && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0066cc] dark:bg-sky-400" />
-                )}
-
-                {/* Sheet Name */}
-                <span className="tracking-tight">
-                  {sheet.name}
-                </span>
-              </Link>
-            )
-          })}
+          <ul className="nav nav-tabs flex-nowrap border-0 mb-0" style={{ minWidth: 'max-content' }}>
+            {currentSheets.map((sheet) => {
+              const isActive = sheet.activeCheck(pathname, searchParams)
+              return (
+                <li className="nav-item" key={sheet.sheetNumber}>
+                  <Link
+                    href={sheet.href}
+                    ref={isActive ? activeTabRef : undefined}
+                    className={`nav-link sara-sheet-tabs__link py-2 px-3 small ${isActive ? 'active' : ''}`}
+                  >
+                    {sheet.name}
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-
-        {/* Right Scroll Button */}
         <button
+          type="button"
           onClick={scrollRight}
-          title="Scroll Sheets Right"
-          className="flex items-center justify-center w-7 bg-white dark:bg-[#111c2d] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-800 dark:hover:text-white border-l border-slate-200 dark:border-slate-800 transition-colors shrink-0 cursor-pointer z-10"
+          className="sara-sheet-tabs__scroll"
+          title="Scroll right"
         >
-          <ChevronRight className="size-3.5" />
+          <i className="bi bi-chevron-right" />
         </button>
       </div>
     </div>
@@ -368,7 +347,9 @@ function ExcelSheetTabBarContent() {
 
 export function ExcelSheetTabBar() {
   return (
-    <Suspense fallback={<div className="h-9 bg-white dark:bg-[#111c2d] border-b border-slate-200 animate-pulse" />}>
+    <Suspense
+      fallback={<div className="sara-sheet-tabs" style={{ height: 40 }} />}
+    >
       <ExcelSheetTabBarContent />
     </Suspense>
   )

@@ -22,6 +22,7 @@ import {
   X,
   Check,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 const MONTH_KEYS = [
   'January',
@@ -151,6 +152,11 @@ export default function InventoryInwardPage() {
     setMonthsData(updated)
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(updated))
+      try {
+        window.dispatchEvent(new CustomEvent('accounts_synced', { detail: { source: 'inventory' } }))
+      } catch (err) {
+        console.error(err)
+      }
     }
     setIsSaved(true)
     setTimeout(() => setIsSaved(false), 2000)
@@ -296,63 +302,52 @@ export default function InventoryInwardPage() {
 
   return (
     <div className="space-y-6 pb-16">
-      {/* ========================================================================= */}
-      {/* 1. HEADER SECTION                                                         */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-md bg-purple-500/10 px-2 py-0.5 text-xs font-black text-purple-600 dark:text-purple-400 uppercase tracking-wider">
-              Accounts Module • Dynamic Store Inventory Control
-            </span>
-            <span className="text-xs font-bold text-muted-foreground">• Year 2026 (9 Months)</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground mt-1">
-            Store Inventory Control Sheet
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Excel Formula Engine: <code className="font-mono text-purple-600">Total Price = Qty * Cost/Item</code> • <code className="font-mono text-emerald-600">Month Total = =SUM(J6:J94)</code>
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Add Purchase Button */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-black text-white hover:bg-purple-700 transition-all cursor-pointer shadow-xs"
-          >
-            <PlusCircle className="size-4" />
-            <span>Add Purchase Item</span>
-          </button>
-
-          {/* Reset Button */}
-          <button
-            onClick={handleReset}
-            title="Reset to Excel authentic data"
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer shadow-xs"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          {/* Export CSV */}
-          <button
-            onClick={exportCSV}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer shadow-xs"
-          >
-            <Download className="size-4 text-emerald-600" />
-            <span>Export CSV</span>
-          </button>
-
-          {/* Print */}
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 rounded-xl bg-[#0066cc] hover:bg-[#0052a3] px-4 py-2 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs"
-          >
-            <Printer className="size-4" />
-            <span>Print Register</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Store Inventory Control"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/inventory-inward' },
+            { label: 'Store Inventory' },
+          ]}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
+              >
+                <PlusCircle className="size-4" />
+                <span>Add Purchase Item</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                title="Reset to Excel authentic data"
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={exportCSV}
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              >
+                <Download className="size-4 text-emerald-600" />
+                <span>Export CSV</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
+              >
+                <Printer className="size-4" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Save Toast Notification */}

@@ -14,6 +14,7 @@ import {
   Search,
   Printer,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 interface GroupedMonthlyBill {
   key: string
@@ -95,43 +96,33 @@ export default function MonthlyPurchasesReportPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Accounts Module • Purchases Trend
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• Monthly Rollup</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl mt-1.5">
-            Monthly Spares & Supplier Purchases
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Automatic monthly breakdown of workshop repairs and spare parts purchases allocated by loom model.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs font-semibold text-slate-500 hidden sm:inline">Month:</label>
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-card px-3 py-1.5 text-xs font-medium text-foreground focus:border-[#0066cc] focus:outline-none cursor-pointer shadow-xs"
-          >
-            <option value="2026-08">August-2026</option>
-            <option value="2026-07">July-2026</option>
-            <option value="2026-09">September-2026</option>
-          </select>
-
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 rounded-lg bg-[#0066cc] hover:bg-[#0052a3] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
-          >
-            <Printer className="size-3.5" />
-            <span>Print Report (A4)</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Monthly Spares & Supplier Purchases"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/reports/monthly-purchases' },
+            { label: 'Monthly Purchases' },
+          ]}
+          actions={
+            <>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="form-select form-select-sm"
+                aria-label="Statement month"
+              >
+                <option value="2026-08">August-2026</option>
+                <option value="2026-07">July-2026</option>
+                <option value="2026-09">September-2026</option>
+              </select>
+              <button type="button" onClick={handlePrint} className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1">
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Loom Model Category Allocation Strip */}

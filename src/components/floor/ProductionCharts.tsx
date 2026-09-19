@@ -61,7 +61,7 @@ const MODEL_DATA: ModelBreakdown[] = [
     percentage: 60.0,
     efficiency: 73.5,
     rpm: 395,
-    color: '#0066cc',
+    color: '#0d6efd',
     bgLight: 'bg-blue-50 dark:bg-blue-950/40',
     borderColor: 'border-blue-200 dark:border-blue-800',
   },
@@ -136,7 +136,7 @@ export function ProductionCharts() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
-                <div className="flex size-7 items-center justify-center rounded-lg bg-blue-50 text-[#0066cc] dark:bg-blue-950 dark:text-blue-300">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-blue-50 text-[#0d6efd] dark:bg-blue-950 dark:text-blue-300">
                   <TrendingUp className="size-4" />
                 </div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -159,7 +159,7 @@ export function ProductionCharts() {
                 className={cn(
                   'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer',
                   activeMetric === 'meters'
-                    ? 'bg-white dark:bg-slate-900 text-[#0066cc] shadow-xs font-bold'
+                    ? 'bg-white dark:bg-slate-900 text-[#0d6efd] shadow-xs font-bold'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 )}
               >
@@ -171,7 +171,7 @@ export function ProductionCharts() {
                 className={cn(
                   'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer',
                   activeMetric === 'efficiency'
-                    ? 'bg-white dark:bg-slate-900 text-[#0066cc] shadow-xs font-bold'
+                    ? 'bg-white dark:bg-slate-900 text-[#0d6efd] shadow-xs font-bold'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 )}
               >
@@ -183,7 +183,7 @@ export function ProductionCharts() {
                 className={cn(
                   'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer',
                   activeMetric === 'shifts'
-                    ? 'bg-white dark:bg-slate-900 text-[#0066cc] shadow-xs font-bold'
+                    ? 'bg-white dark:bg-slate-900 text-[#0d6efd] shadow-xs font-bold'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 )}
               >
@@ -198,7 +198,7 @@ export function ProductionCharts() {
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-900 dark:text-white">{hoveredDay.day} ({hoveredDay.date})</span>
                 <span className="text-slate-400">•</span>
-                <span className="font-mono font-bold text-[#0066cc]">
+                <span className="font-mono font-bold text-[#0d6efd]">
                   {formatNumber(hoveredDay.totalMeters, 0)} meters
                 </span>
                 <span className="text-slate-400">•</span>
@@ -249,7 +249,7 @@ export function ProductionCharts() {
                         {/* Shift A Bar (Day) */}
                         <div
                           style={{ height: `${heightA}px` }}
-                          className="w-full rounded-t-sm bg-[#0066cc] relative group"
+                          className="w-full rounded-t-sm bg-[#0d6efd] relative group"
                           title={`Shift A: ${item.shiftA}m`}
                         />
                         {/* Shift B Bar (Night) */}
@@ -276,12 +276,12 @@ export function ProductionCharts() {
                 >
                   <defs>
                     <linearGradient id="blueGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#0066cc" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#0066cc" stopOpacity="0.0" />
+                      <stop offset="0%" stopColor="#0d6efd" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#0d6efd" stopOpacity="0.0" />
                     </linearGradient>
                     <linearGradient id="emeraldGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#059669" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#059669" stopOpacity="0.0" />
+                      <stop offset="0%" stopColor="#0d6efd" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#0d6efd" stopOpacity="0.0" />
                     </linearGradient>
                   </defs>
 
@@ -332,7 +332,7 @@ export function ProductionCharts() {
                   <path
                     d={pathD}
                     fill="none"
-                    stroke={activeMetric === 'efficiency' ? '#059669' : '#0066cc'}
+                    stroke={activeMetric === 'efficiency' ? '#0d6efd' : '#0d6efd'}
                     strokeWidth="2.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -355,7 +355,7 @@ export function ProductionCharts() {
                             'transition-all',
                             activeMetric === 'efficiency'
                               ? isSelected ? 'fill-emerald-600 stroke-white stroke-2' : 'fill-emerald-500'
-                              : isSelected ? 'fill-[#0066cc] stroke-white stroke-2' : 'fill-[#0066cc]'
+                              : isSelected ? 'fill-[#0d6efd] stroke-white stroke-2' : 'fill-[#0d6efd]'
                           )}
                         />
                         {/* Day label */}
@@ -384,7 +384,7 @@ export function ProductionCharts() {
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[#0066cc]" />
+                <span className="size-2 rounded-full bg-[#0d6efd]" />
                 <span>Shift A (Day Shift)</span>
               </span>
               <span className="flex items-center gap-1.5">
@@ -426,12 +426,12 @@ export function ProductionCharts() {
           {/* Visual Stacked Progress Strip */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-mono font-semibold">
-              <span className="text-[#0066cc]">G6200 (60.0%)</span>
+              <span className="text-[#0d6efd]">G6200 (60.0%)</span>
               <span className="text-sky-600">G6300 (22.5%)</span>
               <span className="text-indigo-600">PU (17.5%)</span>
             </div>
             <div className="h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex shadow-inner">
-              <div style={{ width: '60.0%' }} className="h-full bg-[#0066cc]" title="G6200: 2,401m (60.0%)" />
+              <div style={{ width: '60.0%' }} className="h-full bg-[#0d6efd]" title="G6200: 2,401m (60.0%)" />
               <div style={{ width: '22.5%' }} className="h-full bg-sky-500" title="G6300: 901m (22.5%)" />
               <div style={{ width: '17.5%' }} className="h-full bg-indigo-500" title="PU Sulzer: 702m (17.5%)" />
             </div>
@@ -448,7 +448,7 @@ export function ProductionCharts() {
                   'p-3 rounded-xl border transition-all cursor-pointer',
                   model.borderColor,
                   model.bgLight,
-                  hoveredModel?.model === model.model ? 'ring-2 ring-[#0066cc]/20 shadow-xs' : ''
+                  hoveredModel?.model === model.model ? 'ring-2 ring-[#0d6efd]/20 shadow-xs' : ''
                 )}
               >
                 <div className="flex items-center justify-between">
@@ -510,7 +510,7 @@ export function ProductionCharts() {
             </span>
           </div>
           <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-            <div className="bg-[#0066cc] h-full rounded-full" style={{ width: '54.7%' }} />
+            <div className="bg-[#0d6efd] h-full rounded-full" style={{ width: '54.7%' }} />
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             54.7% of daily output • 20 G6200 + 8 G6300 + 6 PU

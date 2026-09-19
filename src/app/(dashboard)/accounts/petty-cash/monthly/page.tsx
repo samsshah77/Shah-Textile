@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { expenseService } from '@/services/expenseService'
 import { PettyCashEntry } from '@/types/expense'
 import { formatCurrency, formatNumber } from '@/lib/utils'
-import { Printer, Download, ArrowLeft, Receipt, Calendar, Building } from 'lucide-react'
+import { Printer, Download, ArrowLeft, Receipt, Building } from 'lucide-react'
 import Link from 'next/link'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 export default function MonthlyPettyCashStatementPage() {
   const [statements, setStatements] = useState<
@@ -30,41 +31,45 @@ export default function MonthlyPettyCashStatementPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
-      {/* Top Controls Bar (Hidden during print) */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-border bg-card p-4 shadow-xs print:hidden">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/accounts/petty-cash"
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground hover:bg-muted transition-colors"
-          >
-            <ArrowLeft className="size-3.5" />
-            <span>Daily Cash Journal</span>
-          </Link>
-          <span className="h-4 w-px bg-border" />
-          <div className="flex items-center gap-2">
-            <Calendar className="size-3.5 text-[#0066cc] dark:text-blue-400" />
-            <span className="text-xs font-semibold text-slate-500">Month:</span>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-background px-2.5 py-1 text-xs font-medium text-foreground focus:border-[#0066cc] focus:outline-none cursor-pointer shadow-xs"
-            >
-              <option value="2026-08">August-2026</option>
-              <option value="2026-07">July-2026</option>
-              <option value="2026-09">September-2026</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 rounded-lg bg-[#0066cc] hover:bg-[#0052a3] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
-          >
-            <Printer className="size-3.5" />
-            <span>Print Monthly Statement (A4)</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Petty Cash Statement"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/petty-cash' },
+            { label: 'Petty Cash', href: '/accounts/petty-cash' },
+            { label: 'Monthly Statement' },
+          ]}
+          actions={
+            <>
+              <Link
+                href="/accounts/petty-cash"
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              >
+                <ArrowLeft className="size-3.5" />
+                <span>Daily Journal</span>
+              </Link>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="form-select form-select-sm"
+                aria-label="Statement month"
+              >
+                <option value="2026-08">August-2026</option>
+                <option value="2026-07">July-2026</option>
+                <option value="2026-09">September-2026</option>
+              </select>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
+              >
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Formal Statement Layout (Designed to match the exact Excel Sheet) */}

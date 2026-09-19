@@ -27,6 +27,96 @@ const STORAGE_KEYS = {
   PETTY_CASH: 'sara_payroll_petty_cash_v6',
 }
 
+type JobFamily = 'weaver' | 'helper' | 'contractor' | 'salaried'
+
+const NAME_ALIASES: Record<string, string> = {
+  muhammed: 'muhammad',
+  mohammed: 'muhammad',
+  mohammad: 'muhammad',
+  ahmer: 'ahmar',
+  billal: 'bilal',
+}
+
+function daysInCalendarMonth(month: string = '2026-08'): number {
+  const [year, mon] = (month || '2026-08').split('-').map(Number)
+  if (!year || !mon) return 31
+  return new Date(year, mon, 0).getDate()
+}
+
+function normalizeName(name?: string): string {
+  const parts = (name || '')
+    .toLowerCase()
+    .replace(/[.]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => NAME_ALIASES[part] || part)
+  return parts.join(' ')
+}
+
+function compactName(name?: string): string {
+  return normalizeName(name).replace(/\s+/g, '')
+}
+
+function namesMatch(a?: string, b?: string): boolean {
+  if (!a || !b) return false
+  const na = normalizeName(a)
+  const nb = normalizeName(b)
+  if (!na || !nb) return false
+  if (na === nb) return true
+  return compactName(a) === compactName(b)
+}
+
+function jobFamily(designation?: string, category?: string): JobFamily {
+  const c = (category || '').toLowerCase()
+  const d = (designation || '').toLowerCase()
+  if (c === 'weaver' || /\bweaver\b/.test(d)) return 'weaver'
+  if (c === 'helper' || d.includes('helper') || d.includes('sweeper')) return 'helper'
+  if (
+    c === 'contractor' ||
+    d.includes('contractor') ||
+    d.includes('contracter') ||
+    d.includes('knotting') ||
+    d.includes('sarning') ||
+    d.includes('chowkidar') ||
+    d.includes('gitta')
+  ) {
+    return 'contractor'
+  }
+  return 'salaried'
+}
+
+function sameJobFamily(emp: EmployeeProfile, rowDesignation?: string): boolean {
+  if (!rowDesignation) return true
+  return jobFamily(emp.designation, emp.employeeCategory) === jobFamily(rowDesignation)
+}
+
+function findLinkedEmployee(
+  roster: EmployeeProfile[],
+  name?: string,
+  designation?: string,
+  employeeId?: string
+): EmployeeProfile | undefined {
+  if (employeeId) {
+    const byId = roster.find((emp) => emp.id === employeeId)
+    if (byId) return byId
+  }
+  if (!name) return undefined
+
+  const familyMatches = roster.filter(
+    (emp) => namesMatch(emp.name, name) && sameJobFamily(emp, designation)
+  )
+  if (familyMatches.length === 1) return familyMatches[0]
+  if (familyMatches.length > 1) {
+    const exactDesignation = familyMatches.find(
+      (emp) => normalizeName(emp.designation) === normalizeName(designation)
+    )
+    return exactDesignation || familyMatches[0]
+  }
+  return undefined
+}
+
 // Master Employee Directory loaded with Pakistani CNICs, Father Names, Phone, Address, Category & Status (Sheet 1: 46 Master Roster Employees)
 const INITIAL_EMPLOYEES: EmployeeProfile[] = (allEmployeesData as unknown as EmployeeProfile[]).slice(0, 46)
 
@@ -1908,6 +1998,7 @@ class PayrollService {
     return {
       id: row.id || `staff-${Date.now()}`,
       serialNo: row.serialNo || 1,
+      employeeId: row.employeeId,
       employeeName: row.employeeName || '',
       designation: row.designation || '',
       salary,
@@ -1923,6 +2014,7 @@ class PayrollService {
       synopsisAmount,
       netCashAmount,
       month: row.month || '2026-08',
+      customFields: row.customFields,
     }
   }
 
@@ -1937,13 +2029,10 @@ class PayrollService {
     const ratePerDay = Math.round(salary / daysInMonth)
     const basicSalary = attendance >= daysInMonth ? salary : Math.min(salary, Math.round((salary / daysInMonth) * attendance))
     
-    // Look up duty hours from master employee roster (Sheet 1) or fall back to role defaults
+    // Look up duty hours from live master roster (Sheet 1) or fall back to role defaults
     let dutyHrs = 10
-    const empName = (row.employeeName || '').trim().toLowerCase()
-    const matchedEmp = INITIAL_EMPLOYEES.find((e) => {
-      const eName = (e.name || '').trim().toLowerCase()
-      return eName === empName || (empName && (empName.includes(eName) || eName.includes(empName)))
-    })
+    const roster = this.getEmployees()
+    const matchedEmp = findLinkedEmployee(roster, row.employeeName, row.designation, row.employeeId)
 
     if (matchedEmp && matchedEmp.dutyHrs && matchedEmp.dutyHrs > 0) {
       dutyHrs = matchedEmp.dutyHrs
@@ -1985,6 +2074,7 @@ class PayrollService {
     return {
       id: row.id || `cnt-${Date.now()}`,
       serialNo: row.serialNo || 1,
+      employeeId: row.employeeId || matchedEmp?.id,
       employeeName: row.employeeName || '',
       designation: row.designation || '',
       salary,
@@ -1992,6 +2082,8 @@ class PayrollService {
       ratePerDay,
       ratePerHr,
       basicSalary,
+      lateHours: row.lateHours,
+      lateAmount: row.lateAmount,
       otHours,
       otAmount,
       efficiencyAmount,
@@ -2000,6 +2092,7 @@ class PayrollService {
       ticketCharges,
       netAmount,
       month: row.month || '2026-08',
+      customFields: row.customFields,
     }
   }
 
@@ -2012,6 +2105,7 @@ class PayrollService {
     return {
       id: row.id || `eff-${Date.now()}`,
       serialNo: row.serialNo || 1,
+      employeeId: row.employeeId,
       loom: row.loom || 'Overall',
       name: row.name || '',
       designation: row.designation || '',
@@ -2020,6 +2114,7 @@ class PayrollService {
       availPercent,
       amount,
       month: row.month || '2026-08',
+      customFields: row.customFields,
     }
   }
 
@@ -2044,6 +2139,7 @@ class PayrollService {
     return {
       id: row.id || `w-${Date.now()}`,
       serialNo: row.serialNo || 1,
+      employeeId: row.employeeId,
       employeeName: row.employeeName || '',
       designation: isSpare ? 'Spare Weaver' : 'Weaver',
       wagePerDay,
@@ -2061,6 +2157,7 @@ class PayrollService {
       netPay,
       fortnight: row.fortnight || '1-15',
       month: row.month || '2026-08',
+      customFields: row.customFields,
     }
   }
 
@@ -2077,6 +2174,7 @@ class PayrollService {
     return {
       id: row.id || `h-${Date.now()}`,
       serialNo: row.serialNo || 1,
+      employeeId: row.employeeId,
       employeeName: row.employeeName || '',
       designation: 'Helper',
       wagePerDay,
@@ -2088,6 +2186,7 @@ class PayrollService {
       netAmount,
       fortnight: row.fortnight || '1-15',
       month: row.month || '2026-08',
+      customFields: row.customFields,
     }
   }
 
@@ -2102,6 +2201,7 @@ class PayrollService {
     return {
       id: row.id || `c-${Date.now()}`,
       serialNo: row.serialNo || 1,
+      employeeId: row.employeeId,
       name: row.name || '',
       contractType: row.contractType || '',
       contractualAmount,
@@ -2112,6 +2212,7 @@ class PayrollService {
       remarks: row.remarks || '',
       fortnight: row.fortnight || '1-15',
       month: row.month || '2026-08',
+      customFields: row.customFields,
     }
   }
 
@@ -2145,9 +2246,33 @@ class PayrollService {
     return INITIAL_EMPLOYEES
   }
 
-  saveEmployees(list: EmployeeProfile[]): void {
+  private readStore<T>(key: string, fallback: T[]): T[] {
     if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(list))
+      try {
+        const stored = localStorage.getItem(key)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[]
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    return [...fallback]
+  }
+
+  saveEmployees(list: EmployeeProfile[], triggerSync: boolean = true): void {
+    if (!this.isClient()) return
+
+    const previous = this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
+    const removed = previous.filter((prev) => !list.some((emp) => emp.id === prev.id))
+
+    localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(list))
+    removed.forEach((emp) => this.removeLinkedPayrollRows(emp))
+
+    if (triggerSync) {
+      this.syncMasterRoster(list)
+    } else {
       this.notifyDataChanged()
     }
   }
@@ -2201,87 +2326,250 @@ class PayrollService {
     }
 
     list[idx] = updated
-    this.saveEmployees(list)
-    this.syncEmployeeProfileUpdate(updated)
+    this.saveEmployees(list, true)
     return updated
   }
 
   deleteEmployee(id: string): void {
     let list = this.getEmployees()
     list = list.filter((e) => e.id !== id)
-    // Renumber serials
     list = list.map((e, i) => ({ ...e, serialNo: i + 1 }))
-    this.saveEmployees(list)
+    this.saveEmployees(list, true)
   }
 
-  // Auto-sync employee designation & salary updates to all salary tables
-  syncEmployeeProfileUpdate(emp: EmployeeProfile): void {
-    const norm = (s?: string) => (s || '').trim().toLowerCase()
-    const targetName = norm(emp.name)
+  // Sheet 1 master → every sheet that already has the same person
+  syncEmployeeProfileUpdate(emp: EmployeeProfile, month: string = '2026-08'): void {
+    this.syncMasterRoster(this.getEmployees().map((row) => (row.id === emp.id ? emp : row)), month)
+  }
 
-    // Sync Staff Salaries
-    const staffList = this.getStaffSalaries('2026-08')
+  syncMasterRoster(roster?: EmployeeProfile[], month: string = '2026-08'): void {
+    const employees = roster || this.getEmployees()
+    const daysInMonth = daysInCalendarMonth(month)
+    const isLinked = (
+      name?: string,
+      designation?: string,
+      employeeId?: string
+    ) => findLinkedEmployee(employees, name, designation, employeeId)
+
+    // Staff: name, designation, monthly salary → recalc. Attendance/OT/cheque stay local.
+    const staffList = this.getStaffSalaries(month)
     let staffChanged = false
     const updatedStaff = staffList.map((st) => {
-      if (st.employeeId === emp.id || norm(st.employeeName) === targetName) {
-        staffChanged = true
-        return this.calculateStaffSalaryRow({
+      const emp = isLinked(st.employeeName, st.designation, st.employeeId)
+      if (!emp) return st
+      staffChanged = true
+      return this.calculateStaffSalaryRow(
+        {
           ...st,
+          employeeId: emp.id,
           employeeName: emp.name,
           designation: emp.designation,
           salary: emp.salary,
-        })
-      }
-      return st
+        },
+        daysInMonth
+      )
     })
     if (staffChanged) this.saveStaffSalaries(updatedStaff, false)
 
-    // Sync Contract Salaries
-    const contractList = this.getContractSalaries('2026-08')
+    // Contract: name, designation, salary + live duty hours. Attendance/OT/ticket stay local.
+    const contractList = this.getContractSalaries(month)
     let contractChanged = false
     const updatedContract = contractList.map((ct) => {
-      if (ct.employeeId === emp.id || norm(ct.employeeName) === targetName) {
-        contractChanged = true
-        return this.calculateContractSalaryRow({
+      const emp = isLinked(ct.employeeName, ct.designation, ct.employeeId)
+      if (!emp) return ct
+      contractChanged = true
+      return this.calculateContractSalaryRow(
+        {
           ...ct,
+          employeeId: emp.id,
           employeeName: emp.name,
           designation: emp.designation,
           salary: emp.salary,
-        })
-      }
-      return ct
+        },
+        daysInMonth
+      )
     })
     if (contractChanged) this.saveContractSalaries(updatedContract, false)
 
-    // Sync Weavers
-    const weavers = this.getWeaversWages('2026-08')
+    // Advances: identity only. Amount is owned by Sheet 2.
+    const advances = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
+    let advancesChanged = false
+    const updatedAdvances = advances.map((adv) => {
+      const emp = isLinked(adv.employeeName, adv.designation, adv.employeeId)
+      if (!emp) return adv
+      if (
+        adv.employeeId === emp.id &&
+        adv.employeeName === emp.name &&
+        adv.designation === emp.designation
+      ) {
+        return adv
+      }
+      advancesChanged = true
+      return {
+        ...adv,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        designation: emp.designation,
+      }
+    })
+    if (advancesChanged) this.saveAdvances(updatedAdvances, false)
+
+    // Efficiency: identity + salaryEarned from linked contract basic. % stays local.
+    const efficiency = this.getEfficiencyIncentives(month)
+    let efficiencyChanged = false
+    const updatedEfficiency = efficiency.map((eff) => {
+      const emp = isLinked(eff.name, eff.designation, eff.employeeId)
+      const contractRow = updatedContract.find(
+        (ct) =>
+          ct.employeeId === emp?.id ||
+          namesMatch(ct.employeeName, eff.name) ||
+          (emp ? namesMatch(ct.employeeName, emp.name) : false)
+      )
+      if (!emp && !contractRow) return eff
+
+      const next = {
+        ...eff,
+        employeeId: emp?.id || contractRow?.employeeId || eff.employeeId,
+        name: emp?.name || eff.name,
+        designation: emp?.designation || eff.designation,
+        salaryEarned: contractRow ? contractRow.basicSalary : eff.salaryEarned,
+      }
+      const recalculated = this.calculateEfficiencyRow(next)
+      if (
+        recalculated.employeeId === eff.employeeId &&
+        recalculated.name === eff.name &&
+        recalculated.designation === eff.designation &&
+        recalculated.salaryEarned === eff.salaryEarned &&
+        recalculated.amount === eff.amount
+      ) {
+        return eff
+      }
+      efficiencyChanged = true
+      return recalculated
+    })
+    if (efficiencyChanged) this.saveEfficiencyIncentives(updatedEfficiency, false)
+
+    // Push latest efficiency amounts back onto contract / weaver rows
+    if (efficiencyChanged || contractChanged) {
+      updatedEfficiency.forEach((eff) => {
+        this.syncEfficiencyToSalaries(eff.name, eff.month || month, eff.amount || 0, false)
+      })
+    }
+
+    // Weavers / Helpers / Contractors: identity only. Daily rates & attendance stay local.
+    const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
     let weaversChanged = false
     const updatedWeavers = weavers.map((w) => {
-      if (w.employeeId === emp.id || norm(w.employeeName) === targetName) {
-        weaversChanged = true
-        return this.calculateWeaverWageRow({
-          ...w,
-          employeeName: emp.name,
-          wagePerDay: emp.ratePerDay30 || w.wagePerDay,
-        })
-      }
-      return w
+      const emp = isLinked(w.employeeName, w.designation, w.employeeId)
+      if (!emp) return w
+      if (w.employeeId === emp.id && w.employeeName === emp.name) return w
+      weaversChanged = true
+      return this.calculateWeaverWageRow({
+        ...w,
+        employeeId: emp.id,
+        employeeName: emp.name,
+      })
     })
-    if (weaversChanged) this.saveWeaversWages('2026-08', updatedWeavers, false)
+    if (weaversChanged) this.saveWeaversWages(updatedWeavers, false)
 
-    this.notifyDataChanged()
+    const helpers = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
+    let helpersChanged = false
+    const updatedHelpers = helpers.map((h) => {
+      const emp = isLinked(h.employeeName, h.designation, h.employeeId)
+      if (!emp) return h
+      if (h.employeeId === emp.id && h.employeeName === emp.name) return h
+      helpersChanged = true
+      return this.calculateHelperWageRow({
+        ...h,
+        employeeId: emp.id,
+        employeeName: emp.name,
+      })
+    })
+    if (helpersChanged) this.saveHelpersWages(updatedHelpers, false)
+
+    const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
+    let contractorsChanged = false
+    const updatedContractors = contractors.map((c) => {
+      const emp = isLinked(c.name, c.contractType, c.employeeId)
+      if (!emp) return c
+      if (c.employeeId === emp.id && c.name === emp.name) return c
+      contractorsChanged = true
+      return this.calculateContractorPaymentRow({
+        ...c,
+        employeeId: emp.id,
+        name: emp.name,
+      })
+    })
+    if (contractorsChanged) this.saveContractorsPayments(updatedContractors, false)
+
+    this.notifyDataChanged(month)
+  }
+
+  private removeLinkedPayrollRows(emp: EmployeeProfile): void {
+    const unlink = (name?: string, designation?: string, employeeId?: string) =>
+      Boolean(findLinkedEmployee([emp], name, designation, employeeId))
+
+    const staff = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES).filter(
+      (row) => !unlink(row.employeeName, row.designation, row.employeeId)
+    )
+    this.saveStaffSalaries(staff, false)
+
+    const contract = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES).filter(
+      (row) => !unlink(row.employeeName, row.designation, row.employeeId)
+    )
+    this.saveContractSalaries(contract, false)
+
+    const advances = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES).filter(
+      (row) => !unlink(row.employeeName, row.designation, row.employeeId)
+    )
+    this.saveAdvances(advances, false)
+
+    const efficiency = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES).filter(
+      (row) => !unlink(row.name, row.designation, row.employeeId)
+    )
+    this.saveEfficiencyIncentives(efficiency, false)
+
+    const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES).filter(
+      (row) => !unlink(row.employeeName, row.designation, row.employeeId)
+    )
+    this.saveWeaversWages(weavers, false)
+
+    const helpers = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES).filter(
+      (row) => !unlink(row.employeeName, row.designation, row.employeeId)
+    )
+    this.saveHelpersWages(helpers, false)
+
+    const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS).filter(
+      (row) => !unlink(row.name, row.contractType, row.employeeId)
+    )
+    this.saveContractorsPayments(contractors, false)
+  }
+
+  private rowMatchesPerson(
+    employeeNameOrId: string,
+    rowName?: string,
+    rowDesignation?: string,
+    rowEmployeeId?: string,
+    roster?: EmployeeProfile[]
+  ): boolean {
+    if (rowEmployeeId && rowEmployeeId === employeeNameOrId) return true
+    if (namesMatch(rowName, employeeNameOrId)) return true
+    const employees = roster || this.getEmployees()
+    const emp =
+      employees.find((e) => e.id === employeeNameOrId) ||
+      findLinkedEmployee(employees, employeeNameOrId, rowDesignation)
+    if (!emp) return false
+    return Boolean(findLinkedEmployee([emp], rowName, rowDesignation, rowEmployeeId))
   }
 
   // Cross-table synchronization: Advance ➔ Staff / Contract / Contractor Tables
   syncAdvanceToSalaries(employeeNameOrId: string, month: string = '2026-08', newAmount: number): void {
-    const norm = (s?: string) => (s || '').trim().toLowerCase()
-    const target = norm(employeeNameOrId)
+    const roster = this.getEmployees()
 
-    // 1. Check Staff Salaries
     const staffList = this.getStaffSalaries(month)
     let staffUpdated = false
     const updatedStaff = staffList.map((st) => {
-      if (st.employeeId === employeeNameOrId || norm(st.employeeName) === target) {
+      if (this.rowMatchesPerson(employeeNameOrId, st.employeeName, st.designation, st.employeeId, roster)) {
         staffUpdated = true
         return this.calculateStaffSalaryRow({
           ...st,
@@ -2290,15 +2578,12 @@ class PayrollService {
       }
       return st
     })
-    if (staffUpdated) {
-      this.saveStaffSalaries(updatedStaff, false)
-    }
+    if (staffUpdated) this.saveStaffSalaries(updatedStaff, false)
 
-    // 2. Check Contract Salaries
     const contractList = this.getContractSalaries(month)
     let contractUpdated = false
     const updatedContract = contractList.map((ct) => {
-      if (ct.employeeId === employeeNameOrId || norm(ct.employeeName) === target) {
+      if (this.rowMatchesPerson(employeeNameOrId, ct.employeeName, ct.designation, ct.employeeId, roster)) {
         contractUpdated = true
         return this.calculateContractSalaryRow({
           ...ct,
@@ -2307,15 +2592,12 @@ class PayrollService {
       }
       return ct
     })
-    if (contractUpdated) {
-      this.saveContractSalaries(updatedContract, false)
-    }
+    if (contractUpdated) this.saveContractSalaries(updatedContract, false)
 
-    // 3. Check Contractors Payments
-    const contractors = this.getContractorsPayments(month)
+    const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
     let contractorUpdated = false
     const updatedContractors = contractors.map((c) => {
-      if (c.employeeId === employeeNameOrId || norm(c.name) === target) {
+      if (this.rowMatchesPerson(employeeNameOrId, c.name, c.contractType, c.employeeId, roster)) {
         contractorUpdated = true
         return this.calculateContractorPaymentRow({
           ...c,
@@ -2324,23 +2606,24 @@ class PayrollService {
       }
       return c
     })
-    if (contractorUpdated) {
-      this.saveContractorsPayments('2026-08', updatedContractors, false)
-    }
+    if (contractorUpdated) this.saveContractorsPayments(updatedContractors, false)
 
     this.notifyDataChanged(month)
   }
 
   // Cross-table synchronization: Efficiency ➔ Contract Salaries / Weaver Wages
-  syncEfficiencyToSalaries(name: string, month: string = '2026-08', amount: number): void {
-    const norm = (s?: string) => (s || '').trim().toLowerCase()
-    const target = norm(name)
+  syncEfficiencyToSalaries(
+    name: string,
+    month: string = '2026-08',
+    amount: number,
+    broadcast: boolean = true
+  ): void {
+    const roster = this.getEmployees()
 
-    // Contract Salaries
     const contractList = this.getContractSalaries(month)
     let contractUpdated = false
     const updatedContract = contractList.map((ct) => {
-      if (norm(ct.employeeName) === target) {
+      if (this.rowMatchesPerson(name, ct.employeeName, ct.designation, ct.employeeId, roster)) {
         contractUpdated = true
         return this.calculateContractSalaryRow({
           ...ct,
@@ -2351,11 +2634,11 @@ class PayrollService {
     })
     if (contractUpdated) this.saveContractSalaries(updatedContract, false)
 
-    // Weavers Wages
-    const weavers = this.getWeaversWages(month)
+    const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
     let weaverUpdated = false
     const updatedWeavers = weavers.map((w) => {
-      if (norm(w.employeeName) === target) {
+      if ((w.month || '2026-08') !== month) return w
+      if (this.rowMatchesPerson(name, w.employeeName, w.designation, w.employeeId, roster)) {
         weaverUpdated = true
         return this.calculateWeaverWageRow({
           ...w,
@@ -2364,9 +2647,9 @@ class PayrollService {
       }
       return w
     })
-    if (weaverUpdated) this.saveWeaversWages(month, updatedWeavers, false)
+    if (weaverUpdated) this.saveWeaversWages(updatedWeavers, false)
 
-    this.notifyDataChanged(month)
+    if (broadcast) this.notifyDataChanged(month)
   }
 
   // ==========================================
@@ -2419,13 +2702,86 @@ class PayrollService {
         localStorage.setItem(STORAGE_KEYS.ADVANCES, JSON.stringify(list))
       }
 
-      if (triggerCascade && list.length > 0) {
-        list.forEach((adv) => {
-          this.syncAdvanceToSalaries(adv.employeeName, adv.month || month || '2026-08', adv.amount || 0)
-        })
+      if (triggerCascade) {
+        this.syncAllAdvanceTotals(month || list[0]?.month || '2026-08')
+      } else {
+        this.notifyDataChanged(month)
       }
-      this.notifyDataChanged(month)
     }
+  }
+
+  private mergeMonthOrFortnightRows<T extends { month?: string; fortnight?: string }>(
+    existing: T[],
+    incoming: T[],
+    month?: string,
+    fortnight?: string
+  ): T[] {
+    if (!month) return incoming
+    if (fortnight && fortnight !== 'all') {
+      return [
+        ...existing.filter(
+          (row) => (row.month || '2026-08') !== month || (row.fortnight || '1-15') !== fortnight
+        ),
+        ...incoming,
+      ]
+    }
+    return [...existing.filter((row) => (row.month || '2026-08') !== month), ...incoming]
+  }
+
+  syncAllAdvanceTotals(month: string = '2026-08'): void {
+    const advances = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES).filter(
+      (adv) => (adv.month || '2026-08') === month
+    )
+    const roster = this.getEmployees()
+    const totalFor = (name?: string, designation?: string, employeeId?: string) =>
+      advances
+        .filter((adv) =>
+          this.rowMatchesPerson(
+            employeeId || name || '',
+            adv.employeeName,
+            adv.designation,
+            adv.employeeId,
+            roster
+          )
+        )
+        .reduce((sum, adv) => sum + (Number(adv.amount) || 0), 0)
+
+    const staffList = this.getStaffSalaries(month)
+    this.saveStaffSalaries(
+      staffList.map((st) =>
+        this.calculateStaffSalaryRow({
+          ...st,
+          lessAdvance: totalFor(st.employeeName, st.designation, st.employeeId),
+        })
+      ),
+      false
+    )
+
+    const contractList = this.getContractSalaries(month)
+    this.saveContractSalaries(
+      contractList.map((ct) =>
+        this.calculateContractSalaryRow({
+          ...ct,
+          advanceDeduction: totalFor(ct.employeeName, ct.designation, ct.employeeId),
+        })
+      ),
+      false
+    )
+
+    const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
+    this.saveContractorsPayments(
+      contractors.map((c) =>
+        (c.month || '2026-08') === month
+          ? this.calculateContractorPaymentRow({
+              ...c,
+              lessAdvance: totalFor(c.name, c.contractType, c.employeeId),
+            })
+          : c
+      ),
+      false
+    )
+
+    this.notifyDataChanged(month)
   }
 
   // ==========================================
@@ -2480,8 +2836,35 @@ class PayrollService {
     const shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     if (this.isClient()) {
       localStorage.setItem(STORAGE_KEYS.CONTRACT, JSON.stringify(data))
-      if (shouldBroadcast) this.notifyDataChanged()
+      if (shouldBroadcast) {
+        this.syncContractBasicsToEfficiency(data)
+        this.notifyDataChanged()
+      }
     }
+  }
+
+  private syncContractBasicsToEfficiency(contractList: ContractSalaryRecord[]): void {
+    if (contractList.length === 0) return
+    const month = contractList[0].month || '2026-08'
+    const efficiency = this.getEfficiencyIncentives(month)
+    let changed = false
+    const updated = efficiency.map((eff) => {
+      const contractRow = contractList.find(
+        (ct) =>
+          (eff.employeeId && ct.employeeId === eff.employeeId) ||
+          namesMatch(ct.employeeName, eff.name)
+      )
+      if (!contractRow) return eff
+      const next = this.calculateEfficiencyRow({
+        ...eff,
+        employeeId: contractRow.employeeId || eff.employeeId,
+        salaryEarned: contractRow.basicSalary,
+      })
+      if (next.salaryEarned === eff.salaryEarned && next.amount === eff.amount) return eff
+      changed = true
+      return next
+    })
+    if (changed) this.saveEfficiencyIncentives(updated, true)
   }
 
   // ==========================================
@@ -2505,13 +2888,12 @@ class PayrollService {
   }
 
   saveEfficiencyIncentives(list: EfficiencyIncentiveRecord[], triggerCascade: boolean = true): void {
-    if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.EFFICIENCY, JSON.stringify(list))
-      if (triggerCascade) {
-        list.forEach((eff) => {
-          this.syncEfficiencyToSalaries(eff.name, eff.month || '2026-08', eff.amount || 0)
-        })
-      }
+    if (!this.isClient()) return
+    localStorage.setItem(STORAGE_KEYS.EFFICIENCY, JSON.stringify(list))
+    if (triggerCascade) {
+      list.forEach((eff) => {
+        this.syncEfficiencyToSalaries(eff.name, eff.month || '2026-08', eff.amount || 0, false)
+      })
       this.notifyDataChanged()
     }
   }
@@ -2536,13 +2918,38 @@ class PayrollService {
     return list.filter((w) => w.month === month && (!fortnight || w.fortnight === fortnight))
   }
 
-  saveWeaversWages(monthOrList: string | WeaverWageRecord[], fortnightOrList?: string | WeaverWageRecord[], listOrBroadcast?: WeaverWageRecord[] | boolean, broadcast: boolean = true): void {
-    const data = Array.isArray(monthOrList) ? monthOrList : (Array.isArray(fortnightOrList) ? fortnightOrList : (Array.isArray(listOrBroadcast) ? listOrBroadcast : []))
-    const shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
-    if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.WEAVERS, JSON.stringify(data))
-      if (shouldBroadcast) this.notifyDataChanged()
+  saveWeaversWages(
+    monthOrList: string | WeaverWageRecord[],
+    fortnightOrList?: string | WeaverWageRecord[] | boolean,
+    listOrBroadcast?: WeaverWageRecord[] | boolean,
+    broadcast: boolean = true
+  ): void {
+    if (!this.isClient()) return
+
+    let next: WeaverWageRecord[] = []
+    let shouldBroadcast = broadcast
+
+    if (Array.isArray(monthOrList)) {
+      next = monthOrList
+      shouldBroadcast = typeof fortnightOrList === 'boolean' ? fortnightOrList : true
+    } else if (typeof fortnightOrList === 'string' && Array.isArray(listOrBroadcast)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES),
+        listOrBroadcast,
+        monthOrList,
+        fortnightOrList
+      )
+    } else if (Array.isArray(fortnightOrList)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES),
+        fortnightOrList,
+        monthOrList
+      )
+      shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     }
+
+    localStorage.setItem(STORAGE_KEYS.WEAVERS, JSON.stringify(next))
+    if (shouldBroadcast) this.notifyDataChanged()
   }
 
   // ==========================================
@@ -2565,13 +2972,38 @@ class PayrollService {
     return list.filter((h) => h.month === month && (!fortnight || h.fortnight === fortnight))
   }
 
-  saveHelpersWages(monthOrList: string | HelperWageRecord[], fortnightOrList?: string | HelperWageRecord[], listOrBroadcast?: HelperWageRecord[] | boolean, broadcast: boolean = true): void {
-    const data = Array.isArray(monthOrList) ? monthOrList : (Array.isArray(fortnightOrList) ? fortnightOrList : (Array.isArray(listOrBroadcast) ? listOrBroadcast : []))
-    const shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
-    if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.HELPERS, JSON.stringify(data))
-      if (shouldBroadcast) this.notifyDataChanged()
+  saveHelpersWages(
+    monthOrList: string | HelperWageRecord[],
+    fortnightOrList?: string | HelperWageRecord[] | boolean,
+    listOrBroadcast?: HelperWageRecord[] | boolean,
+    broadcast: boolean = true
+  ): void {
+    if (!this.isClient()) return
+
+    let next: HelperWageRecord[] = []
+    let shouldBroadcast = broadcast
+
+    if (Array.isArray(monthOrList)) {
+      next = monthOrList
+      shouldBroadcast = typeof fortnightOrList === 'boolean' ? fortnightOrList : true
+    } else if (typeof fortnightOrList === 'string' && Array.isArray(listOrBroadcast)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES),
+        listOrBroadcast,
+        monthOrList,
+        fortnightOrList
+      )
+    } else if (Array.isArray(fortnightOrList)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES),
+        fortnightOrList,
+        monthOrList
+      )
+      shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     }
+
+    localStorage.setItem(STORAGE_KEYS.HELPERS, JSON.stringify(next))
+    if (shouldBroadcast) this.notifyDataChanged()
   }
 
   // ==========================================
@@ -2594,13 +3026,38 @@ class PayrollService {
     return list.filter((c) => c.month === month && (!fortnight || c.fortnight === fortnight))
   }
 
-  saveContractorsPayments(monthOrList: string | ContractorPaymentRecord[], fortnightOrList?: string | ContractorPaymentRecord[], listOrBroadcast?: ContractorPaymentRecord[] | boolean, broadcast: boolean = true): void {
-    const data = Array.isArray(monthOrList) ? monthOrList : (Array.isArray(fortnightOrList) ? fortnightOrList : (Array.isArray(listOrBroadcast) ? listOrBroadcast : []))
-    const shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
-    if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.CONTRACTORS, JSON.stringify(data))
-      if (shouldBroadcast) this.notifyDataChanged()
+  saveContractorsPayments(
+    monthOrList: string | ContractorPaymentRecord[],
+    fortnightOrList?: string | ContractorPaymentRecord[] | boolean,
+    listOrBroadcast?: ContractorPaymentRecord[] | boolean,
+    broadcast: boolean = true
+  ): void {
+    if (!this.isClient()) return
+
+    let next: ContractorPaymentRecord[] = []
+    let shouldBroadcast = broadcast
+
+    if (Array.isArray(monthOrList)) {
+      next = monthOrList
+      shouldBroadcast = typeof fortnightOrList === 'boolean' ? fortnightOrList : true
+    } else if (typeof fortnightOrList === 'string' && Array.isArray(listOrBroadcast)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS),
+        listOrBroadcast,
+        monthOrList,
+        fortnightOrList
+      )
+    } else if (Array.isArray(fortnightOrList)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS),
+        fortnightOrList,
+        monthOrList
+      )
+      shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     }
+
+    localStorage.setItem(STORAGE_KEYS.CONTRACTORS, JSON.stringify(next))
+    if (shouldBroadcast) this.notifyDataChanged()
   }
 
   // ==========================================
@@ -2778,12 +3235,35 @@ class PayrollService {
     return INITIAL_PETTY_CASH.filter((e) => e.fortnight === fortnight)
   }
 
-  savePettyCashEntries(monthOrList: string | PettyCashRecord[], fortnightOrList?: string | PettyCashRecord[], list?: PettyCashRecord[]): void {
-    const data = Array.isArray(monthOrList) ? monthOrList : (Array.isArray(fortnightOrList) ? fortnightOrList : (list || []))
-    if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.PETTY_CASH, JSON.stringify(data))
-      this.notifyDataChanged()
+  savePettyCashEntries(
+    monthOrList: string | PettyCashRecord[],
+    fortnightOrList?: string | PettyCashRecord[],
+    list?: PettyCashRecord[]
+  ): void {
+    if (!this.isClient()) return
+
+    let next: PettyCashRecord[]
+    if (Array.isArray(monthOrList)) {
+      next = monthOrList
+    } else if (typeof fortnightOrList === 'string' && Array.isArray(list)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH),
+        list,
+        monthOrList,
+        fortnightOrList
+      )
+    } else if (Array.isArray(fortnightOrList)) {
+      next = this.mergeMonthOrFortnightRows(
+        this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH),
+        fortnightOrList,
+        monthOrList
+      )
+    } else {
+      next = list || []
     }
+
+    localStorage.setItem(STORAGE_KEYS.PETTY_CASH, JSON.stringify(next))
+    this.notifyDataChanged()
   }
 
   resetAllToDefault(): void {

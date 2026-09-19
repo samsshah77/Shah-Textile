@@ -15,6 +15,7 @@ import {
   Filter,
   Search,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 export default function MonthlyProductionReportsPage() {
   const [monthRollup, setMonthRollup] = useState<{
@@ -52,36 +53,26 @@ export default function MonthlyProductionReportsPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-              Monthly Floor Output & Bonus Rollup
-            </h1>
-            <span className="erp-badge-blue">
-              Verified 34 Looms
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Automatic monthly rollup from daily pick counters, efficiency ratings, and operator bonus incentives.
-          </p>
-        </div>
-
-        {/* Month Selector */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-muted-foreground">Statement Month:</label>
+      <PageHeader
+        title="Monthly Floor Output"
+        breadcrumbs={[
+          { label: 'Home', href: '/dashboard' },
+          { label: 'Production', href: '/floor/production' },
+          { label: 'Monthly Report' },
+        ]}
+        actions={
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground focus:border-blue-500 focus:outline-none cursor-pointer"
+            className="form-select form-select-sm"
+            aria-label="Statement month"
           >
             <option value="2026-08">August 2026</option>
             <option value="2026-07">July 2026</option>
             <option value="2026-09">September 2026</option>
           </select>
-        </div>
-      </div>
+        }
+      />
 
       {monthRollup && (
         <>

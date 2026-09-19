@@ -1,188 +1,76 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { accountsData } from '@/data/accountsData'
-import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import {
-  DollarSign,
+  expenseService,
+  type CostStatementModel,
+  type NamedCostItem,
+  type StoreCostItem,
+} from '@/services/expenseService'
+import { formatNumber, cn } from '@/lib/utils'
+import {
   Printer,
-  Calculator,
   Save,
-  CheckCircle2,
-  Calendar,
-  Layers,
-  Sparkles,
-  TrendingDown,
   RotateCcw,
   Edit3,
   Eye,
-  Info,
+  Link2,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
-interface NamedItem {
-  name: string
-  amount: number
-  role?: string
-}
-
-interface StoreItem {
-  item: string
-  amount: number
-}
-
-export interface CostStatementModel {
-  companyName: string
-  title: string
-  period: string
-  salariesAndWages: {
-    staffSalary: number
-    staffOvertime: number
-    contractEmployeeEfficiency: number
-    weaverWages: number
-    weaverHolidays: number
-    weaverEfficiency: number
-    helperWages: number
-  }
-  contractorsBills: NamedItem[]
-  powerAndLight: number
-  vehicleFuel: number
-  generatorFuel: number
-  machineryParts: NamedItem[]
-  electricMaintenance: NamedItem[]
-  repairExpense: number
-  repairDetails: NamedItem[]
-  storeInventory: StoreItem[]
-  waterSupplies: number
-  pettyCash: number
-  guardSalary: number
-  solarPanelSystem: number
-  depreciationProduction: number
-  adminExpenses: {
-    salaries: number
-    overtime: number
-    telephoneInternet: number
-    depreciationAdmin: number
-  }
-  monthlyProductionMeters: number
-}
-
-const DEFAULT_COST_STATEMENT: CostStatementModel = {
-  companyName: 'SARA TEXTILE',
-  title: 'COST STATEMENT',
-  period: 'For The Month of Aug-2026',
-  salariesAndWages: {
-    staffSalary: 584280,
-    staffOvertime: 80353,
-    contractEmployeeEfficiency: 43865,
-    weaverWages: 718950,
-    weaverHolidays: 87850,
-    weaverEfficiency: 108246,
-    helperWages: 347200,
-  },
-  contractorsBills: [
-    { name: 'Amir', role: 'PU Technician', amount: 70000 },
-    { name: 'Basit', role: 'Electronics Contractor', amount: 70000 },
-    { name: 'Naseer', role: 'Reed Repair', amount: 5500 },
-    { name: 'Nawab', role: 'Gitta Winder', amount: 30000 },
-    { name: 'Zafar Gul', role: 'Chowkidar', amount: 32000 },
-    { name: 'Shoaib', role: 'Electrical Helper', amount: 25000 },
-    { name: 'Rehbar Ali', role: 'Hand Knotting', amount: 83549 },
-    { name: 'Shahid', role: 'Machine Knotting', amount: 34100 },
-    { name: 'Nazim Hussain', role: 'Sarning', amount: 28200 },
-  ],
-  powerAndLight: 1975726,
-  vehicleFuel: 48000,
-  generatorFuel: 0,
-  machineryParts: [
-    { name: 'Fahad Traders', amount: 23400 },
-    { name: 'A.A.I Engineering', amount: 4000 },
-    { name: 'Janjoha Brothers', amount: 140000 },
-    { name: 'G.Q Fire Services', amount: 94900 },
-    { name: 'Blue Reed', amount: 173106 },
-    { name: 'Muhammad Ali', amount: 15300 },
-    { name: 'F.T Traders', amount: 52300 },
-    { name: 'VIP Petroleum', amount: 14000 },
-    { name: 'A.A Engineering', amount: 60300 },
-  ],
-  electricMaintenance: [
-    { name: 'Textile Engineering', amount: 68545 },
-    { name: 'JAB Electronics', amount: 0 },
-    { name: 'SMD Traders', amount: 28700 },
-  ],
-  repairExpense: 3000,
-  repairDetails: [
-    { name: 'Marhaba Engineering Works', amount: 3000 },
-  ],
-  storeInventory: [
-    { item: 'Spocket Belt G-6200 (1 Pieces)', amount: 12600 },
-    { item: 'Rapier Tape G-6200  (1 Pieces)', amount: 20000 },
-  ],
-  waterSupplies: 60000,
-  pettyCash: 167145,
-  guardSalary: 60000,
-  solarPanelSystem: 400000,
-  depreciationProduction: 136677,
-  adminExpenses: {
-    salaries: 120000,
-    overtime: 47333,
-    telephoneInternet: 8070,
-    depreciationAdmin: 9673,
-  },
-  monthlyProductionMeters: 104183,
-}
-
-const STORAGE_KEY = 'sara_textile_cost_statement_editable_v1'
+const COST_MONTH = '2026-08'
 
 export default function CostStatementPage() {
-  const [data, setData] = useState<CostStatementModel>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY)
-        if (stored) return JSON.parse(stored) as CostStatementModel
-      } catch (err) {
-        console.error(err)
-      }
-    }
-    return DEFAULT_COST_STATEMENT
-  })
-
+  const [data, setData] = useState<CostStatementModel>(() =>
+    expenseService.buildCostStatement(COST_MONTH)
+  )
   const [isEditing, setIsEditing] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [traderListsDirty, setTraderListsDirty] = useState(false)
+
+  const reload = () => {
+    setData(expenseService.buildCostStatement(COST_MONTH))
+    setTraderListsDirty(false)
+  }
+
+  useEffect(() => {
+    reload()
+    const handleSync = () => reload()
+    window.addEventListener('payroll_synced', handleSync)
+    window.addEventListener('accounts_synced', handleSync)
+    return () => {
+      window.removeEventListener('payroll_synced', handleSync)
+      window.removeEventListener('accounts_synced', handleSync)
+    }
+  }, [])
 
   // =========================================================================
   // LIVE EXCEL FORMULAS COMPUTATION
   // =========================================================================
-  // Formula: =SUM(C8:C14)
   const totalSalariesAndWages = useMemo<number>(() => {
     return Object.values(data.salariesAndWages).reduce((s: number, v: number) => s + (Number(v) || 0), 0)
   }, [data.salariesAndWages])
 
-  // Formula: =SUM(C17:C25)
   const totalContractorsBills = useMemo<number>(() => {
-    return data.contractorsBills.reduce((s: number, b: NamedItem) => s + (Number(b.amount) || 0), 0)
+    return data.contractorsBills.reduce((s: number, b: NamedCostItem) => s + (Number(b.amount) || 0), 0)
   }, [data.contractorsBills])
 
-  // Formula: =SUM(C35:C43)
   const totalMachineryParts = useMemo<number>(() => {
-    return data.machineryParts.reduce((s: number, t: NamedItem) => s + (Number(t.amount) || 0), 0)
+    return data.machineryParts.reduce((s: number, t: NamedCostItem) => s + (Number(t.amount) || 0), 0)
   }, [data.machineryParts])
 
-  // Formula: =SUM(C46:C48)
   const totalElectricMaintenance = useMemo<number>(() => {
-    return data.electricMaintenance.reduce((s: number, t: NamedItem) => s + (Number(t.amount) || 0), 0)
+    return data.electricMaintenance.reduce((s: number, t: NamedCostItem) => s + (Number(t.amount) || 0), 0)
   }, [data.electricMaintenance])
 
-  // Formula: =SUM(C51:C52)
   const totalRepairExpense = useMemo<number>(() => {
-    return data.repairDetails.reduce((s: number, r: NamedItem) => s + (Number(r.amount) || 0), 0)
+    return data.repairDetails.reduce((s: number, r: NamedCostItem) => s + (Number(r.amount) || 0), 0)
   }, [data.repairDetails])
 
-  // Formula: =SUM(C55:C56)
   const totalStoreInventory = useMemo<number>(() => {
-    return data.storeInventory.reduce((s: number, it: StoreItem) => s + (Number(it.amount) || 0), 0)
+    return data.storeInventory.reduce((s: number, it: StoreCostItem) => s + (Number(it.amount) || 0), 0)
   }, [data.storeInventory])
 
-  // Overheads direct lines
   const totalOverheads = useMemo(() => {
     return (
       (Number(data.powerAndLight) || 0) +
@@ -196,7 +84,6 @@ export default function CostStatementPage() {
     )
   }, [data])
 
-  // Formula: =SUM(D7:D62) -> Total Cost Of Production
   const totalCostOfProduction = useMemo(() => {
     return (
       totalSalariesAndWages +
@@ -217,63 +104,44 @@ export default function CostStatementPage() {
     totalOverheads,
   ])
 
-  // Formula: =SUM(C67:C70) -> Admin & Selling Exp
   const totalAdminExp = useMemo(() => {
     return Object.values(data.adminExpenses).reduce((s, v) => s + (Number(v) || 0), 0)
   }, [data.adminExpenses])
 
-  // Formula: =SUM(D64:D66) -> TOTAL CONVERSION COST
   const totalConversionCost = useMemo(() => {
     return totalCostOfProduction + totalAdminExp
   }, [totalCostOfProduction, totalAdminExp])
 
-  // Formula: =D72/D74 -> Per Meter Cost
   const monthlyMeters = Number(data.monthlyProductionMeters) || 104183
   const perMeterCost = monthlyMeters > 0 ? totalConversionCost / monthlyMeters : 0
 
   const handlePrint = () => {
-    if (typeof window !== 'undefined') {
-      window.print()
-    }
+    if (typeof window !== 'undefined') window.print()
   }
 
   const handleSave = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-    }
+    expenseService.saveCostStatementModel(data, { persistTraderLists: traderListsDirty })
+    setTraderListsDirty(false)
     setIsSaved(true)
     setTimeout(() => setIsSaved(false), 2500)
   }
 
   const handleReset = () => {
-    if (confirm('Reset all values to the authentic Excel original (Conversion Cost: PKR 6,091,868)?')) {
-      setData(DEFAULT_COST_STATEMENT)
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(STORAGE_KEY)
-      }
+    if (
+      confirm(
+        'Reset manual Cost Statement overrides? Live payroll / petty cash / traders lines will rebuild from source sheets.'
+      )
+    ) {
+      setData(expenseService.resetCostStatement(COST_MONTH))
+      setTraderListsDirty(false)
       setIsSaved(true)
       setTimeout(() => setIsSaved(false), 2000)
     }
   }
 
-  // Update handlers
-  const updateSalary = (key: keyof typeof data.salariesAndWages, val: number) => {
-    setData((prev: typeof data) => ({
-      ...prev,
-      salariesAndWages: { ...prev.salariesAndWages, [key]: val },
-    }))
-  }
-
-  const updateContractor = (index: number, amount: number) => {
-    setData((prev: typeof data) => {
-      const copy = [...prev.contractorsBills]
-      copy[index] = { ...copy[index], amount }
-      return { ...prev, contractorsBills: copy }
-    })
-  }
-
   const updateMachinery = (index: number, amount: number) => {
-    setData((prev: typeof data) => {
+    setTraderListsDirty(true)
+    setData((prev) => {
       const copy = [...prev.machineryParts]
       copy[index] = { ...copy[index], amount }
       return { ...prev, machineryParts: copy }
@@ -281,7 +149,8 @@ export default function CostStatementPage() {
   }
 
   const updateElectric = (index: number, amount: number) => {
-    setData((prev: typeof data) => {
+    setTraderListsDirty(true)
+    setData((prev) => {
       const copy = [...prev.electricMaintenance]
       copy[index] = { ...copy[index], amount }
       return { ...prev, electricMaintenance: copy }
@@ -289,84 +158,79 @@ export default function CostStatementPage() {
   }
 
   const updateStoreInventory = (index: number, amount: number) => {
-    setData((prev: typeof data) => {
+    setTraderListsDirty(true)
+    setData((prev) => {
       const copy = [...prev.storeInventory]
       copy[index] = { ...copy[index], amount }
       return { ...prev, storeInventory: copy }
     })
   }
 
-  const updateAdmin = (key: keyof typeof data.adminExpenses, val: number) => {
-    setData((prev: typeof data) => ({
+  const updateAdmin = (key: keyof CostStatementModel['adminExpenses'], val: number) => {
+    setData((prev) => ({
       ...prev,
       adminExpenses: { ...prev.adminExpenses, [key]: val },
     }))
   }
 
+  const LinkedBadge = ({ label }: { label: string }) => (
+    <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800 print:hidden">
+      <Link2 className="size-2.5" />
+      {label}
+    </span>
+  )
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-16">
-      {/* ========================================================================= */}
-      {/* 1. TOP HEADER & TOOLBAR                                                   */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Accounts Module • Dynamic Cost Statement
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• August 2026</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl mt-1.5">
-            Mill Cost Statement & Conversion Cost
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Real Excel mathematical formula engine with editable inputs & instant reactive recalculation
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Edit Mode Toggle */}
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer shadow-xs border',
-              isEditing
-                ? 'bg-amber-600 text-white border-amber-600 shadow-amber-600/20'
-                : 'erp-btn-secondary'
-            )}
-          >
-            {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5 text-amber-600" />}
-            <span>{isEditing ? 'View Mode' : 'Edit Cells & Formulas'}</span>
-          </button>
-
-          {/* Reset Button */}
-          <button
-            onClick={handleReset}
-            title="Reset to Authentic Excel Defaults"
-            className="erp-btn-secondary"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          {/* Save Button */}
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer shadow-xs"
-          >
-            <Save className="size-3.5 text-emerald-600" />
-            <span>{isSaved ? 'Saved!' : 'Save Edits'}</span>
-          </button>
-
-          {/* Print Button */}
-          <button
-            onClick={handlePrint}
-            className="erp-btn-primary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print A4 Statement</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Cost Statement"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/cost-statement' },
+            { label: 'Cost Statement' },
+          ]}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => setIsEditing(!isEditing)}
+                className={cn(
+                  'btn btn-sm d-inline-flex align-items-center gap-1',
+                  isEditing ? 'btn-warning' : 'btn-outline-secondary'
+                )}
+              >
+                {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
+                <span>{isEditing ? 'View Mode' : 'Edit'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                title="Reset to Authentic Excel Defaults"
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="btn btn-sm btn-success d-inline-flex align-items-center gap-1"
+              >
+                <Save className="size-3.5" />
+                <span>{isSaved ? 'Saved!' : 'Save'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
+              >
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Mode Banner Indicator */}
@@ -375,7 +239,8 @@ export default function CostStatementPage() {
           <div className="flex items-center gap-2">
             <Edit3 className="size-4 text-amber-600 shrink-0" />
             <span>
-              <strong>Edit Mode Active:</strong> You can edit any numeric cell below. Formulas (highlighted with <code className="bg-amber-200 dark:bg-amber-900/60 px-1 py-0.2 rounded font-mono font-black">fx: =SUM(...)</code>) will automatically recompute all totals and the per-meter cost live!
+              <strong>Edit Mode:</strong> Manual lines (power, fuel, admin, meters, trader overrides) are editable.
+              Linked blocks (<Link2 className="inline size-3" /> Payroll / Petty Cash) refresh automatically from source sheets.
             </span>
           </div>
           <button
@@ -418,6 +283,7 @@ export default function CostStatementPage() {
                   <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300">
                     <th className="py-2.5 px-3 text-left font-sans w-2/3 border-r border-slate-200 dark:border-slate-700">
                       Salaries & Wages
+                      <LinkedBadge label="Payroll" />
                       {isEditing && (
                         <span className="ml-2 text-[10px] font-mono text-purple-600 dark:text-purple-400 font-bold">
                           fx: =SUM(C8:C14)
@@ -430,111 +296,24 @@ export default function CostStatementPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">Staff & Contract Employee Salary</td>
-                    <td className="py-2 px-3 text-right">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.salariesAndWages.staffSalary}
-                          onChange={(e) => updateSalary('staffSalary', Number(e.target.value))}
-                          className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.salariesAndWages.staffSalary, 0)
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">Staff & Contract Employee Overtime</td>
-                    <td className="py-2 px-3 text-right">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.salariesAndWages.staffOvertime}
-                          onChange={(e) => updateSalary('staffOvertime', Number(e.target.value))}
-                          className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.salariesAndWages.staffOvertime, 0)
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">Contract Employee Efficency</td>
-                    <td className="py-2 px-3 text-right">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.salariesAndWages.contractEmployeeEfficiency}
-                          onChange={(e) => updateSalary('contractEmployeeEfficiency', Number(e.target.value))}
-                          className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.salariesAndWages.contractEmployeeEfficiency, 0)
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">Weaver Wages</td>
-                    <td className="py-2 px-3 text-right">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.salariesAndWages.weaverWages}
-                          onChange={(e) => updateSalary('weaverWages', Number(e.target.value))}
-                          className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.salariesAndWages.weaverWages, 0)
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">Weaver Holy Days Amount</td>
-                    <td className="py-2 px-3 text-right">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.salariesAndWages.weaverHolidays}
-                          onChange={(e) => updateSalary('weaverHolidays', Number(e.target.value))}
-                          className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.salariesAndWages.weaverHolidays, 0)
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">Weaver Efficency</td>
-                    <td className="py-2 px-3 text-right">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.salariesAndWages.weaverEfficiency}
-                          onChange={(e) => updateSalary('weaverEfficiency', Number(e.target.value))}
-                          className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.salariesAndWages.weaverEfficiency, 0)
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">Helper Wages</td>
-                    <td className="py-2 px-3 text-right">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.salariesAndWages.helperWages}
-                          onChange={(e) => updateSalary('helperWages', Number(e.target.value))}
-                          className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.salariesAndWages.helperWages, 0)
-                      )}
-                    </td>
-                  </tr>
+                  {(
+                    [
+                      ['Staff & Contract Employee Salary', data.salariesAndWages.staffSalary],
+                      ['Staff & Contract Employee Overtime', data.salariesAndWages.staffOvertime],
+                      ['Contract Employee Efficency', data.salariesAndWages.contractEmployeeEfficiency],
+                      ['Weaver Wages', data.salariesAndWages.weaverWages],
+                      ['Weaver Holy Days Amount', data.salariesAndWages.weaverHolidays],
+                      ['Weaver Efficency', data.salariesAndWages.weaverEfficiency],
+                      ['Helper Wages', data.salariesAndWages.helperWages],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <tr key={label} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                      <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">
+                        {label}
+                      </td>
+                      <td className="py-2 px-3 text-right">{formatNumber(value, 0)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -546,6 +325,7 @@ export default function CostStatementPage() {
                   <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300">
                     <th className="py-2.5 px-3 text-left font-sans w-2/3 border-r border-slate-200 dark:border-slate-700">
                       Contractors Bill Amount
+                      <LinkedBadge label="Payroll" />
                       {isEditing && (
                         <span className="ml-2 text-[10px] font-mono text-purple-600 dark:text-purple-400 font-bold">
                           fx: =SUM(C17:C25)
@@ -558,23 +338,12 @@ export default function CostStatementPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                  {data.contractorsBills.map((b, idx) => (
+                  {data.contractorsBills.map((b) => (
                     <tr key={b.name} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
                       <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">
-                        {b.name} ({b.role})
+                        {b.name}{b.role ? ` (${b.role})` : ''}
                       </td>
-                      <td className="py-2 px-3 text-right">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            value={b.amount}
-                            onChange={(e) => updateContractor(idx, Number(e.target.value))}
-                            className="w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                          />
-                        ) : (
-                          formatNumber(b.amount, 0)
-                        )}
-                      </td>
+                      <td className="py-2 px-3 text-right">{formatNumber(b.amount, 0)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -643,6 +412,7 @@ export default function CostStatementPage() {
                   <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-300">
                     <th className="py-2.5 px-3 text-left font-sans w-2/3 border-r border-slate-200 dark:border-slate-700">
                       Machinery Parts / Traders
+                      <LinkedBadge label="Traders" />
                       {isEditing && (
                         <span className="ml-2 text-[10px] font-mono text-purple-600 dark:text-purple-400 font-bold">
                           fx: =SUM(C35:C43)
@@ -746,6 +516,7 @@ export default function CostStatementPage() {
                             type="number"
                             value={r.amount}
                             onChange={(e) => {
+                              setTraderListsDirty(true)
                               const copy = [...data.repairDetails]
                               copy[idx] = { ...copy[idx], amount: Number(e.target.value) }
                               setData({ ...data, repairDetails: copy, repairExpense: Number(e.target.value) })
@@ -822,18 +593,12 @@ export default function CostStatementPage() {
                     </td>
                   </tr>
                   <tr className="bg-slate-50/60 dark:bg-slate-800/60 font-semibold text-slate-800 dark:text-slate-200">
-                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans w-2/3">Petty Cash</td>
+                    <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans w-2/3">
+                      Petty Cash
+                      <LinkedBadge label="Petty Cash" />
+                    </td>
                     <td className="py-2 px-3 text-right text-xs font-bold">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={data.pettyCash}
-                          onChange={(e) => setData({ ...data, pettyCash: Number(e.target.value) })}
-                          className="w-36 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-right font-mono text-xs font-bold focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                        />
-                      ) : (
-                        formatNumber(data.pettyCash, 0)
-                      )}
+                      {formatNumber(data.pettyCash, 0)}
                     </td>
                   </tr>
                   <tr className="bg-slate-50/60 dark:bg-slate-800/60 font-semibold text-slate-800 dark:text-slate-200">

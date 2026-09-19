@@ -22,6 +22,7 @@ import {
   Download,
   Filter,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 export default function TradersDirectoryPage() {
   const [activeTab, setActiveTab] = useState<'traders' | 'workshops' | 'all'>('traders')
@@ -92,41 +93,27 @@ export default function TradersDirectoryPage() {
 
   return (
     <div className="space-y-6 pb-16">
-      {/* ========================================================================= */}
-      {/* 1. HEADER SECTION                                                         */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Accounts Module • Ledger Workbooks
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• August 2026</span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 uppercase mt-1.5">
-            Traders & Workshops Ledger
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Verified accounts payable synopsis transcribed 100% from official Excel ledgers
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={exportCSV}
-            className="erp-btn-secondary"
-          >
-            <Download className="size-3.5 text-emerald-600" />
-            <span>Export CSV</span>
-          </button>
-          <button
-            onClick={handlePrint}
-            className="erp-btn-primary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print Synopsis</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Traders & Workshops Ledger"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/traders' },
+            { label: 'Traders' },
+          ]}
+          actions={
+            <>
+              <button type="button" onClick={exportCSV} className="erp-btn-secondary">
+                <Download className="size-3.5 text-emerald-600" />
+                <span>Export CSV</span>
+              </button>
+              <button type="button" onClick={handlePrint} className="erp-btn-primary">
+                <Printer className="size-3.5" />
+                <span>Print Synopsis</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* ========================================================================= */}

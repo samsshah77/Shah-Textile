@@ -25,6 +25,7 @@ import {
   Search,
   Filter,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 const DEFAULT_ADVANCE_WIDTHS = {
   serialNo: 50,
@@ -71,6 +72,7 @@ export default function SalaryAdvancesPage() {
   const [formDate, setFormDate] = useState('2026-08-05')
   const [formFortnight, setFormFortnight] = useState<'1-15' | '16-31'>('1-15')
   const [formRemarks, setFormRemarks] = useState('')
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
 
   const [masterEmployees, setMasterEmployees] = useState<any[]>([])
 
@@ -120,7 +122,11 @@ export default function SalaryAdvancesPage() {
         if (item.id === id) {
           const modified = { ...item, [field]: value }
           if (field === 'amount') {
-            payrollService.syncAdvanceToSalaries(modified.employeeName, selectedMonth, Number(value) || 0)
+            payrollService.syncAdvanceToSalaries(
+              modified.employeeId || modified.employeeName,
+              selectedMonth,
+              Number(value) || 0
+            )
           }
           return modified
         }
@@ -135,6 +141,9 @@ export default function SalaryAdvancesPage() {
     const found = masterEmployees.find((e) => e.name.toLowerCase() === empName.toLowerCase())
     if (found) {
       setDesignation(found.designation || 'Staff')
+      setSelectedEmployeeId(found.id || '')
+    } else {
+      setSelectedEmployeeId('')
     }
   }
 
@@ -163,6 +172,7 @@ export default function SalaryAdvancesPage() {
     const newRecord: AdvanceRecord = {
       id: `adv-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       serialNo: advances.length + 1,
+      employeeId: selectedEmployeeId || undefined,
       employeeName,
       designation: designation || 'Staff',
       amount: numAmt,
@@ -177,6 +187,7 @@ export default function SalaryAdvancesPage() {
     payrollService.saveAdvances(updated, true, selectedMonth, activeFortnight)
     setEmployeeName('')
     setDesignation('')
+    setSelectedEmployeeId('')
     setAmount('')
     setFormRemarks('')
     setSaveSuccess(true)
@@ -278,62 +289,56 @@ export default function SalaryAdvancesPage() {
 
   return (
     <div className="space-y-6 print:space-y-2">
-      {/* Top Header & Actions Toolbar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Salary & Wages Module • Peshgi Advances
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• {selectedMonth}</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl mt-1.5">
-            Salary Advances Register (Peshgi)
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Official records for interim payroll advances & automatic deductions in monthly staff disbursements
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => handleInsertRow()}
-            disabled={!canEditAccounts}
-            className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="size-3.5 text-[#0066cc]" />
-            <span>+ Add Advance Row</span>
-          </button>
-
-          <AddColumnButton onAddColumn={handleAddCustomColumn} />
-
-          <button
-            onClick={handleReset}
-            disabled={!canEditAccounts}
-            title={canEditAccounts ? 'Reset to default template values' : 'Enable Editing to reset'}
-            className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RotateCcw className="size-3.5 text-slate-500" />
-            <span>Reset</span>
-          </button>
-
-          <button
-            onClick={handleSave}
-            disabled={!canEditAccounts}
-            className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Save className="size-3.5" />
-            <span>Save Advances</span>
-          </button>
-
-          <button
-            onClick={handlePrint}
-            className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <Printer className="size-3.5 text-slate-500" />
-            <span>Print Sheet</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Salary Advances (Peshgi)"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Payroll', href: '/payroll/advances' },
+            { label: 'Advances' },
+          ]}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => handleInsertRow()}
+                disabled={!canEditAccounts}
+                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="size-3.5 text-[#0066cc]" />
+                <span>Add Row</span>
+              </button>
+              <AddColumnButton onAddColumn={handleAddCustomColumn} />
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={!canEditAccounts}
+                title={canEditAccounts ? 'Reset to default template values' : 'Enable Editing to reset'}
+                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCcw className="size-3.5 text-slate-500" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canEditAccounts}
+                className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="size-3.5" />
+                <span>Save</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="size-3.5 text-slate-500" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Month, Fortnight & Search Filter Bar */}

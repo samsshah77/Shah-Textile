@@ -1,32 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken } from '@/lib/jwt'
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { expiredSessionCookie } from "@/lib/session";
+import { currentUser, serializeUser } from "@/server/current-user";
 
-export async function GET(req: NextRequest) {
-  try {
-    const token = req.cookies.get('sara_auth_token')?.value
+export const runtime = "nodejs";
 
-    if (!token) {
-      return NextResponse.json({ authenticated: false, user: null })
-    }
-
-    const payload = await verifyToken(token)
-
-    if (!payload) {
-      return NextResponse.json({ authenticated: false, user: null })
-    }
-
-    return NextResponse.json({
-      authenticated: true,
-      user: {
-        id: payload.userId,
-        name: payload.name,
-        email: payload.email,
-        role: payload.role,
-        roleLabel: payload.roleLabel,
-        department: payload.department,
-      },
-    })
-  } catch (error) {
-    return NextResponse.json({ authenticated: false, user: null })
+export async function GET(request: NextRequest) {
+  const user = await currentUser(request);
+  if (!user) {
+    const response = NextResponse.json({ user: null }, { status: 401 });
+    response.cookies.set(expiredSessionCookie());
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   }
+  const response = NextResponse.json({ user: serializeUser(user) });
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }

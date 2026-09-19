@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { ActiveQualityOrder } from '@/types/production'
-import { formatNumber, cn } from '@/lib/utils'
-import { Search, Receipt, Download, Layers, CheckCircle2 } from 'lucide-react'
+import { formatNumber } from '@/lib/utils'
+import { Search, Receipt, Download } from 'lucide-react'
 
 interface ActiveQualitiesTableProps {
   qualities: ActiveQualityOrder[]
@@ -23,9 +23,9 @@ export function ActiveQualitiesTable({ qualities }: ActiveQualitiesTableProps) {
   const totalBalance = qualities.reduce((s, q) => s + (typeof q.balance === 'number' ? q.balance : 0), 0)
 
   const exportCsv = () => {
-    let csv = 'Quality Name,Looms Count,Loom Numbers,Target (m),Produced (m),Balance (m),Eff %,Warp Yarn,Lot #,Weave Repeat\n'
+    let csv = 'Quality Name,Looms Count,Loom Numbers,Target (m),Produced (m),Balance (m),Warp Yarn,Lot #,Weave Repeat\n'
     qualities.forEach((q) => {
-      csv += `"${q.qualityName}",${q.loomsCount},"${q.loomNumbers}",${q.target},${q.production},${q.balance},${q.inRegister},"${q.warpYarn}","${q.lot}","${q.warpRepeat || ''}"\n`
+      csv += `"${q.qualityName}",${q.loomsCount},"${q.loomNumbers}",${q.target},${q.production},${q.balance},"${q.warpYarn}","${q.lot}","${q.warpRepeat || ''}"\n`
     })
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -38,162 +38,150 @@ export function ActiveQualitiesTable({ qualities }: ActiveQualitiesTableProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-full">
       {/* Top Banner */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-card p-4 rounded-xl border border-border">
+      <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600">
-            <Receipt className="size-5" />
+          <div className="flex size-11 items-center justify-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+            <Receipt className="size-6" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-foreground">
-              Daily Quality End Reports • Active Quality Order Register
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+              Active Fabric Quality Register &amp; Orders
             </h3>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Target contract volume, delivered meterage, balance to weave, and assigned loom numbers.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+            <Search className="absolute left-3 top-3 size-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search Quality, Loom #..."
+              placeholder="Search Quality, Loom #, Warp..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-44 sm:w-56 rounded-lg border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-blue-500 focus:outline-none"
+              className="h-10 w-48 sm:w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none shadow-xs"
             />
           </div>
 
           <button
             onClick={exportCsv}
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
           >
-            <Download className="size-3.5 text-blue-600" />
-            <span>Export CSV</span>
+            <Download className="size-4 text-[#0066cc]" />
+            <span className="hidden sm:inline">Export CSV</span>
           </button>
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card p-3 space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">
-            Active Qualities Running
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-1 shadow-xs">
+          <span className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">
+            Active Qualities
           </span>
-          <div className="font-mono text-xl font-black text-foreground">{qualities.length} Contracts</div>
+          <div className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
+            {qualities.length} Varieties
+          </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-3 space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-1 shadow-xs">
+          <span className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">
             Target Orders Volume
           </span>
-          <div className="font-mono text-xl font-black text-blue-600 dark:text-blue-400">
+          <div className="font-mono text-xl sm:text-2xl font-extrabold text-[#0066cc] dark:text-sky-300">
             {formatNumber(totalTarget, 0)} m
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-3 space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">
-            Woven & Delivered
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-1 shadow-xs">
+          <span className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">
+            Woven &amp; Delivered
           </span>
-          <div className="font-mono text-xl font-black text-emerald-600 dark:text-emerald-400">
+          <div className="font-mono text-xl sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
             {formatNumber(totalProduction, 0)} m
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-3 space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-1 shadow-xs">
+          <span className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">
             Remaining Balance
           </span>
-          <div className="font-mono text-xl font-black text-purple-600 dark:text-purple-400">
+          <div className="font-mono text-xl sm:text-2xl font-extrabold text-purple-600 dark:text-purple-400">
             {formatNumber(totalBalance, 0)} m
           </div>
         </div>
       </div>
 
       {/* Qualities Table */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse font-mono text-xs">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+        <div className="overflow-x-auto w-full max-w-full touch-pan-x custom-scrollbar">
+          <table className="w-full text-left border-collapse font-mono text-xs sm:text-sm min-w-[960px]">
             <thead>
-              <tr className="border-b border-border bg-muted/60 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                <th className="py-3 px-3">Quality Name</th>
-                <th className="py-3 px-3 text-center">Assigned Looms</th>
-                <th className="py-3 px-3 text-right">Target (m)</th>
-                <th className="py-3 px-3 text-right">Production (m)</th>
-                <th className="py-3 px-3 text-center">In Register Eff</th>
-                <th className="py-3 px-3 text-right">Balance (m)</th>
-                <th className="py-3 px-3">Warp Spec</th>
-                <th className="py-3 px-3 text-center">Weave Repeat</th>
+              <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                <th className="py-3.5 px-3.5">Quality Name</th>
+                <th className="py-3.5 px-3 text-center">Assigned Looms</th>
+                <th className="py-3.5 px-3 text-right">Target (m)</th>
+                <th className="py-3.5 px-3 text-right">Production (m)</th>
+                <th className="py-3.5 px-3 text-right">Balance (m)</th>
+                <th className="py-3.5 px-3">Warp Spec</th>
+                <th className="py-3.5 px-3 text-center">Weave Repeat</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/40">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filtered.map((q, idx) => {
                 const targetNum = typeof q.target === 'number' ? q.target : 0
-                const progress = targetNum > 0 ? Math.min(100, Math.round((q.production / targetNum) * 100)) : 100
 
                 return (
-                  <tr key={idx} className="hover:bg-muted/40 transition-colors">
-                    <td className="py-3 px-3 font-sans font-bold text-foreground">
-                      <div>{q.qualityName}</div>
+                  <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="py-3 px-3.5 font-sans font-bold text-slate-900 dark:text-slate-100">
+                      <div className="text-sm sm:text-base font-bold">{q.qualityName}</div>
                       {q.lot && q.lot !== '0' && (
-                        <span className="font-mono text-[10px] text-muted-foreground">
+                        <span className="font-mono text-xs text-slate-500 dark:text-slate-400 font-medium">
                           Lot #{q.lot}
                         </span>
                       )}
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
-                        {q.loomNumbers.split(',').map((lNum) => (
-                          <span
-                            key={lNum}
-                            className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold border border-border text-foreground"
-                          >
-                            L#{lNum.trim()}
-                          </span>
-                        ))}
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {q.loomNumbers ? (
+                          q.loomNumbers.split(',').map((lNum) => (
+                            <span
+                              key={lNum}
+                              className="rounded-md bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 text-xs font-bold border border-blue-200 dark:border-blue-800 text-[#0066cc] dark:text-sky-300"
+                            >
+                              L#{lNum.trim()}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-slate-400">None</span>
+                        )}
                       </div>
                     </td>
-                    <td className="py-3 px-3 text-right font-bold text-muted-foreground">
+                    <td className="py-3 px-3 text-right font-bold text-slate-500 dark:text-slate-400">
                       {targetNum > 0 ? `${formatNumber(targetNum, 0)} m` : 'B/End'}
                     </td>
-                    <td className="py-3 px-3 text-right font-black text-foreground">
+                    <td className="py-3 px-3 text-right font-extrabold text-slate-900 dark:text-white">
                       {formatNumber(q.production, 0)} m
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      {q.inRegister > 0 ? (
-                        <span
-                          className={cn(
-                            'rounded-full px-2 py-0.5 text-[10px] font-bold border',
-                            q.inRegister >= 75
-                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                              : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                          )}
-                        >
-                          {q.inRegister}% Eff
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/50">—</span>
-                      )}
                     </td>
                     <td className="py-3 px-3 text-right font-bold text-purple-700 dark:text-purple-400">
                       {typeof q.balance === 'number' && q.balance > 0
                         ? `${formatNumber(q.balance, 0)} m`
                         : '—'}
                     </td>
-                    <td className="py-3 px-3 font-sans text-xs text-muted-foreground">
+                    <td className="py-3 px-3 font-sans text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium">
                       {q.warpYarn}
                     </td>
                     <td className="py-3 px-3 text-center">
                       {q.warpRepeat ? (
-                        <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-bold border border-border">
+                        <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-bold border border-slate-200 dark:border-slate-700">
                           {q.warpRepeat}
                         </span>
                       ) : (
-                        <span className="text-muted-foreground/40">—</span>
+                        <span className="text-slate-400">—</span>
                       )}
                     </td>
                   </tr>
@@ -201,19 +189,20 @@ export function ActiveQualitiesTable({ qualities }: ActiveQualitiesTableProps) {
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-border bg-muted/80 font-black text-foreground">
-                <td className="py-3 px-3 uppercase tracking-wider font-sans">
+              <tr className="border-t-2 border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800/90 font-extrabold text-slate-900 dark:text-white">
+                <td className="py-4 px-3.5 uppercase tracking-wider font-sans text-xs sm:text-sm font-bold">
                   Total Floor Orders ({filtered.length})
                 </td>
-                <td className="py-3 px-3 text-center">34 Looms</td>
-                <td className="py-3 px-3 text-right text-muted-foreground">
+                <td className="py-4 px-3 text-center text-xs text-slate-600 dark:text-slate-300">
+                  34 Looms Active
+                </td>
+                <td className="py-4 px-3 text-right text-slate-500 font-mono">
                   {formatNumber(totalTarget, 0)} m
                 </td>
-                <td className="py-3 px-3 text-right text-emerald-700 dark:text-emerald-400 text-sm">
+                <td className="py-4 px-3 text-right text-emerald-600 dark:text-emerald-400 font-mono text-sm sm:text-base">
                   {formatNumber(totalProduction, 0)} m
                 </td>
-                <td />
-                <td className="py-3 px-3 text-right text-purple-700 dark:text-purple-400">
+                <td className="py-4 px-3 text-right text-purple-600 dark:text-purple-400 font-mono text-sm sm:text-base">
                   {formatNumber(totalBalance, 0)} m
                 </td>
                 <td colSpan={2} />

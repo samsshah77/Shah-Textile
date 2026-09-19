@@ -5,6 +5,7 @@ import { productionService, FloorWeeklyReport } from '@/services/productionServi
 import { MetricCard } from '@/components/shared/MetricCard'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import { CalendarRange, Layers, Gauge, DollarSign, ArrowUpRight, BarChart3 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 export default function WeeklyProductionReportsPage() {
   const [reports, setReports] = useState<FloorWeeklyReport[]>([])
@@ -24,40 +25,28 @@ export default function WeeklyProductionReportsPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-              Weekly Production Performance
-            </h1>
-            <span className="erp-badge-blue">
-              Auto-Aggregated
-            </span>
+      <PageHeader
+        title="Weekly Production"
+        breadcrumbs={[
+          { label: 'Home', href: '/dashboard' },
+          { label: 'Production', href: '/floor/production' },
+          { label: 'Weekly Report' },
+        ]}
+        actions={
+          <div className="btn-group btn-group-sm" role="group" aria-label="Week selector">
+            {reports.map((r, index) => (
+              <button
+                key={r.weekLabel}
+                type="button"
+                onClick={() => setSelectedWeek(index)}
+                className={cn('btn', selectedWeek === index ? 'btn-primary' : 'btn-outline-primary')}
+              >
+                Week {index + 1}
+              </button>
+            ))}
           </div>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Automatic weekly rollups across all 34 looms, Shift A vs Shift B outputs, and machine model splits.
-          </p>
-        </div>
-
-        {/* Week Selector Tabs */}
-        <div className="flex rounded-xl border border-border bg-card p-1">
-          {reports.map((r, index) => (
-            <button
-              key={r.weekLabel}
-              onClick={() => setSelectedWeek(index)}
-              className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer',
-                selectedWeek === index
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Week {index + 1}
-            </button>
-          ))}
-        </div>
-      </div>
+        }
+      />
 
       {current && (
         <>

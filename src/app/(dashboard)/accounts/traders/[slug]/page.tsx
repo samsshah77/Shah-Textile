@@ -7,7 +7,6 @@ import { expenseService, TraderSummary } from '@/services/expenseService'
 import { InventoryPurchaseEntry } from '@/types/expense'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import {
-  Building2,
   Printer,
   ArrowLeft,
   PlusCircle,
@@ -21,6 +20,7 @@ import {
   Sparkles,
   Info,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 interface GroupedBill {
   billKey: string
@@ -246,66 +246,63 @@ export default function TraderSpecificLedgerPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
-      {/* Top Action Bar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between erp-card p-4 shadow-xs print:hidden">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/accounts/traders"
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
-          >
-            <ArrowLeft className="size-4" />
-            <span>All Traders</span>
-          </Link>
-          <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
-          <div className="flex items-center gap-2">
-            <Building2 className="size-4 text-[#0066cc]" />
-            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{trader.partyName} Sub-Ledger</span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Edit / View Mode Toggle */}
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all shadow-xs cursor-pointer',
-              isEditing
-                ? 'bg-amber-600 text-white hover:bg-amber-700'
-                : 'erp-btn-secondary'
-            )}
-          >
-            {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5 text-[#0066cc]" />}
-            <span>{isEditing ? 'Exit Edit Mode' : 'Edit Ledger Cells'}</span>
-          </button>
-
-          {/* Reset Defaults */}
-          <button
-            onClick={handleReset}
-            className="erp-btn-secondary hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-            title="Reset to official Excel default records"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          {/* Save Button */}
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer shadow-xs"
-          >
-            <Save className="size-3.5 text-emerald-600" />
-            <span>Save Ledger</span>
-          </button>
-
-          {/* Print A4 */}
-          <button
-            onClick={handlePrint}
-            className="erp-btn-primary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print Vendor Statement (A4)</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title={trader.partyName}
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/traders' },
+            { label: 'Traders', href: '/accounts/traders' },
+            { label: trader.partyName },
+          ]}
+          actions={
+            <>
+              <Link
+                href="/accounts/traders"
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              >
+                <ArrowLeft className="size-4" />
+                <span>All Traders</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => setIsEditing(!isEditing)}
+                className={cn(
+                  'btn btn-sm d-inline-flex align-items-center gap-1',
+                  isEditing ? 'btn-warning' : 'btn-outline-secondary'
+                )}
+              >
+                {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
+                <span>{isEditing ? 'View Mode' : 'Edit'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                title="Reset to official Excel default records"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="btn btn-sm btn-success d-inline-flex align-items-center gap-1"
+              >
+                <Save className="size-3.5" />
+                <span>Save</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
+              >
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Save Notification Toast */}

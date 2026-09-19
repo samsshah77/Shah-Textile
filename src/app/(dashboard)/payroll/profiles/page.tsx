@@ -35,6 +35,7 @@ import {
   Briefcase,
   Layers,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 function EmployeeProfilesContent() {
   const { canEditAccounts, isEditModeEnabled } = useAuth()
@@ -224,55 +225,36 @@ function EmployeeProfilesContent() {
 
   return (
     <div className="space-y-6 pb-24">
-      {/* Header */}
-      <div className="erp-card p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              HR & Personnel Hub
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              Sara Textile Mills • Employee Master Registry
-            </span>
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 mt-1 flex items-center gap-2">
-            <IdCard className="h-5 w-5 text-[#0066cc] dark:text-sky-400" />
-            Personnel Profiles & CNIC Management
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Complete records of employee CNIC numbers, father names, phone contacts, addresses, and ID cards.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Link to General Wages Excel Sheet 1 */}
-          <Link
-            href="/payroll/employees"
-            className="erp-btn-secondary text-xs flex items-center gap-1.5"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>Open General Wages (Sheet 1)</span>
-          </Link>
-
-          {canEditAccounts && (
+      <PageHeader
+        title="Personnel Profiles"
+        breadcrumbs={[
+          { label: 'Home', href: '/dashboard' },
+          { label: 'Payroll', href: '/payroll/profiles' },
+          { label: 'Profiles' },
+        ]}
+        actions={
+          <>
+            <Link href="/payroll/employees" className="erp-btn-secondary text-xs flex items-center gap-1.5">
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>General Wages</span>
+            </Link>
+            {canEditAccounts && (
+              <button type="button" onClick={openAddModal} className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer">
+                <Plus className="h-3.5 w-3.5" />
+                <span>Register New Profile</span>
+              </button>
+            )}
             <button
-              onClick={openAddModal}
-              className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer"
+              type="button"
+              onClick={() => window.print()}
+              className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
             >
-              <Plus className="h-3.5 w-3.5" />
-              Register New Profile
+              <Printer className="h-3.5 w-3.5 text-slate-500" />
+              <span>Print</span>
             </button>
-          )}
-
-          <button
-            onClick={() => window.print()}
-            className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <Printer className="h-3.5 w-3.5 text-slate-500" />
-            Print Roster
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {saveSuccess && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 rounded-lg flex items-center gap-2 text-xs font-semibold">

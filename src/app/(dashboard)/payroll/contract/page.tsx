@@ -24,6 +24,7 @@ import {
   Lock,
   FileSpreadsheet,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 const DEFAULT_CONTRACT_SALARY_WIDTHS = {
   serialNo: 56,
@@ -237,62 +238,52 @@ function ContractPayrollContent() {
 
   return (
     <div className="space-y-6 print:space-y-2">
-      {/* Top Header & Actions Toolbar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Salary & Wages Module • Contract Staff
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• August 2026</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl mt-1.5">
-            Contract Staff Register
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Contract staff salaries, overtime calculations, advances & monthly net payout rollups
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => handleInsertRow()}
-            disabled={!canEditAccounts}
-            className="erp-btn-secondary"
-          >
-            <Plus className="size-3.5 text-[#0066cc]" />
-            <span>Add Worker</span>
-          </button>
-
-          <AddColumnButton onAddColumn={handleAddCustomColumn} />
-
-          <button
-            onClick={handleReset}
-            disabled={!canEditAccounts}
-            title={canEditAccounts ? 'Reset to template default values' : 'Enable Editing to reset'}
-            className="erp-btn-secondary"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          <button
-            onClick={handleSave}
-            disabled={!canEditAccounts}
-            className="erp-btn-primary"
-          >
-            <Save className="size-3.5" />
-            <span>Save Contract</span>
-          </button>
-
-          <button
-            onClick={handlePrint}
-            className="erp-btn-secondary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print Sheet (A4)</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Contract Staff Register"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Payroll', href: '/payroll/contract' },
+            { label: 'Contract Staff' },
+          ]}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => handleInsertRow()}
+                disabled={!canEditAccounts}
+                className="erp-btn-secondary"
+              >
+                <Plus className="size-3.5 text-[#0066cc]" />
+                <span>Add Worker</span>
+              </button>
+              <AddColumnButton onAddColumn={handleAddCustomColumn} />
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={!canEditAccounts}
+                title={canEditAccounts ? 'Reset to template default values' : 'Enable Editing to reset'}
+                className="erp-btn-secondary"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canEditAccounts}
+                className="erp-btn-primary"
+              >
+                <Save className="size-3.5" />
+                <span>Save</span>
+              </button>
+              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Safety Notice if Editing is Disabled */}

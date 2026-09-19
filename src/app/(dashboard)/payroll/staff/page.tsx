@@ -25,6 +25,7 @@ import {
   Lock,
   FileSpreadsheet,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
   serial: 56,
@@ -166,6 +167,7 @@ export default function StaffSalariesPage() {
   const handleReset = () => {
     if (!canEditAccounts) return
     if (confirm('Reset staff salary sheet to default values from August 2026?')) {
+      localStorage.removeItem('sara_payroll_staff_v6')
       localStorage.removeItem('sara_payroll_staff_v2')
       setCustomColumns([])
       setStaffList(payrollService.getStaffSalaries(selectedMonth))
@@ -186,82 +188,69 @@ export default function StaffSalariesPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Salary & Wages Module • Staff Salaries
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• August 2026</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl mt-1.5">
-            Staff Salaries & Overtime Register
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Administrative & Supervisory Staff Payroll, Overtime Hours, Deductions & Net Cheques
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500">Month Days:</span>
-            <select
-              value={daysInMonth}
-              disabled={!canEditAccounts}
-              onChange={(e) => {
-                const days = Number(e.target.value)
-                setDaysInMonth(days)
-                setStaffList((prev) =>
-                  prev.map((row) => payrollService.calculateStaffSalaryRow(row, days))
-                )
-              }}
-              className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer disabled:opacity-50"
-            >
-              <option value={31}>31 Days (Aug)</option>
-              <option value={30}>30 Days</option>
-              <option value={28}>28 Days</option>
-            </select>
-          </div>
-
-          <button
-            onClick={() => handleInsertRow()}
-            disabled={!canEditAccounts}
-            className="erp-btn-secondary"
-          >
-            <Plus className="size-3.5 text-[#0066cc]" />
-            <span>Add Row</span>
-          </button>
-
-          <AddColumnButton onAddColumn={handleAddCustomColumn} />
-
-          <button
-            onClick={handleReset}
-            disabled={!canEditAccounts}
-            title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-            className="erp-btn-secondary"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          <button
-            onClick={handleSave}
-            disabled={!canEditAccounts}
-            className="erp-btn-primary"
-          >
-            <Save className="size-3.5" />
-            <span>Save Changes</span>
-          </button>
-
-          <button
-            onClick={handlePrint}
-            className="erp-btn-secondary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print (A4)</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Staff Salaries"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Payroll', href: '/payroll/staff' },
+            { label: 'Staff Salaries' },
+          ]}
+          actions={
+            <>
+              <select
+                value={daysInMonth}
+                disabled={!canEditAccounts}
+                onChange={(e) => {
+                  const days = Number(e.target.value)
+                  setDaysInMonth(days)
+                  setStaffList((prev) =>
+                    prev.map((row) => payrollService.calculateStaffSalaryRow(row, days))
+                  )
+                }}
+                className="form-select form-select-sm"
+                aria-label="Days in month"
+              >
+                <option value={31}>31 Days</option>
+                <option value={30}>30 Days</option>
+                <option value={28}>28 Days</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => handleInsertRow()}
+                disabled={!canEditAccounts}
+                className="erp-btn-secondary"
+              >
+                <Plus className="size-3.5 text-[#0066cc]" />
+                <span>Add Row</span>
+              </button>
+              <AddColumnButton onAddColumn={handleAddCustomColumn} />
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={!canEditAccounts}
+                title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
+                className="erp-btn-secondary"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canEditAccounts}
+                className="erp-btn-primary"
+              >
+                <Save className="size-3.5" />
+                <span>Save</span>
+              </button>
+              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Safety Notice if Editing is Disabled */}

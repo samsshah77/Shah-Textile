@@ -2,24 +2,24 @@
 
 import React, { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { SidebarProvider, useSidebar } from '@/context/SidebarContext'
+import { SidebarProvider } from '@/context/SidebarContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { Sidebar } from '@/components/shared/Sidebar'
 import { Header } from '@/components/shared/Header'
 import { ExcelSheetTabBar } from '@/components/payroll/ExcelSheetTabBar'
-import { cn } from '@/lib/utils'
+import { AdminLteAssets } from '@/components/shared/AdminLteAssets'
+
+const BODY_ERP_CLASSES = ['layout-fixed', 'sidebar-expand-lg', 'bg-body-tertiary'] as const
 
 function MainContent({ children }: { children: React.ReactNode }) {
-  const { isCollapsed } = useSidebar()
-  const { user, isQualityController } = useAuth()
+  const { isQualityController } = useAuth()
   const pathname = usePathname()
   const router = useRouter()
 
   useEffect(() => {
-    // Quality Controller cannot access accounts or payroll routes
     if (isQualityController) {
       if (pathname.startsWith('/payroll') || pathname.startsWith('/accounts')) {
-        router.replace('/floor/production')
+        router.replace('/dashboard')
       }
     }
   }, [isQualityController, pathname, router])
@@ -29,18 +29,15 @@ function MainContent({ children }: { children: React.ReactNode }) {
   const showExcelTabBar = !isAdminRoute && (!isQualityController || !isPayrollRoute)
 
   return (
-    <div
-      className={cn(
-        'flex flex-1 flex-col min-w-0 transition-all duration-300 ease-in-out',
-        isAdminRoute ? 'lg:pl-0' : isCollapsed ? 'lg:pl-20' : 'lg:pl-64'
-      )}
-    >
-      <Header />
-      {showExcelTabBar && <ExcelSheetTabBar />}
-      <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto min-w-0 overflow-x-hidden">
-        {children}
-      </main>
-    </div>
+    <main className="app-main bg-body-tertiary sara-app-main">
+      <div className="sara-erp-topbar">
+        <Header />
+        {showExcelTabBar && <ExcelSheetTabBar />}
+      </div>
+      <div className="app-content sara-app-content">
+        <div className="container-fluid">{children}</div>
+      </div>
+    </main>
   )
 }
 
@@ -51,44 +48,88 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   const isPublicLandingPage = pathname === '/'
   const isLoginPage = pathname === '/login'
+  const isForbiddenPage = pathname === '/forbidden'
+  const isAuthChrome = isLoginPage || isPublicLandingPage || isForbiddenPage
+  const isErpShell = !isAuthChrome && !!user
 
   useEffect(() => {
-    if (!isLoading && !user && !isLoginPage && !isPublicLandingPage) {
+    if (!isLoading && !user && !isAuthChrome) {
       router.replace('/login')
     }
-  }, [user, isLoading, isLoginPage, isPublicLandingPage, router])
+  }, [user, isLoading, isAuthChrome, router])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-bs-theme', 'light')
+    document.documentElement.setAttribute('data-lte-color-mode', 'off')
+    document.documentElement.removeAttribute('data-lte-primary')
+    document.documentElement.classList.remove('dark')
+    document.documentElement.style.colorScheme = 'light'
+
+    if (isErpShell) {
+      document.body.classList.remove('auth-route', 'login-page', 'bg-body-secondary')
+      BODY_ERP_CLASSES.forEach((c) => document.body.classList.add(c))
+      return () => {
+        BODY_ERP_CLASSES.forEach((c) => document.body.classList.remove(c))
+      }
+    }
+
+    BODY_ERP_CLASSES.forEach((c) => document.body.classList.remove(c))
+    if (isLoginPage) {
+      document.body.classList.add('auth-route', 'login-page', 'bg-body-secondary')
+    } else if (isAuthChrome) {
+      document.body.classList.remove('login-page', 'bg-body-secondary')
+      document.body.classList.add('auth-route')
+    } else {
+      document.body.classList.remove('auth-route', 'login-page', 'bg-body-secondary')
+    }
+    return () => {
+      document.body.classList.remove('auth-route', 'login-page', 'bg-body-secondary')
+    }
+  }, [isErpShell, isAuthChrome, isLoginPage])
 
   return (
     <>
-      {/* Global Smooth Logout Loader */}
       {isLoggingOut && (
-        <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col items-center gap-4 text-center max-w-xs mx-4">
-            <div className="size-10 rounded-full border-3 border-emerald-500 border-t-transparent animate-spin" />
-            <div>
-              <h3 className="text-sm font-bold text-white tracking-wide">Signing Out...</h3>
-              <p className="text-xs text-slate-400 mt-1">Clearing secure ERP session</p>
-            </div>
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center"
+          style={{ zIndex: 99999, background: 'rgba(15,23,42,0.85)' }}
+        >
+          <div className="card shadow p-4 text-center" style={{ maxWidth: 280 }}>
+            <div className="spinner-border text-primary mb-3" role="status" />
+            <h3 className="fs-6 fw-bold mb-1">Signing Out...</h3>
+            <p className="text-secondary small mb-0">Clearing secure ERP session</p>
           </div>
         </div>
       )}
 
-      {isLoginPage || isPublicLandingPage ? (
-        children
+      {isAuthChrome ? (
+        <>
+          {isLoginPage ? <AdminLteAssets /> : null}
+          {children}
+        </>
       ) : isLoading ? (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3">
-            <div className="size-8 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+        <div className="d-flex min-vh-100 align-items-center justify-content-center bg-body-tertiary">
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-2" role="status" />
+            <div className="text-secondary text-uppercase small fw-semibold tracking-wide">
               Loading Sara Textile ERP...
-            </span>
+            </div>
           </div>
         </div>
       ) : (
         <SidebarProvider>
-          <div className="flex min-h-screen bg-background font-sans text-foreground antialiased selection:bg-blue-500/20 selection:text-blue-700">
+          <AdminLteAssets />
+          <div className="app-wrapper">
             <Sidebar />
             <MainContent>{children}</MainContent>
+            <footer className="app-footer">
+              <div className="float-end d-none d-sm-inline">Sara Textile ERP</div>
+              <strong>
+                Copyright &copy; {new Date().getFullYear()}{' '}
+                <a href="/dashboard">Sara Textile</a>.
+              </strong>{' '}
+              All rights reserved.
+            </footer>
           </div>
         </SidebarProvider>
       )}

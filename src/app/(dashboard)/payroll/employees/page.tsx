@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { payrollService } from '@/services/payrollService'
 import { EmployeeProfile, CustomColumn } from '@/types/payroll'
@@ -24,8 +24,8 @@ import {
   Lock,
   IdCard,
   FileSpreadsheet,
-  ArrowRight,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 const DEFAULT_GW_WIDTHS: Record<string, number> = {
   serial: 52,
@@ -51,6 +51,12 @@ export default function GeneralWagesPage() {
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const crossSheetSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const CROSS_SHEET_FIELDS: Array<keyof EmployeeProfile> = ['name', 'designation', 'salary', 'dutyHrs']
+
+  const persistRoster = (list: EmployeeProfile[]) => {
+    payrollService.saveEmployees(list)
+  }
 
   const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
     'general_wages_excel_master_v3',
@@ -65,7 +71,10 @@ export default function GeneralWagesPage() {
     reload()
     const handleSync = () => reload()
     window.addEventListener('payroll_synced', handleSync)
-    return () => window.removeEventListener('payroll_synced', handleSync)
+    return () => {
+      window.removeEventListener('payroll_synced', handleSync)
+      if (crossSheetSyncTimer.current) clearTimeout(crossSheetSyncTimer.current)
+    }
   }, [])
 
   // Handle live inline editing on any cell with automatic recalculation of 31, 30, 28 day rates
@@ -87,6 +96,10 @@ export default function GeneralWagesPage() {
         current.ratePerDay28 = Math.round((sal / 28) * 100) / 100
       }
       updated[index] = current
+      if (CROSS_SHEET_FIELDS.includes(field)) {
+        if (crossSheetSyncTimer.current) clearTimeout(crossSheetSyncTimer.current)
+        crossSheetSyncTimer.current = setTimeout(() => persistRoster(updated), 450)
+      }
       return updated
     })
   }
@@ -133,7 +146,7 @@ export default function GeneralWagesPage() {
 
     const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setEmployees(renumbered)
-    payrollService.saveEmployees(renumbered)
+    persistRoster(renumbered)
   }
 
   // Delete row and auto-renumber
@@ -141,7 +154,7 @@ export default function GeneralWagesPage() {
     if (!canEditAccounts) return
     const updated = employees.filter((item) => item.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setEmployees(updated)
-    payrollService.saveEmployees(updated)
+    persistRoster(updated)
   }
 
   const handleAddCustomColumn = (col: CustomColumn) => {
@@ -157,7 +170,11 @@ export default function GeneralWagesPage() {
   }
 
   const handleSave = () => {
-    payrollService.saveEmployees(employees)
+    if (crossSheetSyncTimer.current) {
+      clearTimeout(crossSheetSyncTimer.current)
+      crossSheetSyncTimer.current = null
+    }
+    persistRoster(employees)
     setSaveSuccess(true)
     setTimeout(() => setSaveSuccess(false), 2500)
   }
@@ -185,65 +202,47 @@ export default function GeneralWagesPage() {
 
   return (
     <div className="space-y-6 pb-24">
-      {/* Top Toolbar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Salary & Wages Module • General Wages
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• August 2026</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl mt-1.5">
-            General Wages Register
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Master Employee Register, Basic Salaries, Duty Hours & 30-Day Hourly Rates
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Link to HR Profiles Management */}
-          <Link
-            href="/payroll/profiles"
-            className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-xs"
-          >
-            <IdCard className="size-3.5 text-[#0066cc]" />
-            <span>HR & CNIC Profiles</span>
-            <ArrowRight className="size-3 text-slate-400" />
-          </Link>
-
-          {canEditAccounts && (
-            <AddColumnButton onAddColumn={handleAddCustomColumn} />
-          )}
-
-          <button
-            onClick={handleReset}
-            disabled={!canEditAccounts}
-            title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-            className="erp-btn-secondary"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          <button
-            onClick={handleSave}
-            disabled={!canEditAccounts}
-            className="erp-btn-primary"
-          >
-            <Save className="size-3.5" />
-            <span>Save Changes</span>
-          </button>
-
-          <button
-            onClick={handlePrint}
-            className="erp-btn-secondary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print (A4)</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="General Wages Register"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Payroll', href: '/payroll/employees' },
+            { label: 'General Wages' },
+          ]}
+          actions={
+            <>
+              <Link href="/payroll/profiles" className="erp-btn-secondary">
+                <IdCard className="size-3.5 text-[#0066cc]" />
+                <span>HR Profiles</span>
+              </Link>
+              {canEditAccounts && <AddColumnButton onAddColumn={handleAddCustomColumn} />}
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={!canEditAccounts}
+                title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
+                className="erp-btn-secondary"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canEditAccounts}
+                className="erp-btn-primary"
+              >
+                <Save className="size-3.5" />
+                <span>Save</span>
+              </button>
+              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Safety Notice if Editing is Disabled */}

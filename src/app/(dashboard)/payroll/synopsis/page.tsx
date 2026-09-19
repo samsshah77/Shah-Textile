@@ -16,6 +16,7 @@ import {
   Banknote,
   RotateCcw,
 } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 function DisbursementSynopsisContent() {
   const searchParams = useSearchParams()
@@ -56,41 +57,27 @@ function DisbursementSynopsisContent() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="erp-badge-blue">
-              Salary & Wages Module • Disbursement Synopsis
-            </span>
-            <span className="text-xs font-semibold text-slate-500">• August 2026</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl mt-1.5">
-            Disbursement Synopsis & Bank Reconciliation
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Complete executive payroll rollup: 1st Fortnight Cheque, 2nd Fortnight Cheque, and Grand Monthly Settlement
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={reloadData}
-            title="Refresh calculated numbers"
-            className="erp-btn-secondary"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Recalculate</span>
-          </button>
-
-          <button
-            onClick={handlePrint}
-            className="erp-btn-secondary"
-          >
-            <Printer className="size-3.5" />
-            <span>Print Synopsis (A4)</span>
-          </button>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Disbursement Synopsis"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Payroll', href: '/payroll/synopsis' },
+            { label: 'Synopsis' },
+          ]}
+          actions={
+            <>
+              <button type="button" onClick={reloadData} title="Refresh calculated numbers" className="erp-btn-secondary">
+                <RotateCcw className="size-3.5" />
+                <span>Recalculate</span>
+              </button>
+              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
+                <Printer className="size-3.5" />
+                <span>Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Tab 1: Grand Monthly Summary */}

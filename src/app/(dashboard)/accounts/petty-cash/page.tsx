@@ -19,6 +19,7 @@ import {
   Printer,
 } from 'lucide-react'
 import { accountsData } from '@/data/accountsData'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 const INITIAL_AUTHENTIC_PETTY_CASH: PettyCashEntry[] = accountsData.dailyExpense.pettyCash.map((item, idx) => ({
   id: `pc-${item.sNo || idx + 1}`,
@@ -134,62 +135,51 @@ export default function PettyCashPage() {
 
   return (
     <div className="space-y-6 pb-16">
-      {/* ========================================================================= */}
-      {/* 1. HEADER SECTION                                                         */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-              Accounts Module • Dynamic Petty Cash
-            </span>
-            <span className="text-xs font-bold text-muted-foreground">• August 2026</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground mt-1">
-            Petty Cash Statement & Cash in Hand
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Excel Formula Engine: <code className="font-mono text-purple-600">Balance = Prev + Dr - Cr</code> • <code className="font-mono text-emerald-600">Total Dr = =SUM(Dr)</code> • <code className="font-mono text-rose-600">Total Cr = =SUM(Cr)</code>
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Reset Button */}
-          <button
-            onClick={handleReset}
-            title="Reset to Excel authentic data"
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer shadow-xs"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-
-          {/* Export CSV */}
-          <button
-            onClick={exportCSV}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer shadow-xs"
-          >
-            <Download className="size-4 text-emerald-600" />
-            <span>Export CSV</span>
-          </button>
-
-          {/* Print */}
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 rounded-xl bg-[#0066cc] hover:bg-[#0052a3] px-4 py-2 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs"
-          >
-            <Printer className="size-4" />
-            <span>Print Statement</span>
-          </button>
-
-          <Link
-            href="/accounts/petty-cash/monthly"
-            className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 transition-colors shadow-xs"
-          >
-            <FileSpreadsheet className="size-4" />
-            <span>Monthly View</span>
-          </Link>
-        </div>
+      <div className="print:hidden">
+        <PageHeader
+          title="Petty Cash Statement"
+          breadcrumbs={[
+            { label: 'Home', href: '/dashboard' },
+            { label: 'Accounts', href: '/accounts/petty-cash' },
+            { label: 'Petty Cash' },
+          ]}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={handleReset}
+                title="Reset to Excel authentic data"
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={exportCSV}
+                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              >
+                <Download className="size-4 text-emerald-600" />
+                <span>Export CSV</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
+              >
+                <Printer className="size-4" />
+                <span>Print</span>
+              </button>
+              <Link
+                href="/accounts/petty-cash/monthly"
+                className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+              >
+                <FileSpreadsheet className="size-4" />
+                <span>Monthly View</span>
+              </Link>
+            </>
+          }
+        />
       </div>
 
       {/* Save Toast Notification */}

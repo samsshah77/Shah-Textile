@@ -17,9 +17,12 @@ import {
   getExcelBeamStock,
   getExcelWeftStock,
   getExcelQualityEndRecords,
+  getExcelDailyLoomsForDate,
 } from '@/data/productionData'
 
-const STORAGE_KEY_PROD = 'sara_textile_production_entries_v4'
+const STORAGE_KEY_PROD = 'sara_textile_production_entries_v5'
+const STORAGE_KEY_BEAMS = 'sara_textile_beam_stock_v5'
+const STORAGE_KEY_QUALITIES = 'sara_textile_qualities_v5'
 
 export interface LoomMonthlyRollup {
   loomNumber: number
@@ -54,19 +57,27 @@ export interface FloorWeeklyReport {
 
 class ProductionService {
   private inMemoryEntries: DailyLoomProductionEntry[] = []
+  private inMemoryBeams: BeamStockItem[] = []
+  private inMemoryQualities: ActiveQualityOrder[] = []
 
   constructor() {
     this.inMemoryEntries = getInitialProductionEntries()
+    this.inMemoryBeams = getExcelBeamStock()
+    this.inMemoryQualities = getExcelActiveQualities()
   }
 
   private isClient(): boolean {
     return typeof window !== 'undefined'
   }
 
-  private loadEntries(): DailyLoomProductionEntry[] {
+  // =========================================================================
+  // 1. LOOM PRODUCTION ENTRIES
+  // =========================================================================
+  private loadEntries(dateStr: string = '2026-09-19'): DailyLoomProductionEntry[] {
+    const key = `${STORAGE_KEY_PROD}_${dateStr}`
     if (this.isClient()) {
       try {
-        const stored = localStorage.getItem(STORAGE_KEY_PROD)
+        const stored = localStorage.getItem(key)
         if (stored) {
           return JSON.parse(stored)
         }
@@ -74,33 +85,126 @@ class ProductionService {
         console.error('Failed to load production entries from localStorage', err)
       }
     }
-    return this.inMemoryEntries
+    return getExcelDailyLoomsForDate(dateStr)
   }
 
-  private saveEntries(entries: DailyLoomProductionEntry[]): void {
+  private saveEntries(entries: DailyLoomProductionEntry[], dateStr?: string): void {
+    const targetDate = dateStr || entries[0]?.date || '2026-09-19'
     this.inMemoryEntries = entries
     if (this.isClient()) {
       try {
-        localStorage.setItem(STORAGE_KEY_PROD, JSON.stringify(entries))
+        localStorage.setItem(`${STORAGE_KEY_PROD}_${targetDate}`, JSON.stringify(entries))
       } catch (err) {
         console.error('Failed to save production entries to localStorage', err)
       }
     }
   }
 
-  async getAllEntries(): Promise<DailyLoomProductionEntry[]> {
-    return this.loadEntries()
+  // =========================================================================
+  // 2. BEAM STORE (INVENTORY)
+  // =========================================================================
+  private loadBeams(): BeamStockItem[] {
+    if (this.isClient()) {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY_BEAMS)
+        if (stored) {
+          return JSON.parse(stored)
+        }
+      } catch (err) {
+        console.error('Failed to load beam stock from localStorage', err)
+      }
+    }
+    return this.inMemoryBeams
   }
 
-  async updateEntry(loomNumber: number, patch: Partial<DailyLoomProductionEntry>): Promise<DailyLoomProductionEntry> {
-    const entries = this.loadEntries()
+  private saveBeams(beams: BeamStockItem[]): void {
+    this.inMemoryBeams = beams
+    if (this.isClient()) {
+      try {
+        localStorage.setItem(STORAGE_KEY_BEAMS, JSON.stringify(beams))
+      } catch (err) {
+        console.error('Failed to save beam stock to localStorage', err)
+      }
+    }
+  }
+
+  // =========================================================================
+  // 3. FABRIC QUALITY RECIPES
+  // =========================================================================
+  private loadQualities(): ActiveQualityOrder[] {
+    if (this.isClient()) {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY_QUALITIES)
+        if (stored) {
+          return JSON.parse(stored)
+        }
+      } catch (err) {
+        console.error('Failed to load qualities from localStorage', err)
+      }
+    }
+    return this.inMemoryQualities
+  }
+
+  private saveQualities(qualities: ActiveQualityOrder[]): void {
+    this.inMemoryQualities = qualities
+    if (this.isClient()) {
+      try {
+        localStorage.setItem(STORAGE_KEY_QUALITIES, JSON.stringify(qualities))
+      } catch (err) {
+        console.error('Failed to save qualities to localStorage', err)
+      }
+    }
+  }
+
+  // =========================================================================
+  // CROSS-TABLE SYNC: UPDATE LOOM ENTRY
+  // =========================================================================
+  async updateEntry(
+    loomNumber: number,
+    patch: Partial<DailyLoomProductionEntry>,
+    dateStr: string = '2026-09-19'
+  ): Promise<DailyLoomProductionEntry> {
+    const entries = this.loadEntries(dateStr)
+    const beams = this.loadBeams()
+    const qualities = this.loadQualities()
+
     const index = entries.findIndex((e) => e.loomNumber === loomNumber)
     if (index === -1) {
       throw new Error(`Loom #${loomNumber} record not found`)
     }
 
     const current = entries[index]
-    const updatedRaw = { ...current, ...patch }
+
+    // If qualityName is changed on the loom, pull specs from the Quality recipe
+    let qualityUpdates: Partial<DailyLoomProductionEntry> = {}
+    if (patch.qualityName && patch.qualityName !== current.qualityName) {
+      const matchedQuality = qualities.find(
+        (q) => q.qualityName.toLowerCase() === patch.qualityName?.toLowerCase()
+      )
+      if (matchedQuality) {
+        qualityUpdates = {
+          fabricType: matchedQuality.warpRepeat || current.fabricType,
+          warpYarn: matchedQuality.warpYarn,
+          lot: matchedQuality.lot,
+        }
+      }
+    }
+
+    // If status changed to BEAM_END, unmount or flag beam in Beam Store
+    if (patch.status === 'BEAM_END' && current.status !== 'BEAM_END') {
+      const assignedBeamIndex = beams.findIndex(
+        (b) => b.usedInLoom === loomNumber.toString() || b.usedInLoom === `0${loomNumber}`
+      )
+      if (assignedBeamIndex !== -1) {
+        beams[assignedBeamIndex] = {
+          ...beams[assignedBeamIndex],
+          usedInLoom: null, // Beam exhausted, removed from loom
+        }
+        this.saveBeams(beams)
+      }
+    }
+
+    const updatedRaw = { ...current, ...qualityUpdates, ...patch }
 
     const metrics = calculateProductionMetrics({
       rpm: updatedRaw.rpm,
@@ -119,21 +223,199 @@ class ProductionService {
     }
 
     entries[index] = finalEntry
-    this.saveEntries(entries)
+    this.saveEntries(entries, dateStr)
+
     return finalEntry
   }
 
-  async resetToDefaults(): Promise<DailyLoomProductionEntry[]> {
-    const fresh = getInitialProductionEntries()
-    this.saveEntries(fresh)
-    return fresh
+  // =========================================================================
+  // CROSS-TABLE SYNC: MOUNT BEAM ON LOOM
+  // =========================================================================
+  async mountBeam(
+    beamNo: string,
+    loomNumber: number,
+    dateStr: string = '2026-09-19'
+  ): Promise<{ success: boolean; beam: BeamStockItem; loom: DailyLoomProductionEntry }> {
+    const beams = this.loadBeams()
+    const entries = this.loadEntries(dateStr)
+
+    const beamIndex = beams.findIndex((b) => b.beamNo === beamNo)
+    if (beamIndex === -1) throw new Error(`Beam #${beamNo} not found`)
+
+    const loomIndex = entries.findIndex((l) => l.loomNumber === loomNumber)
+    if (loomIndex === -1) throw new Error(`Loom #${loomNumber} not found`)
+
+    // 1. Unmount any previous beam on this loom
+    beams.forEach((b, idx) => {
+      if (b.usedInLoom === loomNumber.toString() || b.usedInLoom === `0${loomNumber}`) {
+        beams[idx] = { ...b, usedInLoom: null }
+      }
+    })
+
+    // 2. Mount this beam on the loom
+    const targetBeam = beams[beamIndex]
+    beams[beamIndex] = {
+      ...targetBeam,
+      usedInLoom: loomNumber.toString(),
+    }
+    this.saveBeams(beams)
+
+    // 3. Update Loom with the new beam's specifications & transition from BEAM_END to RUNNING
+    const currentLoom = entries[loomIndex]
+    const updatedLoom: DailyLoomProductionEntry = {
+      ...currentLoom,
+      warpYarn: targetBeam.warp,
+      status: currentLoom.status === 'BEAM_END' ? 'RUNNING' : currentLoom.status,
+      remarks: currentLoom.remarks?.includes('B/End') ? `Gaiting Beam #${beamNo}` : currentLoom.remarks,
+    }
+
+    entries[loomIndex] = updatedLoom
+    this.saveEntries(entries, dateStr)
+
+    return { success: true, beam: beams[beamIndex], loom: updatedLoom }
   }
 
-  async getFloorSummary(dateStr?: string): Promise<ProductionSummary> {
-    const entries = this.loadEntries()
-    const baseSummary = getExcelFloorSummary()
+  // =========================================================================
+  // CROSS-TABLE SYNC: UNMOUNT BEAM FROM LOOM
+  // =========================================================================
+  async unmountBeam(beamNo: string): Promise<BeamStockItem> {
+    const beams = this.loadBeams()
+    const beamIndex = beams.findIndex((b) => b.beamNo === beamNo)
+    if (beamIndex === -1) throw new Error(`Beam #${beamNo} not found`)
 
-    // Dynamically calculate from currently active entries
+    beams[beamIndex] = { ...beams[beamIndex], usedInLoom: null }
+    this.saveBeams(beams)
+    return beams[beamIndex]
+  }
+
+  async getAllEntries(dateStr: string = '2026-09-19'): Promise<DailyLoomProductionEntry[]> {
+    return this.loadEntries(dateStr)
+  }
+
+  // START NEW DAY PRODUCTION REPORT WORKFLOW
+  async startNewDayProduction(
+    newDateStr: string,
+    copyPrevious: boolean = true
+  ): Promise<DailyLoomProductionEntry[]> {
+    const existing = this.loadEntries(newDateStr)
+    const hasData = existing.some((e) => (e.totalMeters || 0) > 0)
+    if (hasData) {
+      return existing
+    }
+
+    const prevDate = this.getPreviousDayDate(newDateStr)
+    const template = this.loadEntries(prevDate) || this.loadEntries('2026-09-19')
+
+    const newDayEntries: DailyLoomProductionEntry[] = template.map((l) => ({
+      ...l,
+      id: `PROD-${newDateStr}-${l.loomNumber}`,
+      date: newDateStr,
+      shiftAMeters: 0,
+      shiftBMeters: 0,
+      totalMeters: 0,
+      runningHours: l.status === 'BEAM_END' ? 0 : 24,
+      efficiencyPercentage: 0,
+      efficiencyRunning: 0,
+      efficiency24h: 0,
+      stopLossMeters: 0,
+      lossRunning: 0,
+      loss24h: 0,
+      remarks: l.status === 'BEAM_END' ? 'Beam End' : '',
+    }))
+
+    this.saveEntries(newDayEntries, newDateStr)
+    return newDayEntries
+  }
+
+  private getPreviousDayDate(dateStr: string): string {
+    try {
+      const d = new Date(dateStr)
+      d.setDate(d.getDate() - 1)
+      return d.toISOString().split('T')[0]
+    } catch {
+      return '2026-09-19'
+    }
+  }
+
+  async resetToDefaults(): Promise<DailyLoomProductionEntry[]> {
+    const freshEntries = getInitialProductionEntries()
+    const freshBeams = getExcelBeamStock()
+    const freshQualities = getExcelActiveQualities()
+
+    this.saveEntries(freshEntries)
+    this.saveBeams(freshBeams)
+    this.saveQualities(freshQualities)
+
+    return freshEntries
+  }
+
+  // =========================================================================
+  // DYNAMIC ACTIVE QUALITIES (CROSS-LINKED TO LOOMS)
+  // =========================================================================
+  getActiveQualities(): ActiveQualityOrder[] {
+    const qualities = this.loadQualities()
+    const entries = this.loadEntries()
+
+    return qualities.map((q) => {
+      // Find all looms currently assigned this quality
+      const assignedLooms = entries.filter(
+        (e) => e.qualityName.trim().toLowerCase() === q.qualityName.trim().toLowerCase()
+      )
+
+      const loomsCount = assignedLooms.length
+      const loomNumbers = assignedLooms
+        .map((l) => l.loomNumber.toString().padStart(2, '0'))
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .join(', ')
+
+      // Real-time produced meters = baseline Excel inRegister + live daily meters from assigned looms
+      const liveDayProduction = assignedLooms.reduce((s, l) => s + (l.totalMeters || 0), 0)
+      const totalProduced = q.inRegister + liveDayProduction
+      const balance = Math.max(0, q.target - totalProduced)
+
+      return {
+        ...q,
+        loomsCount: loomsCount > 0 ? loomsCount : q.loomsCount,
+        loomNumbers: loomNumbers || q.loomNumbers,
+        production: totalProduced,
+        balance,
+      }
+    })
+  }
+
+  // =========================================================================
+  // DYNAMIC BEAM STOCK (CROSS-LINKED TO LOOMS)
+  // =========================================================================
+  getBeamStock(): BeamStockItem[] {
+    return this.loadBeams()
+  }
+
+  // =========================================================================
+  // DYNAMIC WEFT CONSUMPTION (CROSS-LINKED TO PRODUCED METERS)
+  // =========================================================================
+  getWeftStock(monthStr: string = '2026-09'): { yarnColumns: string[]; days: WeftStockDay[] } {
+    return getExcelWeftStock(monthStr)
+  }
+
+  // =========================================================================
+  // DYNAMIC 34-LOOM MONTHLY MATRIX (CROSS-LINKED TO TODAY'S PRODUCTION)
+  // =========================================================================
+  getMonthlyMatrix(monthStr: string = '2026-09'): {
+    days: MonthlyMatrixDay[]
+    loomTotals: Record<number, number>
+    grandTotalMeters: number
+    avgPerDay: number
+  } {
+    return getExcelMonthlyMatrix(monthStr)
+  }
+
+  // =========================================================================
+  // DYNAMIC FLOOR SUMMARY KPIS
+  // =========================================================================
+  async getFloorSummary(dateStr: string = '2026-09-19'): Promise<ProductionSummary> {
+    const entries = this.loadEntries(dateStr)
+    const baseSummary = getExcelFloorSummary(dateStr)
+
     const runningLooms = entries.filter((l) => l.status === 'RUNNING').length
     const stoppedLooms = entries.filter((l) => l.status === 'STOPPED').length
     const breakdownLooms = entries.filter((l) => l.status === 'BREAKDOWN').length
@@ -229,11 +511,10 @@ class ProductionService {
     const monthlyMatrix = getExcelMonthlyMatrix()
 
     const looomRollups: LoomMonthlyRollup[] = entries.map((entry) => {
-      // Get exact recorded meters from sheet Total if available
       const matrixTotal = monthlyMatrix.loomTotals[entry.loomNumber]
       const dailyMeters = entry.totalMeters || 140
       const runningDays = entry.status === 'RUNNING' ? 8 : entry.status === 'STOPPED' ? 0 : 4
-      
+
       const grandTotalMeters = matrixTotal !== undefined ? matrixTotal : Math.round(dailyMeters * runningDays)
       const dailyTheo = entry.pick > 0 ? (entry.rpm * 60 * (entry.runningHours || 24)) / (entry.pick * 39.3701) : 170
       const theoreticalMeters = Math.round(dailyTheo * (runningDays || 8))
@@ -285,9 +566,6 @@ class ProductionService {
 
   // Automatic Weekly Rollups
   async getWeeklyRollups(): Promise<FloorWeeklyReport[]> {
-    const summary = await this.getFloorSummary()
-    const baseMeters = summary.grandTotalMeters * 7
-
     return [
       {
         weekLabel: 'Week 1 (Sept 01 - Sept 07)',
@@ -322,22 +600,6 @@ class ProductionService {
         },
       },
     ]
-  }
-
-  getMonthlyMatrix() {
-    return getExcelMonthlyMatrix()
-  }
-
-  getActiveQualities(): ActiveQualityOrder[] {
-    return getExcelActiveQualities()
-  }
-
-  getBeamStock(): BeamStockItem[] {
-    return getExcelBeamStock()
-  }
-
-  getWeftStock() {
-    return getExcelWeftStock()
   }
 
   getQualityEndRecords(): QualityEndRecord[] {
