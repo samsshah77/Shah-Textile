@@ -46,7 +46,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { user, isLoading } = useAuth()
+  const { user, isLoading, isLoggingOut } = useAuth()
   const router = useRouter()
 
   const isPublicLandingPage = pathname === '/'
@@ -58,31 +58,41 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [user, isLoading, isLoginPage, isPublicLandingPage, router])
 
-  // Public Landing Page and Login Page render clean without ERP Dashboard layout
-  if (isLoginPage || isPublicLandingPage) {
-    return <>{children}</>
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="size-8 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-            Loading Sara Textile ERP...
-          </span>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen bg-background font-sans text-foreground antialiased selection:bg-blue-500/20 selection:text-blue-700">
-        <Sidebar />
-        <MainContent>{children}</MainContent>
-      </div>
-    </SidebarProvider>
+    <>
+      {/* Global Smooth Logout Loader */}
+      {isLoggingOut && (
+        <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col items-center gap-4 text-center max-w-xs mx-4">
+            <div className="size-10 rounded-full border-3 border-emerald-500 border-t-transparent animate-spin" />
+            <div>
+              <h3 className="text-sm font-bold text-white tracking-wide">Signing Out...</h3>
+              <p className="text-xs text-slate-400 mt-1">Clearing secure ERP session</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLoginPage || isPublicLandingPage ? (
+        children
+      ) : isLoading ? (
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-3">
+            <div className="size-8 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+              Loading Sara Textile ERP...
+            </span>
+          </div>
+        </div>
+      ) : (
+        <SidebarProvider>
+          <div className="flex min-h-screen bg-background font-sans text-foreground antialiased selection:bg-blue-500/20 selection:text-blue-700">
+            <Sidebar />
+            <MainContent>{children}</MainContent>
+          </div>
+        </SidebarProvider>
+      )}
+    </>
   )
 }
 

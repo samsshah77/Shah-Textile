@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 
 export default function HomePage() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, logout, isLoggingOut } = useAuth()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -187,6 +187,33 @@ export default function HomePage() {
             font-size: 0.82rem;
             gap: 0.35rem;
           }
+          .nav-logout-btn {
+            padding: 0.42rem 0.65rem;
+            font-size: 0.78rem;
+          }
+        }
+
+        .nav-logout-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.55rem 0.85rem;
+          background: rgba(225, 29, 72, 0.15);
+          border: 1px solid rgba(225, 29, 72, 0.4);
+          color: #fda4af;
+          border-radius: 4px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          letter-spacing: 0.02em;
+          transition: all 0.2s var(--ease);
+          backdrop-filter: blur(8px);
+          white-space: nowrap;
+          cursor: pointer;
+        }
+        .nav-logout-btn:hover {
+          background: #e11d48;
+          border-color: #e11d48;
+          color: #ffffff;
         }
 
         /* —— Hero —— */
@@ -743,27 +770,42 @@ export default function HomePage() {
             <li><a href="#parts">Spares &amp; Looms</a></li>
             <li><a href="#contact">Contact</a></li>
           </ul>
-          <Link
-            href={isLoggedIn ? '/floor/production' : '/login'}
-            className="nav-portal-btn"
-          >
-            {isLoggedIn ? (
-              <>
+          {isLoggedIn ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Link
+                href="/floor/production"
+                className="nav-portal-btn"
+                title="Go to Sara Textile ERP Workspace"
+              >
                 <span className="nav-dot" style={{ width: 6, height: 6, margin: 0 }} />
                 <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
                 </svg>
                 Staff ERP
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1"/>
+              </Link>
+              <button
+                onClick={() => logout('/')}
+                disabled={isLoggingOut}
+                title="Sign Out of ERP"
+                className="nav-logout-btn"
+              >
+                <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                 </svg>
-                Login
-              </>
-            )}
-          </Link>
+                <span>Logout</span>
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="nav-portal-btn"
+            >
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1"/>
+              </svg>
+              Login
+            </Link>
+          )}
         </div>
       </nav>
 
@@ -970,26 +1012,30 @@ export default function HomePage() {
       <footer>
         <div className="wrap">
           <span><strong>Sara Textiles Weaving</strong> — greige, electronics, spares &amp; used looms</span>
-          <Link
-            className="footer-portal-link"
-            href={isLoggedIn ? '/floor/production' : '/login'}
-          >
-            {isLoggedIn ? (
-              <>
+          {isLoggedIn ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <Link className="footer-portal-link" href="/floor/production">
                 <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
                 </svg>
                 Staff ERP &rarr;
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1"/>
-                </svg>
-                Login &rarr;
-              </>
-            )}
-          </Link>
+              </Link>
+              <button
+                onClick={() => logout('/')}
+                disabled={isLoggingOut}
+                style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <Link className="footer-portal-link" href="/login">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1"/>
+              </svg>
+              Login &rarr;
+            </Link>
+          )}
           <span>saratextilesweaving.com</span>
         </div>
       </footer>

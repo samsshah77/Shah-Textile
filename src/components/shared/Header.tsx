@@ -11,6 +11,7 @@ import {
   Calculator,
   DollarSign,
   LogOut,
+  Loader2,
   ChevronDown,
   ShieldCheck,
   User as UserIcon,
@@ -40,6 +41,7 @@ function HeaderContent() {
     canViewAccounts,
     isEditModeEnabled,
     toggleEditMode,
+    isLoggingOut,
     logout,
   } = useAuth()
 
@@ -268,12 +270,17 @@ function HeaderContent() {
                   <button
                     onClick={() => {
                       setMenuOpen(false)
-                      logout()
+                      logout('/login')
                     }}
-                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                    disabled={isLoggingOut}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <LogOut className="size-4" />
-                    <span>Sign Out of ERP</span>
+                    {isLoggingOut ? (
+                      <Loader2 className="size-4 animate-spin text-rose-600" />
+                    ) : (
+                      <LogOut className="size-4" />
+                    )}
+                    <span>{isLoggingOut ? 'Signing Out...' : 'Sign Out of ERP'}</span>
                   </button>
                 </div>
               </div>

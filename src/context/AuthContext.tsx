@@ -8,8 +8,9 @@ interface AuthContextType {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
+  isLoggingOut: boolean
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  logout: () => Promise<void>
+  logout: (redirectTo?: string) => Promise<void>
   refreshUser: () => Promise<void>
   // Role helpers
   isAdmin: boolean
@@ -61,6 +62,7 @@ const DEFAULT_STAFF = [
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isEditModeEnabled, setIsEditModeEnabled] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
@@ -74,6 +76,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshUser = async () => {
+    // If arriving from explicit logout, bypass restoring user from storage
+    if (typeof window !== 'undefined' && window.location.search.includes('logout=true')) {
+      localStorage.removeItem('sara_user_session')
+      setUser(null)
+      setIsLoading(false)
+      return
+    }
+
     try {
       const res = await fetch('/api/auth/me')
       if (res.ok) {
@@ -184,18 +194,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const logout = async () => {
+  const logout = async (redirectTo: string = '/login') => {
+    setIsLoggingOut(true)
     try {
-      await fetch('/api/auth/logout', { method: 'POST' })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3500)
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        signal: controller.signal,
+      }).catch((e) => console.warn('Logout server request error:', e))
+      clearTimeout(timeoutId)
     } catch (err) {
       console.error('Logout error:', err)
     } finally {
-      setUser(null)
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('sara_user_session')
+        try {
+          localStorage.removeItem('sara_user_session')
+          sessionStorage.clear()
+          document.cookie = 'sara_auth_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0;'
+        } catch (e) {
+          console.warn('Storage cleanup error:', e)
+        }
       }
+      setUser(null)
       setIsEditModeEnabled(false)
-      router.replace('/login')
+
+      // Smooth feedback delay, then clean hard reload to clear router memory & force clean target page
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.replace(`${redirectTo}?logout=true`)
+        }
+      }, 450)
     }
   }
 
@@ -217,6 +246,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
+        isLoggingOut,
         login,
         logout,
         refreshUser,

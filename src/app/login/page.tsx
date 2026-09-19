@@ -27,13 +27,15 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  const isLogoutAction = searchParams.get('logout') === 'true'
+
   // Immediately redirect if already authenticated (prevents Back button returning to login)
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (!isLogoutAction && !isLoading && isAuthenticated) {
       const redirectPath = searchParams.get('redirect') || '/floor/production'
       router.replace(redirectPath)
     }
-  }, [isLoading, isAuthenticated, router, searchParams])
+  }, [isLoading, isAuthenticated, router, searchParams, isLogoutAction])
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
 

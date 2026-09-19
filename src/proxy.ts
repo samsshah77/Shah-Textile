@@ -44,6 +44,23 @@ async function handleAuthRouting(req: NextRequest) {
     }
   }
 
+  // 0. Explicit logout signal: immediately clear cookie and redirect cleanly without auth bounce
+  if (req.nextUrl.searchParams.get('logout') === 'true') {
+    const cleanUrl = req.nextUrl.clone()
+    cleanUrl.searchParams.delete('logout')
+    const res = NextResponse.redirect(cleanUrl)
+    res.cookies.set('sara_auth_token', '', {
+      path: '/',
+      maxAge: 0,
+      expires: new Date(0),
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    })
+    res.cookies.delete('sara_auth_token')
+    return res
+  }
+
   // 4. If unauthenticated and trying to access a protected page -> Redirect to /login
   if (!userPayload && !isPublicRoute) {
     const loginUrl = new URL('/login', req.url)
