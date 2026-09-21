@@ -21,12 +21,20 @@ interface NavTree {
 
 const FLOOR_ITEMS: NavLeaf[] = [
   {
+    title: 'Daily Entry',
+    href: '/floor/production?tab=entry',
+    icon: 'bi-pencil-square',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' &&
+      (sp.get('tab') === 'entry' || sp.get('tab') === 'daily'),
+  },
+  {
     title: 'Production Sheet',
     href: '/floor/production',
     icon: 'bi-clipboard-data',
     activeCheck: (p, sp) =>
       p === '/floor/production' &&
-      (!sp.get('tab') || sp.get('tab') === 'sheet' || sp.get('tab') === 'daily'),
+      (!sp.get('tab') || sp.get('tab') === 'sheet'),
   },
   {
     title: 'Looms',
@@ -49,6 +57,14 @@ const FLOOR_ITEMS: NavLeaf[] = [
     activeCheck: (p, sp) =>
       p === '/floor/production' &&
       (sp.get('tab') === 'yarn' || sp.get('tab') === 'weft-stock'),
+  },
+  {
+    title: 'Quality',
+    href: '/floor/production?tab=quality',
+    icon: 'bi-tags',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' &&
+      (sp.get('tab') === 'quality' || sp.get('tab') === 'qualities'),
   },
   {
     title: 'Delivery Challan',

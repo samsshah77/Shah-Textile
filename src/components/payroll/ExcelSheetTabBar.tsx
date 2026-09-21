@@ -177,20 +177,28 @@ export const SALARY_EXCEL_SHEETS: SheetTabInfo[] = [
 export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
   {
     sheetNumber: 1,
+    name: 'Daily Entry',
+    href: '/floor/production?tab=entry',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' &&
+      (sp.get('tab') === 'entry' || sp.get('tab') === 'daily'),
+  },
+  {
+    sheetNumber: 2,
     name: 'Production Sheet',
     href: '/floor/production',
     activeCheck: (p, sp) =>
       p === '/floor/production' &&
-      (!sp.get('tab') || sp.get('tab') === 'sheet' || sp.get('tab') === 'daily'),
+      (!sp.get('tab') || sp.get('tab') === 'sheet'),
   },
   {
-    sheetNumber: 2,
+    sheetNumber: 3,
     name: 'Looms',
     href: '/floor/production?tab=looms',
     activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'looms',
   },
   {
-    sheetNumber: 3,
+    sheetNumber: 4,
     name: 'Beams',
     href: '/floor/production?tab=beams',
     activeCheck: (p, sp) =>
@@ -198,12 +206,20 @@ export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
       (sp.get('tab') === 'beams' || sp.get('tab') === 'beam-stock'),
   },
   {
-    sheetNumber: 4,
+    sheetNumber: 5,
     name: 'Yarn Stock',
     href: '/floor/production?tab=yarn',
     activeCheck: (p, sp) =>
       p === '/floor/production' &&
       (sp.get('tab') === 'yarn' || sp.get('tab') === 'weft-stock'),
+  },
+  {
+    sheetNumber: 6,
+    name: 'Quality',
+    href: '/floor/production?tab=quality',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' &&
+      (sp.get('tab') === 'quality' || sp.get('tab') === 'qualities'),
   },
 ]
 

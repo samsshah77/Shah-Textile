@@ -5,9 +5,11 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable } from '@/components/floor/ProductionSheetTable'
+import { FloorEntryTable } from '@/components/floor/FloorEntryTable'
 import { LoomMasterTable } from '@/components/floor/LoomMasterTable'
 import { BeamMasterTable } from '@/components/floor/BeamMasterTable'
 import { YarnStockTable } from '@/components/floor/YarnStockTable'
+import { QualityMasterTable } from '@/components/floor/QualityMasterTable'
 import { ProductionDateFilterBar } from '@/components/floor/ProductionDateFilterBar'
 import { NewDayProductionModal } from '@/components/floor/NewDayProductionModal'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -18,12 +20,14 @@ function ProductionWorkspaceContent() {
   const rawTab = searchParams.get('tab') || 'sheet'
   const currentTab =
     rawTab === 'daily'
-      ? 'sheet'
+      ? 'entry'
       : rawTab === 'beam-stock'
         ? 'beams'
         : rawTab === 'weft-stock'
           ? 'yarn'
-          : rawTab
+          : rawTab === 'qualities'
+            ? 'quality'
+            : rawTab
 
   const { isAccountant, canEditProduction } = useAuth()
   const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
@@ -32,12 +36,12 @@ function ProductionWorkspaceContent() {
     looms,
     beams,
     yarn,
+    qualities,
     entries,
     selectedDate,
     setSelectedDate,
     selectedMonth,
     setSelectedMonth,
-    updateEntry,
     updateLoom,
     addLoom,
     updateBeam,
@@ -46,7 +50,10 @@ function ProductionWorkspaceContent() {
     unmountBeam,
     updateYarn,
     addYarn,
+    updateQuality,
+    addQuality,
     startNewDay,
+    updateEntry,
   } = useProductionGrid()
 
   const getFormattedDateLabel = (dateStr: string) => {
@@ -63,13 +70,15 @@ function ProductionWorkspaceContent() {
   }
 
   const tabTitle: Record<string, string> = {
+    entry: 'Daily Entry',
     sheet: 'Production Sheet',
     looms: 'Looms',
     beams: 'Beams',
     yarn: 'Yarn Stock',
+    quality: 'Quality',
   }
 
-  const showDateBar = currentTab === 'sheet'
+  const showDateBar = currentTab === 'sheet' || currentTab === 'entry'
 
   return (
     <div className="pb-3">
@@ -105,23 +114,26 @@ function ProductionWorkspaceContent() {
 
       {isAccountant && (
         <div className="alert alert-warning py-2" role="alert">
-          <strong>View-Only (Accountant):</strong> Production editing is restricted to Floor
-          Incharge &amp; Admin.
+          <strong>View-Only (Accountant):</strong> Masters &amp; Daily Entry are restricted.
+          Production Sheet is auto-calculated from masters + floor entry.
         </div>
       )}
 
-      {currentTab === 'sheet' && (
-        <ProductionSheetTable
+      {currentTab === 'entry' && (
+        <FloorEntryTable
           entries={entries}
-          yarnOptions={yarn}
           onUpdateEntry={updateEntry}
-          readOnly={!canEditProduction}
+          canEdit={canEditProduction}
         />
       )}
+
+      {currentTab === 'sheet' && <ProductionSheetTable entries={entries} />}
 
       {currentTab === 'looms' && (
         <LoomMasterTable
           looms={looms}
+          qualities={qualities}
+          yarn={yarn}
           onUpdate={updateLoom}
           onAdd={addLoom}
           readOnly={!canEditProduction}
@@ -145,6 +157,15 @@ function ProductionWorkspaceContent() {
           yarn={yarn}
           onUpdate={updateYarn}
           onAdd={addYarn}
+          readOnly={!canEditProduction}
+        />
+      )}
+
+      {currentTab === 'quality' && (
+        <QualityMasterTable
+          qualities={qualities}
+          onUpdate={updateQuality}
+          onAdd={addQuality}
           readOnly={!canEditProduction}
         />
       )}

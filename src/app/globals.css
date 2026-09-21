@@ -926,3 +926,74 @@ body.auth-route .primary-button {
   .permission-resource { grid-template-columns: 1fr; gap: 10px; }
   .user-row { grid-template-columns: 44px 1fr auto; }
 }
+
+/* Avatar image upload (loom picture) */
+.avatar-upload {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 2px solid var(--bs-border-color, #dee2e6);
+  border-radius: 50%;
+  overflow: hidden;
+  background: #f1f3f5;
+  color: #6c757d;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.avatar-upload:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+.avatar-upload img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.avatar-upload__placeholder {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.avatar-upload__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 110, 253, 0.72);
+  color: #fff;
+  font-size: 1rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.avatar-upload:not(:disabled):hover .avatar-upload__overlay,
+.avatar-upload:not(:disabled):focus-visible .avatar-upload__overlay {
+  opacity: 1;
+}
+.avatar-upload:not(:disabled):focus-visible {
+  outline: 2px solid var(--bs-primary, #0d6efd);
+  outline-offset: 2px;
+}
+
+/* Master grid cards */
+.master-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+.master-grid-card {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.master-grid-card .form-control,
+.master-grid-card .form-select {
+  width: 100%;
+}

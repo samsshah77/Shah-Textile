@@ -1,7 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { BeamMaster, LoomMaster } from '@/services/productionMastersService'
+import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
+import { ResizableTh } from '@/components/shared/ResizableTh'
+import { useResizableColumns } from '@/hooks/useResizableColumns'
+
+const DEFAULT_WIDTHS: Record<string, number> = {
+  beam: 100,
+  warp: 120,
+  reed: 72,
+  width: 72,
+  threads: 90,
+  length: 90,
+  machine: 110,
+  fill: 120,
+  mounted: 130,
+}
 
 interface BeamMasterTableProps {
   beams: BeamMaster[]
@@ -23,127 +38,280 @@ export function BeamMasterTable({
   readOnly,
 }: BeamMasterTableProps) {
   const [newBeamNo, setNewBeamNo] = useState('')
+  const [mode, setMode] = useState<TableGridMode>('table')
+  const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
+    'sara_beam_col_widths_v1',
+    DEFAULT_WIDTHS
+  )
+  const tableMinWidth = useMemo(
+    () => Object.values(widths).reduce((sum, w) => sum + w, 0),
+    [widths]
+  )
+  const activeLooms = looms.filter((l) => l.isActive)
+
+  const addBeam = () => {
+    if (!newBeamNo.trim()) return
+    onAdd({
+      beamNo: newBeamNo.trim(),
+      warp: '20/1',
+      reed: 60,
+      width: 66,
+      loomType: 'G6200',
+      fillStatus: 'FULL',
+    })
+    setNewBeamNo('')
+  }
+
+  const renderMountSelect = (b: BeamMaster) => (
+    <select
+      className="form-select form-select-sm"
+      style={{ width: '100%', minWidth: 0 }}
+      value={b.usedInLoom || ''}
+      disabled={readOnly || b.fillStatus === 'EMPTY'}
+      onChange={(e) => {
+        const v = e.target.value
+        if (!v) onUnmount(b.beamNo)
+        else onMount(b.beamNo, Number(v))
+      }}
+    >
+      <option value="">— Not mounted —</option>
+      {activeLooms.map((l) => (
+        <option key={l.loomNumber} value={l.loomNumber}>
+          Loom {l.loomNumber}
+        </option>
+      ))}
+    </select>
+  )
 
   return (
     <div className="card">
       <div className="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
-        <h3 className="card-title mb-0">Beams</h3>
-        {!readOnly && (
-          <div className="d-flex gap-2 align-items-center">
-            <input
-              className="form-control form-control-sm"
-              style={{ width: 120 }}
-              placeholder="Beam No"
-              value={newBeamNo}
-              onChange={(e) => setNewBeamNo(e.target.value)}
-            />
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              disabled={!newBeamNo.trim()}
-              onClick={() => {
-                onAdd({ beamNo: newBeamNo.trim(), warp: '', loomType: 'G6200' })
-                setNewBeamNo('')
-              }}
-            >
-              <i className="bi bi-plus-lg me-1" />
-              Add Beam
+        <div>
+          <h3 className="card-title mb-0">Beam Inventory</h3>
+          <small className="text-secondary">Drag column edges to resize</small>
+        </div>
+        <div className="d-flex flex-wrap gap-2 align-items-center">
+          <ViewModeToggle mode={mode} onChange={setMode} />
+          {mode === 'table' && (
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
+              Reset columns
             </button>
-          </div>
-        )}
+          )}
+          {!readOnly && (
+            <>
+              <input
+                className="form-control form-control-sm"
+                style={{ minWidth: 120, width: 140 }}
+                placeholder="Beam Identity"
+                value={newBeamNo}
+                onChange={(e) => setNewBeamNo(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                disabled={!newBeamNo.trim()}
+                onClick={addBeam}
+              >
+                <i className="bi bi-plus-lg me-1" />
+                Add Beam
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      <div className="card-body p-0 table-responsive">
-        <table className="table table-sm table-hover mb-0 align-middle">
-          <thead className="table-light">
-            <tr>
-              <th>Beam No</th>
-              <th>Warp</th>
-              <th>Reed/Width</th>
-              <th>Ends</th>
-              <th>Length</th>
-              <th>Loom Type</th>
-              <th>Status</th>
-              <th>Mounted Loom</th>
-            </tr>
-          </thead>
-          <tbody>
-            {beams.map((b) => (
-              <tr key={b.beamNo}>
-                <td className="fw-semibold">{b.beamNo}</td>
-                <td>
-                  <input
-                    className="form-control form-control-sm"
-                    value={b.warp}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(b.beamNo, { warp: e.target.value })}
-                  />
-                </td>
-                <td style={{ width: 100 }}>
-                  <input
-                    className="form-control form-control-sm"
-                    value={b.reedWidth}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(b.beamNo, { reedWidth: e.target.value })}
-                  />
-                </td>
-                <td style={{ width: 90 }}>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    value={b.ends}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(b.beamNo, { ends: Number(e.target.value) || 0 })}
-                  />
-                </td>
-                <td style={{ width: 90 }}>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    value={b.length}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(b.beamNo, { length: Number(e.target.value) || 0 })}
-                  />
-                </td>
-                <td style={{ width: 110 }}>
-                  <select
-                    className="form-select form-select-sm"
-                    value={b.loomType}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(b.beamNo, { loomType: e.target.value })}
-                  >
-                    <option value="G6200">G6200</option>
-                    <option value="G6300">G6300</option>
-                    <option value="PU">PU</option>
-                  </select>
-                </td>
-                <td>
-                  <span className="badge text-bg-secondary">{b.status}</span>
-                </td>
-                <td style={{ minWidth: 140 }}>
-                  <select
-                    className="form-select form-select-sm"
-                    value={b.usedInLoom || ''}
-                    disabled={readOnly}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      if (!v) onUnmount(b.beamNo)
-                      else onMount(b.beamNo, Number(v))
-                    }}
-                  >
-                    <option value="">— In stock —</option>
-                    {looms
-                      .filter((l) => l.isActive)
-                      .map((l) => (
-                        <option key={l.loomNumber} value={l.loomNumber}>
-                          Loom {l.loomNumber}
-                        </option>
-                      ))}
-                  </select>
-                </td>
+
+      {mode === 'grid' ? (
+        <div className="master-grid">
+          {beams.map((b) => (
+            <div key={b.beamNo} className="master-grid-card">
+              <div className="fw-semibold">Beam Identity {b.beamNo}</div>
+              <input
+                className="form-control form-control-sm"
+                value={b.warp}
+                disabled={readOnly}
+                placeholder="Yarn Warp"
+                onChange={(e) => onUpdate(b.beamNo, { warp: e.target.value })}
+              />
+              <div className="d-flex gap-2">
+                <input
+                  type="number"
+                  className="form-control form-control-sm"
+                  value={b.reed}
+                  disabled={readOnly}
+                  title="Reed"
+                  onChange={(e) => onUpdate(b.beamNo, { reed: Number(e.target.value) || 0 })}
+                />
+                <input
+                  type="number"
+                  className="form-control form-control-sm"
+                  value={b.width}
+                  disabled={readOnly}
+                  title="Width"
+                  onChange={(e) => onUpdate(b.beamNo, { width: Number(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="small text-secondary">
+                Total Thread: <strong>{b.totalThreads.toLocaleString()}</strong>
+              </div>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                value={b.length}
+                disabled={readOnly}
+                title="Length (meters)"
+                onChange={(e) => onUpdate(b.beamNo, { length: Number(e.target.value) || 0 })}
+              />
+              <select
+                className="form-select form-select-sm"
+                value={b.loomType}
+                disabled={readOnly}
+                onChange={(e) => onUpdate(b.beamNo, { loomType: e.target.value })}
+              >
+                <option value="G6200">G6200</option>
+                <option value="G6300">G6300</option>
+                <option value="PU">PU</option>
+              </select>
+              <select
+                className="form-select form-select-sm"
+                value={b.fillStatus}
+                disabled={readOnly || !!b.usedInLoom}
+                onChange={(e) =>
+                  onUpdate(b.beamNo, { fillStatus: e.target.value as 'EMPTY' | 'FULL' })
+                }
+              >
+                <option value="EMPTY">Empty beam</option>
+                <option value="FULL">Full beam</option>
+              </select>
+              {renderMountSelect(b)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div
+          className="card-body p-0"
+          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+        >
+          <table
+            className="table table-sm table-hover mb-0 align-middle text-nowrap"
+            style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
+          >
+            <colgroup>
+              {Object.keys(DEFAULT_WIDTHS).map((key) => (
+                <col key={key} style={{ width: widths[key] }} />
+              ))}
+            </colgroup>
+            <thead className="table-light">
+              <tr>
+                <ResizableTh columnKey="beam" width={widths.beam} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Beam Identity
+                </ResizableTh>
+                <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Yarn Warp
+                </ResizableTh>
+                <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Reed
+                </ResizableTh>
+                <ResizableTh columnKey="width" width={widths.width} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Width
+                </ResizableTh>
+                <ResizableTh columnKey="threads" width={widths.threads} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Total Thread
+                </ResizableTh>
+                <ResizableTh columnKey="length" width={widths.length} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Length (meters)
+                </ResizableTh>
+                <ResizableTh columnKey="machine" width={widths.machine} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Machine Type
+                </ResizableTh>
+                <ResizableTh columnKey="fill" width={widths.fill} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Empty / Full
+                </ResizableTh>
+                <ResizableTh columnKey="mounted" width={widths.mounted} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Mounted Loom
+                </ResizableTh>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {beams.map((b) => (
+                <tr key={b.beamNo}>
+                  <td className="fw-semibold px-2">{b.beamNo}</td>
+                  <td className="px-1">
+                    <input
+                      className="form-control form-control-sm"
+                      style={{ width: '100%', minWidth: 0 }}
+                      value={b.warp}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdate(b.beamNo, { warp: e.target.value })}
+                    />
+                  </td>
+                  <td className="px-1">
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      style={{ width: '100%', minWidth: 0 }}
+                      value={b.reed}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdate(b.beamNo, { reed: Number(e.target.value) || 0 })}
+                    />
+                  </td>
+                  <td className="px-1">
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      style={{ width: '100%', minWidth: 0 }}
+                      value={b.width}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdate(b.beamNo, { width: Number(e.target.value) || 0 })}
+                    />
+                  </td>
+                  <td className="fw-semibold text-end pe-3">{b.totalThreads.toLocaleString()}</td>
+                  <td className="px-1">
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      style={{ width: '100%', minWidth: 0 }}
+                      value={b.length}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdate(b.beamNo, { length: Number(e.target.value) || 0 })}
+                    />
+                  </td>
+                  <td className="px-1">
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: '100%', minWidth: 0 }}
+                      value={b.loomType}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdate(b.beamNo, { loomType: e.target.value })}
+                    >
+                      <option value="G6200">G6200</option>
+                      <option value="G6300">G6300</option>
+                      <option value="PU">PU</option>
+                    </select>
+                  </td>
+                  <td className="px-1">
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: '100%', minWidth: 0 }}
+                      value={b.fillStatus}
+                      disabled={readOnly || !!b.usedInLoom}
+                      onChange={(e) =>
+                        onUpdate(b.beamNo, { fillStatus: e.target.value as 'EMPTY' | 'FULL' })
+                      }
+                    >
+                      <option value="EMPTY">Empty beam</option>
+                      <option value="FULL">Full beam</option>
+                    </select>
+                  </td>
+                  <td className="px-1">{renderMountSelect(b)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="card-footer small text-secondary">
+        Total Thread / Beam = Reed × Width (automatic)
       </div>
     </div>
   )

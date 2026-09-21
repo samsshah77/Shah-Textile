@@ -7,6 +7,7 @@ import {
   LoomMaster,
   BeamMaster,
   YarnMaster,
+  QualityMaster,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY, PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
 
@@ -14,18 +15,23 @@ export function useProductionGrid() {
   const [looms, setLooms] = useState<LoomMaster[]>([])
   const [beams, setBeams] = useState<BeamMaster[]>([])
   const [yarn, setYarn] = useState<YarnMaster[]>([])
+  const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDateState] = useState<string>(PRODUCTION_TODAY)
   const [selectedMonth, setSelectedMonth] = useState<string>(PRODUCTION_TODAY_MONTH)
 
-  const refresh = useCallback((dateStr?: string) => {
-    const d = dateStr || selectedDate
-    setLooms(productionMastersService.getLooms())
-    setBeams(productionMastersService.getBeams())
-    setYarn(productionMastersService.getYarn())
-    setEntries(productionMastersService.buildSheetForDate(d))
-  }, [selectedDate])
+  const refresh = useCallback(
+    (dateStr?: string) => {
+      const d = dateStr || selectedDate
+      setLooms(productionMastersService.getLooms())
+      setBeams(productionMastersService.getBeams())
+      setYarn(productionMastersService.getYarn())
+      setQualities(productionMastersService.getQualities())
+      setEntries(productionMastersService.buildSheetForDate(d))
+    },
+    [selectedDate]
+  )
 
   useEffect(() => {
     setLoading(true)
@@ -46,9 +52,8 @@ export function useProductionGrid() {
   )
 
   const updateEntry = useCallback(
-    async (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
-      const next = productionMastersService.updateSheetEntry(selectedDate, loomNumber, patch)
-      setEntries(next)
+    (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
+      setEntries(productionMastersService.updateSheetEntry(selectedDate, loomNumber, patch))
     },
     [selectedDate]
   )
@@ -106,6 +111,18 @@ export function useProductionGrid() {
     setYarn(productionMastersService.addYarn())
   }, [])
 
+  const updateQuality = useCallback(
+    (id: string, patch: Partial<QualityMaster>) => {
+      setQualities(productionMastersService.updateQuality(id, patch))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const addQuality = useCallback(() => {
+    setQualities(productionMastersService.addQuality())
+  }, [])
+
   const startNewDay = useCallback(
     async (targetDate: string) => {
       setLoading(true)
@@ -125,6 +142,7 @@ export function useProductionGrid() {
     looms,
     beams,
     yarn,
+    qualities,
     entries,
     loading,
     selectedDate,
@@ -140,6 +158,8 @@ export function useProductionGrid() {
     unmountBeam,
     updateYarn,
     addYarn,
+    updateQuality,
+    addQuality,
     startNewDay,
   }
 }

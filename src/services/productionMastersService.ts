@@ -1,24 +1,44 @@
 import { LoomCategory, LoomStatus } from '@/types/loom'
-import { BeamStockItem, calculateProductionMetrics, DailyLoomProductionEntry } from '@/types/production'
+import { calculateProductionMetrics, DailyLoomProductionEntry } from '@/types/production'
 import { INITIAL_34_LOOMS_CONFIG } from '@/constants/looms-init'
 import { getExcelBeamStock, getExcelWeftStock } from '@/data/productionData'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 
-const KEY_LOOMS = 'sara_textile_loom_master_v7'
-const KEY_BEAMS = 'sara_textile_beam_master_v7'
-const KEY_YARN = 'sara_textile_yarn_master_v7'
-const KEY_SHEET = 'sara_textile_production_sheet_v7'
+/** 1 kg = 2.2046 lbs → kg = lbs / 2.2046 */
+export const LBS_PER_KG = 2.2046
+
+const KEY_LOOMS = 'sara_textile_loom_master_v8'
+const KEY_BEAMS = 'sara_textile_beam_master_v8'
+const KEY_YARN = 'sara_textile_yarn_master_v8'
+const KEY_QUALITY = 'sara_textile_quality_master_v8'
+const KEY_SHEET = 'sara_textile_production_sheet_v8'
 
 export interface LoomMaster {
   loomNumber: number
   name: string
   model: LoomCategory
   category: LoomCategory
+  year: number
+  pictureDataUrl: string
   defaultRpm: number
   shed: string
   isActive: boolean
   status: LoomStatus
-  defaultPick: number
+  qualityId: string | null
+  weftYarnId: string | null
+}
+
+export interface BeamMaster {
+  beamNo: string
+  warp: string
+  reed: number
+  width: number
+  totalThreads: number
+  length: number
+  loomType: string
+  fillStatus: 'EMPTY' | 'FULL'
+  usedInLoom: string | null
+  status: 'EMPTY' | 'FULL' | 'MOUNTED'
 }
 
 export interface YarnMaster {
@@ -28,14 +48,74 @@ export interface YarnMaster {
   receivedKg: number
   issuedKg: number
   balanceKg: number
+  receivedLbs: number
+  issuedLbs: number
+  balanceLbs: number
 }
 
-export type BeamMaster = BeamStockItem & {
-  status: 'IN_STOCK' | 'MOUNTED' | 'EXHAUSTED'
+export interface QualityMaster {
+  id: string
+  name: string
+  fabricType: string
+  warpYarn: string
+  weftYarn: string
+  reed: number
+  pick: number
+  widthInch: number
+  gsm: number
+}
+
+export function kgToLbs(kg: number) {
+  return Number((kg * LBS_PER_KG).toFixed(2))
+}
+
+export function lbsToKg(lbs: number) {
+  return Number((lbs / LBS_PER_KG).toFixed(2))
+}
+
+export function calcTotalThreads(reed: number, width: number) {
+  return Math.round((reed || 0) * (width || 0))
 }
 
 function isClient() {
   return typeof window !== 'undefined'
+}
+
+function withYarnWeights(partial: Partial<YarnMaster> & { yarnType: string; id: string }): YarnMaster {
+  const receivedKg = partial.receivedKg ?? (partial.receivedLbs != null ? lbsToKg(partial.receivedLbs) : 0)
+  const issuedKg = partial.issuedKg ?? (partial.issuedLbs != null ? lbsToKg(partial.issuedLbs) : 0)
+  const balanceKg = Number((receivedKg - issuedKg).toFixed(2))
+  return {
+    id: partial.id,
+    yarnType: partial.yarnType,
+    bags: partial.bags ?? 0,
+    receivedKg,
+    issuedKg,
+    balanceKg,
+    receivedLbs: kgToLbs(receivedKg),
+    issuedLbs: kgToLbs(issuedKg),
+    balanceLbs: kgToLbs(balanceKg),
+  }
+}
+
+function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster {
+  const reed = b.reed ?? 0
+  const width = b.width ?? 0
+  const usedInLoom = b.usedInLoom ?? null
+  const fillStatus = b.fillStatus || (usedInLoom ? 'FULL' : b.status === 'EMPTY' ? 'EMPTY' : 'FULL')
+  const status: BeamMaster['status'] = usedInLoom ? 'MOUNTED' : fillStatus
+  return {
+    beamNo: b.beamNo,
+    warp: b.warp || '',
+    reed,
+    width,
+    totalThreads: calcTotalThreads(reed, width),
+    length: b.length ?? 0,
+    loomType: b.loomType || 'G6200',
+    fillStatus,
+    usedInLoom,
+    status,
+  }
 }
 
 function seedLooms(): LoomMaster[] {
@@ -44,19 +124,33 @@ function seedLooms(): LoomMaster[] {
     name: `Loom ${l.loomNumber}`,
     model: l.category,
     category: l.category,
+    year: 2018 + (l.loomNumber % 6),
+    pictureDataUrl: '',
     defaultRpm: l.defaultRpm,
     shed: 'Main Floor',
     isActive: true,
     status: 'RUNNING' as LoomStatus,
-    defaultPick: 60,
+    qualityId: null,
+    weftYarnId: null,
   }))
 }
 
 function seedBeams(): BeamMaster[] {
-  return getExcelBeamStock().map((b) => ({
-    ...b,
-    status: b.usedInLoom ? 'MOUNTED' : 'IN_STOCK',
-  }))
+  return getExcelBeamStock().map((b) => {
+    const parts = String(b.reedWidth || '').split(/[xX/]/)
+    const reed = Number(parts[0]) || 60
+    const width = Number(parts[1]) || 66
+    return normalizeBeam({
+      beamNo: b.beamNo,
+      warp: b.warp,
+      reed,
+      width,
+      length: b.length,
+      loomType: b.loomType,
+      fillStatus: b.usedInLoom ? 'FULL' : 'FULL',
+      usedInLoom: b.usedInLoom,
+    })
+  })
 }
 
 function seedYarn(): YarnMaster[] {
@@ -64,15 +158,52 @@ function seedYarn(): YarnMaster[] {
   return cols.slice(0, 12).map((yarnType, i) => {
     const receivedKg = 800 + i * 40
     const issuedKg = 120 + i * 15
-    return {
+    return withYarnWeights({
       id: `yarn-${i + 1}`,
       yarnType,
       bags: Math.max(1, Math.round(receivedKg / 25)),
       receivedKg,
       issuedKg,
-      balanceKg: Number((receivedKg - issuedKg).toFixed(1)),
-    }
+    })
   })
+}
+
+function seedQualities(): QualityMaster[] {
+  return [
+    {
+      id: 'q-everest',
+      name: 'Everest',
+      fabricType: 'Suiting',
+      warpYarn: '20/1 Pv China',
+      weftYarn: '20/1 Pv China',
+      reed: 120,
+      pick: 60,
+      widthInch: 66,
+      gsm: 1.77,
+    },
+    {
+      id: 'q-parcopv',
+      name: 'PARCOPV',
+      fabricType: 'Suiting',
+      warpYarn: '20/1-Pv-China',
+      weftYarn: '20/1-Pv-China',
+      reed: 120,
+      pick: 60,
+      widthInch: 66,
+      gsm: 1.77,
+    },
+    {
+      id: 'q-silver',
+      name: 'SILVER-SHINE',
+      fabricType: 'Gabardine',
+      warpYarn: '45/1-Pv-China',
+      weftYarn: '45/1-Pv-China',
+      reed: 120,
+      pick: 95,
+      widthInch: 66,
+      gsm: 1.26,
+    },
+  ]
 }
 
 function loadJson<T>(key: string, fallback: () => T): T {
@@ -129,32 +260,31 @@ class ProductionMastersService {
       name: partial?.name || `Loom ${nextNum}`,
       model,
       category: model,
+      year: partial?.year ?? new Date().getFullYear(),
+      pictureDataUrl: partial?.pictureDataUrl || '',
       defaultRpm: partial?.defaultRpm ?? 340,
       shed: partial?.shed || 'Main Floor',
       isActive: partial?.isActive ?? true,
       status: partial?.status || 'RUNNING',
-      defaultPick: partial?.defaultPick ?? 60,
+      qualityId: partial?.qualityId ?? null,
+      weftYarnId: partial?.weftYarnId ?? null,
     })
     this.saveLooms(looms)
     return looms
   }
 
   getBeams(): BeamMaster[] {
-    return loadJson(KEY_BEAMS, seedBeams)
+    return loadJson(KEY_BEAMS, seedBeams).map((b) => normalizeBeam(b))
   }
 
   saveBeams(beams: BeamMaster[]) {
-    saveJson(KEY_BEAMS, beams)
+    saveJson(KEY_BEAMS, beams.map((b) => normalizeBeam(b)))
   }
 
   updateBeam(beamNo: string, patch: Partial<BeamMaster>): BeamMaster[] {
     const beams = this.getBeams().map((b) => {
       if (b.beamNo !== beamNo) return b
-      const next = { ...b, ...patch }
-      if (patch.usedInLoom !== undefined) {
-        next.status = patch.usedInLoom ? 'MOUNTED' : 'IN_STOCK'
-      }
-      return next
+      return normalizeBeam({ ...b, ...patch, beamNo })
     })
     this.saveBeams(beams)
     return beams
@@ -165,17 +295,18 @@ class ProductionMastersService {
     if (beams.some((b) => b.beamNo === partial.beamNo)) {
       throw new Error(`Beam ${partial.beamNo} already exists`)
     }
-    beams.push({
-      beamNo: partial.beamNo,
-      warp: partial.warp || '',
-      reedWidth: partial.reedWidth || '',
-      ends: partial.ends ?? 0,
-      length: partial.length ?? 0,
-      loomType: partial.loomType || 'G6200',
-      quantity: partial.quantity ?? 1,
-      usedInLoom: partial.usedInLoom ?? null,
-      status: partial.usedInLoom ? 'MOUNTED' : 'IN_STOCK',
-    })
+    beams.push(
+      normalizeBeam({
+        beamNo: partial.beamNo,
+        warp: partial.warp || '',
+        reed: partial.reed ?? 60,
+        width: partial.width ?? 66,
+        length: partial.length ?? 0,
+        loomType: partial.loomType || 'G6200',
+        fillStatus: partial.fillStatus || 'FULL',
+        usedInLoom: partial.usedInLoom ?? null,
+      })
+    )
     this.saveBeams(beams)
     return beams
   }
@@ -183,10 +314,10 @@ class ProductionMastersService {
   mountBeam(beamNo: string, loomNumber: number): BeamMaster[] {
     const beams = this.getBeams().map((b) => {
       if (b.usedInLoom === String(loomNumber) && b.beamNo !== beamNo) {
-        return { ...b, usedInLoom: null, status: 'IN_STOCK' as const }
+        return normalizeBeam({ ...b, usedInLoom: null, fillStatus: b.fillStatus || 'FULL' })
       }
       if (b.beamNo === beamNo) {
-        return { ...b, usedInLoom: String(loomNumber), status: 'MOUNTED' as const }
+        return normalizeBeam({ ...b, usedInLoom: String(loomNumber), fillStatus: 'FULL' })
       }
       return b
     })
@@ -195,25 +326,34 @@ class ProductionMastersService {
   }
 
   unmountBeam(beamNo: string): BeamMaster[] {
-    return this.updateBeam(beamNo, { usedInLoom: null, status: 'IN_STOCK' })
+    return this.updateBeam(beamNo, { usedInLoom: null })
   }
 
   getYarn(): YarnMaster[] {
-    return loadJson(KEY_YARN, seedYarn)
+    return loadJson(KEY_YARN, seedYarn).map((y) => withYarnWeights(y))
   }
 
   saveYarn(yarn: YarnMaster[]) {
-    saveJson(KEY_YARN, yarn)
+    saveJson(KEY_YARN, yarn.map((y) => withYarnWeights(y)))
   }
 
   updateYarn(id: string, patch: Partial<YarnMaster>): YarnMaster[] {
     const yarn = this.getYarn().map((y) => {
       if (y.id !== id) return y
-      const next = { ...y, ...patch }
-      const received = next.receivedKg ?? 0
-      const issued = next.issuedKg ?? 0
-      next.balanceKg = Number((received - issued).toFixed(1))
-      return next
+      const merged = { ...y, ...patch }
+      if (patch.receivedLbs != null && patch.receivedKg == null) {
+        merged.receivedKg = lbsToKg(patch.receivedLbs)
+      }
+      if (patch.issuedLbs != null && patch.issuedKg == null) {
+        merged.issuedKg = lbsToKg(patch.issuedLbs)
+      }
+      if (patch.receivedKg != null) {
+        merged.receivedLbs = kgToLbs(patch.receivedKg)
+      }
+      if (patch.issuedKg != null) {
+        merged.issuedLbs = kgToLbs(patch.issuedKg)
+      }
+      return withYarnWeights(merged)
     })
     this.saveYarn(yarn)
     return yarn
@@ -221,63 +361,98 @@ class ProductionMastersService {
 
   addYarn(partial?: Partial<YarnMaster>): YarnMaster[] {
     const yarn = this.getYarn()
-    const receivedKg = partial?.receivedKg ?? 0
-    const issuedKg = partial?.issuedKg ?? 0
-    yarn.push({
-      id: `yarn-${Date.now()}`,
-      yarnType: partial?.yarnType || 'New Yarn',
-      bags: partial?.bags ?? 0,
-      receivedKg,
-      issuedKg,
-      balanceKg: Number((receivedKg - issuedKg).toFixed(1)),
-    })
+    yarn.push(
+      withYarnWeights({
+        id: `yarn-${Date.now()}`,
+        yarnType: partial?.yarnType || 'New Yarn',
+        bags: partial?.bags ?? 0,
+        receivedKg: partial?.receivedKg ?? 0,
+        issuedKg: partial?.issuedKg ?? 0,
+      })
+    )
     this.saveYarn(yarn)
     return yarn
+  }
+
+  getQualities(): QualityMaster[] {
+    return loadJson(KEY_QUALITY, seedQualities)
+  }
+
+  saveQualities(qualities: QualityMaster[]) {
+    saveJson(KEY_QUALITY, qualities)
+  }
+
+  updateQuality(id: string, patch: Partial<QualityMaster>): QualityMaster[] {
+    const qualities = this.getQualities().map((q) => (q.id === id ? { ...q, ...patch } : q))
+    this.saveQualities(qualities)
+    return qualities
+  }
+
+  addQuality(partial?: Partial<QualityMaster>): QualityMaster[] {
+    const qualities = this.getQualities()
+    qualities.push({
+      id: `q-${Date.now()}`,
+      name: partial?.name || 'New Quality',
+      fabricType: partial?.fabricType || 'Suiting',
+      warpYarn: partial?.warpYarn || '20/1',
+      weftYarn: partial?.weftYarn || '20/1',
+      reed: partial?.reed ?? 120,
+      pick: partial?.pick ?? 60,
+      widthInch: partial?.widthInch ?? 66,
+      gsm: partial?.gsm ?? 0,
+    })
+    this.saveQualities(qualities)
+    return qualities
   }
 
   private sheetKey(dateStr: string) {
     return `${KEY_SHEET}_${dateStr}`
   }
 
-  private loadSheetDay(dateStr: string): DailyLoomProductionEntry[] | null {
-    if (!isClient()) return null
-    try {
-      const raw = localStorage.getItem(this.sheetKey(dateStr))
-      if (raw) return JSON.parse(raw) as DailyLoomProductionEntry[]
-    } catch {
-      // ignore
-    }
-    return null
+  private loadSheetDay(dateStr: string): DailyLoomProductionEntry[] {
+    return loadJson(this.sheetKey(dateStr), () => [] as DailyLoomProductionEntry[])
   }
 
-  private saveSheetDay(dateStr: string, entries: DailyLoomProductionEntry[]) {
-    saveJson(this.sheetKey(dateStr), entries)
-  }
-
-  /** Build sheet rows from masters; preserve meters already entered for the date. */
+  /**
+   * Build sheet from masters + preserved Actual A/B & Roller Hours.
+   * Excel formulas:
+   *   100% Running = RPM/Pick * 60/39.38 * RollerHours
+   *   A+B = ActualA + ActualB
+   *   Eff Running = (A+B) / 100%Running * 100
+   *   Loss Running = 100%Running - (A+B)
+   *   100% 24h = RPM/Pick * 60/39.38 * 24
+   *   Eff 24h = (A+B) / 100%24h * 100
+   *   Loss 24h = 100%24h - (A+B)
+   */
   buildSheetForDate(dateStr: string = PRODUCTION_TODAY): DailyLoomProductionEntry[] {
     const looms = this.getLooms().filter((l) => l.isActive)
     const beams = this.getBeams()
-    const yarn = this.getYarn()
-    const existing = this.loadSheetDay(dateStr) || []
-    const byLoom = new Map(existing.map((e) => [e.loomNumber, e]))
-    const defaultWeft = yarn[0]?.yarnType || ''
+    const yarns = this.getYarn()
+    const qualities = this.getQualities()
+    const prevByLoom = new Map(this.loadSheetDay(dateStr).map((e) => [e.loomNumber, e]))
 
     const entries = looms.map((loom) => {
-      const prev = byLoom.get(loom.loomNumber)
+      const prev = prevByLoom.get(loom.loomNumber)
       const beam = beams.find((b) => b.usedInLoom === String(loom.loomNumber))
-      const pick = loom.defaultPick || 60
-      const reed = beam?.reedWidth
-        ? Number(String(beam.reedWidth).split('/')[0]) || 60
-        : 60
+      const quality = qualities.find((q) => q.id === loom.qualityId) || null
+      const weft = yarns.find((y) => y.id === loom.weftYarnId)
+      const pick = quality?.pick || 60
+      const reed = beam?.reed || quality?.reed || 60
       const rpm = loom.defaultRpm
+      const status = (beam?.fillStatus === 'EMPTY' ? 'BEAM_END' : loom.status) as LoomStatus
+
+      const rollerHours =
+        prev?.rollerHours != null
+          ? prev.rollerHours
+          : status === 'BEAM_END' || status === 'STOPPED'
+            ? 0
+            : 24
       const shiftA = prev?.shiftAMeters ?? 0
       const shiftB = prev?.shiftBMeters ?? 0
-      const status = (prev?.status || loom.status) as LoomStatus
-      const runningHours = status === 'BEAM_END' || status === 'STOPPED' ? 0 : 24
+
       const metrics = calculateProductionMetrics({
         rpm,
-        runningHours,
+        runningHours: rollerHours,
         pick,
         shiftAMeters: shiftA,
         shiftBMeters: shiftB,
@@ -289,33 +464,33 @@ class ProductionMastersService {
         loomNumber: loom.loomNumber,
         category: loom.category,
         model: loom.model,
-        qualityName: prev?.qualityName || loom.name,
-        fabricType: prev?.fabricType || '',
-        warpYarn: beam?.warp || prev?.warpYarn || '',
-        weftYarn: prev?.weftYarn || defaultWeft,
+        qualityName: quality?.name || '—',
+        fabricType: quality?.fabricType || '',
+        warpYarn: beam?.warp || quality?.warpYarn || '',
+        weftYarn: weft?.yarnType || quality?.weftYarn || '',
         rpm,
         reed,
         pick,
-        widthInch: prev?.widthInch || 66,
-        gsm: prev?.gsm || 0,
-        rollerHours: 24,
-        runningHours,
+        widthInch: beam?.width || quality?.widthInch || 66,
+        gsm: quality?.gsm ?? prev?.gsm ?? 0,
+        rollerHours,
+        runningHours: rollerHours,
         runningTheoretical: metrics.theoreticalMeters,
         shiftAMeters: shiftA,
         shiftBMeters: shiftB,
         totalMeters: metrics.totalMeters,
         efficiencyPercentage: metrics.efficiencyPercentage,
         stopLossMeters: metrics.stopLossMeters,
-        theoretical24h: metrics.theoreticalMeters,
-        efficiency24h: metrics.efficiencyPercentage,
-        loss24h: metrics.stopLossMeters,
+        theoretical24h: metrics.theoretical24h,
+        efficiency24h: metrics.efficiency24h,
+        loss24h: metrics.loss24h,
         status,
-        remarks: prev?.remarks || '',
-        lot: beam?.beamNo || prev?.lot || '',
+        remarks: prev?.remarks ?? '',
+        lot: prev?.lot || beam?.beamNo || '',
       } satisfies DailyLoomProductionEntry
     })
 
-    this.saveSheetDay(dateStr, entries)
+    saveJson(this.sheetKey(dateStr), entries)
     return entries
   }
 
@@ -324,63 +499,45 @@ class ProductionMastersService {
     loomNumber: number,
     patch: Partial<DailyLoomProductionEntry>
   ): DailyLoomProductionEntry[] {
-    const entries = this.buildSheetForDate(dateStr).map((e) => {
+    const current = this.buildSheetForDate(dateStr)
+    const next = current.map((e) => {
       if (e.loomNumber !== loomNumber) return e
-      const next = { ...e, ...patch }
-      const runningHours =
-        next.status === 'BEAM_END' || next.status === 'STOPPED' ? 0 : next.runningHours || 24
+      const merged = { ...e, ...patch }
+      const rollerHours = merged.rollerHours ?? merged.runningHours ?? 0
       const metrics = calculateProductionMetrics({
-        rpm: next.rpm,
-        runningHours,
-        pick: next.pick || 60,
-        shiftAMeters: next.shiftAMeters || 0,
-        shiftBMeters: next.shiftBMeters || 0,
+        rpm: merged.rpm,
+        runningHours: rollerHours,
+        pick: merged.pick || 60,
+        shiftAMeters: merged.shiftAMeters || 0,
+        shiftBMeters: merged.shiftBMeters || 0,
       })
       return {
-        ...next,
-        runningHours,
+        ...merged,
+        rollerHours,
+        runningHours: rollerHours,
+        runningTheoretical: metrics.theoreticalMeters,
         totalMeters: metrics.totalMeters,
         efficiencyPercentage: metrics.efficiencyPercentage,
         stopLossMeters: metrics.stopLossMeters,
-        runningTheoretical: metrics.theoreticalMeters,
-        theoretical24h: metrics.theoreticalMeters,
-        efficiency24h: metrics.efficiencyPercentage,
-        loss24h: metrics.stopLossMeters,
+        theoretical24h: metrics.theoretical24h,
+        efficiency24h: metrics.efficiency24h,
+        loss24h: metrics.loss24h,
       }
     })
-    this.saveSheetDay(dateStr, entries)
-    return entries
+    saveJson(this.sheetKey(dateStr), next)
+    return next
   }
 
   startNewDay(dateStr: string): DailyLoomProductionEntry[] {
-    const existing = this.loadSheetDay(dateStr)
-    if (existing?.some((e) => (e.totalMeters || 0) > 0)) {
-      return this.buildSheetForDate(dateStr)
-    }
-    // wipe meters for new blank day but keep master sync
+    // blank Actual A/B for new day, keep master sync
     if (isClient()) {
-      localStorage.removeItem(this.sheetKey(dateStr))
+      try {
+        localStorage.removeItem(this.sheetKey(dateStr))
+      } catch {
+        // ignore
+      }
     }
     return this.buildSheetForDate(dateStr)
-  }
-
-  getSheetSummary(dateStr: string) {
-    const entries = this.buildSheetForDate(dateStr)
-    const totalShiftA = entries.reduce((s, e) => s + (e.shiftAMeters || 0), 0)
-    const totalShiftB = entries.reduce((s, e) => s + (e.shiftBMeters || 0), 0)
-    const grand = entries.reduce((s, e) => s + (e.totalMeters || 0), 0)
-    const theo = entries.reduce((s, e) => s + (e.runningTheoretical || 0), 0)
-    const running = entries.filter((e) => e.status === 'RUNNING').length
-    return {
-      date: dateStr,
-      totalLooms: entries.length,
-      runningLooms: running,
-      totalShiftAMeters: totalShiftA,
-      totalShiftBMeters: totalShiftB,
-      grandTotalMeters: grand,
-      totalTheoreticalMeters: theo,
-      averageEfficiency: theo > 0 ? (grand / theo) * 100 : 0,
-    }
   }
 }
 
