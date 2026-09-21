@@ -456,14 +456,14 @@ class ExpenseService {
     return (
       traders.find(
         (t) =>
-          t.slug === slug ||
-          t.slug.replace(/[^a-z0-9]/g, '') === cleanSlug ||
-          slugifyPartyName(t.partyName) === slug ||
+      t.slug === slug || 
+      t.slug.replace(/[^a-z0-9]/g, '') === cleanSlug || 
+      slugifyPartyName(t.partyName) === slug ||
           t.partyName
             .toLowerCase()
             .replace(/[^a-z0-9]/g, '')
             .includes(cleanSlug)
-      ) || null
+    ) || null
     )
   }
 

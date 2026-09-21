@@ -177,47 +177,33 @@ export const SALARY_EXCEL_SHEETS: SheetTabInfo[] = [
 export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
   {
     sheetNumber: 1,
-    name: 'Production',
+    name: 'Production Sheet',
     href: '/floor/production',
     activeCheck: (p, sp) =>
-      p === '/floor/production' && (!sp.get('tab') || sp.get('tab') === 'daily'),
+      p === '/floor/production' &&
+      (!sp.get('tab') || sp.get('tab') === 'sheet' || sp.get('tab') === 'daily'),
   },
   {
     sheetNumber: 2,
-    name: 'Total',
-    href: '/floor/production?tab=matrix',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'matrix',
+    name: 'Looms',
+    href: '/floor/production?tab=looms',
+    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'looms',
   },
   {
     sheetNumber: 3,
-    name: 'Chalan FOI',
-    href: '/floor/challan',
+    name: 'Beams',
+    href: '/floor/production?tab=beams',
     activeCheck: (p, sp) =>
-      p.startsWith('/floor/challan') || (p === '/floor/production' && sp.get('tab') === 'challan'),
+      p === '/floor/production' &&
+      (sp.get('tab') === 'beams' || sp.get('tab') === 'beam-stock'),
   },
   {
     sheetNumber: 4,
-    name: 'Beem Stock',
-    href: '/floor/production?tab=beam-stock',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'beam-stock',
-  },
-  {
-    sheetNumber: 5,
-    name: 'Weft Stock',
-    href: '/floor/production?tab=weft-stock',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'weft-stock',
-  },
-  {
-    sheetNumber: 6,
-    name: 'Quality End Report',
-    href: '/floor/production?tab=quality-end',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'quality-end',
-  },
-  {
-    sheetNumber: 7,
-    name: 'Active Qualities',
-    href: '/floor/production?tab=qualities',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'qualities',
+    name: 'Yarn Stock',
+    href: '/floor/production?tab=yarn',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' &&
+      (sp.get('tab') === 'yarn' || sp.get('tab') === 'weft-stock'),
   },
 ]
 

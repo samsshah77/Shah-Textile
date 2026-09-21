@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { Calendar, PlusCircle, CheckCircle2, Clock, Factory, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PRODUCTION_TODAY, shiftProductionDate } from '@/constants/productionCalendar'
 
 interface NewDayProductionModalProps {
   isOpen: boolean
@@ -17,14 +18,11 @@ export function NewDayProductionModal({
   onStartNewDay,
   currentSelectedDate,
 }: NewDayProductionModalProps) {
-  // Default new date is tomorrow of currentSelectedDate or 2026-09-20
   const getDefaultTargetDate = () => {
     try {
-      const d = new Date(currentSelectedDate || '2026-09-19')
-      d.setDate(d.getDate() + 1)
-      return d.toISOString().split('T')[0]
+      return shiftProductionDate(currentSelectedDate || PRODUCTION_TODAY, 1)
     } catch {
-      return '2026-09-20'
+      return shiftProductionDate(PRODUCTION_TODAY, 1)
     }
   }
 
@@ -98,7 +96,7 @@ export function NewDayProductionModal({
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                min="2026-08-01"
+                min={shiftProductionDate(PRODUCTION_TODAY, 1)}
                 max="2026-10-31"
                 required
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none"

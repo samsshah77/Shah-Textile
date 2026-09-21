@@ -19,10 +19,11 @@ import {
   getExcelQualityEndRecords,
   getExcelDailyLoomsForDate,
 } from '@/data/productionData'
+import { PRODUCTION_TODAY, shiftProductionDate } from '@/constants/productionCalendar'
 
-const STORAGE_KEY_PROD = 'sara_textile_production_entries_v5'
-const STORAGE_KEY_BEAMS = 'sara_textile_beam_stock_v5'
-const STORAGE_KEY_QUALITIES = 'sara_textile_qualities_v5'
+const STORAGE_KEY_PROD = 'sara_textile_production_entries_v6'
+const STORAGE_KEY_BEAMS = 'sara_textile_beam_stock_v6'
+const STORAGE_KEY_QUALITIES = 'sara_textile_qualities_v6'
 
 export interface LoomMonthlyRollup {
   loomNumber: number
@@ -73,7 +74,7 @@ class ProductionService {
   // =========================================================================
   // 1. LOOM PRODUCTION ENTRIES
   // =========================================================================
-  private loadEntries(dateStr: string = '2026-09-19'): DailyLoomProductionEntry[] {
+  private loadEntries(dateStr: string = PRODUCTION_TODAY): DailyLoomProductionEntry[] {
     const key = `${STORAGE_KEY_PROD}_${dateStr}`
     if (this.isClient()) {
       try {
@@ -89,7 +90,7 @@ class ProductionService {
   }
 
   private saveEntries(entries: DailyLoomProductionEntry[], dateStr?: string): void {
-    const targetDate = dateStr || entries[0]?.date || '2026-09-19'
+    const targetDate = dateStr || entries[0]?.date || PRODUCTION_TODAY
     this.inMemoryEntries = entries
     if (this.isClient()) {
       try {
@@ -162,7 +163,7 @@ class ProductionService {
   async updateEntry(
     loomNumber: number,
     patch: Partial<DailyLoomProductionEntry>,
-    dateStr: string = '2026-09-19'
+    dateStr: string = PRODUCTION_TODAY
   ): Promise<DailyLoomProductionEntry> {
     const entries = this.loadEntries(dateStr)
     const beams = this.loadBeams()
@@ -234,7 +235,7 @@ class ProductionService {
   async mountBeam(
     beamNo: string,
     loomNumber: number,
-    dateStr: string = '2026-09-19'
+    dateStr: string = PRODUCTION_TODAY
   ): Promise<{ success: boolean; beam: BeamStockItem; loom: DailyLoomProductionEntry }> {
     const beams = this.loadBeams()
     const entries = this.loadEntries(dateStr)
@@ -288,7 +289,7 @@ class ProductionService {
     return beams[beamIndex]
   }
 
-  async getAllEntries(dateStr: string = '2026-09-19'): Promise<DailyLoomProductionEntry[]> {
+  async getAllEntries(dateStr: string = PRODUCTION_TODAY): Promise<DailyLoomProductionEntry[]> {
     return this.loadEntries(dateStr)
   }
 
@@ -304,7 +305,7 @@ class ProductionService {
     }
 
     const prevDate = this.getPreviousDayDate(newDateStr)
-    const template = this.loadEntries(prevDate) || this.loadEntries('2026-09-19')
+    const template = this.loadEntries(prevDate) || this.loadEntries(PRODUCTION_TODAY)
 
     const newDayEntries: DailyLoomProductionEntry[] = template.map((l) => ({
       ...l,
@@ -329,11 +330,9 @@ class ProductionService {
 
   private getPreviousDayDate(dateStr: string): string {
     try {
-      const d = new Date(dateStr)
-      d.setDate(d.getDate() - 1)
-      return d.toISOString().split('T')[0]
+      return shiftProductionDate(dateStr, -1)
     } catch {
-      return '2026-09-19'
+      return PRODUCTION_TODAY
     }
   }
 
@@ -412,7 +411,7 @@ class ProductionService {
   // =========================================================================
   // DYNAMIC FLOOR SUMMARY KPIS
   // =========================================================================
-  async getFloorSummary(dateStr: string = '2026-09-19'): Promise<ProductionSummary> {
+  async getFloorSummary(dateStr: string = PRODUCTION_TODAY): Promise<ProductionSummary> {
     const entries = this.loadEntries(dateStr)
     const baseSummary = getExcelFloorSummary(dateStr)
 

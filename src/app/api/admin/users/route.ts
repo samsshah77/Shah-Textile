@@ -46,28 +46,28 @@ export async function GET(request: NextRequest) {
   if (!admin) return jsonError('Forbidden', 403, 'FORBIDDEN')
 
   const { searchParams } = new URL(request.url)
-  const statusFilter = searchParams.get('status') as UserStatus | null
+    const statusFilter = searchParams.get('status') as UserStatus | null
   const whereClause =
     statusFilter && ['PENDING', 'APPROVED', 'REJECTED'].includes(statusFilter)
       ? { status: statusFilter }
       : {}
 
-  const users = await prisma.user.findMany({
-    where: whereClause,
-    include: { role: true },
+    const users = await prisma.user.findMany({
+      where: whereClause,
+      include: { role: true },
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-  })
+    })
 
-  const counts = {
-    all: await prisma.user.count(),
-    pending: await prisma.user.count({ where: { status: 'PENDING' } }),
-    approved: await prisma.user.count({ where: { status: 'APPROVED' } }),
-    rejected: await prisma.user.count({ where: { status: 'REJECTED' } }),
-  }
+    const counts = {
+      all: await prisma.user.count(),
+      pending: await prisma.user.count({ where: { status: 'PENDING' } }),
+      approved: await prisma.user.count({ where: { status: 'APPROVED' } }),
+      rejected: await prisma.user.count({ where: { status: 'REJECTED' } }),
+    }
 
-  return NextResponse.json({
-    success: true,
-    counts,
+    return NextResponse.json({
+      success: true,
+      counts,
     users: users.map(mapUser),
   })
 }

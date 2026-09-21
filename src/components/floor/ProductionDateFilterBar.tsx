@@ -12,6 +12,12 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  PRODUCTION_START,
+  PRODUCTION_TODAY,
+  PRODUCTION_YESTERDAY,
+  shiftProductionDate,
+} from '@/constants/productionCalendar'
 
 interface ProductionDateFilterBarProps {
   selectedDate: string
@@ -30,25 +36,19 @@ export function ProductionDateFilterBar({
   onOpenNewDayModal,
   canEdit,
 }: ProductionDateFilterBarProps) {
-  const TODAY_STR = '2026-09-19'
-  const isToday = selectedDate === TODAY_STR
+  const isToday = selectedDate === PRODUCTION_TODAY
 
-  // Helpers to shift days
   const handleShiftDay = (delta: number) => {
     try {
-      const d = new Date(selectedDate)
-      d.setDate(d.getDate() + delta)
-      const newStr = d.toISOString().split('T')[0]
-      setSelectedDate(newStr)
+      setSelectedDate(shiftProductionDate(selectedDate, delta))
     } catch {
-      setSelectedDate(TODAY_STR)
+      setSelectedDate(PRODUCTION_TODAY)
     }
   }
 
-  // Format date display label: e.g. "Saturday, 19-Sept-2026"
   const getFormattedDateLabel = (dateStr: string) => {
     try {
-      const d = new Date(`${dateStr}T12:00:00Z`)
+      const d = new Date(`${dateStr}T12:00:00`)
       return d.toLocaleDateString('en-US', {
         weekday: 'long',
         day: '2-digit',
@@ -62,9 +62,7 @@ export function ProductionDateFilterBar({
 
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
-      {/* Left: Date Display & Shift Controls */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Previous Day */}
         <button
           onClick={() => handleShiftDay(-1)}
           title="Previous Day"
@@ -73,31 +71,29 @@ export function ProductionDateFilterBar({
           <ChevronLeft className="size-4" />
         </button>
 
-        {/* Date Picker Input */}
         <div className="relative flex items-center">
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            min="2026-08-01"
-            max="2026-10-31"
+            min={PRODUCTION_START}
+            max={PRODUCTION_TODAY}
             className="h-9 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground focus:border-blue-500 focus:outline-none cursor-pointer"
           />
         </div>
 
-        {/* Next Day */}
         <button
           onClick={() => handleShiftDay(1)}
           title="Next Day"
-          className="flex size-9 items-center justify-center rounded-xl border border-border bg-background hover:bg-muted text-foreground transition-colors cursor-pointer"
+          disabled={selectedDate >= PRODUCTION_TODAY}
+          className="flex size-9 items-center justify-center rounded-xl border border-border bg-background hover:bg-muted text-foreground transition-colors cursor-pointer disabled:opacity-40"
         >
           <ChevronRight className="size-4" />
         </button>
 
-        {/* Quick Date Presets */}
         <div className="flex items-center gap-1.5 ml-1">
           <button
-            onClick={() => setSelectedDate(TODAY_STR)}
+            onClick={() => setSelectedDate(PRODUCTION_TODAY)}
             className={cn(
               'h-9 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border',
               isToday
@@ -105,28 +101,27 @@ export function ProductionDateFilterBar({
                 : 'border-border bg-background hover:bg-muted text-muted-foreground'
             )}
           >
-            Today (19-Sept)
+            Today (21-Sept)
           </button>
 
           <button
-            onClick={() => setSelectedDate('2026-09-18')}
+            onClick={() => setSelectedDate(PRODUCTION_YESTERDAY)}
             className={cn(
               'h-9 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border',
-              selectedDate === '2026-09-18'
+              selectedDate === PRODUCTION_YESTERDAY
                 ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800'
                 : 'border-border bg-background hover:bg-muted text-muted-foreground'
             )}
           >
-            Yesterday (18-Sept)
+            Yesterday (20-Sept)
           </button>
         </div>
 
-        {/* Month Switcher Quick Tabs */}
         <div className="flex items-center rounded-xl border border-border bg-muted/40 p-1 ml-0 sm:ml-2">
           <button
             onClick={() => {
               setSelectedMonth('2026-09')
-              if (!selectedDate.startsWith('2026-09')) setSelectedDate('2026-09-19')
+              if (!selectedDate.startsWith('2026-09')) setSelectedDate(PRODUCTION_TODAY)
             }}
             className={cn(
               'px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer',

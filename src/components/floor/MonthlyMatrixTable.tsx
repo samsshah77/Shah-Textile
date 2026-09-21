@@ -73,7 +73,7 @@ export function MonthlyMatrixTable({
               onChange={(e) => onMonthChange(e.target.value)}
               className="h-9 rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/40 px-3 text-xs font-bold text-[#0066cc] dark:text-blue-300 focus:outline-none cursor-pointer"
             >
-              <option value="2026-09">September 2026 (30 Days)</option>
+              <option value="2026-09">September 2026 (to date)</option>
               <option value="2026-08">August 2026 (31 Days)</option>
             </select>
           )}

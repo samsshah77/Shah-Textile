@@ -1,4 +1,5 @@
-import productionRawData from './productionExcelData.json';
+import productionRawData from './productionExcelData.json'
+import { PRODUCTION_TODAY } from '@/constants/productionCalendar';
 import {
   DailyLoomProductionEntry,
   ProductionSummary,
@@ -13,7 +14,7 @@ import { LoomCategory, LoomStatus } from '@/types/loom';
 export const PRODUCTION_EXCEL_DATA = productionRawData;
 
 export function getExcelDailyLoomEntries(): DailyLoomProductionEntry[] {
-  const date = productionRawData.date || '2026-09-09';
+  const date = productionRawData.date || PRODUCTION_TODAY;
   return productionRawData.dailyLooms.map((l: any) => {
     let category: LoomCategory = 'G6200';
     if (l.model === 'G6300') category = 'G6300';
@@ -108,7 +109,7 @@ export function getExcelDailyLoomsForDate(dateStr: string): DailyLoomProductionE
 
 export function getExcelFloorSummary(dateStr?: string): ProductionSummary {
   const stats = productionRawData.summaryStats;
-  const date = dateStr || productionRawData.date || '2026-09-19';
+  const date = dateStr || productionRawData.date || PRODUCTION_TODAY;
   const dayName = productionRawData.dayName || 'Saturday';
 
   return {

@@ -1,250 +1,145 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { LoomCategory, LoomStatus } from '@/types/loom'
+import { useState, useEffect, useCallback } from 'react'
+import { DailyLoomProductionEntry } from '@/types/production'
 import {
-  DailyLoomProductionEntry,
-  ProductionSummary,
-  BeamStockItem,
-  ActiveQualityOrder,
-  MonthlyMatrixDay,
-} from '@/types/production'
-import { productionService } from '@/services/productionService'
+  productionMastersService,
+  LoomMaster,
+  BeamMaster,
+  YarnMaster,
+} from '@/services/productionMastersService'
+import { PRODUCTION_TODAY, PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
 
 export function useProductionGrid() {
+  const [looms, setLooms] = useState<LoomMaster[]>([])
+  const [beams, setBeams] = useState<BeamMaster[]>([])
+  const [yarn, setYarn] = useState<YarnMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
-  const [summary, setSummary] = useState<ProductionSummary | null>(null)
-  const [beamStock, setBeamStock] = useState<BeamStockItem[]>([])
-  const [activeQualities, setActiveQualities] = useState<ActiveQualityOrder[]>([])
-  const [monthlyMatrix, setMonthlyMatrix] = useState<{
-    days: MonthlyMatrixDay[]
-    loomTotals: Record<number, number>
-    grandTotalMeters: number
-    avgPerDay: number
-  }>({ days: [], loomTotals: {}, grandTotalMeters: 0, avgPerDay: 0 })
-  const [weftStock, setWeftStock] = useState<{ yarnColumns: string[]; days: any[] }>({
-    yarnColumns: [],
-    days: [],
-  })
-
   const [loading, setLoading] = useState(true)
-  const [filterCategory, setFilterCategory] = useState<LoomCategory | 'ALL'>('ALL')
-  const [filterStatus, setFilterStatus] = useState<LoomStatus | 'ALL'>('ALL')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedDate, setSelectedDate] = useState<string>('2026-09-19')
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-09')
-  const [modifiedLoomIds, setModifiedLoomIds] = useState<Set<number>>(new Set())
+  const [selectedDate, setSelectedDateState] = useState<string>(PRODUCTION_TODAY)
+  const [selectedMonth, setSelectedMonth] = useState<string>(PRODUCTION_TODAY_MONTH)
 
-  const refreshAllReactiveData = useCallback(async (currentDate?: string, currentMonth?: string) => {
-    const d = currentDate || selectedDate
-    const m = currentMonth || (d.startsWith('2026-08') ? '2026-08' : '2026-09')
-    const freshEntries = await productionService.getAllEntries(d)
-    const freshSummary = await productionService.getFloorSummary(d)
-    const freshBeams = productionService.getBeamStock()
-    const freshQualities = productionService.getActiveQualities()
-    const freshMatrix = productionService.getMonthlyMatrix(m)
-    const freshWeft = productionService.getWeftStock(m)
-
-    setEntries(freshEntries)
-    setSummary(freshSummary)
-    setBeamStock(freshBeams)
-    setActiveQualities(freshQualities)
-    setMonthlyMatrix(freshMatrix)
-    setWeftStock(freshWeft)
+  const refresh = useCallback((dateStr?: string) => {
+    const d = dateStr || selectedDate
+    setLooms(productionMastersService.getLooms())
+    setBeams(productionMastersService.getBeams())
+    setYarn(productionMastersService.getYarn())
+    setEntries(productionMastersService.buildSheetForDate(d))
   }, [selectedDate])
 
-  const loadData = useCallback(async () => {
+  useEffect(() => {
     setLoading(true)
     try {
-      await refreshAllReactiveData(selectedDate, selectedMonth)
-    } catch (err) {
-      console.error('Error fetching production grid data:', err)
+      refresh(selectedDate)
     } finally {
       setLoading(false)
     }
-  }, [refreshAllReactiveData, selectedDate, selectedMonth])
+  }, [refresh, selectedDate])
 
-  useEffect(() => {
-    loadData()
-  }, [loadData])
-
-  // Update a Loom entry (triggers cascade across qualities, matrix, weft, and summary)
-  const updateEntry = useCallback(
-    async (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
-      try {
-        await productionService.updateEntry(loomNumber, patch, selectedDate)
-        setModifiedLoomIds((prev) => new Set(prev).add(loomNumber))
-        await refreshAllReactiveData(selectedDate, selectedMonth)
-      } catch (err) {
-        console.error(`Failed to update Loom #${loomNumber}:`, err)
-      }
+  const setSelectedDate = useCallback(
+    (newDate: string) => {
+      setSelectedDateState(newDate)
+      setSelectedMonth(newDate.startsWith('2026-08') ? '2026-08' : '2026-09')
+      refresh(newDate)
     },
-    [refreshAllReactiveData, selectedDate, selectedMonth]
+    [refresh]
   )
 
-  // Start new day production report
+  const updateEntry = useCallback(
+    async (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
+      const next = productionMastersService.updateSheetEntry(selectedDate, loomNumber, patch)
+      setEntries(next)
+    },
+    [selectedDate]
+  )
+
+  const updateLoom = useCallback(
+    (loomNumber: number, patch: Partial<LoomMaster>) => {
+      setLooms(productionMastersService.updateLoom(loomNumber, patch))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const addLoom = useCallback(() => {
+    setLooms(productionMastersService.addLoom())
+    setEntries(productionMastersService.buildSheetForDate(selectedDate))
+  }, [selectedDate])
+
+  const updateBeam = useCallback(
+    (beamNo: string, patch: Partial<BeamMaster>) => {
+      setBeams(productionMastersService.updateBeam(beamNo, patch))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const addBeam = useCallback(
+    (partial: Partial<BeamMaster> & { beamNo: string }) => {
+      setBeams(productionMastersService.addBeam(partial))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const mountBeam = useCallback(
+    (beamNo: string, loomNumber: number) => {
+      setBeams(productionMastersService.mountBeam(beamNo, loomNumber))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const unmountBeam = useCallback(
+    (beamNo: string) => {
+      setBeams(productionMastersService.unmountBeam(beamNo))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const updateYarn = useCallback((id: string, patch: Partial<YarnMaster>) => {
+    setYarn(productionMastersService.updateYarn(id, patch))
+  }, [])
+
+  const addYarn = useCallback(() => {
+    setYarn(productionMastersService.addYarn())
+  }, [])
+
   const startNewDay = useCallback(
     async (targetDate: string) => {
       setLoading(true)
       try {
-        await productionService.startNewDayProduction(targetDate, true)
-        setSelectedDate(targetDate)
-        if (targetDate.startsWith('2026-08')) setSelectedMonth('2026-08')
-        else setSelectedMonth('2026-09')
-        await refreshAllReactiveData(targetDate)
-      } catch (err) {
-        console.error('Failed to start new day production:', err)
+        productionMastersService.startNewDay(targetDate)
+        setSelectedDateState(targetDate)
+        setSelectedMonth(targetDate.startsWith('2026-08') ? '2026-08' : '2026-09')
+        refresh(targetDate)
       } finally {
         setLoading(false)
       }
     },
-    [refreshAllReactiveData]
+    [refresh]
   )
-
-  // Mount a beam onto a loom
-  const mountBeam = useCallback(
-    async (beamNo: string, loomNumber: number) => {
-      try {
-        await productionService.mountBeam(beamNo, loomNumber, selectedDate)
-        setModifiedLoomIds((prev) => new Set(prev).add(loomNumber))
-        await refreshAllReactiveData(selectedDate, selectedMonth)
-      } catch (err) {
-        console.error(`Failed to mount Beam #${beamNo} on Loom #${loomNumber}:`, err)
-      }
-    },
-    [refreshAllReactiveData, selectedDate, selectedMonth]
-  )
-
-  // Unmount a beam
-  const unmountBeam = useCallback(
-    async (beamNo: string) => {
-      try {
-        await productionService.unmountBeam(beamNo)
-        await refreshAllReactiveData(selectedDate, selectedMonth)
-      } catch (err) {
-        console.error(`Failed to unmount Beam #${beamNo}:`, err)
-      }
-    },
-    [refreshAllReactiveData, selectedDate, selectedMonth]
-  )
-
-  const resetDefaults = useCallback(async () => {
-    setLoading(true)
-    try {
-      await productionService.resetToDefaults()
-      setModifiedLoomIds(new Set())
-      await refreshAllReactiveData(selectedDate)
-    } finally {
-      setLoading(false)
-    }
-  }, [refreshAllReactiveData, selectedDate])
-
-  const exportToCsv = useCallback(() => {
-    if (!entries.length) return
-    const headers = [
-      'Loom #',
-      'Category',
-      'Quality Name',
-      'Fabric Type',
-      'Status',
-      'RPM',
-      'Pick',
-      'Reed',
-      'Width (Inch)',
-      'GSM',
-      'Running Hours',
-      'Shift A (Meters)',
-      'Shift B (Meters)',
-      'Total Meters',
-      'Efficiency (%)',
-      'Stop Loss (Meters)',
-      'Daily Revenue (PKR)',
-    ]
-
-    const rows = entries.map((e) => [
-      e.loomNumber,
-      e.category,
-      `"${e.qualityName}"`,
-      `"${e.fabricType}"`,
-      e.status,
-      e.rpm,
-      e.pick,
-      e.reed,
-      e.widthInch,
-      e.gsm,
-      e.runningHours,
-      e.shiftAMeters,
-      e.shiftBMeters,
-      e.totalMeters,
-      e.efficiencyPercentage.toFixed(2),
-      e.stopLossMeters.toFixed(2),
-      (e.totalMeters * (e.pick * 0.95)).toFixed(2),
-    ])
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute(
-      'download',
-      `Sara_Textile_Daily_Production_${selectedDate}.csv`
-    )
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }, [entries, selectedDate])
-
-  const filteredEntries = useMemo(() => {
-    return entries.filter((e) => {
-      const matchCat =
-        filterCategory === 'ALL' || e.category === filterCategory
-      const matchStatus =
-        filterStatus === 'ALL' || e.status === filterStatus
-      const matchQuery =
-        !searchQuery ||
-        e.loomNumber.toString().includes(searchQuery) ||
-        e.qualityName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.fabricType.toLowerCase().includes(searchQuery.toLowerCase())
-      return matchCat && matchStatus && matchQuery
-    })
-  }, [entries, filterCategory, filterStatus, searchQuery])
 
   return {
+    looms,
+    beams,
+    yarn,
     entries,
-    filteredEntries,
-    summary,
-    beamStock,
-    activeQualities,
-    monthlyMatrix,
-    weftStock,
     loading,
-    filterCategory,
-    setFilterCategory,
-    filterStatus,
-    setFilterStatus,
-    searchQuery,
-    setSearchQuery,
     selectedDate,
-    setSelectedDate: (newDate: string) => {
-      setSelectedDate(newDate)
-      const m = newDate.startsWith('2026-08') ? '2026-08' : '2026-09'
-      setSelectedMonth(m)
-      refreshAllReactiveData(newDate, m)
-    },
+    setSelectedDate,
     selectedMonth,
-    setSelectedMonth: (newMonth: string) => {
-      setSelectedMonth(newMonth)
-      refreshAllReactiveData(selectedDate, newMonth)
-    },
-    startNewDay,
+    setSelectedMonth,
     updateEntry,
+    updateLoom,
+    addLoom,
+    updateBeam,
+    addBeam,
     mountBeam,
     unmountBeam,
-    resetDefaults,
-    exportToCsv,
-    modifiedLoomIds,
+    updateYarn,
+    addYarn,
+    startNewDay,
   }
 }

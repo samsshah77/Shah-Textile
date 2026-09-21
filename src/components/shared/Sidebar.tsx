@@ -21,47 +21,40 @@ interface NavTree {
 
 const FLOOR_ITEMS: NavLeaf[] = [
   {
-    title: 'Daily Production',
+    title: 'Production Sheet',
     href: '/floor/production',
     icon: 'bi-clipboard-data',
     activeCheck: (p, sp) =>
-      p === '/floor/production' && (!sp.get('tab') || sp.get('tab') === 'daily'),
+      p === '/floor/production' &&
+      (!sp.get('tab') || sp.get('tab') === 'sheet' || sp.get('tab') === 'daily'),
   },
   {
-    title: 'Loom Monthly Matrix',
-    href: '/floor/production?tab=matrix',
-    icon: 'bi-grid-3x3-gap',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'matrix',
+    title: 'Looms',
+    href: '/floor/production?tab=looms',
+    icon: 'bi-gear-wide-connected',
+    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'looms',
   },
   {
-    title: 'Active Quality Register',
-    href: '/floor/production?tab=qualities',
-    icon: 'bi-tags',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'qualities',
-  },
-  {
-    title: 'Beam Stock on Floor',
-    href: '/floor/production?tab=beam-stock',
+    title: 'Beams',
+    href: '/floor/production?tab=beams',
     icon: 'bi-layers',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'beam-stock',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' &&
+      (sp.get('tab') === 'beams' || sp.get('tab') === 'beam-stock'),
   },
   {
-    title: 'Daily Weft Record',
-    href: '/floor/production?tab=weft-stock',
-    icon: 'bi-hourglass-split',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'weft-stock',
+    title: 'Yarn Stock',
+    href: '/floor/production?tab=yarn',
+    icon: 'bi-box-seam',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' &&
+      (sp.get('tab') === 'yarn' || sp.get('tab') === 'weft-stock'),
   },
   {
     title: 'Delivery Challan',
     href: '/floor/challan',
     icon: 'bi-truck',
     activeCheck: (p) => p.startsWith('/floor/challan'),
-  },
-  {
-    title: 'Quality End Report',
-    href: '/floor/production?tab=quality-end',
-    icon: 'bi-clipboard-check',
-    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'quality-end',
   },
 ]
 
