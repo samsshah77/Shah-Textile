@@ -295,7 +295,7 @@ export default function DailyExpensePage() {
             <select
               value={selectedParty}
               onChange={(e) => setSelectedParty(e.target.value)}
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
+              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-200 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
             >
               <option value="ALL">All Parties ({uniqueParties.length})</option>
               {uniqueParties.map((party) => (
@@ -323,7 +323,7 @@ export default function DailyExpensePage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search description, bill #, inward #, party..."
-            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-4 py-1.5 text-xs font-medium placeholder:text-slate-400 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-4 py-2 text-sm font-medium placeholder:text-slate-400 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
           />
         </div>
       </div>
@@ -341,15 +341,15 @@ export default function DailyExpensePage() {
       {/* 5. DATA TABLE WITH INLINE FORMULAS & INLINE EDITING                       */}
       {/* ========================================================================= */}
       <div className="erp-card shadow-xs overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/60 px-5 py-3">
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="size-4 text-[#0066cc]" />
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/60 px-4 py-3.5 sm:px-5">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileSpreadsheet className="size-4 shrink-0 text-[#0066cc]" />
+            <span className="text-sm font-bold uppercase tracking-wide text-slate-800 dark:text-slate-200">
               Traders & Workshops Inward Register ({filteredItems.length} of {computedItems.length} records)
             </span>
           </div>
-          <div className="text-right flex items-center gap-3">
-            <span className="text-xs font-medium text-slate-500">
+          <div className="text-left sm:text-right flex items-center gap-3">
+            <span className="text-sm font-medium text-slate-500">
               Showing Total: <strong className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{formatCurrency(filteredTotal)}</strong>
             </span>
           </div>

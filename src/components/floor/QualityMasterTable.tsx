@@ -41,12 +41,11 @@ export function QualityMasterTable({
   )
     return (
     <div className="card">
-      <div className="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
-        <div>
+      <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
+        <div className="min-w-0">
           <h3 className="card-title mb-0">Quality</h3>
-          <small className="text-secondary">Drag column edges to resize</small>
         </div>
-        <div className="d-flex flex-wrap gap-2 align-items-center">
+        <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <ViewModeToggle mode={mode} onChange={setMode} />
           {mode === 'table' && (
             <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
@@ -55,8 +54,7 @@ export function QualityMasterTable({
           )}
           {!readOnly && (
             <button type="button" className="btn btn-sm btn-primary" onClick={onAdd}>
-              <i className="bi bi-plus-lg me-1" />
-              Add Quality
+              Add
             </button>
           )}
         </div>

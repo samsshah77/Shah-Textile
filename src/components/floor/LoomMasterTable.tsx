@@ -21,8 +21,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   quality: 140,
   weft: 140,
   shed: 100,
-  status: 120,
-  active: 64,
+  status: 130,
 }
 
 interface LoomMasterTableProps {
@@ -125,7 +124,7 @@ function LoomFields({
       >
         {STATUSES.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {s === 'BEAM_END' ? 'Beam End' : s === 'KNOTTING' ? 'Knotting' : s}
           </option>
         ))}
       </select>
@@ -153,14 +152,11 @@ export function LoomMasterTable({
 
   return (
     <div className="card">
-      <div className="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
-        <div>
+      <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
+        <div className="min-w-0">
           <h3 className="card-title mb-0">Looms</h3>
-          <small className="text-secondary">
-            Hover avatar to upload · Drag column edges to resize
-          </small>
         </div>
-        <div className="d-flex flex-wrap gap-2 align-items-center">
+        <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <ViewModeToggle mode={mode} onChange={setMode} />
           {mode === 'table' && (
             <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
@@ -169,8 +165,7 @@ export function LoomMasterTable({
           )}
           {!readOnly && (
             <button type="button" className="btn btn-sm btn-primary" onClick={onAdd}>
-              <i className="bi bi-plus-lg me-1" />
-              Add Loom
+              Add
             </button>
           )}
         </div>
@@ -190,19 +185,6 @@ export function LoomMasterTable({
                 />
                 <div>
                   <div className="fw-semibold">Loom Number {l.loomNumber}</div>
-                  <div className="form-check mt-1 mb-0">
-                    <input
-                      type="checkbox"
-                      className="form-check-input"
-                      id={`loom-active-${l.loomNumber}`}
-                      checked={l.isActive}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(l.loomNumber, { isActive: e.target.checked })}
-                    />
-                    <label className="form-check-label" htmlFor={`loom-active-${l.loomNumber}`}>
-                      Active
-                    </label>
-                  </div>
                 </div>
               </div>
               <LoomFields
@@ -261,9 +243,6 @@ export function LoomMasterTable({
                 </ResizableTh>
                 <ResizableTh columnKey="status" width={widths.status} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Status
-                </ResizableTh>
-                <ResizableTh columnKey="active" width={widths.active} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
-                  Active
                 </ResizableTh>
               </tr>
             </thead>
@@ -387,19 +366,10 @@ export function LoomMasterTable({
                     >
                       {STATUSES.map((s) => (
                         <option key={s} value={s}>
-                          {s}
+                          {s === 'BEAM_END' ? 'Beam End' : s === 'KNOTTING' ? 'Knotting' : s}
                         </option>
                       ))}
                     </select>
-                  </td>
-                  <td className="text-center px-1">
-                    <input
-                      type="checkbox"
-                      className="form-check-input"
-                      checked={l.isActive}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(l.loomNumber, { isActive: e.target.checked })}
-                    />
                   </td>
                 </tr>
               ))}

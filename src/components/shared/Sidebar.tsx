@@ -1,10 +1,15 @@
 'use client'
 
-import { Suspense, useMemo } from 'react'
+import { Suspense, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
+import {
+  closeSidebar,
+  ensureSidebarOverlay,
+  isSidebarMobileViewport,
+} from '@/lib/sidebarToggle'
 
 interface NavLeaf {
   title: string
@@ -209,6 +214,20 @@ function SidebarContent() {
   const searchParams = useSearchParams()
   const { isQualityController, canViewAccounts, isAdmin } = useAuth()
 
+  useEffect(() => {
+    ensureSidebarOverlay()
+    // Start closed on mobile so content is usable
+    if (isSidebarMobileViewport()) {
+      closeSidebar()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isSidebarMobileViewport()) {
+      closeSidebar()
+    }
+  }, [pathname, searchParams])
+
   const trees: NavTree[] = useMemo(() => {
     const list: NavTree[] = [
       {
@@ -245,8 +264,8 @@ function SidebarContent() {
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
-      <div className="sidebar-brand">
-        <Link href="/dashboard" className="brand-link">
+      <div className="sidebar-brand d-flex align-items-center justify-content-between pe-2">
+        <Link href="/dashboard" className="brand-link flex-grow-1">
           <img
             src="/saralogo.webp"
             alt="Sara Textile"
@@ -255,6 +274,15 @@ function SidebarContent() {
           />
           <span className="brand-text fw-light">Sara Textile</span>
         </Link>
+        <button
+          type="button"
+          className="btn btn-link text-white text-decoration-none d-lg-none p-2 ms-1"
+          aria-label="Close sidebar"
+          title="Close menu"
+          onClick={() => closeSidebar()}
+        >
+          <i className="bi bi-chevron-double-left fs-5" />
+        </button>
       </div>
 
       <div className="sidebar-wrapper">
@@ -267,7 +295,13 @@ function SidebarContent() {
           >
             <li className="nav-header">MAIN</li>
             <li className="nav-item">
-              <Link href="/dashboard" className={cn('nav-link', isDashboard && 'active')}>
+              <Link
+                href="/dashboard"
+                className={cn('nav-link', isDashboard && 'active')}
+                onClick={() => {
+                  if (isSidebarMobileViewport()) closeSidebar()
+                }}
+              >
                 <i className="nav-icon bi bi-speedometer2" />
                 <p>Dashboard</p>
               </Link>
@@ -301,6 +335,9 @@ function SidebarContent() {
                           <Link
                             href={item.href}
                             className={cn('nav-link', active && 'active')}
+                            onClick={() => {
+                              if (isSidebarMobileViewport()) closeSidebar()
+                            }}
                           >
                             <i className={cn('nav-icon bi', item.icon)} />
                             <p>{item.title}</p>

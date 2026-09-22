@@ -325,7 +325,7 @@ function ExcelSheetTabBarContent() {
                   <Link
                     href={sheet.href}
                     ref={isActive ? activeTabRef : undefined}
-                    className={`nav-link sara-sheet-tabs__link py-2 px-3 small ${isActive ? 'active' : ''}`}
+                    className={`nav-link sara-sheet-tabs__link ${isActive ? 'active' : ''}`}
                   >
                     {sheet.name}
                   </Link>
@@ -350,7 +350,7 @@ function ExcelSheetTabBarContent() {
 export function ExcelSheetTabBar() {
   return (
     <Suspense
-      fallback={<div className="sara-sheet-tabs" style={{ height: 40 }} />}
+      fallback={<div className="sara-sheet-tabs" style={{ height: 52 }} />}
     >
       <ExcelSheetTabBarContent />
     </Suspense>

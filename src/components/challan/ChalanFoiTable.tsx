@@ -5,7 +5,6 @@ import { ChalanFoiItem } from '@/types/challan'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { formatNumber, cn } from '@/lib/utils'
 import {
-  Truck,
   Plus,
   Trash2,
   Edit2,
@@ -146,61 +145,47 @@ export function ChalanFoiTable({
     <div className="space-y-5">
       {/* Top Banner & Quick Controls */}
       <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between bg-card p-4 rounded-2xl border border-border shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/10 text-[#0066cc] dark:text-sky-400">
-            <Truck className="size-5" />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm sm:text-base font-bold text-foreground mb-0">
+              Chalan FOI Register
+            </h2>
+            <span className="erp-count-chip bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-[#0066cc] dark:text-blue-300 uppercase tracking-wide">
+              #001414
+            </span>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-bold text-foreground">
-                Sheet: Chalan FOI • Grey Cloth Dispatch Register
-              </h2>
-              <span className="rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-[10px] font-semibold text-[#0066cc] dark:text-blue-300 uppercase">
-                Challan #001414
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Verified cloth rolls out-gate dispatch: S.No, Name, Type, Beam, SWL #, Thaan, Total Meter &amp; Total KG.
-            </p>
-          </div>
+          <p className="text-xs text-muted-foreground mt-0.5 mb-0">
+            Out-gate dispatch: rolls, meters &amp; KG
+          </p>
         </div>
 
-        {/* Action Controls */}
+        {/* Action Controls — same btn-sm scale as Yarn / Quality */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Wire-up button: Import from live production */}
           {onImportFromProduction && !readOnly && (
             <button
+              type="button"
               onClick={onImportFromProduction}
               title="Sync today's active loom production directly into Challan"
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/40 px-3 text-xs font-bold text-[#0066cc] dark:text-blue-300 hover:bg-blue-100/70 transition-colors cursor-pointer"
+              className="erp-btn-secondary"
             >
-              <RefreshCw className="size-3.5" />
+              <RefreshCw className="size-3.5 text-[#0066cc]" />
               <span>Sync Floor Looms</span>
             </button>
           )}
 
           {!readOnly && (
-            <button
-              onClick={() => setIsAddingNew(true)}
-              className="flex h-9 items-center gap-1.5 rounded-xl bg-[#0066cc] hover:bg-blue-700 px-3.5 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs"
-            >
-              <Plus className="size-4" />
-              <span>+ Add Chalan Item</span>
+            <button type="button" onClick={() => setIsAddingNew(true)} className="erp-btn-primary">
+              <Plus className="size-3.5" />
+              <span>Add Chalan Item</span>
             </button>
           )}
 
-          <button
-            onClick={exportCsv}
-            className="flex h-9 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
-            <Download className="size-3.5 text-blue-600" />
+          <button type="button" onClick={exportCsv} className="erp-btn-secondary">
+            <Download className="size-3.5 text-emerald-600" />
             <span>Export CSV</span>
           </button>
 
-          <Link
-            href="/floor/challan/print/001414"
-            className="flex h-9 items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-3.5 text-xs font-bold hover:opacity-90 transition-opacity"
-          >
+          <Link href="/floor/challan/print/001414" className="erp-btn-dark">
             <Printer className="size-3.5" />
             <span>Print Challan (A4)</span>
           </Link>

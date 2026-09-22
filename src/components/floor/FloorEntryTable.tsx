@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 
 interface FloorEntryTableProps {
@@ -39,14 +40,11 @@ export function FloorEntryTable({ entries, onUpdateEntry, canEdit }: FloorEntryT
 
   return (
     <div className="card">
-      <div className="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
-        <div>
+      <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
+        <div className="min-w-0">
           <h3 className="card-title mb-0">Daily Entry</h3>
-          <small className="text-secondary">
-            Drag column edges to resize · Production Sheet shows automatic calculations
-          </small>
         </div>
-        <div className="d-flex flex-wrap gap-2 align-items-center">
+        <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <ViewModeToggle mode={mode} onChange={setMode} />
           {mode === 'table' && (
             <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
@@ -58,49 +56,42 @@ export function FloorEntryTable({ entries, onUpdateEntry, canEdit }: FloorEntryT
 
       {mode === 'grid' ? (
         <div className="master-grid">
-          {entries.map((e) => (
+          {entries.map((e, rowIdx) => (
             <div key={e.loomNumber} className="master-grid-card">
               <div className="fw-semibold">Loom Number {e.loomNumber}</div>
               <div className="small text-secondary text-truncate">
                 {e.qualityName || '—'} · {e.fabricType || '—'}
               </div>
               <label className="small mb-0">Roller Hours</label>
-              <input
-                type="number"
+              <NumericCellInput
                 className="form-control form-control-sm"
                 value={e.rollerHours ?? 0}
                 disabled={!canEdit}
-                onChange={(ev) =>
-                  onUpdateEntry(e.loomNumber, { rollerHours: Number(ev.target.value) || 0 })
-                }
+                navRow={rowIdx}
+                navCol={0}
+                onValueChange={(v) => onUpdateEntry(e.loomNumber, { rollerHours: v })}
               />
               <div className="d-flex gap-2">
                 <div className="flex-fill">
                   <label className="small mb-0">Actual Shift A</label>
-                  <input
-                    type="number"
+                  <NumericCellInput
                     className="form-control form-control-sm"
                     value={e.shiftAMeters ?? 0}
                     disabled={!canEdit}
-                    onChange={(ev) =>
-                      onUpdateEntry(e.loomNumber, {
-                        shiftAMeters: Number(ev.target.value) || 0,
-                      })
-                    }
+                    navRow={rowIdx}
+                    navCol={1}
+                    onValueChange={(v) => onUpdateEntry(e.loomNumber, { shiftAMeters: v })}
                   />
                 </div>
                 <div className="flex-fill">
                   <label className="small mb-0">Actual Shift B</label>
-                  <input
-                    type="number"
+                  <NumericCellInput
                     className="form-control form-control-sm"
                     value={e.shiftBMeters ?? 0}
                     disabled={!canEdit}
-                    onChange={(ev) =>
-                      onUpdateEntry(e.loomNumber, {
-                        shiftBMeters: Number(ev.target.value) || 0,
-                      })
-                    }
+                    navRow={rowIdx}
+                    navCol={2}
+                    onValueChange={(v) => onUpdateEntry(e.loomNumber, { shiftBMeters: v })}
                   />
                 </div>
               </div>
@@ -174,7 +165,7 @@ export function FloorEntryTable({ entries, onUpdateEntry, canEdit }: FloorEntryT
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => (
+              {entries.map((e, rowIdx) => (
                 <tr key={e.loomNumber}>
                   <td className="fw-semibold px-2">{e.loomNumber}</td>
                   <td className="px-2 text-truncate">{e.qualityName || '—'}</td>
@@ -182,45 +173,36 @@ export function FloorEntryTable({ entries, onUpdateEntry, canEdit }: FloorEntryT
                     {e.fabricType || '—'}
                   </td>
                   <td className="px-1">
-                    <input
-                      type="number"
+                    <NumericCellInput
                       className="form-control form-control-sm text-end"
                       style={{ width: '100%', minWidth: 0 }}
                       value={e.rollerHours ?? 0}
                       disabled={!canEdit}
-                      onChange={(ev) =>
-                        onUpdateEntry(e.loomNumber, {
-                          rollerHours: Number(ev.target.value) || 0,
-                        })
-                      }
+                      navRow={rowIdx}
+                      navCol={0}
+                      onValueChange={(v) => onUpdateEntry(e.loomNumber, { rollerHours: v })}
                     />
                   </td>
                   <td className="px-1">
-                    <input
-                      type="number"
+                    <NumericCellInput
                       className="form-control form-control-sm text-end"
                       style={{ width: '100%', minWidth: 0 }}
                       value={e.shiftAMeters ?? 0}
                       disabled={!canEdit}
-                      onChange={(ev) =>
-                        onUpdateEntry(e.loomNumber, {
-                          shiftAMeters: Number(ev.target.value) || 0,
-                        })
-                      }
+                      navRow={rowIdx}
+                      navCol={1}
+                      onValueChange={(v) => onUpdateEntry(e.loomNumber, { shiftAMeters: v })}
                     />
                   </td>
                   <td className="px-1">
-                    <input
-                      type="number"
+                    <NumericCellInput
                       className="form-control form-control-sm text-end"
                       style={{ width: '100%', minWidth: 0 }}
                       value={e.shiftBMeters ?? 0}
                       disabled={!canEdit}
-                      onChange={(ev) =>
-                        onUpdateEntry(e.loomNumber, {
-                          shiftBMeters: Number(ev.target.value) || 0,
-                        })
-                      }
+                      navRow={rowIdx}
+                      navCol={2}
+                      onValueChange={(v) => onUpdateEntry(e.loomNumber, { shiftBMeters: v })}
                     />
                   </td>
                   <td className="text-end fw-semibold px-2">
@@ -233,9 +215,20 @@ export function FloorEntryTable({ entries, onUpdateEntry, canEdit }: FloorEntryT
                       value={e.remarks || ''}
                       disabled={!canEdit}
                       placeholder="Beam End, Electric Fault…"
+                      data-nav-row={rowIdx}
+                      data-nav-col={3}
                       onChange={(ev) =>
                         onUpdateEntry(e.loomNumber, { remarks: ev.target.value })
                       }
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter') {
+                          ev.preventDefault()
+                          const next = document.querySelector<HTMLElement>(
+                            `[data-nav-row="${rowIdx + 1}"][data-nav-col="3"]`
+                          )
+                          next?.focus()
+                        }
+                      }}
                     />
                   </td>
                   <td className="px-1">
@@ -245,7 +238,18 @@ export function FloorEntryTable({ entries, onUpdateEntry, canEdit }: FloorEntryT
                       value={e.lot || ''}
                       disabled={!canEdit}
                       placeholder="Lot Number…"
+                      data-nav-row={rowIdx}
+                      data-nav-col={4}
                       onChange={(ev) => onUpdateEntry(e.loomNumber, { lot: ev.target.value })}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter') {
+                          ev.preventDefault()
+                          const next = document.querySelector<HTMLElement>(
+                            `[data-nav-row="${rowIdx + 1}"][data-nav-col="4"]`
+                          )
+                          next?.focus()
+                        }
+                      }}
                     />
                   </td>
                 </tr>

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { UserRole } from '@/types/auth'
+import { toggleSidebar } from '@/lib/sidebarToggle'
 
 function HeaderContent() {
   const pathname = usePathname()
@@ -73,9 +74,18 @@ function HeaderContent() {
       <div className="container-fluid">
         <ul className="navbar-nav">
           <li className="nav-item">
-            <a className="nav-link" data-lte-toggle="sidebar" href="#" role="button">
+            <button
+              type="button"
+              className="nav-link border-0 bg-transparent"
+              aria-label="Toggle sidebar"
+              title="Menu"
+              onClick={(e) => {
+                e.preventDefault()
+                toggleSidebar()
+              }}
+            >
               <i className="bi bi-list" />
-            </a>
+            </button>
           </li>
           <li className="nav-item d-none d-md-block">
             <span className="nav-link text-body-secondary small">
@@ -123,11 +133,17 @@ function HeaderContent() {
           <li className="nav-item dropdown user-menu" ref={menuRef}>
             <a
               href="#"
-              className="nav-link dropdown-toggle"
+              className="nav-link dropdown-toggle d-flex align-items-center gap-1 pe-2"
               data-bs-toggle="dropdown"
               aria-expanded="false"
             >
-              <span className="d-none d-md-inline">{user?.name || 'User'}</span>
+              <span
+                className="fw-semibold text-body text-truncate"
+                style={{ maxWidth: '9rem' }}
+                title={user?.name || 'User'}
+              >
+                {user?.name || 'User'}
+              </span>
               {pendingCount > 0 && isAdmin && (
                 <span className="navbar-badge badge text-bg-warning">{pendingCount}</span>
               )}

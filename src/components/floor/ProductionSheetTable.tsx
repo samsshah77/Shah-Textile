@@ -95,24 +95,14 @@ export function ProductionSheetTable({ entries }: ProductionSheetTableProps) {
 
     return (
     <div className="card">
-      <div className="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
-        <div>
+      <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
+        <div className="min-w-0">
           <h3 className="card-title mb-0">Production Sheet</h3>
-          <small className="text-secondary">
-            Drag column edges to resize · Enter Actual Shift A / B on Daily Entry tab
-          </small>
         </div>
-        <div className="d-flex flex-wrap gap-2 align-items-center small">
+        <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
             Reset columns
           </button>
-          <span className="badge text-bg-primary">
-            Actual Total (A Plus B): {num(totals.ab)}
-          </span>
-          <span className="badge text-bg-secondary">
-            Average Efficiency Running: {(totals.effRun / n).toFixed(1)}%
-          </span>
-          <span className="badge text-bg-dark">Loss Running: {num(totals.lossRun)}</span>
         </div>
       </div>
       <div

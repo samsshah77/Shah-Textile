@@ -121,19 +121,19 @@ export default function TradersDirectoryPage() {
       {/* ========================================================================= */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 dark:border-slate-700 pb-3 print:hidden">
         {/* Tab Buttons */}
-        <div className="flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 p-1">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 p-1.5">
           <button
             onClick={() => setActiveTab('traders')}
             className={cn(
-              'flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer',
+              'erp-filter-tab',
               activeTab === 'traders'
                 ? 'bg-white dark:bg-slate-900 text-[#0066cc] dark:text-sky-400 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             )}
           >
-            <Building2 className="size-3.5 text-[#0066cc]" />
+            <Building2 className="size-4 text-[#0066cc]" />
             <span>Traders Bill Synopsis</span>
-            <span className="rounded-full bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.2 text-[10px] font-bold text-[#0066cc] dark:text-sky-400">
+            <span className="erp-count-chip bg-blue-100 dark:bg-blue-950/60 text-[#0066cc] dark:text-sky-400">
               11
             </span>
           </button>
@@ -141,15 +141,15 @@ export default function TradersDirectoryPage() {
           <button
             onClick={() => setActiveTab('workshops')}
             className={cn(
-              'flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer',
+              'erp-filter-tab',
               activeTab === 'workshops'
                 ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             )}
           >
-            <Wrench className="size-3.5 text-amber-600" />
+            <Wrench className="size-4 text-amber-600" />
             <span>Workshop Bills Synopsis</span>
-            <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.2 text-[10px] font-bold text-amber-700 dark:text-amber-400">
+            <span className="erp-count-chip bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
               4
             </span>
           </button>
@@ -163,7 +163,7 @@ export default function TradersDirectoryPage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search party name or remarks..."
-            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-4 py-1.5 text-xs font-medium placeholder:text-slate-400 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-4 py-2 text-sm font-medium placeholder:text-slate-400 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
           />
         </div>
       </div>

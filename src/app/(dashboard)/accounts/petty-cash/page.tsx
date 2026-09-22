@@ -149,32 +149,21 @@ export default function PettyCashPage() {
                 type="button"
                 onClick={handleReset}
                 title="Reset to Excel authentic data"
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                className="erp-btn-secondary"
               >
                 <RotateCcw className="size-3.5" />
                 <span>Reset</span>
               </button>
-              <button
-                type="button"
-                onClick={exportCSV}
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-              >
-                <Download className="size-4 text-emerald-600" />
+              <button type="button" onClick={exportCSV} className="erp-btn-secondary">
+                <Download className="size-3.5 text-emerald-600" />
                 <span>Export CSV</span>
               </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
-              >
-                <Printer className="size-4" />
+              <button type="button" onClick={handlePrint} className="erp-btn-primary">
+                <Printer className="size-3.5" />
                 <span>Print</span>
               </button>
-              <Link
-                href="/accounts/petty-cash/monthly"
-                className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
-              >
-                <FileSpreadsheet className="size-4" />
+              <Link href="/accounts/petty-cash/monthly" className="erp-btn-secondary">
+                <FileSpreadsheet className="size-3.5 text-[#0066cc]" />
                 <span>Monthly View</span>
               </Link>
             </>
@@ -216,14 +205,14 @@ export default function PettyCashPage() {
             </h3>
           </div>
 
-          <div className="relative print:hidden">
-            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+          <div className="relative print:hidden w-full sm:w-auto">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search description, date..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 w-60 rounded-xl border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-blue-500 focus:outline-hidden"
+              className="h-10 w-full sm:w-60 rounded-xl border border-border bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-blue-500 focus:outline-hidden"
             />
           </div>
         </div>

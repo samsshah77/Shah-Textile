@@ -146,7 +146,7 @@ export default function MonthlyPurchasesReportPage() {
                 key={cat}
                 onClick={() => setFilterCategory(cat)}
                 className={cn(
-                  'rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer',
+                  'erp-filter-tab',
                   filterCategory === cat
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -158,13 +158,13 @@ export default function MonthlyPurchasesReportPage() {
           </div>
 
           <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search party, item, bill #..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-60 rounded-lg border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-blue-500 focus:outline-none"
+              className="h-10 w-60 rounded-lg border border-border bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-blue-500 focus:outline-none"
             />
           </div>
         </div>

@@ -8,19 +8,21 @@ import { useResizableColumns } from '@/hooks/useResizableColumns'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 100,
-  warp: 120,
-  reed: 72,
-  width: 72,
-  threads: 90,
-  length: 90,
-  machine: 110,
-  fill: 120,
-  mounted: 130,
+  warp: 110,
+  reed: 64,
+  width: 64,
+  threads: 84,
+  length: 84,
+  machine: 100,
+  fill: 110,
+  mounted: 120,
+  beamEnd: 150,
 }
 
 interface BeamMasterTableProps {
   beams: BeamMaster[]
   looms: LoomMaster[]
+  selectedDate: string
   onUpdate: (beamNo: string, patch: Partial<BeamMaster>) => void
   onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void
   onMount: (beamNo: string, loomNumber: number) => void
@@ -28,9 +30,19 @@ interface BeamMasterTableProps {
   readOnly?: boolean
 }
 
+function BeamEndNote({ beam, selectedDate }: { beam: BeamMaster; selectedDate: string }) {
+  if (beam.beamEndedOn !== selectedDate) return <span className="text-secondary">—</span>
+  const from =
+    beam.endedFromLoom != null && beam.endedFromLoom !== ''
+      ? ` · Loom ${beam.endedFromLoom}`
+      : ''
+  return <span className="small">Beam Ended{from}</span>
+}
+
 export function BeamMasterTable({
   beams,
   looms,
+  selectedDate,
   onUpdate,
   onAdd,
   onMount,
@@ -40,7 +52,7 @@ export function BeamMasterTable({
   const [newBeamNo, setNewBeamNo] = useState('')
   const [mode, setMode] = useState<TableGridMode>('table')
   const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
-    'sara_beam_col_widths_v1',
+    'sara_beam_col_widths_v2',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -48,6 +60,7 @@ export function BeamMasterTable({
     [widths]
   )
   const activeLooms = looms.filter((l) => l.isActive)
+  const endedTodayCount = beams.filter((b) => b.beamEndedOn === selectedDate).length
 
   const addBeam = () => {
     if (!newBeamNo.trim()) return
@@ -68,6 +81,11 @@ export function BeamMasterTable({
       style={{ width: '100%', minWidth: 0 }}
       value={b.usedInLoom || ''}
       disabled={readOnly || b.fillStatus === 'EMPTY'}
+      title={
+        b.fillStatus === 'EMPTY'
+          ? 'Empty beam cannot mount — mark Full first'
+          : 'Mount / remount on a loom (Status still changes only on Looms tab)'
+      }
       onChange={(e) => {
         const v = e.target.value
         if (!v) onUnmount(b.beamNo)
@@ -86,11 +104,13 @@ export function BeamMasterTable({
   return (
     <div className="card">
       <div className="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
-        <div>
+        <div className="d-flex align-items-center gap-2 min-w-0">
           <h3 className="card-title mb-0">Beam Inventory</h3>
-          <small className="text-secondary">Drag column edges to resize</small>
+          {endedTodayCount > 0 && (
+            <span className="badge text-bg-secondary">{endedTodayCount} ended</span>
+          )}
         </div>
-        <div className="d-flex flex-wrap gap-2 align-items-center">
+        <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <ViewModeToggle mode={mode} onChange={setMode} />
           {mode === 'table' && (
             <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
@@ -101,8 +121,8 @@ export function BeamMasterTable({
             <>
               <input
                 className="form-control form-control-sm"
-                style={{ minWidth: 120, width: 140 }}
-                placeholder="Beam Identity"
+                style={{ minWidth: 110, width: 120, maxWidth: '100%' }}
+                placeholder="Beam ID"
                 value={newBeamNo}
                 onChange={(e) => setNewBeamNo(e.target.value)}
               />
@@ -112,8 +132,7 @@ export function BeamMasterTable({
                 disabled={!newBeamNo.trim()}
                 onClick={addBeam}
               >
-                <i className="bi bi-plus-lg me-1" />
-                Add Beam
+                Add
               </button>
             </>
           )}
@@ -124,7 +143,10 @@ export function BeamMasterTable({
         <div className="master-grid">
           {beams.map((b) => (
             <div key={b.beamNo} className="master-grid-card">
-              <div className="fw-semibold">Beam Identity {b.beamNo}</div>
+              <div className="d-flex justify-content-between align-items-start gap-2">
+                <div className="fw-semibold">Beam Identity {b.beamNo}</div>
+                <BeamEndNote beam={b} selectedDate={selectedDate} />
+              </div>
               <input
                 className="form-control form-control-sm"
                 value={b.warp}
@@ -183,6 +205,9 @@ export function BeamMasterTable({
                 <option value="FULL">Full beam</option>
               </select>
               {renderMountSelect(b)}
+              {!b.usedInLoom && b.beamEndedOn === selectedDate && b.fillStatus !== 'EMPTY' && (
+                <span className="small text-secondary">Ready to remount</span>
+              )}
             </div>
           ))}
         </div>
@@ -228,6 +253,9 @@ export function BeamMasterTable({
                 </ResizableTh>
                 <ResizableTh columnKey="mounted" width={widths.mounted} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Mounted Loom
+                </ResizableTh>
+                <ResizableTh columnKey="beamEnd" width={widths.beamEnd} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Beam End
                 </ResizableTh>
               </tr>
             </thead>
@@ -303,6 +331,14 @@ export function BeamMasterTable({
                     </select>
                   </td>
                   <td className="px-1">{renderMountSelect(b)}</td>
+                  <td className="px-1">
+                    <BeamEndNote beam={b} selectedDate={selectedDate} />
+                    {!b.usedInLoom &&
+                      b.beamEndedOn === selectedDate &&
+                      b.fillStatus !== 'EMPTY' && (
+                        <div className="small text-secondary">Ready to remount</div>
+                      )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -311,7 +347,8 @@ export function BeamMasterTable({
       )}
 
       <div className="card-footer small text-secondary">
-        Total Thread / Beam = Reed × Width (automatic)
+        Set Status → Beam End on Looms tab · this table shows “Beam Ended” as plain text · remount
+        same beam on another loom while Full · note clears next day
       </div>
     </div>
   )

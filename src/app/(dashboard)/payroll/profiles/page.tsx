@@ -272,21 +272,21 @@ function EmployeeProfilesContent() {
             placeholder="Search name, CNIC (42101...), phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] dark:text-slate-100"
+            className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] dark:text-slate-100"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {/* Category Tabs */}
-          <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+          <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
             {['ALL', 'STAFF', 'WEAVER', 'HELPER', 'CONTRACT'].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setFilterCategory(cat)}
                 className={cn(
-                  'px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer',
+                  'erp-filter-tab',
                   filterCategory === cat
-                    ? 'bg-white dark:bg-slate-800 text-[#0066cc] dark:text-sky-400 shadow-xs font-semibold'
+                    ? 'bg-white dark:bg-slate-800 text-[#0066cc] dark:text-sky-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 )}
               >
@@ -298,7 +298,7 @@ function EmployeeProfilesContent() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="text-xs px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-[#0066cc] cursor-pointer"
+            className="text-sm px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-[#0066cc] cursor-pointer"
           >
             <option value="ALL">All Status</option>
             <option value="ACTIVE">Active Only</option>

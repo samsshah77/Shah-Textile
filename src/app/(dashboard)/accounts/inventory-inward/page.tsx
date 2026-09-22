@@ -374,16 +374,16 @@ export default function InventoryInwardPage() {
                 setEditingIndex(null)
               }}
               className={cn(
-                'flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer',
+                'erp-filter-tab shrink-0 rounded-xl',
                 isSelected
-                  ? 'bg-[#0066cc] text-white shadow-xs font-bold'
+                  ? 'bg-[#0066cc] text-white shadow-xs'
                   : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
               )}
             >
               <span>{month}</span>
               <span
                 className={cn(
-                  'rounded-md px-1.5 py-0.2 text-[10px] font-mono',
+                  'erp-count-chip font-mono rounded-md',
                   isSelected
                     ? 'bg-white/20 text-white'
                     : 'bg-muted text-muted-foreground'

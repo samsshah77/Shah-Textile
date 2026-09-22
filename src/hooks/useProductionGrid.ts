@@ -24,6 +24,8 @@ export function useProductionGrid() {
   const refresh = useCallback(
     (dateStr?: string) => {
       const d = dateStr || selectedDate
+      productionMastersService.clearExpiredBeamEnds(d)
+      productionMastersService.reconcileBeamEndsWithLooms(d)
       setLooms(productionMastersService.getLooms())
       setBeams(productionMastersService.getBeams())
       setYarn(productionMastersService.getYarn())
@@ -60,7 +62,8 @@ export function useProductionGrid() {
 
   const updateLoom = useCallback(
     (loomNumber: number, patch: Partial<LoomMaster>) => {
-      setLooms(productionMastersService.updateLoom(loomNumber, patch))
+      setLooms(productionMastersService.updateLoom(loomNumber, patch, selectedDate))
+      setBeams(productionMastersService.getBeams())
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
     [selectedDate]

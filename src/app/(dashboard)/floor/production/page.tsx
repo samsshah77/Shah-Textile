@@ -78,7 +78,8 @@ function ProductionWorkspaceContent() {
     quality: 'Quality',
   }
 
-  const showDateBar = currentTab === 'sheet' || currentTab === 'entry'
+  const showDateBar =
+    currentTab === 'sheet' || currentTab === 'entry' || currentTab === 'beams'
 
   return (
     <div className="pb-3">
@@ -92,10 +93,13 @@ function ProductionWorkspaceContent() {
         actions={
           <>
             <Link href="/floor/challan" className="btn btn-sm btn-outline-primary">
-              Delivery Challan
+              <span className="d-none d-sm-inline">Delivery Challan</span>
+              <span className="d-sm-none">Challan</span>
             </Link>
             {showDateBar && (
-              <span className="badge text-bg-secondary">{getFormattedDateLabel(selectedDate)}</span>
+              <span className="badge text-bg-secondary text-truncate" style={{ maxWidth: 160 }}>
+                {getFormattedDateLabel(selectedDate)}
+              </span>
             )}
           </>
         }
@@ -144,6 +148,7 @@ function ProductionWorkspaceContent() {
         <BeamMasterTable
           beams={beams}
           looms={looms}
+          selectedDate={selectedDate}
           onUpdate={updateBeam}
           onAdd={addBeam}
           onMount={mountBeam}

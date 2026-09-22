@@ -39,6 +39,10 @@ export interface BeamMaster {
   fillStatus: 'EMPTY' | 'FULL'
   usedInLoom: string | null
   status: 'EMPTY' | 'FULL' | 'MOUNTED'
+  /** YYYY-MM-DD when beam ended today — cleared automatically on next day */
+  beamEndedOn: string | null
+  /** Loom it ended on (for Beam table note) */
+  endedFromLoom: string | null
 }
 
 export interface YarnMaster {
@@ -98,10 +102,19 @@ function withYarnWeights(partial: Partial<YarnMaster> & { yarnType: string; id: 
   }
 }
 
+function normalizeLoomRef(value: string | number | null | undefined): string | null {
+  if (value == null || value === '') return null
+  return String(value)
+}
+
+function beamOnLoom(beam: BeamMaster, loomNumber: number) {
+  return normalizeLoomRef(beam.usedInLoom) === String(loomNumber)
+}
+
 function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster {
   const reed = b.reed ?? 0
   const width = b.width ?? 0
-  const usedInLoom = b.usedInLoom ?? null
+  const usedInLoom = normalizeLoomRef(b.usedInLoom as string | number | null | undefined)
   const fillStatus = b.fillStatus || (usedInLoom ? 'FULL' : b.status === 'EMPTY' ? 'EMPTY' : 'FULL')
   const status: BeamMaster['status'] = usedInLoom ? 'MOUNTED' : fillStatus
   return {
@@ -115,6 +128,8 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
     fillStatus,
     usedInLoom,
     status,
+    beamEndedOn: b.beamEndedOn ?? null,
+    endedFromLoom: normalizeLoomRef(b.endedFromLoom as string | number | null | undefined),
   }
 }
 
@@ -236,7 +251,11 @@ class ProductionMastersService {
     saveJson(KEY_LOOMS, looms)
   }
 
-  updateLoom(loomNumber: number, patch: Partial<LoomMaster>): LoomMaster[] {
+  updateLoom(
+    loomNumber: number,
+    patch: Partial<LoomMaster>,
+    dateStr: string = PRODUCTION_TODAY
+  ): LoomMaster[] {
     const looms = this.getLooms().map((l) =>
       l.loomNumber === loomNumber
         ? {
@@ -248,7 +267,57 @@ class ProductionMastersService {
         : l
     )
     this.saveLooms(looms)
+
+    // Status is controlled only from Loom table → Beam table only shows "Ended today"
+    if (patch.status === 'BEAM_END') {
+      this.flagBeamEndFromLoom(loomNumber, dateStr)
+      this.updateSheetEntry(dateStr, loomNumber, {
+        status: 'BEAM_END',
+        remarks: 'Beam End',
+        rollerHours: 0,
+      })
+    }
+
     return looms
+  }
+
+  /** Unmount beam on this loom and flag it for Beam table display (does not set loom status). */
+  private flagBeamEndFromLoom(loomNumber: number, dateStr: string): void {
+    const beam = this.getBeams().find((b) => beamOnLoom(b, loomNumber))
+    if (!beam) return
+    const beams = this.getBeams().map((b) => {
+      if (b.beamNo !== beam.beamNo) return b
+      return normalizeBeam({
+        ...b,
+        usedInLoom: null,
+        beamEndedOn: dateStr,
+        endedFromLoom: String(loomNumber),
+      })
+    })
+    this.saveBeams(beams)
+  }
+
+  /**
+   * If any loom is already Beam End but a beam is still mounted on it
+   * (legacy data / missed sync), unmount + show Ended today on Beam table.
+   */
+  reconcileBeamEndsWithLooms(dateStr: string): BeamMaster[] {
+    const looms = this.getLooms().filter((l) => l.status === 'BEAM_END')
+    if (looms.length === 0) return this.getBeams()
+    let changed = false
+    const beams = this.getBeams().map((b) => {
+      const loom = looms.find((l) => beamOnLoom(b, l.loomNumber))
+      if (!loom) return b
+      changed = true
+      return normalizeBeam({
+        ...b,
+        usedInLoom: null,
+        beamEndedOn: dateStr,
+        endedFromLoom: String(loom.loomNumber),
+      })
+    })
+    if (changed) this.saveBeams(beams)
+    return this.getBeams()
   }
 
   addLoom(partial?: Partial<LoomMaster>): LoomMaster[] {
@@ -313,11 +382,22 @@ class ProductionMastersService {
 
   mountBeam(beamNo: string, loomNumber: number): BeamMaster[] {
     const beams = this.getBeams().map((b) => {
-      if (b.usedInLoom === String(loomNumber) && b.beamNo !== beamNo) {
-        return normalizeBeam({ ...b, usedInLoom: null, fillStatus: b.fillStatus || 'FULL' })
+      if (beamOnLoom(b, loomNumber) && b.beamNo !== beamNo) {
+        return normalizeBeam({
+          ...b,
+          usedInLoom: null,
+          fillStatus: b.fillStatus || 'FULL',
+        })
       }
       if (b.beamNo === beamNo) {
-        return normalizeBeam({ ...b, usedInLoom: String(loomNumber), fillStatus: 'FULL' })
+        // Remount mid-life clears the daily end note — loom Status stays loom-table only
+        return normalizeBeam({
+          ...b,
+          usedInLoom: String(loomNumber),
+          fillStatus: 'FULL',
+          beamEndedOn: null,
+          endedFromLoom: null,
+        })
       }
       return b
     })
@@ -327,6 +407,25 @@ class ProductionMastersService {
 
   unmountBeam(beamNo: string): BeamMaster[] {
     return this.updateBeam(beamNo, { usedInLoom: null })
+  }
+
+  /** Clear "ended today" notes from previous days (keeps EMPTY / mounts as-is). */
+  clearExpiredBeamEnds(asOfDate: string): BeamMaster[] {
+    const beams = this.getBeams()
+    let changed = false
+    const next = beams.map((b) => {
+      if (b.beamEndedOn && b.beamEndedOn < asOfDate) {
+        changed = true
+        return normalizeBeam({
+          ...b,
+          beamEndedOn: null,
+          endedFromLoom: null,
+        })
+      }
+      return b
+    })
+    if (changed) this.saveBeams(next)
+    return next
   }
 
   getYarn(): YarnMaster[] {
@@ -433,13 +532,13 @@ class ProductionMastersService {
 
     const entries = looms.map((loom) => {
       const prev = prevByLoom.get(loom.loomNumber)
-      const beam = beams.find((b) => b.usedInLoom === String(loom.loomNumber))
+      const beam = beams.find((b) => beamOnLoom(b, loom.loomNumber))
       const quality = qualities.find((q) => q.id === loom.qualityId) || null
       const weft = yarns.find((y) => y.id === loom.weftYarnId)
       const pick = quality?.pick || 60
       const reed = beam?.reed || quality?.reed || 60
       const rpm = loom.defaultRpm
-      const status = (beam?.fillStatus === 'EMPTY' ? 'BEAM_END' : loom.status) as LoomStatus
+      const status = loom.status as LoomStatus
 
       const rollerHours =
         prev?.rollerHours != null
@@ -529,7 +628,8 @@ class ProductionMastersService {
   }
 
   startNewDay(dateStr: string): DailyLoomProductionEntry[] {
-    // blank Actual A/B for new day, keep master sync
+    // Clear yesterday's "beam ended today" notes; blank Actual A/B for new day
+    this.clearExpiredBeamEnds(dateStr)
     if (isClient()) {
       try {
         localStorage.removeItem(this.sheetKey(dateStr))
