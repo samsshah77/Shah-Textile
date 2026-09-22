@@ -1,16 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
-import {
-  PERMISSION_ACTIONS,
-  PERMISSION_CATALOG,
-  ROLE_MODULE_ACTIONS,
-  ROLE_RESOURCE_DENIES,
-} from '@/server/permission-catalog'
+import { ensurePermissionCatalog } from '@/server/ensure-permission-catalog'
 
 const ACCOUNTANT_PASSWORD = 'rYVCEJjdXcvz88KyggaAQ0DLC4X2pCFx'
 const ADMIN_PASSWORD = 'IVRmUTxljGWnf1uWNfOYZLV2MCcQPKV6'
 const QC_PASSWORD = '1S2615J4Zkyh-xqdT32GAD6vBmJ61vR7'
+const DEPLOY_SEED_KEY = 'sara_deploy_secret_key_2026'
 
 export async function ensureDatabaseSeeded() {
   const rolesData = [
@@ -113,128 +109,35 @@ export async function ensureDatabaseSeeded() {
     seeded.push(u.email)
   }
 
-  // Permission catalog + role grants (needed for accounts/payroll page access)
-  for (const moduleDef of PERMISSION_CATALOG) {
-    const moduleRecord = await prisma.module.upsert({
-      where: { key: moduleDef.key },
-      update: {
-        label: moduleDef.label,
-        description: moduleDef.description,
-        sortOrder: moduleDef.sortOrder,
-        isActive: true,
-      },
-      create: {
-        key: moduleDef.key,
-        label: moduleDef.label,
-        description: moduleDef.description,
-        sortOrder: moduleDef.sortOrder,
-      },
-    })
-
-    for (const resourceDef of moduleDef.resources) {
-      const resource = await prisma.resource.upsert({
-        where: { moduleId_key: { moduleId: moduleRecord.id, key: resourceDef.key } },
-        update: {
-          label: resourceDef.label,
-          description: resourceDef.description,
-          sensitive: Boolean(resourceDef.sensitive),
-        },
-        create: {
-          moduleId: moduleRecord.id,
-          key: resourceDef.key,
-          label: resourceDef.label,
-          description: resourceDef.description,
-          sensitive: Boolean(resourceDef.sensitive),
-        },
-      })
-
-      for (const action of PERMISSION_ACTIONS) {
-        await prisma.permission.upsert({
-          where: { resourceId_action: { resourceId: resource.id, action } },
-          update: {},
-          create: { resourceId: resource.id, action },
-        })
-      }
-    }
-  }
-
-  for (const [roleKey, moduleActions] of Object.entries(ROLE_MODULE_ACTIONS)) {
-    const roleId = seededRoles[roleKey]
-    if (!roleId) continue
-    for (const [moduleKey, actions] of Object.entries(moduleActions)) {
-      const moduleRecord = await prisma.module.findUnique({ where: { key: moduleKey } })
-      if (!moduleRecord || !actions) continue
-      for (const action of actions) {
-        await prisma.roleModuleGrant.upsert({
-          where: {
-            roleId_moduleId_action: {
-              roleId,
-              moduleId: moduleRecord.id,
-              action,
-            },
-          },
-          update: { effect: 'ALLOW', scope: 'ALL' },
-          create: {
-            roleId,
-            moduleId: moduleRecord.id,
-            action,
-            effect: 'ALLOW',
-            scope: 'ALL',
-          },
-        })
-      }
-    }
-  }
-
-  // Clear stale resource denies, then apply catalog denies only
-  for (const roleKey of Object.keys(ROLE_MODULE_ACTIONS)) {
-    const roleId = seededRoles[roleKey]
-    if (!roleId) continue
-    await prisma.rolePermission.deleteMany({ where: { roleId, effect: 'DENY' } })
-  }
-
-  for (const deny of ROLE_RESOURCE_DENIES) {
-    const roleId = seededRoles[deny.roleKey]
-    const moduleRecord = await prisma.module.findUnique({ where: { key: deny.moduleKey } })
-    if (!roleId || !moduleRecord) continue
-    const resource = await prisma.resource.findUnique({
-      where: { moduleId_key: { moduleId: moduleRecord.id, key: deny.resourceKey } },
-    })
-    if (!resource) continue
-    for (const action of deny.actions) {
-      const permission = await prisma.permission.findUnique({
-        where: { resourceId_action: { resourceId: resource.id, action } },
-      })
-      if (!permission) continue
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId, permissionId: permission.id } },
-        update: { effect: 'DENY', scope: 'ALL' },
-        create: {
-          roleId,
-          permissionId: permission.id,
-          effect: 'DENY',
-          scope: 'ALL',
-        },
-      })
-    }
-  }
-
+  await ensurePermissionCatalog()
   return seeded
 }
 
-export async function GET() {
+function unauthorized() {
+  return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+}
+
+async function handleSeed(request: NextRequest) {
+  const key = request.nextUrl.searchParams.get('key')
+  if (key !== DEPLOY_SEED_KEY) return unauthorized()
+
   try {
     const seeded = await ensureDatabaseSeeded()
     return NextResponse.json({
       success: true,
-      message: 'Database tables and default users initialized successfully!',
+      message: 'Database roles, users, and permissions ready.',
       users: seeded,
     })
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Seed failed'
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
-export async function POST() {
-  return GET()
+export async function GET(request: NextRequest) {
+  return handleSeed(request)
+}
+
+export async function POST(request: NextRequest) {
+  return handleSeed(request)
 }

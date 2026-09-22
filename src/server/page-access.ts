@@ -5,17 +5,39 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { resolvePermission } from "@/server/permissions";
 
 export async function requirePagePermission(moduleKey: string, resourceKey: string) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const claims = token ? await verifySession(token) : null;
-  if (!claims) redirect(`/login?redirect=${encodeURIComponent(`/${moduleKey}`)}`);
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    const claims = token ? await verifySession(token) : null;
+    if (!claims) redirect(`/login?redirect=${encodeURIComponent(`/${moduleKey}`)}`);
 
-  const user = await prisma.user.findUnique({
-    where: { id: claims!.userId },
-    select: { id: true, status: true, isActive: true },
-  });
-  if (!user?.isActive || user.status !== "APPROVED") redirect(`/login?redirect=${encodeURIComponent(`/${moduleKey}`)}`);
-  const permission = await resolvePermission(user.id, { moduleKey, resourceKey, action: "VIEW" });
-  if (!permission.allowed) redirect("/forbidden");
-  return user;
+    const user = await prisma.user.findUnique({
+      where: { id: claims!.userId },
+      select: { id: true, status: true, isActive: true },
+    });
+    if (!user?.isActive || user.status !== "APPROVED") {
+      redirect(`/login?redirect=${encodeURIComponent(`/${moduleKey}`)}`);
+    }
+
+    const permission = await resolvePermission(user.id, {
+      moduleKey,
+      resourceKey,
+      action: "VIEW",
+    });
+    if (!permission.allowed) redirect("/forbidden");
+    return user;
+  } catch (err) {
+    // Next.js redirect() throws; rethrow those. Real errors → forbidden (not a black 500 page).
+    if (
+      err &&
+      typeof err === "object" &&
+      "digest" in err &&
+      typeof (err as { digest?: string }).digest === "string" &&
+      (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+    ) {
+      throw err;
+    }
+    console.error("[requirePagePermission]", moduleKey, resourceKey, err);
+    redirect("/forbidden");
+  }
 }

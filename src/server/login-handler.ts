@@ -70,7 +70,7 @@ export function createLoginHandler(dependencies: LoginDependencies) {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.roleKey,
+        role: (user.roleKey || "").toLowerCase(),
         department: user.department,
       },
     });

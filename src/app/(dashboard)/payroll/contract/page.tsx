@@ -248,6 +248,23 @@ function ContractPayrollContent() {
           ]}
           actions={
             <>
+              <select
+                value={daysInMonth}
+                disabled={!canEditAccounts}
+                onChange={(e) => {
+                  const days = Number(e.target.value)
+                  setDaysInMonth(days)
+                  setContractList((prev) =>
+                    prev.map((row) => payrollService.calculateContractSalaryRow(row, days))
+                  )
+                }}
+                className="form-select form-select-sm"
+                aria-label="Days in month"
+              >
+                <option value={31}>31 Days</option>
+                <option value={30}>30 Days</option>
+                <option value={28}>28 Days</option>
+              </select>
               <button
                 type="button"
                 onClick={() => handleInsertRow()}
@@ -309,7 +326,7 @@ function ContractPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEES SALARIES (EXCEL SHEET 4)</h2>
-            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026</p>
+            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026 ({daysInMonth} Days Base)</p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
@@ -618,7 +635,7 @@ function ContractPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEES OVERTIME (EXCEL SHEET 5)</h2>
-            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026</p>
+            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026 ({daysInMonth} Days Base)</p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
@@ -838,7 +855,7 @@ function ContractPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEE SALARY, OVERTIME & EFFICIENCY (EXCEL SHEET 7)</h2>
-            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026 (1 to 31 Full Settlement)</p>
+            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026 (1 to {daysInMonth} Full Settlement)</p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">

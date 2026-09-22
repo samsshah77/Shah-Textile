@@ -163,8 +163,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const isAdmin = user?.role === 'admin'
-  const isAccountant = user?.role === 'accountant'
-  const isQualityController = user?.role === 'quality_controller'
+  const isAccountant = user?.role?.toLowerCase() === 'accountant'
+  const isQualityController = user?.role?.toLowerCase() === 'quality_controller'
   const canViewAccounts = isAdmin || isAccountant
   const canEditAccounts = (isAdmin || isAccountant) && isEditModeEnabled
   const canViewProduction = true

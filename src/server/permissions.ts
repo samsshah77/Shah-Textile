@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type { PermissionAction, PermissionEffect, PermissionScope } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@/server/current-user";
+import { ensurePermissionCatalog } from "@/server/ensure-permission-catalog";
 
 export type PermissionDecision = {
   allowed: boolean;
@@ -16,33 +17,67 @@ type PermissionTarget = {
   action: PermissionAction;
 };
 
-function decision(effect: PermissionEffect, scope: PermissionScope, source: PermissionDecision["source"]): PermissionDecision {
+function decision(
+  effect: PermissionEffect,
+  scope: PermissionScope,
+  source: PermissionDecision["source"],
+): PermissionDecision {
   return { allowed: effect === "ALLOW", scope, source };
 }
 
-export async function resolvePermission(userId: string, target: PermissionTarget): Promise<PermissionDecision> {
+async function resolvePermissionOnce(
+  userId: string,
+  target: PermissionTarget,
+  healed: boolean,
+): Promise<PermissionDecision> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { roleId: true, roleKey: true, isActive: true, status: true },
   });
   if (!user || !user.isActive || user.status !== "APPROVED") return { allowed: false };
-  if (user.roleKey.toLowerCase() === "admin") return { allowed: true, source: "ADMIN", scope: "ALL" };
+
+  const roleKey = (user.roleKey || "").toLowerCase();
+  if (roleKey === "admin") return { allowed: true, source: "ADMIN", scope: "ALL" };
 
   let roleId = user.roleId;
-  if (!roleId && user.roleKey) {
+  if (!roleId && roleKey) {
     const byKey = await prisma.role.findUnique({
-      where: { key: user.roleKey.toLowerCase() },
+      where: { key: roleKey },
       select: { id: true },
     });
     roleId = byKey?.id ?? null;
     if (roleId) {
-      await prisma.user.update({ where: { id: userId }, data: { roleId } }).catch(() => undefined);
+      await prisma.user
+        .update({ where: { id: userId }, data: { roleId, roleKey } })
+        .catch(() => undefined);
     }
+  } else if (user.roleKey !== roleKey) {
+    await prisma.user.update({ where: { id: userId }, data: { roleKey } }).catch(() => undefined);
   }
   if (!roleId) return { allowed: false };
 
-  const moduleRecord = await prisma.module.findUnique({ where: { key: target.moduleKey }, select: { id: true } });
+  let moduleRecord = await prisma.module.findUnique({
+    where: { key: target.moduleKey },
+    select: { id: true },
+  });
+
+  // Live DB often missing RBAC catalog — heal once then retry
+  if (!healed) {
+    const grantCount = await prisma.roleModuleGrant.count({ where: { roleId } });
+    if (!moduleRecord || grantCount === 0) {
+      await ensurePermissionCatalog();
+      return resolvePermissionOnce(userId, target, true);
+    }
+  }
+
+  if (!moduleRecord) {
+    moduleRecord = await prisma.module.findUnique({
+      where: { key: target.moduleKey },
+      select: { id: true },
+    });
+  }
   if (!moduleRecord) return { allowed: false };
+
   const resource = await prisma.resource.findUnique({
     where: { moduleId_key: { moduleId: moduleRecord.id, key: target.resourceKey } },
     select: { id: true },
@@ -67,21 +102,32 @@ export async function resolvePermission(userId: string, target: PermissionTarget
   if (roleOverride) return decision(roleOverride.effect, roleOverride.scope, "ROLE_RESOURCE");
 
   const moduleGrant = await prisma.roleModuleGrant.findUnique({
-    where: { roleId_moduleId_action: { roleId, moduleId: moduleRecord.id, action: target.action } },
+    where: {
+      roleId_moduleId_action: { roleId, moduleId: moduleRecord.id, action: target.action },
+    },
     select: { effect: true, scope: true },
   });
   if (moduleGrant) return decision(moduleGrant.effect, moduleGrant.scope, "ROLE_MODULE");
   return { allowed: false };
 }
 
+export async function resolvePermission(
+  userId: string,
+  target: PermissionTarget,
+): Promise<PermissionDecision> {
+  try {
+    return await resolvePermissionOnce(userId, target, false);
+  } catch (err) {
+    console.error("[resolvePermission]", target, err);
+    return { allowed: false };
+  }
+}
+
 export async function hasPermission(userId: string, target: PermissionTarget) {
   return (await resolvePermission(userId, target)).allowed;
 }
 
-export async function requirePermission(
-  request: NextRequest,
-  target: PermissionTarget,
-) {
+export async function requirePermission(request: NextRequest, target: PermissionTarget) {
   const user = await currentUser(request);
   if (!user) return null;
   return (await resolvePermission(user.id, target)).allowed ? user : null;

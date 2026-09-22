@@ -67,3 +67,9 @@ jobs:
           echo "Triggering live unpack on server..."
           UNPACK_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/deploy-unpack.php?key=sara_deploy_secret_key_2026" || curl -s -k "http://72.62.255.78/deploy-unpack.php?key=sara_deploy_secret_key_2026" || true)
           echo "Server Response: $UNPACK_RESPONSE"
+
+      - name: 🔐 Sync live RBAC permissions (accountant / roles)
+        run: |
+          sleep 8
+          SEED_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/api/auth/seed?key=sara_deploy_secret_key_2026" || true)
+          echo "Seed Response: $SEED_RESPONSE"
