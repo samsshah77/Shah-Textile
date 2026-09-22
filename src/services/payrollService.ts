@@ -1987,8 +1987,9 @@ class PayrollService {
     const lessAdvance = Number(row.lessAdvance) || 0
     const chequeAmount = Number(row.chequeAmount) || 0
 
-    const ratePerDay = Math.round(salary / daysInMonth)
-    const basicSalary = attendance === daysInMonth ? salary : Math.round((salary / daysInMonth) * attendance)
+    // Excel: Rate Per Day = Salary / days; Basic = Attn × Rate Per Day
+    const ratePerDay = Math.round((salary / daysInMonth) * 100) / 100
+    const basicSalary = Math.round(attendance * ratePerDay)
     const perHrRate = Number((salary / 240).toFixed(2))
     const otAmount = Math.round(otHours * perHrRate)
     const grossAmount = basicSalary + otAmount
@@ -2026,8 +2027,9 @@ class PayrollService {
     const advanceDeduction = Number(row.advanceDeduction) || 0
     const ticketCharges = row.ticketCharges !== undefined ? Number(row.ticketCharges) : 5
 
-    const ratePerDay = Math.round(salary / daysInMonth)
-    const basicSalary = attendance >= daysInMonth ? salary : Math.min(salary, Math.round((salary / daysInMonth) * attendance))
+    // Excel Contract Employees: Rate = Salary/days; Gross (H) = Attn × Rate
+    const ratePerDay = Math.round((salary / daysInMonth) * 100) / 100
+    const basicSalary = Math.round(attendance * ratePerDay)
     
     // Look up duty hours from live master roster (Sheet 1) or fall back to role defaults
     let dutyHrs = 10
@@ -2065,9 +2067,13 @@ class PayrollService {
       }
     }
 
-    // Rate Per Hour is ALWAYS based on 30 days standard (Salary / (30 * Duty Hours))
-    const ratePerHr = Number((salary / (30 * dutyHrs)).toFixed(2))
-    const otAmount = Math.round(otHours * (salary / (30 * dutyHrs)))
+    // Excel: Rate Per Hr from General Wages 30-day column; fallback Salary/(30×dutyHrs)
+    const ratePerHr =
+      matchedEmp?.ratePerHr30 != null && matchedEmp.ratePerHr30 > 0
+        ? Number(matchedEmp.ratePerHr30)
+        : Number((salary / (30 * dutyHrs)).toFixed(2))
+    const otAmount = Math.round(otHours * ratePerHr)
+    // Net Payment sheet: Gross = Basic (sheet4 H) + OT + Efficiency
     const grossSalary = basicSalary + otAmount + efficiencyAmount
     const netAmount = grossSalary - advanceDeduction - ticketCharges
 

@@ -104,7 +104,11 @@ function ContractPayrollContent() {
   } = useResizableColumns('contract_net', DEFAULT_CONTRACT_NET_WIDTHS)
 
   const reload = () => {
-    setContractList(payrollService.getContractSalaries(selectedMonth))
+    setContractList(
+      payrollService
+        .getContractSalaries(selectedMonth)
+        .map((row) => payrollService.calculateContractSalaryRow(row, daysInMonth))
+    )
   }
 
   useEffect(() => {
@@ -112,7 +116,7 @@ function ContractPayrollContent() {
     const handleSync = () => reload()
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
-  }, [selectedMonth])
+  }, [selectedMonth, daysInMonth])
 
   // Handle cell edit with live formula recalculation
   const handleCellChange = (
@@ -492,18 +496,27 @@ function ContractPayrollContent() {
                       />
                     </td>
 
-                    {/* Salary Input */}
+                    {/* Salary — locked when linked from General Wages master */}
                     <td
                       style={{ width: `${salaryWidths.salary}px`, minWidth: `${salaryWidths.salary}px` }}
                       className="border-r border-slate-100 py-1 px-1"
                     >
-                      <input
-                        type="number"
-                        value={c.salary || ''}
-                        disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'salary', Number(e.target.value))}
-                        className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                      />
+                      {c.employeeId ? (
+                        <div
+                          className="w-full text-right px-2 py-0.5 font-semibold text-xs text-slate-900"
+                          title="From General Wages (master)"
+                        >
+                          {formatNumber(c.salary, 0)}
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          value={c.salary || ''}
+                          disabled={!canEditAccounts}
+                          onChange={(e) => handleCellChange(idx, 'salary', Number(e.target.value))}
+                          className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
+                        />
+                      )}
                     </td>
 
                     {/* Attendance Days */}

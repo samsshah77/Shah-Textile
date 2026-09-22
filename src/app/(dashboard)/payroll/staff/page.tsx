@@ -60,7 +60,11 @@ export default function StaffSalariesPage() {
   )
 
   const reload = () => {
-    setStaffList(payrollService.getStaffSalaries(selectedMonth))
+    setStaffList(
+      payrollService
+        .getStaffSalaries(selectedMonth)
+        .map((row) => payrollService.calculateStaffSalaryRow(row, daysInMonth))
+    )
   }
 
   useEffect(() => {
@@ -68,7 +72,7 @@ export default function StaffSalariesPage() {
     const handleSync = () => reload()
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
-  }, [selectedMonth])
+  }, [selectedMonth, daysInMonth])
 
   // Handle cell edit with live reactive calculation
   const handleCellChange = (
@@ -516,18 +520,27 @@ export default function StaffSalariesPage() {
                     />
                   </td>
 
-                  {/* Salary (Editable) */}
+                  {/* Salary — locked when linked from General Wages master */}
                   <td
                     style={{ width: `${widths.salary}px`, minWidth: `${widths.salary}px` }}
                     className="border-r border-slate-100 py-1 px-1"
                   >
-                    <input
-                      type="number"
-                      value={st.salary || ''}
-                      disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'salary', Number(e.target.value))}
-                      className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                    />
+                    {st.employeeId ? (
+                      <div
+                        className="w-full text-right px-2 py-0.5 font-semibold text-xs text-slate-900"
+                        title="From General Wages (master)"
+                      >
+                        {formatNumber(st.salary, 0)}
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        value={st.salary || ''}
+                        disabled={!canEditAccounts}
+                        onChange={(e) => handleCellChange(idx, 'salary', Number(e.target.value))}
+                        className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
+                      />
+                    )}
                   </td>
 
                   {/* Attendance Days (Editable) */}
@@ -741,7 +754,7 @@ export default function StaffSalariesPage() {
           <span>Live Formulas Applied:</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[11px] text-slate-600">
-          <div>• <span className="font-semibold text-slate-800">Basic</span> = (Salary ÷ {daysInMonth}) × Attn</div>
+          <div>• <span className="font-semibold text-slate-800">Basic</span> = Attn × Rate Per Day</div>
           <div>• <span className="font-semibold text-slate-800">OT Amt</span> = OT Hrs × (Salary ÷ 240)</div>
           <div>• <span className="font-semibold text-slate-800">Gross</span> = Basic + OT Amt</div>
           <div>• <span className="font-semibold text-slate-800">Synopsis</span> = Gross - Less Advance</div>
