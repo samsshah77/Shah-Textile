@@ -5,14 +5,12 @@ import {
   ShieldCheck,
   UserCheck,
   UserX,
-  Plus,
   Clock,
   CheckCircle2,
   XCircle,
   Briefcase,
   Users,
   AlertCircle,
-  Sparkles,
   RefreshCw,
   Search,
   Filter,
@@ -24,6 +22,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { RoleOption } from '@/types/auth'
 import { AlertModal, ModalType } from '@/components/ui/AlertModal'
+import { PageHeader } from '@/components/shared/PageHeader'
 
 interface AdminUser {
   id: string
@@ -221,40 +220,27 @@ export default function AdminApprovalsPage() {
   return (
     <div className="space-y-6 pb-16">
       
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-3xl border border-slate-200 bg-white shadow-xs">
-        <div className="flex items-center gap-4">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-white border border-slate-200 shadow-xs p-2">
-            <img src="/saralogo.webp" alt="Sara Textile Logo" className="size-full object-contain" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                Staff Approvals & Role Administration
-              </h1>
-              <span className="rounded-md bg-blue-50 text-[#0066cc] text-[10px] font-bold uppercase px-2 py-0.5 border border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
-                Javed Sir Master Control
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Review and authorize pending staff signups & configure dynamic mill roles in real-time.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Staff Approvals"
+        breadcrumbs={[
+          { label: 'Home', href: '/dashboard' },
+          { label: 'Administration', href: '/admin/approvals' },
+          { label: 'Approvals' },
+        ]}
+        actions={
           <button
+            type="button"
             onClick={() => {
               fetchUsers()
               fetchRoles()
             }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:text-[#0066cc] text-xs font-semibold text-slate-700 transition-all cursor-pointer shadow-xs"
+            className="erp-btn-secondary"
           >
             <RefreshCw className="size-3.5" />
-            <span>Refresh Data</span>
+            <span>Refresh</span>
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Metrics Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -564,75 +550,66 @@ export default function AdminApprovalsPage() {
           <div className="space-y-6">
             
             {/* Create Role Box */}
-            <div className="p-6 rounded-2xl border border-slate-200 bg-slate-50/60 space-y-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-xl bg-[#0066cc] text-white shadow-xs">
-                  <Plus className="size-4.5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Add New Mill Role</h3>
-                  <p className="text-xs text-slate-500">
-                    Roles created here immediately appear in the Signup page dropdown for new registrations.
-                  </p>
-                </div>
+            <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-white space-y-4">
+              <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                <h3 className="h6 mb-0 fw-semibold">Add Mill Role</h3>
               </div>
 
               <form onSubmit={handleCreateRole} className="grid grid-cols-1 md:grid-cols-12 gap-3">
                 <div className="md:col-span-4 space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Role Title / Label</label>
+                  <label className="text-xs font-semibold text-slate-700">Role Title</label>
                   <input
                     type="text"
                     value={newRoleLabel}
                     onChange={(e) => setNewRoleLabel(e.target.value)}
                     placeholder="e.g. Weaving Supervisor"
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#0066cc] focus:outline-none focus:ring-2 focus:ring-[#0066cc]/15"
+                    className="form-control form-control-sm"
                     required
                   />
                 </div>
 
                 <div className="md:col-span-4 space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Department</label>
+                  <label className="text-xs font-semibold text-slate-700">Department</label>
                   <input
                     type="text"
                     value={newRoleDept}
                     onChange={(e) => setNewRoleDept(e.target.value)}
-                    placeholder="e.g. Loom Floor Maintenance"
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#0066cc] focus:outline-none focus:ring-2 focus:ring-[#0066cc]/15"
+                    placeholder="e.g. Loom Floor"
+                    className="form-control form-control-sm"
                   />
                 </div>
 
                 <div className="md:col-span-4 space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Description</label>
+                  <label className="text-xs font-semibold text-slate-700">Description</label>
                   <input
                     type="text"
                     value={newRoleDesc}
                     onChange={(e) => setNewRoleDesc(e.target.value)}
-                    placeholder="e.g. Floor shifts & loom monitoring"
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#0066cc] focus:outline-none focus:ring-2 focus:ring-[#0066cc]/15"
+                    placeholder="e.g. Floor shifts"
+                    className="form-control form-control-sm"
                   />
                 </div>
 
-                <div className="md:col-span-8 flex items-center gap-2 pt-2">
+                <div className="md:col-span-8 flex items-center gap-2">
                   <input
                     type="checkbox"
                     id="canSignupCheck"
                     checked={newRoleCanSignup}
                     onChange={(e) => setNewRoleCanSignup(e.target.checked)}
-                    className="size-4 rounded text-[#0066cc] focus:ring-[#0066cc] cursor-pointer"
+                    className="form-check-input m-0"
                   />
-                  <label htmlFor="canSignupCheck" className="text-xs font-semibold text-slate-700 cursor-pointer">
-                    Enable this role in public staff signup dropdown
+                  <label htmlFor="canSignupCheck" className="text-xs font-medium text-slate-700 mb-0 cursor-pointer">
+                    Show in signup dropdown
                   </label>
                 </div>
 
-                <div className="md:col-span-4 flex justify-end pt-1">
+                <div className="md:col-span-4 flex justify-end">
                   <button
                     type="submit"
                     disabled={creatingRole || !newRoleLabel.trim()}
-                    className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-[#0066cc] hover:bg-[#0052a3] text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                    className="erp-btn-primary w-100 w-md-auto justify-content-center"
                   >
-                    <Plus className="size-4" />
-                    <span>{creatingRole ? 'Saving...' : 'Add & Publish Role'}</span>
+                    <span>{creatingRole ? 'Saving…' : 'Add Role'}</span>
                   </button>
                 </div>
               </form>
