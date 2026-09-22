@@ -16,6 +16,7 @@ import {
   Search,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 
 export default function MonthlyProductionReportsPage() {
   const [monthRollup, setMonthRollup] = useState<{
@@ -61,16 +62,19 @@ export default function MonthlyProductionReportsPage() {
           { label: 'Monthly Report' },
         ]}
         actions={
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="form-select form-select-sm"
-            aria-label="Statement month"
-          >
-            <option value="2026-08">August 2026</option>
-            <option value="2026-07">July 2026</option>
-            <option value="2026-09">September 2026</option>
-          </select>
+          <>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="form-select form-select-sm"
+              aria-label="Statement month"
+            >
+              <option value="2026-08">August 2026</option>
+              <option value="2026-07">July 2026</option>
+              <option value="2026-09">September 2026</option>
+            </select>
+            <ExportPdfButton filename={`Production-Monthly-${selectedMonth}`} />
+          </>
         }
       />
 

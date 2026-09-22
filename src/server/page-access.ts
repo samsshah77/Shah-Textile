@@ -27,14 +27,27 @@ export async function requirePagePermission(moduleKey: string, resourceKey: stri
     if (!permission.allowed) redirect("/forbidden");
     return user;
   } catch (err) {
-    // Next.js redirect() throws; rethrow those. Real errors → forbidden (not a black 500 page).
+    // Next.js redirect() throws; rethrow those. Also rethrow dynamic-rendering signals —
+    // catching DYNAMIC_SERVER_USAGE and "handling" it breaks App Router dynamic detection
+    // (live tabs can 500 / land on forbidden while `next dev` looks fine).
     if (
       err &&
       typeof err === "object" &&
       "digest" in err &&
-      typeof (err as { digest?: string }).digest === "string" &&
-      (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      typeof (err as { digest?: string }).digest === "string"
     ) {
+      const digest = (err as { digest: string }).digest;
+      if (
+        digest.startsWith("NEXT_REDIRECT") ||
+        digest.startsWith("NEXT_NOT_FOUND") ||
+        digest === "DYNAMIC_SERVER_USAGE" ||
+        digest.startsWith("NEXT_DYNAMIC")
+      ) {
+        throw err;
+      }
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/Dynamic server usage|DYNAMIC_SERVER_USAGE/i.test(msg)) {
       throw err;
     }
     console.error("[requirePagePermission]", moduleKey, resourceKey, err);

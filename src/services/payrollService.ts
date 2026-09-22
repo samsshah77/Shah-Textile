@@ -25,7 +25,26 @@ const STORAGE_KEYS = {
   HELPERS: 'sara_payroll_helpers_v6',
   CONTRACTORS: 'sara_payroll_contractors_v6',
   PETTY_CASH: 'sara_payroll_petty_cash_v6',
+  HR_META: 'sara_payroll_hr_meta_v1',
 }
+
+const DEFAULT_HR_CATEGORIES = ['Admin', 'Staff', 'Contract', 'Weaver', 'Helper', 'Contractor']
+const DEFAULT_HR_DESIGNATIONS = [
+  'Incharge',
+  'Supervisor',
+  'Accountant',
+  'Quality Controller',
+  'D.E.O',
+  'Sr.Technician',
+  'Electrician',
+  'Asst Technician',
+  'Oil Man',
+  'Weaver',
+  'Spare Weaver',
+  'Helper',
+  'Store Keeper',
+  'Time Keeper',
+]
 
 type JobFamily = 'weaver' | 'helper' | 'contractor' | 'salaried'
 
@@ -41,6 +60,36 @@ function daysInCalendarMonth(month: string = '2026-08'): number {
   const [year, mon] = (month || '2026-08').split('-').map(Number)
   if (!year || !mon) return 31
   return new Date(year, mon, 0).getDate()
+}
+
+/** Active / On Leave count as working roster; Resigned does not. */
+export function isActiveEmployee(emp?: EmployeeProfile | null): boolean {
+  if (!emp) return false
+  return (emp.status || 'Active') !== 'Resigned'
+}
+
+/** YYYY-MM of resignation (empty if not resigned). */
+export function resignedMonth(emp?: EmployeeProfile | null): string {
+  if (!emp || (emp.status || 'Active') !== 'Resigned') return ''
+  const raw = (emp.resignedAt || '').trim()
+  if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7)
+  return ''
+}
+
+/**
+ * Include in a payroll month sheet?
+ * Resigned people stay through their resign month, then drop from later months.
+ */
+export function employeeBelongsInMonth(emp: EmployeeProfile | null | undefined, month: string): boolean {
+  if (!emp) return true
+  if ((emp.status || 'Active') !== 'Resigned') return true
+  const end = resignedMonth(emp)
+  if (!end) return false
+  return month <= end
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
 function normalizeName(name?: string): string {
@@ -2252,6 +2301,110 @@ class PayrollService {
     return INITIAL_EMPLOYEES
   }
 
+  /** Working roster only — excludes Resigned (for Profiles / General Wages / new month seed). */
+  getActiveEmployees(): EmployeeProfile[] {
+    return this.getEmployees().filter(isActiveEmployee)
+  }
+
+  getResignedEmployees(): EmployeeProfile[] {
+    return this.getEmployees()
+      .filter((e) => (e.status || 'Active') === 'Resigned')
+      .sort((a, b) => (b.resignedAt || '').localeCompare(a.resignedAt || ''))
+  }
+
+  /** Staff marked Advance-eligible in HR Profiles (active only). */
+  getAdvanceEligibleEmployees(): EmployeeProfile[] {
+    return this.getActiveEmployees().filter((e) => Boolean(e.advanceEligible))
+  }
+
+  getHrMeta(): { categories: string[]; designations: string[] } {
+    const fromRoster = this.getEmployees()
+    const rosterCats = [
+      ...new Set(fromRoster.map((e) => e.employeeCategory || 'Staff').filter(Boolean)),
+    ]
+    const rosterDesigs = [...new Set(fromRoster.map((e) => e.designation).filter(Boolean))]
+    let custom: { categories?: string[]; designations?: string[] } = {}
+    if (this.isClient()) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.HR_META)
+        if (raw) custom = JSON.parse(raw)
+      } catch {
+        /* ignore */
+      }
+    }
+    const categories = [
+      ...new Set([...DEFAULT_HR_CATEGORIES, ...rosterCats, ...(custom.categories || [])]),
+    ].sort((a, b) => a.localeCompare(b))
+    const designations = [
+      ...new Set([...DEFAULT_HR_DESIGNATIONS, ...rosterDesigs, ...(custom.designations || [])]),
+    ].sort((a, b) => a.localeCompare(b))
+    return { categories, designations }
+  }
+
+  addHrCategory(label: string): void {
+    const name = label.trim()
+    if (!name || !this.isClient()) return
+    let custom: { categories: string[]; designations: string[] } = { categories: [], designations: [] }
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.HR_META)
+      if (raw) custom = { categories: [], designations: [], ...JSON.parse(raw) }
+    } catch {
+      /* ignore */
+    }
+    if (!custom.categories.includes(name)) custom.categories.push(name)
+    localStorage.setItem(STORAGE_KEYS.HR_META, JSON.stringify(custom))
+  }
+
+  addHrDesignation(label: string): void {
+    const name = label.trim()
+    if (!name || !this.isClient()) return
+    let custom: { categories: string[]; designations: string[] } = { categories: [], designations: [] }
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.HR_META)
+      if (raw) custom = { categories: [], designations: [], ...JSON.parse(raw) }
+    } catch {
+      /* ignore */
+    }
+    if (!custom.designations.includes(name)) custom.designations.push(name)
+    localStorage.setItem(STORAGE_KEYS.HR_META, JSON.stringify(custom))
+  }
+
+  private filterRowsForMonth<T extends { employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
+    rows: T[],
+    month: string,
+    nameKey: 'employeeName' | 'name' = 'employeeName'
+  ): T[] {
+    const roster = this.getEmployees()
+    return rows.filter((row) => {
+      const rowName = nameKey === 'name' ? row.name : row.employeeName
+      const emp = findLinkedEmployee(roster, rowName, row.designation || row.contractType, row.employeeId)
+      return employeeBelongsInMonth(emp, month)
+    })
+  }
+
+  /** Drop a resigned person from every stored sheet month after resign month. */
+  purgeResignedFromFutureMonths(emp: EmployeeProfile): void {
+    const end = resignedMonth(emp) || todayIsoDate().slice(0, 7)
+    const unlink = (name?: string, designation?: string, employeeId?: string) =>
+      Boolean(findLinkedEmployee([emp], name, designation, employeeId))
+
+    const dropFuture = <T extends { month: string; employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
+      list: T[]
+    ) =>
+      list.filter((row) => {
+        if (row.month <= end) return true
+        return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+      })
+
+    this.saveStaffSalaries(dropFuture(this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)), false)
+    this.saveContractSalaries(dropFuture(this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)), false)
+    this.saveAdvances(dropFuture(this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)), false)
+    this.saveEfficiencyIncentives(dropFuture(this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)), false)
+    this.saveWeaversWages(dropFuture(this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)), false)
+    this.saveHelpersWages(dropFuture(this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)), false)
+    this.saveContractorsPayments(dropFuture(this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)), false)
+  }
+
   private readStore<T>(key: string, fallback: T[]): T[] {
     if (this.isClient()) {
       try {
@@ -2320,6 +2473,14 @@ class PayrollService {
     const ratePerHr30 = Math.round((salary / (30 * (dutyHrs || 8))) * 100) / 100
     const ratePerDay28 = Math.round((salary / 28) * 100) / 100
 
+    const nextStatus = updatedFields.status ?? current.status ?? 'Active'
+    let resignedAt = updatedFields.resignedAt !== undefined ? updatedFields.resignedAt : current.resignedAt
+    if (nextStatus === 'Resigned') {
+      resignedAt = resignedAt || todayIsoDate()
+    } else if (updatedFields.status && updatedFields.status !== 'Resigned') {
+      resignedAt = undefined
+    }
+
     const updated: EmployeeProfile = {
       ...current,
       ...updatedFields,
@@ -2329,10 +2490,17 @@ class PayrollService {
       ratePerDay30,
       ratePerHr30,
       ratePerDay28,
+      status: nextStatus,
+      resignedAt,
     }
 
     list[idx] = updated
     this.saveEmployees(list, true)
+
+    if (nextStatus === 'Resigned') {
+      this.purgeResignedFromFutureMonths(updated)
+      this.notifyDataChanged()
+    }
     return updated
   }
 
@@ -2663,26 +2831,23 @@ class PayrollService {
   // ==========================================
 
   getAdvances(month: string = '2026-08', fortnight?: string): AdvanceRecord[] {
+    let list: AdvanceRecord[] = INITIAL_ADVANCES
     if (this.isClient()) {
       try {
         const stored = localStorage.getItem(STORAGE_KEYS.ADVANCES)
         if (stored) {
-          const list: AdvanceRecord[] = JSON.parse(stored)
-          let filtered = list.filter((a) => (a.month || '2026-08') === month)
-          if (fortnight && fortnight !== 'all') {
-            filtered = filtered.filter((a) => (a.fortnight || '1-15') === fortnight)
-          }
-          if (filtered.length > 0) return filtered
+          const parsed: AdvanceRecord[] = JSON.parse(stored)
+          if (parsed.length > 0) list = parsed
         }
       } catch (err) {
         console.error(err)
       }
     }
-    let list = INITIAL_ADVANCES.filter((a) => (a.month || '2026-08') === month)
+    let filtered = list.filter((a) => (a.month || '2026-08') === month)
     if (fortnight && fortnight !== 'all') {
-      list = list.filter((a) => (a.fortnight || '1-15') === fortnight)
+      filtered = filtered.filter((a) => (a.fortnight || '1-15') === fortnight)
     }
-    return list
+    return this.filterRowsForMonth(filtered, month, 'employeeName')
   }
 
   saveAdvances(list: AdvanceRecord[], triggerCascade: boolean = true, month?: string, fortnight?: string): void {
@@ -2795,19 +2960,23 @@ class PayrollService {
   // ==========================================
 
   getStaffSalaries(month: string = '2026-08'): StaffSalaryRecord[] {
+    let list: StaffSalaryRecord[] = INITIAL_STAFF_SALARIES
     if (this.isClient()) {
       try {
         const stored = localStorage.getItem(STORAGE_KEYS.STAFF)
         if (stored) {
-          const list: StaffSalaryRecord[] = JSON.parse(stored)
-          const filtered = list.filter((s) => s.month === month)
-          if (filtered.length > 0) return filtered
+          const parsed: StaffSalaryRecord[] = JSON.parse(stored)
+          if (parsed.length > 0) list = parsed
         }
       } catch (err) {
         console.error(err)
       }
     }
-    return INITIAL_STAFF_SALARIES.filter((s) => s.month === month)
+    return this.filterRowsForMonth(
+      list.filter((s) => s.month === month),
+      month,
+      'employeeName'
+    )
   }
 
   saveStaffSalaries(list: StaffSalaryRecord[], broadcast: boolean = true): void {
@@ -2822,19 +2991,23 @@ class PayrollService {
   // ==========================================
 
   getContractSalaries(month: string = '2026-08'): ContractSalaryRecord[] {
+    let list: ContractSalaryRecord[] = INITIAL_CONTRACT_SALARIES
     if (this.isClient()) {
       try {
         const stored = localStorage.getItem(STORAGE_KEYS.CONTRACT)
         if (stored) {
-          const list: ContractSalaryRecord[] = JSON.parse(stored)
-          const filtered = list.filter((c) => c.month === month)
-          if (filtered.length > 0) return filtered
+          const parsed: ContractSalaryRecord[] = JSON.parse(stored)
+          if (parsed.length > 0) list = parsed
         }
       } catch (err) {
         console.error(err)
       }
     }
-    return INITIAL_CONTRACT_SALARIES.filter((c) => c.month === month)
+    return this.filterRowsForMonth(
+      list.filter((c) => c.month === month),
+      month,
+      'employeeName'
+    )
   }
 
   saveContractSalaries(monthOrList: string | ContractSalaryRecord[], listOrBroadcast?: ContractSalaryRecord[] | boolean, broadcast: boolean = true): void {
@@ -2878,19 +3051,23 @@ class PayrollService {
   // ==========================================
 
   getEfficiencyIncentives(month: string = '2026-08'): EfficiencyIncentiveRecord[] {
+    let list: EfficiencyIncentiveRecord[] = INITIAL_EFFICIENCY_INCENTIVES
     if (this.isClient()) {
       try {
         const stored = localStorage.getItem(STORAGE_KEYS.EFFICIENCY)
         if (stored) {
-          const list: EfficiencyIncentiveRecord[] = JSON.parse(stored)
-          const filtered = list.filter((e) => e.month === month)
-          if (filtered.length > 0) return filtered
+          const parsed: EfficiencyIncentiveRecord[] = JSON.parse(stored)
+          if (parsed.length > 0) list = parsed
         }
       } catch (err) {
         console.error(err)
       }
     }
-    return INITIAL_EFFICIENCY_INCENTIVES.filter((e) => e.month === month)
+    return this.filterRowsForMonth(
+      list.filter((e) => e.month === month),
+      month,
+      'name'
+    )
   }
 
   saveEfficiencyIncentives(list: EfficiencyIncentiveRecord[], triggerCascade: boolean = true): void {
@@ -2921,7 +3098,11 @@ class PayrollService {
         console.error(err)
       }
     }
-    return list.filter((w) => w.month === month && (!fortnight || w.fortnight === fortnight))
+    return this.filterRowsForMonth(
+      list.filter((w) => w.month === month && (!fortnight || w.fortnight === fortnight)),
+      month,
+      'employeeName'
+    )
   }
 
   saveWeaversWages(
@@ -2975,7 +3156,11 @@ class PayrollService {
         console.error(err)
       }
     }
-    return list.filter((h) => h.month === month && (!fortnight || h.fortnight === fortnight))
+    return this.filterRowsForMonth(
+      list.filter((h) => h.month === month && (!fortnight || h.fortnight === fortnight)),
+      month,
+      'employeeName'
+    )
   }
 
   saveHelpersWages(
@@ -3029,7 +3214,11 @@ class PayrollService {
         console.error(err)
       }
     }
-    return list.filter((c) => c.month === month && (!fortnight || c.fortnight === fortnight))
+    return this.filterRowsForMonth(
+      list.filter((c) => c.month === month && (!fortnight || c.fortnight === fortnight)),
+      month,
+      'name'
+    )
   }
 
   saveContractorsPayments(

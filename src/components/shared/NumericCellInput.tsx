@@ -97,6 +97,18 @@ export function NumericCellInput({
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault()
       return
     }
+
+    // Left/right: move cell when caret at edge (or whole value selected); else allow typing caret
+    if (dir === 'left' || dir === 'right') {
+      const el = e.currentTarget
+      const start = el.selectionStart ?? 0
+      const end = el.selectionEnd ?? 0
+      const len = el.value.length
+      const allSelected = start === 0 && end === len && len > 0
+      if (dir === 'left' && start > 0 && !allSelected) return
+      if (dir === 'right' && end < len && !allSelected) return
+    }
+
     e.preventDefault()
     commit(text)
     focusSiblingCell(e.currentTarget, dir)

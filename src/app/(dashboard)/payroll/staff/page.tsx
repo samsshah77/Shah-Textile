@@ -26,6 +26,8 @@ import {
   FileSpreadsheet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
   serial: 56,
@@ -252,6 +254,7 @@ export default function StaffSalariesPage() {
                 <Printer className="size-3.5" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Staff-Salary-${selectedMonth}`} />
             </>
           }
         />
@@ -492,55 +495,31 @@ export default function StaffSalariesPage() {
                     onInsertRow={handleInsertRow}
                   />
                   
-                  {/* Name Input */}
+                  {/* Name — from HR / General Wages */}
                   <td
                     style={{ width: `${widths.employeeName}px`, minWidth: `${widths.employeeName}px` }}
-                    className="border-r border-slate-100 py-1 px-1"
+                    className="border-r border-slate-100 py-1.5 px-2 bg-slate-50"
+                    title="From HR Profiles / General Wages"
                   >
-                    <input
-                      type="text"
-                      value={st.employeeName}
-                      disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'employeeName', e.target.value)}
-                      className="w-full bg-transparent px-2 py-0.5 font-semibold font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                    />
+                    <span className="font-semibold font-sans text-xs text-slate-500">{st.employeeName}</span>
                   </td>
 
-                  {/* Designation Input */}
+                  {/* Designation — from HR / General Wages */}
                   <td
                     style={{ width: `${widths.designation}px`, minWidth: `${widths.designation}px` }}
-                    className="border-r border-slate-100 py-1 px-1"
+                    className="border-r border-slate-100 py-1.5 px-2 bg-slate-50"
+                    title="From HR Profiles / General Wages"
                   >
-                    <input
-                      type="text"
-                      value={st.designation}
-                      disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'designation', e.target.value)}
-                      className="w-full bg-transparent px-2 py-0.5 font-sans text-xs text-slate-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
-                    />
+                    <span className="font-sans text-xs text-slate-500">{st.designation}</span>
                   </td>
 
-                  {/* Salary — locked when linked from General Wages master */}
+                  {/* Salary — from HR / General Wages */}
                   <td
                     style={{ width: `${widths.salary}px`, minWidth: `${widths.salary}px` }}
-                    className="border-r border-slate-100 py-1 px-1"
+                    className="border-r border-slate-100 py-1.5 px-2 text-right bg-slate-50"
+                    title="From HR Profiles / General Wages"
                   >
-                    {st.employeeId ? (
-                      <div
-                        className="w-full text-right px-2 py-0.5 font-semibold text-xs text-slate-900"
-                        title="From General Wages (master)"
-                      >
-                        {formatNumber(st.salary, 0)}
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        value={st.salary || ''}
-                        disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'salary', Number(e.target.value))}
-                        className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                      />
-                    )}
+                    <span className="font-semibold text-xs text-slate-500">{formatNumber(st.salary, 0)}</span>
                   </td>
 
                   {/* Attendance Days (Editable) */}
@@ -548,11 +527,12 @@ export default function StaffSalariesPage() {
                     style={{ width: `${widths.attendanceDays}px`, minWidth: `${widths.attendanceDays}px` }}
                     className="border-r border-slate-100 py-1 px-1 text-center"
                   >
-                    <input
-                      type="number"
-                      value={st.attendanceDays}
+                    <NumericCellInput
+                      value={st.attendanceDays || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'attendanceDays', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={0}
+                      onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
                       className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-800"
                     />
                   </td>
@@ -560,15 +540,17 @@ export default function StaffSalariesPage() {
                   {/* Calculated Per Day */}
                   <td
                     style={{ width: `${widths.ratePerDay}px`, minWidth: `${widths.ratePerDay}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-600 whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                    title="Auto: Salary ÷ Days"
                   >
-                    {formatNumber(st.ratePerDay, 0)}
+                    {formatNumber(st.ratePerDay, 2)}
                   </td>
 
                   {/* Calculated Basic */}
                   <td
                     style={{ width: `${widths.basicSalary}px`, minWidth: `${widths.basicSalary}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-500 whitespace-nowrap bg-slate-50"
+                    title="Auto: Attn × Rate Per Day"
                   >
                     {formatNumber(st.basicSalary, 0)}
                   </td>
@@ -576,7 +558,8 @@ export default function StaffSalariesPage() {
                   {/* Calculated Hourly Rate */}
                   <td
                     style={{ width: `${widths.perHrRate}px`, minWidth: `${widths.perHrRate}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-600 whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                    title="Auto: Salary ÷ 240"
                   >
                     {formatNumber(st.perHrRate, 2)}
                   </td>
@@ -586,11 +569,12 @@ export default function StaffSalariesPage() {
                     style={{ width: `${widths.otHours}px`, minWidth: `${widths.otHours}px` }}
                     className="border-r border-slate-100 py-1 px-1 text-center"
                   >
-                    <input
-                      type="number"
-                      value={st.otHours}
+                    <NumericCellInput
+                      value={st.otHours || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'otHours', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={1}
+                      onValueChange={(v) => handleCellChange(idx, 'otHours', v)}
                       className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
                     />
                   </td>
@@ -616,11 +600,12 @@ export default function StaffSalariesPage() {
                     style={{ width: `${widths.lessAdvance}px`, minWidth: `${widths.lessAdvance}px` }}
                     className="border-r border-slate-100 py-1 px-1"
                   >
-                    <input
-                      type="number"
-                      value={st.lessAdvance}
+                    <NumericCellInput
+                      value={st.lessAdvance || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'lessAdvance', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={2}
+                      onValueChange={(v) => handleCellChange(idx, 'lessAdvance', v)}
                       className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                     />
                   </td>
@@ -630,11 +615,12 @@ export default function StaffSalariesPage() {
                     style={{ width: `${widths.chequeAmount}px`, minWidth: `${widths.chequeAmount}px` }}
                     className="border-r border-slate-100 py-1 px-1"
                   >
-                    <input
-                      type="number"
-                      value={st.chequeAmount}
+                    <NumericCellInput
+                      value={st.chequeAmount || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'chequeAmount', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={3}
+                      onValueChange={(v) => handleCellChange(idx, 'chequeAmount', v)}
                       className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs text-slate-700 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                     />
                   </td>

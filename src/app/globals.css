@@ -868,10 +868,16 @@ button, input, select, a {
 /* ==========================================================================
    A4 PRINT ENGINE STYLES (AUTOMATIC FIT-TO-PAGE ON A4 LANDSCAPE)
    ========================================================================== */
+
+/* Print brand header — screen hidden, PDF/print only */
+.sara-print-doc-header {
+  display: none;
+}
+
 @media print {
   @page {
     size: A4 landscape;
-    margin: 6mm 8mm;
+    margin: 10mm 8mm 8mm 8mm;
   }
 
   body {
@@ -882,13 +888,80 @@ button, input, select, a {
     print-color-adjust: exact !important;
   }
 
-  /* Hide interactive elements, buttons, banners */
+  /* Hide interactive chrome + date filters / shift UI (never in PDF) */
   header,
   nav,
   aside,
   button,
-  .print\:hidden {
+  .print\:hidden,
+  .d-print-none,
+  .sara-page-header,
+  .sara-erp-topbar,
+  .sara-sheet-tabs,
+  .app-sidebar,
+  .alert {
     display: none !important;
+  }
+
+  .sara-print-doc-header {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 10px 0;
+    padding: 0 0 8px 0;
+    border-bottom: 2px solid #0f172a;
+    page-break-after: avoid;
+  }
+
+  .sara-print-doc-header__left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .sara-print-doc-header__logo {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .sara-print-doc-header__company {
+    font-family: system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 13pt;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #0f172a;
+    line-height: 1.1;
+  }
+
+  .sara-print-doc-header__sheet {
+    font-size: 9pt;
+    font-weight: 600;
+    color: #334155;
+    margin-top: 2px;
+  }
+
+  .sara-print-doc-header__right {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .sara-print-doc-header__meta-label {
+    font-size: 7pt;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+  }
+
+  .sara-print-doc-header__meta-value {
+    font-size: 9pt;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #0f172a;
   }
 
   /* Allow tables to expand/scale naturally without browser scrollbars */

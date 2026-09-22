@@ -4,6 +4,8 @@ import { DeliveryChallan } from '@/types/challan'
 import { formatNumber } from '@/lib/utils'
 import { Printer, ArrowLeft, Factory, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 
 interface ChallanPrintPreviewProps {
   challan: DeliveryChallan
@@ -28,6 +30,7 @@ export function ChallanPrintPreview({ challan }: ChallanPrintPreviewProps) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      <PrintBrandHeader sheetTitle={`Delivery Challan ${challan.challanNumber || ''}`} />
       {/* Action Bar */}
       <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4 print:hidden">
         <Link
@@ -37,13 +40,16 @@ export function ChallanPrintPreview({ challan }: ChallanPrintPreviewProps) {
           <ArrowLeft className="size-4" />
           <span>Back to Chalan FOI</span>
         </Link>
-        <button
-          onClick={handlePrint}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-700 transition-colors cursor-pointer"
-        >
-          <Printer className="size-4" />
-          <span>Print Delivery Challan (A4)</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportPdfButton filename={`Delivery-Challan-${challan.challanNumber || 'export'}`} />
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-700 transition-colors cursor-pointer"
+          >
+            <Printer className="size-4" />
+            <span>Print Delivery Challan (A4)</span>
+          </button>
+        </div>
       </div>
 
       {/* Formal Printable Document Card */}

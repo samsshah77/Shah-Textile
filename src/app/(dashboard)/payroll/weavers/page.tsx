@@ -25,6 +25,8 @@ import {
   FileSpreadsheet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_WEAVER_WAGES_WIDTHS = {
   serialNo: 56,
@@ -291,6 +293,7 @@ function WeaversPayrollContent() {
                 <Printer className="size-3.5" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Weavers-${selectedMonth}-${activeFortnight || 'all'}`} />
             </>
           }
         />
@@ -481,32 +484,22 @@ function WeaversPayrollContent() {
                       onInsertRow={handleInsertRow}
                     />
                     
-                    {/* Name Input */}
+                    {/* Name — from HR */}
                     <td
                       style={{ width: `${wageWidths.employeeName}px`, minWidth: `${wageWidths.employeeName}px` }}
-                      className="border-r border-slate-100 py-1 px-1"
+                      className="border-r border-slate-100 py-1.5 px-2 bg-slate-50"
+                      title="From HR Profiles / General Wages"
                     >
-                      <input
-                        type="text"
-                        value={w.employeeName}
-                        disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'employeeName', e.target.value)}
-                        className="w-full bg-transparent px-2 py-0.5 font-semibold font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                      />
+                      <span className="font-semibold font-sans text-xs text-slate-500">{w.employeeName}</span>
                     </td>
 
-                    {/* Designation Input */}
+                    {/* Designation — from HR */}
                     <td
                       style={{ width: `${wageWidths.designation}px`, minWidth: `${wageWidths.designation}px` }}
-                      className="border-r border-slate-100 py-1 px-1"
+                      className="border-r border-slate-100 py-1.5 px-2 bg-slate-50"
+                      title="From HR Profiles / General Wages"
                     >
-                      <input
-                        type="text"
-                        value={w.designation}
-                        disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'designation', e.target.value)}
-                        className="w-full bg-transparent px-2 py-0.5 font-sans text-xs text-slate-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
-                      />
+                      <span className="font-sans text-xs text-slate-500">{w.designation}</span>
                     </td>
 
                     {/* Wage Per Day Input */}
@@ -514,11 +507,12 @@ function WeaversPayrollContent() {
                       style={{ width: `${wageWidths.wagePerDay}px`, minWidth: `${wageWidths.wagePerDay}px` }}
                       className="border-r border-slate-100 py-1 px-1"
                     >
-                      <input
-                        type="number"
-                        value={w.wagePerDay || ''}
+                      <NumericCellInput
+                        value={w.wagePerDay || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'wagePerDay', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={0}
+                        onValueChange={(v) => handleCellChange(idx, 'wagePerDay', v)}
                         className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
                       />
                     </td>
@@ -528,11 +522,12 @@ function WeaversPayrollContent() {
                       style={{ width: `${wageWidths.attendanceDays}px`, minWidth: `${wageWidths.attendanceDays}px` }}
                       className="border-r border-slate-100 py-1 px-1 text-center"
                     >
-                      <input
-                        type="number"
-                        value={w.attendanceDays}
+                      <NumericCellInput
+                        value={w.attendanceDays || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'attendanceDays', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={1}
+                        onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
                         className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-800"
                       />
                     </td>
@@ -558,12 +553,12 @@ function WeaversPayrollContent() {
                       style={{ width: `${wageWidths.extraLooms}px`, minWidth: `${wageWidths.extraLooms}px` }}
                       className="border-r border-slate-100 py-1 px-1 text-center"
                     >
-                      <input
-                        type="number"
-                        step="0.5"
-                        value={w.extraLooms || ''}
+                      <NumericCellInput
+                        value={w.extraLooms || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'extraLooms', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={2}
+                        onValueChange={(v) => handleCellChange(idx, 'extraLooms', v)}
                         className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
                       />
                     </td>
@@ -793,11 +788,12 @@ function WeaversPayrollContent() {
                       style={{ width: `${otWidths.holidayAttendance}px`, minWidth: `${otWidths.holidayAttendance}px` }}
                       className="border-r border-slate-100 py-1 px-2 text-center"
                     >
-                      <input
-                        type="number"
-                        value={w.holidayAttendance || ''}
+                      <NumericCellInput
+                        value={w.holidayAttendance || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'holidayAttendance', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={0}
+                        onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
                         className="w-20 text-center bg-transparent px-1 py-0.5 font-semibold text-xs text-slate-900 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded mx-auto"
                       />
                     </td>
@@ -1129,11 +1125,12 @@ function WeaversPayrollContent() {
                       style={{ width: `${netWidths.efficiencyAmount}px`, minWidth: `${netWidths.efficiencyAmount}px` }}
                       className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-[#0066cc]"
                     >
-                      <input
-                        type="number"
-                        value={w.efficiencyAmount || ''}
+                      <NumericCellInput
+                        value={w.efficiencyAmount || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'efficiencyAmount', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={0}
+                        onValueChange={(v) => handleCellChange(idx, 'efficiencyAmount', v)}
                         className="w-full text-right bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-[#0066cc]"
                       />
                     </td>

@@ -1,147 +1,65 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { LoomMaster, QualityMaster, YarnMaster } from '@/services/productionMastersService'
+import { LoomMaster, QualityMaster, YarnMaster, getDummyLoomImage } from '@/services/productionMastersService'
 import { LoomCategory } from '@/types/loom'
 import { AvatarImageUpload } from '@/components/shared/AvatarImageUpload'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { LoomStatusSelect } from '@/components/floor/LoomStatusSelect'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
-
-const MODELS: LoomCategory[] = ['G6200', 'G6300', 'PU']
+import { useAuth } from '@/context/AuthContext'
+import { EditLoomModal } from '@/components/floor/EditLoomModal'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   loom: 72,
   picture: 64,
-  name: 140,
-  model: 100,
-  year: 72,
-  rpm: 88,
-  quality: 140,
-  weft: 140,
-  shed: 100,
+  name: 150,
+  model: 95,
+  year: 70,
+  rpm: 95,
+  shed: 110,
   status: 130,
+  actions: 75,
 }
 
 interface LoomMasterTableProps {
   looms: LoomMaster[]
-  qualities: QualityMaster[]
-  yarn: YarnMaster[]
+  qualities?: QualityMaster[]
+  yarn?: YarnMaster[]
   onUpdate: (loomNumber: number, patch: Partial<LoomMaster>) => void
   onAdd: () => void
   readOnly?: boolean
 }
 
-function LoomFields({
-  l,
-  qualities,
-  yarn,
-  onUpdate,
-  readOnly,
-}: {
-  l: LoomMaster
-  qualities: QualityMaster[]
-  yarn: YarnMaster[]
-  onUpdate: LoomMasterTableProps['onUpdate']
-  readOnly?: boolean
-}) {
-  return (
-    <>
-      <input
-        className="form-control form-control-sm"
-        value={l.name}
-        disabled={readOnly}
-        placeholder="Machine Name"
-        onChange={(e) => onUpdate(l.loomNumber, { name: e.target.value })}
-      />
-      <select
-        className="form-select form-select-sm"
-        value={l.model}
-        disabled={readOnly}
-        onChange={(e) => onUpdate(l.loomNumber, { model: e.target.value as LoomCategory })}
-      >
-        {MODELS.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
-      <input
-        type="number"
-        className="form-control form-control-sm"
-        value={l.year}
-        disabled={readOnly}
-        title="Year"
-        onChange={(e) => onUpdate(l.loomNumber, { year: Number(e.target.value) || 0 })}
-      />
-      <input
-        type="number"
-        className="form-control form-control-sm"
-        title="Revolutions Per Minute"
-        value={l.defaultRpm}
-        disabled={readOnly}
-        onChange={(e) => onUpdate(l.loomNumber, { defaultRpm: Number(e.target.value) || 0 })}
-      />
-      <select
-        className="form-select form-select-sm"
-        value={l.qualityId || ''}
-        disabled={readOnly}
-        onChange={(e) => onUpdate(l.loomNumber, { qualityId: e.target.value || null })}
-      >
-        <option value="">Quality —</option>
-        {qualities.map((q) => (
-          <option key={q.id} value={q.id}>
-            {q.name}
-          </option>
-        ))}
-      </select>
-      <select
-        className="form-select form-select-sm"
-        value={l.weftYarnId || ''}
-        disabled={readOnly}
-        onChange={(e) => onUpdate(l.loomNumber, { weftYarnId: e.target.value || null })}
-      >
-        <option value="">Weft Yarn —</option>
-        {yarn.map((y) => (
-          <option key={y.id} value={y.id}>
-            {y.yarnType}
-          </option>
-        ))}
-      </select>
-      <input
-        className="form-control form-control-sm"
-        value={l.shed}
-        disabled={readOnly}
-        placeholder="Shed"
-        onChange={(e) => onUpdate(l.loomNumber, { shed: e.target.value })}
-      />
-      <LoomStatusSelect
-        value={l.status}
-        disabled={readOnly}
-        onChange={(status) => onUpdate(l.loomNumber, { status })}
-      />
-    </>
-  )
-}
-
 export function LoomMasterTable({
   looms,
-  qualities,
-  yarn,
   onUpdate,
   onAdd,
   readOnly,
 }: LoomMasterTableProps) {
   const [mode, setMode] = useState<TableGridMode>('table')
-  const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
-    'sara_loom_col_widths_v1',
+  const [editingLoom, setEditingLoom] = useState<LoomMaster | null>(null)
+  const [adminNotice, setAdminNotice] = useState<string | null>(null)
+  const { isAdmin } = useAuth()
+
+  const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
+    'sara_loom_col_widths_v2',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
     () => Object.values(widths).reduce((sum, w) => sum + w, 0),
     [widths]
   )
+
+  const handleEditClick = (loom: LoomMaster) => {
+    if (!isAdmin) {
+      setAdminNotice('Only administrators can edit machine configurations.')
+      setTimeout(() => setAdminNotice(null), 4000)
+      return
+    }
+    setEditingLoom(loom)
+  }
 
   return (
     <div className="card">
@@ -151,42 +69,84 @@ export function LoomMasterTable({
         </div>
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {mode === 'table' && (
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
-              Reset columns
-            </button>
-          )}
           {!readOnly && (
             <button type="button" className="btn btn-sm btn-primary" onClick={onAdd}>
-              Add
+              <i className="bi bi-plus-lg me-1" /> Add
             </button>
           )}
         </div>
       </div>
 
+      {adminNotice && (
+        <div className="alert alert-warning py-2 px-3 mx-3 mt-3 mb-0 small d-flex align-items-center justify-content-between">
+          <span>
+            <i className="bi bi-exclamation-triangle-fill me-1" /> {adminNotice}
+          </span>
+          <button
+            type="button"
+            className="btn-close btn-close-sm"
+            aria-label="Close"
+            onClick={() => setAdminNotice(null)}
+          />
+        </div>
+      )}
+
       {mode === 'grid' ? (
         <div className="master-grid">
           {looms.map((l) => (
             <div key={l.loomNumber} className="master-grid-card">
-              <div className="d-flex align-items-center gap-3">
-                <AvatarImageUpload
-                  src={l.pictureDataUrl}
-                  alt={l.name || `Loom ${l.loomNumber}`}
-                  size={64}
-                  disabled={readOnly}
-                  onChange={(dataUrl) => onUpdate(l.loomNumber, { pictureDataUrl: dataUrl })}
-                />
-                <div>
-                  <div className="fw-semibold">Loom Number {l.loomNumber}</div>
+              <div className="d-flex align-items-center justify-content-between gap-2 border-bottom pb-2">
+                <div className="d-flex align-items-center gap-2">
+                  <AvatarImageUpload
+                    src={l.pictureDataUrl || getDummyLoomImage(l.loomNumber)}
+                    alt={l.name || `Loom ${l.loomNumber}`}
+                    size={52}
+                    disabled={readOnly}
+                    onChange={(dataUrl) => onUpdate(l.loomNumber, { pictureDataUrl: dataUrl })}
+                  />
+                  <div>
+                    <div className="fw-bold">{l.name}</div>
+                    <div className="small text-muted">
+                      Loom #{l.loomNumber} · <span className="badge bg-secondary-subtle text-secondary">{l.model}</span>
+                    </div>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary"
+                  title="Edit Loom Configuration"
+                  disabled={readOnly}
+                  onClick={() => handleEditClick(l)}
+                >
+                  <i className="bi bi-pencil" />
+                </button>
               </div>
-              <LoomFields
-                l={l}
-                qualities={qualities}
-                yarn={yarn}
-                onUpdate={onUpdate}
-                readOnly={readOnly}
-              />
+
+              <div className="d-flex justify-content-between small text-secondary py-1">
+                <span>Year: <strong className="text-dark">{l.year}</strong></span>
+                <span>Shed: <strong className="text-dark">{l.shed || 'Main Floor'}</strong></span>
+              </div>
+
+              <div>
+                <label className="form-label small mb-1 fw-semibold">RPM</label>
+                <input
+                  type="number"
+                  className="form-control form-control-sm"
+                  title="RPM"
+                  value={l.defaultRpm}
+                  disabled={readOnly}
+                  onChange={(e) => onUpdate(l.loomNumber, { defaultRpm: Number(e.target.value) || 0 })}
+                />
+              </div>
+
+              <div>
+                <label className="form-label small mb-1 fw-semibold">Status</label>
+                <LoomStatusSelect
+                  value={l.status}
+                  disabled={readOnly}
+                  onChange={(status) => onUpdate(l.loomNumber, { status })}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -221,21 +181,17 @@ export function LoomMasterTable({
                 <ResizableTh columnKey="year" width={widths.year} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Year
                 </ResizableTh>
-                <ResizableTh columnKey="rpm" width={widths.rpm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center"
-                  style={{ whiteSpace: 'normal', fontSize: '0.72rem' }}>
-                  Revolutions Per Minute
-                </ResizableTh>
-                <ResizableTh columnKey="quality" width={widths.quality} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Quality Name
-                </ResizableTh>
-                <ResizableTh columnKey="weft" width={widths.weft} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Weft Yarn
+                <ResizableTh columnKey="rpm" width={widths.rpm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center">
+                  RPM
                 </ResizableTh>
                 <ResizableTh columnKey="shed" width={widths.shed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Shed
                 </ResizableTh>
                 <ResizableTh columnKey="status" width={widths.status} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Status
+                </ResizableTh>
+                <ResizableTh columnKey="actions" width={widths.actions} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
+                  Actions
                 </ResizableTh>
               </tr>
             </thead>
@@ -245,55 +201,24 @@ export function LoomMasterTable({
                   <td className="fw-semibold px-2">{l.loomNumber}</td>
                   <td className="px-2 text-center">
                     <AvatarImageUpload
-                      src={l.pictureDataUrl}
+                      src={l.pictureDataUrl || getDummyLoomImage(l.loomNumber)}
                       alt={l.name || `Loom ${l.loomNumber}`}
                       size={40}
                       disabled={readOnly}
                       onChange={(dataUrl) => onUpdate(l.loomNumber, { pictureDataUrl: dataUrl })}
                     />
                   </td>
-                  <td className="px-1">
-                    <input
-                      className="form-control form-control-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={l.name}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(l.loomNumber, { name: e.target.value })}
-                    />
+                  <td className="px-2">
+                    <span className="fw-semibold text-dark">{l.name}</span>
                   </td>
-                  <td className="px-1">
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={l.model}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        onUpdate(l.loomNumber, { model: e.target.value as LoomCategory })
-                      }
-                    >
-                      {MODELS.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
+                  <td className="px-2">
+                    <span className="badge bg-light text-dark border px-2 py-1">{l.model}</span>
                   </td>
+                  <td className="px-2 text-secondary">{l.year}</td>
                   <td className="px-1">
                     <input
                       type="number"
-                      className="form-control form-control-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={l.year}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        onUpdate(l.loomNumber, { year: Number(e.target.value) || 0 })
-                      }
-                    />
-                  </td>
-                  <td className="px-1">
-                    <input
-                      type="number"
-                      className="form-control form-control-sm"
+                      className="form-control form-control-sm text-end"
                       style={{ width: '100%', minWidth: 0 }}
                       value={l.defaultRpm}
                       disabled={readOnly}
@@ -302,51 +227,7 @@ export function LoomMasterTable({
                       }
                     />
                   </td>
-                  <td className="px-1">
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={l.qualityId || ''}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        onUpdate(l.loomNumber, { qualityId: e.target.value || null })
-                      }
-                    >
-                      <option value="">—</option>
-                      {qualities.map((q) => (
-                        <option key={q.id} value={q.id}>
-                          {q.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-1">
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={l.weftYarnId || ''}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        onUpdate(l.loomNumber, { weftYarnId: e.target.value || null })
-                      }
-                    >
-                      <option value="">—</option>
-                      {yarn.map((y) => (
-                        <option key={y.id} value={y.id}>
-                          {y.yarnType}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-1">
-                    <input
-                      className="form-control form-control-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={l.shed}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(l.loomNumber, { shed: e.target.value })}
-                    />
-                  </td>
+                  <td className="px-2 text-secondary">{l.shed || 'Main Floor'}</td>
                   <td className="px-1">
                     <LoomStatusSelect
                       value={l.status}
@@ -355,12 +236,30 @@ export function LoomMasterTable({
                       onChange={(status) => onUpdate(l.loomNumber, { status })}
                     />
                   </td>
+                  <td className="px-1 text-center">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary py-0 px-2"
+                      title={isAdmin ? `Edit Loom ${l.loomNumber}` : 'Admin privileges required to edit loom'}
+                      disabled={readOnly}
+                      onClick={() => handleEditClick(l)}
+                    >
+                      <i className="bi bi-pencil" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <EditLoomModal
+        loom={editingLoom}
+        isOpen={!!editingLoom}
+        onClose={() => setEditingLoom(null)}
+        onSave={(loomNum, patch) => onUpdate(loomNum, patch)}
+      />
     </div>
   )
 }

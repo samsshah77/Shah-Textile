@@ -25,6 +25,8 @@ import {
   FileSpreadsheet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_CONTRACT_SALARY_WIDTHS = {
   serialNo: 56,
@@ -302,6 +304,7 @@ function ContractPayrollContent() {
                 <Printer className="size-3.5" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Contract-${activeTab}-${selectedMonth}`} />
             </>
           }
         />
@@ -468,55 +471,31 @@ function ContractPayrollContent() {
                       onInsertRow={handleInsertRow}
                     />
                     
-                    {/* Name Input */}
+                    {/* Name — from HR / General Wages */}
                     <td
                       style={{ width: `${salaryWidths.employeeName}px`, minWidth: `${salaryWidths.employeeName}px` }}
-                      className="border-r border-slate-100 py-1 px-1"
+                      className="border-r border-slate-100 py-1.5 px-2 bg-slate-50"
+                      title="From HR Profiles / General Wages"
                     >
-                      <input
-                        type="text"
-                        value={c.employeeName}
-                        disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'employeeName', e.target.value)}
-                        className="w-full bg-transparent px-2 py-0.5 font-semibold font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                      />
+                      <span className="font-semibold font-sans text-xs text-slate-500">{c.employeeName}</span>
                     </td>
 
-                    {/* Designation Input */}
+                    {/* Designation — from HR / General Wages */}
                     <td
                       style={{ width: `${salaryWidths.designation}px`, minWidth: `${salaryWidths.designation}px` }}
-                      className="border-r border-slate-100 py-1 px-1"
+                      className="border-r border-slate-100 py-1.5 px-2 bg-slate-50"
+                      title="From HR Profiles / General Wages"
                     >
-                      <input
-                        type="text"
-                        value={c.designation}
-                        disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'designation', e.target.value)}
-                        className="w-full bg-transparent px-2 py-0.5 font-sans text-xs text-slate-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
-                      />
+                      <span className="font-sans text-xs text-slate-500">{c.designation}</span>
                     </td>
 
-                    {/* Salary — locked when linked from General Wages master */}
+                    {/* Salary — from HR / General Wages */}
                     <td
                       style={{ width: `${salaryWidths.salary}px`, minWidth: `${salaryWidths.salary}px` }}
-                      className="border-r border-slate-100 py-1 px-1"
+                      className="border-r border-slate-100 py-1.5 px-2 text-right bg-slate-50"
+                      title="From HR Profiles / General Wages"
                     >
-                      {c.employeeId ? (
-                        <div
-                          className="w-full text-right px-2 py-0.5 font-semibold text-xs text-slate-900"
-                          title="From General Wages (master)"
-                        >
-                          {formatNumber(c.salary, 0)}
-                        </div>
-                      ) : (
-                        <input
-                          type="number"
-                          value={c.salary || ''}
-                          disabled={!canEditAccounts}
-                          onChange={(e) => handleCellChange(idx, 'salary', Number(e.target.value))}
-                          className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                        />
-                      )}
+                      <span className="font-semibold text-xs text-slate-500">{formatNumber(c.salary, 0)}</span>
                     </td>
 
                     {/* Attendance Days */}
@@ -524,11 +503,12 @@ function ContractPayrollContent() {
                       style={{ width: `${salaryWidths.attendanceDays}px`, minWidth: `${salaryWidths.attendanceDays}px` }}
                       className="border-r border-slate-100 py-1 px-1 text-center"
                     >
-                      <input
-                        type="number"
-                        value={c.attendanceDays}
+                      <NumericCellInput
+                        value={c.attendanceDays || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'attendanceDays', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={0}
+                        onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
                         className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-800"
                       />
                     </td>
@@ -536,7 +516,8 @@ function ContractPayrollContent() {
                     {/* Calculated Rate Per Day */}
                     <td
                       style={{ width: `${salaryWidths.ratePerDay}px`, minWidth: `${salaryWidths.ratePerDay}px` }}
-                      className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-600 whitespace-nowrap"
+                      className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                      title="Auto: Salary ÷ Days"
                     >
                       {formatNumber(c.ratePerDay, 2)}
                     </td>
@@ -544,7 +525,8 @@ function ContractPayrollContent() {
                     {/* Calculated Rate Per Hr */}
                     <td
                       style={{ width: `${salaryWidths.ratePerHr}px`, minWidth: `${salaryWidths.ratePerHr}px` }}
-                      className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-600 whitespace-nowrap"
+                      className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                      title="From General Wages / duty hours"
                     >
                       {formatNumber(c.ratePerHr, 2)}
                     </td>
@@ -552,7 +534,8 @@ function ContractPayrollContent() {
                     {/* Calculated Gross Salary */}
                     <td
                       style={{ width: `${salaryWidths.basicSalary}px`, minWidth: `${salaryWidths.basicSalary}px` }}
-                      className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                      className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-500 whitespace-nowrap bg-slate-50"
+                      title="Auto: Attn × Rate Per Day"
                     >
                       {formatNumber(c.basicSalary, 0)}
                     </td>
@@ -562,11 +545,12 @@ function ContractPayrollContent() {
                       style={{ width: `${salaryWidths.advanceDeduction}px`, minWidth: `${salaryWidths.advanceDeduction}px` }}
                       className="border-r border-slate-100 py-1 px-1"
                     >
-                      <input
-                        type="number"
-                        value={c.advanceDeduction || ''}
+                      <NumericCellInput
+                        value={c.advanceDeduction || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'advanceDeduction', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={1}
+                        onValueChange={(v) => handleCellChange(idx, 'advanceDeduction', v)}
                         className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                       />
                     </td>
@@ -771,12 +755,12 @@ function ContractPayrollContent() {
                       style={{ width: `${otWidths.otHours}px`, minWidth: `${otWidths.otHours}px` }}
                       className="border-r border-slate-100 py-1 px-2 text-center"
                     >
-                      <input
-                        type="number"
-                        step="0.5"
-                        value={c.otHours}
+                      <NumericCellInput
+                        value={c.otHours || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'otHours', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={0}
+                        onValueChange={(v) => handleCellChange(idx, 'otHours', v)}
                         className="w-20 text-center bg-transparent px-1 py-0.5 font-semibold text-xs text-slate-900 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded mx-auto"
                       />
                     </td>
@@ -1103,11 +1087,12 @@ function ContractPayrollContent() {
                       style={{ width: `${netWidths.efficiencyAmount}px`, minWidth: `${netWidths.efficiencyAmount}px` }}
                       className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-[#0066cc]"
                     >
-                      <input
-                        type="number"
-                        value={c.efficiencyAmount || ''}
+                      <NumericCellInput
+                        value={c.efficiencyAmount || 0}
                         disabled={!canEditAccounts}
-                        onChange={(e) => handleCellChange(idx, 'efficiencyAmount', Number(e.target.value))}
+                        navRow={idx}
+                        navCol={0}
+                        onValueChange={(v) => handleCellChange(idx, 'efficiencyAmount', v)}
                         className="w-full text-right bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-[#0066cc]"
                       />
                     </td>

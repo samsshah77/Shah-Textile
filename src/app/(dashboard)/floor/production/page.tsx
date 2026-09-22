@@ -2,7 +2,6 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable } from '@/components/floor/ProductionSheetTable'
 import { FloorEntryTable } from '@/components/floor/FloorEntryTable'
@@ -13,6 +12,7 @@ import { QualityMasterTable } from '@/components/floor/QualityMasterTable'
 import { ProductionDateFilterBar } from '@/components/floor/ProductionDateFilterBar'
 import { NewDayProductionModal } from '@/components/floor/NewDayProductionModal'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { useAuth } from '@/context/AuthContext'
 
 function ProductionWorkspaceContent() {
@@ -58,6 +58,8 @@ function ProductionWorkspaceContent() {
     unmountBeam,
     updateYarn,
     addYarn,
+    issueYarnToLoom,
+    yarnIssuances,
     updateQuality,
     addQuality,
     startNewDay,
@@ -100,17 +102,15 @@ function ProductionWorkspaceContent() {
         ]}
         actions={
           <>
-            {!isAccountant && (
-              <Link href="/floor/challan" className="btn btn-sm btn-outline-primary">
-                <span className="d-none d-sm-inline">Delivery Challan</span>
-                <span className="d-sm-none">Challan</span>
-              </Link>
-            )}
             {showDateBar && (
               <span className="badge text-bg-secondary text-truncate" style={{ maxWidth: 160 }}>
                 {getFormattedDateLabel(selectedDate)}
               </span>
             )}
+            <ExportPdfButton
+              filename={`Production-${tabTitle[currentTab] || 'Sheet'}-${selectedDate || selectedMonth || 'export'}`}
+              sheetLabel={tabTitle[currentTab] || 'Production'}
+            />
           </>
         }
       />
@@ -127,7 +127,7 @@ function ProductionWorkspaceContent() {
       )}
 
       {isAccountant && (
-        <div className="alert alert-warning py-2" role="alert">
+        <div className="alert alert-warning py-2 print:hidden" role="alert">
           <strong>View-Only (Accountant):</strong> Masters &amp; Daily Entry are restricted.
           Production Sheet is auto-calculated from masters + floor entry.
         </div>
@@ -172,6 +172,9 @@ function ProductionWorkspaceContent() {
           yarn={yarn}
           onUpdate={updateYarn}
           onAdd={addYarn}
+          onIssue={issueYarnToLoom}
+          issuances={yarnIssuances}
+          selectedDate={selectedDate}
           readOnly={!canEditProduction}
         />
       )}

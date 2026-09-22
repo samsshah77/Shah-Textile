@@ -9,15 +9,15 @@ import { LOOM_STATUS_COLOR, LOOM_STATUS_LABEL } from '@/components/floor/LoomSta
 import type { LoomStatus } from '@/types/loom'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
-  beam: 100,
+  beam: 110,
+  location: 165,
   warp: 110,
   reed: 64,
   width: 64,
   threads: 84,
   length: 84,
   machine: 100,
-  mounted: 120,
-  beamEnd: 150,
+  status: 140,
 }
 
 interface BeamMasterTableProps {
@@ -27,7 +27,7 @@ interface BeamMasterTableProps {
   onUpdate: (beamNo: string, patch: Partial<BeamMaster>) => void
   onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void
   onMount: (beamNo: string, loomNumber: number) => void
-  onUnmount: (beamNo: string) => void
+  onUnmount: (beamNo: string, location?: 'STORE' | 'SIZING') => void
   readOnly?: boolean
 }
 
@@ -71,7 +71,11 @@ function LoomStatusNote({
     }
   }
 
-  return <span className="text-secondary">—</span>
+  if (beam.location === 'SIZING') {
+    return <span className="badge bg-warning-subtle text-warning-emphasis">At Sizing</span>
+  }
+
+  return <span className="text-secondary small">Stored</span>
 }
 
 export function BeamMasterTable({
@@ -86,8 +90,8 @@ export function BeamMasterTable({
 }: BeamMasterTableProps) {
   const [newBeamNo, setNewBeamNo] = useState('')
   const [mode, setMode] = useState<TableGridMode>('table')
-  const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
-    'sara_beam_col_widths_v3',
+  const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
+    'sara_beam_col_widths_v4',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -106,30 +110,49 @@ export function BeamMasterTable({
       width: 66,
       loomType: 'G6200',
       fillStatus: 'FULL',
+      location: 'STORE',
     })
     setNewBeamNo('')
   }
 
-  const renderMountSelect = (b: BeamMaster) => (
-    <select
-      className="form-select form-select-sm"
-      style={{ width: '100%', minWidth: 0 }}
-      value={b.usedInLoom ?? ''}
-      disabled={readOnly}
-      onChange={(e) => {
-        const v = e.target.value
-        if (!v) onUnmount(b.beamNo)
-        else onMount(b.beamNo, Number(v))
-      }}
-    >
-      <option value="">—</option>
-      {activeLooms.map((l) => (
-        <option key={l.loomNumber} value={l.loomNumber}>
-          Loom {l.loomNumber}
-        </option>
-      ))}
-    </select>
-  )
+  const renderLocationSelect = (b: BeamMaster) => {
+    const currentValue = b.usedInLoom ? String(b.usedInLoom) : (b.location || 'STORE')
+
+    return (
+      <select
+        className="form-select form-select-sm"
+        style={{ width: '100%', minWidth: 0 }}
+        value={currentValue}
+        disabled={readOnly}
+        onChange={(e) => {
+          const v = e.target.value
+          if (v === 'STORE') {
+            onUnmount(b.beamNo, 'STORE')
+            onUpdate(b.beamNo, { location: 'STORE', usedInLoom: null })
+          } else if (v === 'SIZING') {
+            onUnmount(b.beamNo, 'SIZING')
+            onUpdate(b.beamNo, { location: 'SIZING', usedInLoom: null })
+          } else {
+            const loomNum = Number(v)
+            onMount(b.beamNo, loomNum)
+            onUpdate(b.beamNo, { location: v, usedInLoom: String(loomNum) })
+          }
+        }}
+      >
+        <optgroup label="Warehouse & Pre-Weaving">
+          <option value="STORE">In Store (Warehouse)</option>
+          <option value="SIZING">Sizing Section</option>
+        </optgroup>
+        <optgroup label="Mounted on Loom">
+          {activeLooms.map((l) => (
+            <option key={l.loomNumber} value={String(l.loomNumber)}>
+              Loom {l.loomNumber} {l.status === 'RUNNING' ? '🟢' : '⏸️'}
+            </option>
+          ))}
+        </optgroup>
+      </select>
+    )
+  }
 
   return (
     <div className="card">
@@ -142,11 +165,6 @@ export function BeamMasterTable({
         </div>
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {mode === 'table' && (
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
-              Reset columns
-            </button>
-          )}
           {!readOnly && (
             <>
               <input
@@ -162,7 +180,7 @@ export function BeamMasterTable({
                 disabled={!newBeamNo.trim()}
                 onClick={addBeam}
               >
-                Add
+                <i className="bi bi-plus-lg me-1" /> Add
               </button>
             </>
           )}
@@ -173,57 +191,82 @@ export function BeamMasterTable({
         <div className="master-grid">
           {beams.map((b) => (
             <div key={b.beamNo} className="master-grid-card">
-              <div className="d-flex justify-content-between align-items-start gap-2">
-                <div className="fw-semibold">Beam Identity {b.beamNo}</div>
-                <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+              <div className="d-flex justify-content-between align-items-start gap-2 border-bottom pb-2">
+                <div>
+                  <div className="fw-semibold">Beam #{b.beamNo}</div>
+                  <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                </div>
+                <div style={{ width: 140 }}>
+                  {renderLocationSelect(b)}
+                </div>
               </div>
-              <input
-                className="form-control form-control-sm"
-                value={b.warp}
-                disabled={readOnly}
-                placeholder="Yarn Warp"
-                onChange={(e) => onUpdate(b.beamNo, { warp: e.target.value })}
-              />
+
+              <div>
+                <label className="form-label small mb-1 fw-semibold">Yarn Warp</label>
+                <input
+                  className="form-control form-control-sm"
+                  value={b.warp}
+                  disabled={readOnly}
+                  placeholder="Yarn Warp"
+                  onChange={(e) => onUpdate(b.beamNo, { warp: e.target.value })}
+                />
+              </div>
+
               <div className="d-flex gap-2">
-                <input
-                  type="number"
-                  className="form-control form-control-sm"
-                  value={b.reed}
-                  disabled={readOnly}
-                  title="Reed"
-                  onChange={(e) => onUpdate(b.beamNo, { reed: Number(e.target.value) || 0 })}
-                />
-                <input
-                  type="number"
-                  className="form-control form-control-sm"
-                  value={b.width}
-                  disabled={readOnly}
-                  title="Width"
-                  onChange={(e) => onUpdate(b.beamNo, { width: Number(e.target.value) || 0 })}
-                />
+                <div className="flex-fill">
+                  <label className="form-label small mb-1 fw-semibold">Reed</label>
+                  <input
+                    type="number"
+                    className="form-control form-control-sm"
+                    value={b.reed}
+                    disabled={readOnly}
+                    title="Reed"
+                    onChange={(e) => onUpdate(b.beamNo, { reed: Number(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="flex-fill">
+                  <label className="form-label small mb-1 fw-semibold">Width (in)</label>
+                  <input
+                    type="number"
+                    className="form-control form-control-sm"
+                    value={b.width}
+                    disabled={readOnly}
+                    title="Width"
+                    onChange={(e) => onUpdate(b.beamNo, { width: Number(e.target.value) || 0 })}
+                  />
+                </div>
               </div>
+
               <div className="small text-secondary">
-                Total Thread: <strong>{b.totalThreads.toLocaleString()}</strong>
+                Total Thread: <strong className="text-dark">{b.totalThreads.toLocaleString()}</strong>
               </div>
-              <input
-                type="number"
-                className="form-control form-control-sm"
-                value={b.length}
-                disabled={readOnly}
-                title="Length (meters)"
-                onChange={(e) => onUpdate(b.beamNo, { length: Number(e.target.value) || 0 })}
-              />
-              <select
-                className="form-select form-select-sm"
-                value={b.loomType}
-                disabled={readOnly}
-                onChange={(e) => onUpdate(b.beamNo, { loomType: e.target.value })}
-              >
-                <option value="G6200">G6200</option>
-                <option value="G6300">G6300</option>
-                <option value="PU">PU</option>
-              </select>
-              {renderMountSelect(b)}
+
+              <div className="d-flex gap-2">
+                <div className="flex-fill">
+                  <label className="form-label small mb-1 fw-semibold">Length (m)</label>
+                  <input
+                    type="number"
+                    className="form-control form-control-sm"
+                    value={b.length}
+                    disabled={readOnly}
+                    title="Length (meters)"
+                    onChange={(e) => onUpdate(b.beamNo, { length: Number(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="flex-fill">
+                  <label className="form-label small mb-1 fw-semibold">Machine</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={b.loomType}
+                    disabled={readOnly}
+                    onChange={(e) => onUpdate(b.beamNo, { loomType: e.target.value })}
+                  >
+                    <option value="G6200">G6200</option>
+                    <option value="G6300">G6300</option>
+                    <option value="PU">PU</option>
+                  </select>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -246,6 +289,9 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="beam" width={widths.beam} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Beam Identity
                 </ResizableTh>
+                <ResizableTh columnKey="location" width={widths.location} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Location / Loom
+                </ResizableTh>
                 <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Yarn Warp
                 </ResizableTh>
@@ -264,10 +310,7 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="machine" width={widths.machine} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Machine Type
                 </ResizableTh>
-                <ResizableTh columnKey="mounted" width={widths.mounted} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Mounted Loom
-                </ResizableTh>
-                <ResizableTh columnKey="beamEnd" width={widths.beamEnd} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                <ResizableTh columnKey="status" width={widths.status} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Status
                 </ResizableTh>
               </tr>
@@ -276,6 +319,7 @@ export function BeamMasterTable({
               {beams.map((b) => (
                 <tr key={b.beamNo}>
                   <td className="fw-semibold px-2">{b.beamNo}</td>
+                  <td className="px-1">{renderLocationSelect(b)}</td>
                   <td className="px-1">
                     <input
                       className="form-control form-control-sm"
@@ -329,7 +373,6 @@ export function BeamMasterTable({
                       <option value="PU">PU</option>
                     </select>
                   </td>
-                  <td className="px-1">{renderMountSelect(b)}</td>
                   <td className="px-2">
                     <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
                   </td>

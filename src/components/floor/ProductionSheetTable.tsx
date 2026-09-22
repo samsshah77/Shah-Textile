@@ -136,9 +136,8 @@ export function ProductionSheetTable({ entries }: ProductionSheetTableProps) {
                 Weft
               </ResizableTh>
               <ResizableTh columnKey="rpm" width={widths.rpm} onResize={setColumnWidth} onReset={resetColumnWidth} rowSpan={2}
-                className="px-1 text-center"
-                style={headerWrap}>
-                Revolutions Per Minute
+                className="px-1 text-center">
+                RPM
               </ResizableTh>
               <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} rowSpan={2} className="px-1 text-center">
                 Reed
@@ -268,8 +267,8 @@ export function ProductionSheetTable({ entries }: ProductionSheetTableProps) {
         </table>
       </div>
       <div className="card-footer small text-secondary">
-        Formulas (from production.xlsx): 100 Percent Running = Revolutions Per Minute ÷ Pick × 60 ÷
-        39.38 × Roller Hours · Actual Total = Actual Shift A + Actual Shift B · Efficiency Percent =
+        Formulas (from production.xlsx): 100% Running = RPM ÷ Pick × 60 ÷
+        39.38 × Roller Hours · Actual Total = Actual Shift A + Actual Shift B · Efficiency % =
         Actual Total ÷ 100 Percent × 100 · Loss = 100 Percent − Actual Total · same for 24 Hours
         with Hours = 24
       </div>

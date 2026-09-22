@@ -10,6 +10,7 @@ export const LBS_PER_KG = 2.2046
 const KEY_LOOMS = 'sara_textile_loom_master_v8'
 const KEY_BEAMS = 'sara_textile_beam_master_v8'
 const KEY_YARN = 'sara_textile_yarn_master_v8'
+const KEY_YARN_ISSUANCE = 'sara_textile_yarn_issuance_v8'
 const KEY_QUALITY = 'sara_textile_quality_master_v8'
 const KEY_SHEET = 'sara_textile_production_sheet_v8'
 
@@ -39,10 +40,23 @@ export interface BeamMaster {
   fillStatus: 'EMPTY' | 'FULL'
   usedInLoom: string | null
   status: 'EMPTY' | 'FULL' | 'MOUNTED'
+  /** 'STORE' | 'SIZING' | loom number string e.g. '1' */
+  location?: 'STORE' | 'SIZING' | string
   /** YYYY-MM-DD when beam ended today — cleared automatically on next day */
   beamEndedOn: string | null
   /** Loom it ended on (for Beam table note) */
   endedFromLoom: string | null
+}
+
+export interface YarnLoomIssuance {
+  id: string
+  yarnId: string
+  yarnType: string
+  loomNumber: number
+  issuedKg: number
+  pick: number
+  date: string
+  createdAt: string
 }
 
 export interface YarnMaster {
@@ -117,6 +131,7 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
   const usedInLoom = normalizeLoomRef(b.usedInLoom as string | number | null | undefined)
   const fillStatus = b.fillStatus || (usedInLoom ? 'FULL' : b.status === 'EMPTY' ? 'EMPTY' : 'FULL')
   const status: BeamMaster['status'] = usedInLoom ? 'MOUNTED' : fillStatus
+  const location = usedInLoom ? String(usedInLoom) : (b.location || 'STORE')
   return {
     beamNo: b.beamNo,
     warp: b.warp || '',
@@ -128,9 +143,22 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
     fillStatus,
     usedInLoom,
     status,
+    location,
     beamEndedOn: b.beamEndedOn ?? null,
     endedFromLoom: normalizeLoomRef(b.endedFromLoom as string | number | null | undefined),
   }
+}
+
+export const DUMMY_LOOM_IMAGES = [
+  '/media/modern-loom.jpg',
+  '/media/loom-warp.jpg',
+  '/media/loom-industrial.jpg',
+  '/media/loom-weaving.jpg',
+]
+
+export function getDummyLoomImage(loomNumber: number): string {
+  const index = Math.abs((loomNumber - 1) % DUMMY_LOOM_IMAGES.length)
+  return DUMMY_LOOM_IMAGES[index]
 }
 
 function seedLooms(): LoomMaster[] {
@@ -140,7 +168,7 @@ function seedLooms(): LoomMaster[] {
     model: l.category,
     category: l.category,
     year: 2018 + (l.loomNumber % 6),
-    pictureDataUrl: '',
+    pictureDataUrl: getDummyLoomImage(l.loomNumber),
     defaultRpm: l.defaultRpm,
     shed: 'Main Floor',
     isActive: true,
@@ -221,6 +249,41 @@ function seedQualities(): QualityMaster[] {
   ]
 }
 
+function seedYarnIssuances(): YarnLoomIssuance[] {
+  return [
+    {
+      id: 'iss-1',
+      yarnId: 'yarn-1',
+      yarnType: '20/1 Pv China',
+      loomNumber: 2,
+      issuedKg: 120,
+      pick: 60,
+      date: PRODUCTION_TODAY,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'iss-2',
+      yarnId: 'yarn-2',
+      yarnType: '45/1-Pv-China',
+      loomNumber: 4,
+      issuedKg: 85,
+      pick: 95,
+      date: PRODUCTION_TODAY,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'iss-3',
+      yarnId: 'yarn-1',
+      yarnType: '20/1 Pv China',
+      loomNumber: 1,
+      issuedKg: 100,
+      pick: 60,
+      date: PRODUCTION_TODAY,
+      createdAt: new Date().toISOString(),
+    },
+  ]
+}
+
 function loadJson<T>(key: string, fallback: () => T): T {
   if (isClient()) {
     try {
@@ -244,7 +307,11 @@ function saveJson<T>(key: string, value: T) {
 
 class ProductionMastersService {
   getLooms(): LoomMaster[] {
-    return loadJson(KEY_LOOMS, seedLooms)
+    const looms = loadJson(KEY_LOOMS, seedLooms)
+    return looms.map((l) => ({
+      ...l,
+      pictureDataUrl: l.pictureDataUrl || getDummyLoomImage(l.loomNumber),
+    }))
   }
 
   saveLooms(looms: LoomMaster[]) {
@@ -334,7 +401,7 @@ class ProductionMastersService {
       model,
       category: model,
       year: partial?.year ?? new Date().getFullYear(),
-      pictureDataUrl: partial?.pictureDataUrl || '',
+      pictureDataUrl: partial?.pictureDataUrl || getDummyLoomImage(nextNum),
       defaultRpm: partial?.defaultRpm ?? 340,
       shed: partial?.shed || 'Main Floor',
       isActive: partial?.isActive ?? true,
@@ -390,6 +457,7 @@ class ProductionMastersService {
         return normalizeBeam({
           ...b,
           usedInLoom: null,
+          location: 'STORE',
           fillStatus: b.fillStatus || 'FULL',
         })
       }
@@ -398,6 +466,7 @@ class ProductionMastersService {
         return normalizeBeam({
           ...b,
           usedInLoom: String(loomNumber),
+          location: String(loomNumber),
           fillStatus: 'FULL',
           beamEndedOn: null,
           endedFromLoom: null,
@@ -409,8 +478,8 @@ class ProductionMastersService {
     return beams
   }
 
-  unmountBeam(beamNo: string): BeamMaster[] {
-    return this.updateBeam(beamNo, { usedInLoom: null })
+  unmountBeam(beamNo: string, location: 'STORE' | 'SIZING' = 'STORE'): BeamMaster[] {
+    return this.updateBeam(beamNo, { usedInLoom: null, location })
   }
 
   /** Clear "ended today" notes from previous days (keeps EMPTY / mounts as-is). */
@@ -464,7 +533,7 @@ class ProductionMastersService {
 
   addYarn(partial?: Partial<YarnMaster>): YarnMaster[] {
     const yarn = this.getYarn()
-    yarn.push(
+    yarn.unshift(
       withYarnWeights({
         id: `yarn-${Date.now()}`,
         yarnType: partial?.yarnType || 'New Yarn',
@@ -475,6 +544,55 @@ class ProductionMastersService {
     )
     this.saveYarn(yarn)
     return yarn
+  }
+
+  getYarnIssuances(yarnId?: string): YarnLoomIssuance[] {
+    const list = loadJson(KEY_YARN_ISSUANCE, seedYarnIssuances)
+    if (yarnId) {
+      return list.filter((i) => i.yarnId === yarnId)
+    }
+    return list
+  }
+
+  saveYarnIssuances(list: YarnLoomIssuance[]) {
+    saveJson(KEY_YARN_ISSUANCE, list)
+  }
+
+  issueYarnToLoom(params: {
+    yarnId: string
+    loomNumber: number
+    issuedKg: number
+    pick: number
+    dateStr?: string
+  }): { yarn: YarnMaster[]; issuances: YarnLoomIssuance[] } {
+    const { yarnId, loomNumber, issuedKg, pick, dateStr = PRODUCTION_TODAY } = params
+    const yarns = this.getYarn()
+    const targetYarn = yarns.find((y) => y.id === yarnId)
+    if (!targetYarn) throw new Error('Yarn not found')
+
+    const updatedIssued = Number(((targetYarn.issuedKg || 0) + issuedKg).toFixed(2))
+    this.updateYarn(yarnId, { issuedKg: updatedIssued })
+
+    const issuances = this.getYarnIssuances()
+    const newIssuance: YarnLoomIssuance = {
+      id: `iss-${Date.now()}`,
+      yarnId,
+      yarnType: targetYarn.yarnType,
+      loomNumber,
+      issuedKg,
+      pick,
+      date: dateStr,
+      createdAt: new Date().toISOString(),
+    }
+    issuances.unshift(newIssuance)
+    this.saveYarnIssuances(issuances)
+
+    this.updateLoom(loomNumber, { weftYarnId: yarnId }, dateStr)
+
+    return {
+      yarn: this.getYarn(),
+      issuances,
+    }
   }
 
   getQualities(): QualityMaster[] {
@@ -532,14 +650,24 @@ class ProductionMastersService {
     const beams = this.getBeams()
     const yarns = this.getYarn()
     const qualities = this.getQualities()
+    const issuances = this.getYarnIssuances()
     const prevByLoom = new Map(this.loadSheetDay(dateStr).map((e) => [e.loomNumber, e]))
+
+    // Find the latest yarn issuance for each loom
+    const latestIssuanceByLoom = new Map<number, YarnLoomIssuance>()
+    for (const iss of issuances) {
+      if (!latestIssuanceByLoom.has(iss.loomNumber)) {
+        latestIssuanceByLoom.set(iss.loomNumber, iss)
+      }
+    }
 
     const entries = looms.map((loom) => {
       const prev = prevByLoom.get(loom.loomNumber)
       const beam = beams.find((b) => beamOnLoom(b, loom.loomNumber))
       const quality = qualities.find((q) => q.id === loom.qualityId) || null
-      const weft = yarns.find((y) => y.id === loom.weftYarnId)
-      const pick = quality?.pick || 60
+      const loomIss = latestIssuanceByLoom.get(loom.loomNumber)
+      const weft = (loomIss ? yarns.find((y) => y.id === loomIss.yarnId) : null) || yarns.find((y) => y.id === loom.weftYarnId)
+      const pick = loomIss?.pick || quality?.pick || 60
       const reed = beam?.reed || quality?.reed || 60
       const rpm = loom.defaultRpm
       const status = loom.status as LoomStatus

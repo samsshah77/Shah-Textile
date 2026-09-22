@@ -168,9 +168,9 @@ export const SALARY_EXCEL_SHEETS: SheetTabInfo[] = [
   {
     sheetNumber: 22,
     name: 'Monthly Summery',
-    href: '/',
+    href: '/payroll/synopsis?fortnight=grand',
     activeCheck: (p, sp) =>
-      p === '/' || (p === '/payroll/synopsis' && sp.get('fortnight') === 'grand'),
+      p === '/payroll/synopsis' && sp.get('fortnight') === 'grand',
   },
 ]
 

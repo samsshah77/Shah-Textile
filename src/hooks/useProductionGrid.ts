@@ -15,6 +15,7 @@ export function useProductionGrid() {
   const [looms, setLooms] = useState<LoomMaster[]>([])
   const [beams, setBeams] = useState<BeamMaster[]>([])
   const [yarn, setYarn] = useState<YarnMaster[]>([])
+  const [yarnIssuances, setYarnIssuances] = useState<any[]>([])
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,6 +30,7 @@ export function useProductionGrid() {
       setLooms(productionMastersService.getLooms())
       setBeams(productionMastersService.getBeams())
       setYarn(productionMastersService.getYarn())
+      setYarnIssuances(productionMastersService.getYarnIssuances())
       setQualities(productionMastersService.getQualities())
       setEntries(productionMastersService.buildSheetForDate(d))
     },
@@ -112,9 +114,26 @@ export function useProductionGrid() {
     setYarn(productionMastersService.updateYarn(id, patch))
   }, [])
 
-  const addYarn = useCallback(() => {
-    setYarn(productionMastersService.addYarn())
+  const addYarn = useCallback((partial?: Partial<YarnMaster>) => {
+    setYarn(productionMastersService.addYarn(partial))
   }, [])
+
+  const issueYarnToLoom = useCallback(
+    (yarnId: string, loomNumber: number, issuedKg: number, pick: number, dateStr: string) => {
+      const res = productionMastersService.issueYarnToLoom({
+        yarnId,
+        loomNumber,
+        issuedKg,
+        pick,
+        dateStr,
+      })
+      setYarn(res.yarn)
+      setYarnIssuances(res.issuances)
+      setLooms(productionMastersService.getLooms())
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
 
   const updateQuality = useCallback(
     (id: string, patch: Partial<QualityMaster>) => {
@@ -147,6 +166,7 @@ export function useProductionGrid() {
     looms,
     beams,
     yarn,
+    yarnIssuances,
     qualities,
     entries,
     loading,
@@ -163,6 +183,7 @@ export function useProductionGrid() {
     unmountBeam,
     updateYarn,
     addYarn,
+    issueYarnToLoom,
     updateQuality,
     addQuality,
     startNewDay,

@@ -9,7 +9,7 @@ import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { AlertModal } from '@/components/ui/AlertModal'
-import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
 import {
   DollarSign,
   Printer,
@@ -23,9 +23,10 @@ import {
   Save,
   Lock,
   Search,
-  Filter,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_ADVANCE_WIDTHS = {
   serialNo: 50,
@@ -42,7 +43,6 @@ export default function SalaryAdvancesPage() {
   const [advances, setAdvances] = useState<AdvanceRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState('2026-08')
-  const [activeFortnight, setActiveFortnight] = useState<'all' | '1-15' | '16-31'>('1-15')
   const [search, setSearch] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
 
@@ -70,15 +70,16 @@ export default function SalaryAdvancesPage() {
   const [designation, setDesignation] = useState('')
   const [amount, setAmount] = useState<number | string>('')
   const [formDate, setFormDate] = useState('2026-08-05')
-  const [formFortnight, setFormFortnight] = useState<'1-15' | '16-31'>('1-15')
   const [formRemarks, setFormRemarks] = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
 
-  const [masterEmployees, setMasterEmployees] = useState<any[]>([])
+  const [masterEmployees, setMasterEmployees] = useState<
+    { id: string; name: string; designation: string; salary: number }[]
+  >([])
 
   const reload = () => {
-    setAdvances(payrollService.getAdvances(selectedMonth, activeFortnight))
-    setMasterEmployees(payrollService.getEmployees())
+    setAdvances(payrollService.getAdvances(selectedMonth, 'all'))
+    setMasterEmployees(payrollService.getAdvanceEligibleEmployees())
   }
 
   useEffect(() => {
@@ -86,27 +87,13 @@ export default function SalaryAdvancesPage() {
     const handleSync = () => reload()
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
-  }, [selectedMonth, activeFortnight])
+  }, [selectedMonth])
 
   const formatMonthName = (monthStr: string) => {
     try {
       const [y, m] = (monthStr || '2026-08').split('-').map(Number)
       const dateObj = new Date(y, m - 1, 1)
       return dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    } catch {
-      return monthStr
-    }
-  }
-
-  const getPeriodLabel = (monthStr: string, fn: string) => {
-    try {
-      const [y, m] = (monthStr || '2026-08').split('-').map(Number)
-      const dateObj = new Date(y, m - 1, 1)
-      const monthShort = dateObj.toLocaleDateString('en-US', { month: 'short' })
-      const lastDay = new Date(y, m, 0).getDate()
-      if (fn === '1-15') return `01-${monthShort}-${y} to 15-${monthShort}-${y} (1st Fortnight)`
-      if (fn === '16-31') return `16-${monthShort}-${y} to ${lastDay}-${monthShort}-${y} (2nd Fortnight)`
-      return `01-${monthShort}-${y} to ${lastDay}-${monthShort}-${y} (Full Month)`
     } catch {
       return monthStr
     }
@@ -143,24 +130,9 @@ export default function SalaryAdvancesPage() {
       setDesignation(found.designation || 'Staff')
       setSelectedEmployeeId(found.id || '')
     } else {
+      setDesignation('')
       setSelectedEmployeeId('')
     }
-  }
-
-  const handleCustomCellChange = (id: string, colId: string, value: string) => {
-    if (!canEditAccounts) return
-    setAdvances((prev) => {
-      return prev.map((item) => {
-        if (item.id === id) {
-          const currentCustom = item.customFields || {}
-          return {
-            ...item,
-            customFields: { ...currentCustom, [colId]: value },
-          }
-        }
-        return item
-      })
-    })
   }
 
   const handleAddAdvance = (e: React.FormEvent) => {
@@ -168,23 +140,27 @@ export default function SalaryAdvancesPage() {
     if (!canEditAccounts) return
     const numAmt = parseFloat(amount as string)
     if (!employeeName || isNaN(numAmt)) return
+    if (!selectedEmployeeId) {
+      alert('Select an Advance-eligible employee from Profiles (enable Advance Eligible on their HR profile).')
+      return
+    }
 
     const newRecord: AdvanceRecord = {
       id: `adv-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       serialNo: advances.length + 1,
-      employeeId: selectedEmployeeId || undefined,
+      employeeId: selectedEmployeeId,
       employeeName,
       designation: designation || 'Staff',
       amount: numAmt,
       date: formDate || `${selectedMonth}-05`,
       month: selectedMonth,
-      fortnight: formFortnight,
+      fortnight: 'all',
       remarks: formRemarks,
     }
 
     const updated = [...advances, newRecord]
     setAdvances(updated)
-    payrollService.saveAdvances(updated, true, selectedMonth, activeFortnight)
+    payrollService.saveAdvances(updated, true, selectedMonth)
     setEmployeeName('')
     setDesignation('')
     setSelectedEmployeeId('')
@@ -197,16 +173,15 @@ export default function SalaryAdvancesPage() {
   // Insert row anywhere
   const handleInsertRow = (insertIdx?: number) => {
     if (!canEditAccounts) return
-    const defaultDate = activeFortnight === '16-31' ? `${selectedMonth}-20` : `${selectedMonth}-05`
     const newRecord: AdvanceRecord = {
       id: `adv-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       serialNo: insertIdx !== undefined ? insertIdx + 2 : advances.length + 1,
       employeeName: 'New Staff',
       designation: 'Staff',
       amount: 5000,
-      date: defaultDate,
+      date: `${selectedMonth}-05`,
       month: selectedMonth,
-      fortnight: activeFortnight === 'all' ? '1-15' : activeFortnight,
+      fortnight: 'all',
       remarks: '',
     }
 
@@ -219,7 +194,7 @@ export default function SalaryAdvancesPage() {
 
     const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setAdvances(renumbered)
-    payrollService.saveAdvances(renumbered, true, selectedMonth, activeFortnight)
+    payrollService.saveAdvances(renumbered, true, selectedMonth)
   }
 
   const requestDeleteAdvance = (id: string, empName: string) => {
@@ -241,7 +216,7 @@ export default function SalaryAdvancesPage() {
   const handleDelete = (id: string) => {
     const updated = advances.filter((a) => a.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setAdvances(updated)
-    payrollService.saveAdvances(updated, true, selectedMonth, activeFortnight)
+    payrollService.saveAdvances(updated, true, selectedMonth)
   }
 
   const handleReset = () => {
@@ -257,7 +232,7 @@ export default function SalaryAdvancesPage() {
 
   const handleSave = () => {
     if (!canEditAccounts) return
-    payrollService.saveAdvances(advances, true, selectedMonth, activeFortnight)
+    payrollService.saveAdvances(advances, true, selectedMonth)
     setSaveSuccess(true)
     setTimeout(() => setSaveSuccess(false), 3000)
   }
@@ -277,6 +252,19 @@ export default function SalaryAdvancesPage() {
 
   const handleRemoveCustomColumn = (colId: string) => {
     setCustomColumns(customColumns.filter((c) => c.id !== colId))
+  }
+
+  const handleCustomCellChange = (advanceId: string, colId: string, value: string) => {
+    if (!canEditAccounts) return
+    setAdvances((prev) =>
+      prev.map((item) => {
+        if (item.id !== advanceId) return item
+        return {
+          ...item,
+          customFields: { ...(item.customFields || {}), [colId]: value },
+        }
+      })
+    )
   }
 
   const filtered = advances.filter((a) => {
@@ -336,12 +324,13 @@ export default function SalaryAdvancesPage() {
                 <Printer className="size-3.5 text-slate-500" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Advances-${selectedMonth}`} />
             </>
           }
         />
       </div>
 
-      {/* Month, Fortnight & Search Filter Bar */}
+      {/* Month & Search Filter Bar */}
       <div className="erp-card p-3 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex flex-wrap items-center gap-3">
           {/* Month Selector */}
@@ -354,43 +343,6 @@ export default function SalaryAdvancesPage() {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer"
             />
-          </div>
-
-          {/* Fortnight Selector Tabs */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
-            <button
-              onClick={() => setActiveFortnight('1-15')}
-              className={cn(
-                'px-3 py-1 font-medium rounded-md transition-colors cursor-pointer',
-                activeFortnight === '1-15'
-                  ? 'bg-white dark:bg-slate-700 text-[#0066cc] dark:text-sky-300 shadow-xs font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              )}
-            >
-              1st Half (01 to 15)
-            </button>
-            <button
-              onClick={() => setActiveFortnight('16-31')}
-              className={cn(
-                'px-3 py-1 font-medium rounded-md transition-colors cursor-pointer',
-                activeFortnight === '16-31'
-                  ? 'bg-white dark:bg-slate-700 text-[#0066cc] dark:text-sky-300 shadow-xs font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              )}
-            >
-              2nd Half (16 to 31)
-            </button>
-            <button
-              onClick={() => setActiveFortnight('all')}
-              className={cn(
-                'px-3 py-1 font-medium rounded-md transition-colors cursor-pointer',
-                activeFortnight === 'all'
-                  ? 'bg-white dark:bg-slate-700 text-[#0066cc] dark:text-sky-300 shadow-xs font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              )}
-            >
-              Full Month
-            </button>
           </div>
         </div>
 
@@ -438,7 +390,7 @@ export default function SalaryAdvancesPage() {
           <h2 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider mb-3 flex items-center justify-between">
             <span>Issue New Advance (Peshgi Voucher)</span>
             <span className="text-[11px] font-normal text-slate-500 normal-case">
-              For {formatMonthName(selectedMonth)} • {getPeriodLabel(selectedMonth, formFortnight)}
+              For {formatMonthName(selectedMonth)}
             </span>
           </h2>
 
@@ -488,15 +440,13 @@ export default function SalaryAdvancesPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Fortnight / Period</label>
-              <select
-                value={formFortnight}
-                onChange={(e) => setFormFortnight(e.target.value as '1-15' | '16-31')}
+              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Date</label>
+              <input
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
                 className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-white focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none cursor-pointer"
-              >
-                <option value="1-15">1st Half (01 to 15)</option>
-                <option value="16-31">2nd Half (16 to 31)</option>
-              </select>
+              />
             </div>
 
             <div className="flex items-end">
@@ -521,7 +471,7 @@ export default function SalaryAdvancesPage() {
             ADVANCE SALARY REGISTER (PESHGI)
           </h2>
           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Month: {formatMonthName(selectedMonth)} • Period: {getPeriodLabel(selectedMonth, activeFortnight)}
+            Month: {formatMonthName(selectedMonth)}
           </p>
         </div>
 
@@ -621,7 +571,7 @@ export default function SalaryAdvancesPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7 + customColumns.length} className="py-8 text-center text-slate-400 font-sans text-xs">
-                    No advance records found for {formatMonthName(selectedMonth)} ({getPeriodLabel(selectedMonth, activeFortnight)}). Click <strong>&quot;+ Add Advance Row&quot;</strong> or issue a new advance above.
+                    No advance records found for {formatMonthName(selectedMonth)}. Click <strong>&quot;+ Add Advance Row&quot;</strong> or issue a new advance above.
                   </td>
                 </tr>
               ) : (
@@ -651,38 +601,22 @@ export default function SalaryAdvancesPage() {
                       )}
                     </td>
 
-                    {/* Name Input */}
+                    {/* Name — from HR */}
                     <td
                       style={{ width: `${widths.employeeName}px`, minWidth: `${widths.employeeName}px` }}
-                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50"
+                      title="From HR Profiles"
                     >
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={adv.employeeName}
-                          onChange={(e) => handleCellChange(adv.id, 'employeeName', e.target.value)}
-                          className="w-full bg-transparent px-2 py-1 font-semibold font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-900 dark:text-white"
-                        />
-                      ) : (
-                        <span className="font-semibold font-sans px-2 text-slate-900 dark:text-white">{adv.employeeName}</span>
-                      )}
+                      <span className="font-semibold font-sans text-xs text-slate-500">{adv.employeeName}</span>
                     </td>
 
-                    {/* Designation Input */}
+                    {/* Designation — from HR */}
                     <td
                       style={{ width: `${widths.designation}px`, minWidth: `${widths.designation}px` }}
-                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50"
+                      title="From HR Profiles"
                     >
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={adv.designation}
-                          onChange={(e) => handleCellChange(adv.id, 'designation', e.target.value)}
-                          className="w-full bg-transparent px-2 py-1 font-medium font-sans text-xs text-slate-700 dark:text-slate-300 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
-                        />
-                      ) : (
-                        <span className="font-medium font-sans px-2 text-slate-700 dark:text-slate-300">{adv.designation}</span>
-                      )}
+                      <span className="font-medium font-sans text-xs text-slate-500">{adv.designation}</span>
                     </td>
 
                     {/* Amount (Fully Editable) */}
@@ -691,14 +625,11 @@ export default function SalaryAdvancesPage() {
                       className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
                     >
                       {canEditAccounts ? (
-                        <input
-                          type="number"
-                          value={adv.amount === 0 ? '' : adv.amount}
-                          placeholder="0"
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0
-                            handleCellChange(adv.id, 'amount', val)
-                          }}
+                        <NumericCellInput
+                          value={adv.amount || 0}
+                          navRow={idx}
+                          navCol={0}
+                          onValueChange={(v) => handleCellChange(adv.id, 'amount', v)}
                           className="w-full text-right bg-transparent px-2 py-1 font-semibold text-xs text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono"
                         />
                       ) : (
@@ -777,7 +708,7 @@ export default function SalaryAdvancesPage() {
                   {formatNumber(totalAdvances, 0)}
                 </td>
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-sans text-[11px] text-slate-500">
-                  {activeFortnight === 'all' ? 'Full Month Total' : `Fortnight: ${activeFortnight}`}
+                  Full Month Total
                 </td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-sans text-[11px] text-slate-400 font-normal">

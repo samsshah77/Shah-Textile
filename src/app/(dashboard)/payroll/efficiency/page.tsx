@@ -23,6 +23,8 @@ import {
   Lock,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_EFFICIENCY_WIDTHS = {
   serialNo: 56,
@@ -216,6 +218,7 @@ export default function TechnicalEfficiencyPage() {
                 <Printer className="size-3.5 text-slate-500" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Efficiency-${selectedMonth}`} />
             </>
           }
         />
@@ -388,32 +391,22 @@ export default function TechnicalEfficiencyPage() {
                     </select>
                   </td>
 
-                  {/* Name Input */}
+                  {/* Name — from HR */}
                   <td
                     style={{ width: `${widths.name}px`, minWidth: `${widths.name}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50"
+                    title="From HR Profiles / General Wages"
                   >
-                    <input
-                      type="text"
-                      value={e.name}
-                      disabled={!canEditAccounts}
-                      onChange={(ev) => handleCellChange(idx, 'name', ev.target.value)}
-                      className="w-full bg-transparent px-2 py-1 font-semibold font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-900 dark:text-white"
-                    />
+                    <span className="font-semibold font-sans text-xs text-slate-500">{e.name}</span>
                   </td>
 
-                  {/* Designation Input */}
+                  {/* Designation — from HR */}
                   <td
                     style={{ width: `${widths.designation}px`, minWidth: `${widths.designation}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50"
+                    title="From HR Profiles / General Wages"
                   >
-                    <input
-                      type="text"
-                      value={e.designation}
-                      disabled={!canEditAccounts}
-                      onChange={(ev) => handleCellChange(idx, 'designation', ev.target.value)}
-                      className="w-full bg-transparent px-2 py-1 font-sans text-xs text-slate-600 dark:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
-                    />
+                    <span className="font-sans text-xs text-slate-500">{e.designation}</span>
                   </td>
 
                   {/* Efficiency % (Editable) */}
@@ -421,11 +414,12 @@ export default function TechnicalEfficiencyPage() {
                     style={{ width: `${widths.efficiencyPercent}px`, minWidth: `${widths.efficiencyPercent}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center"
                   >
-                    <input
-                      type="number"
-                      value={e.efficiencyPercent}
+                    <NumericCellInput
+                      value={e.efficiencyPercent || 0}
                       disabled={!canEditAccounts}
-                      onChange={(ev) => handleCellChange(idx, 'efficiencyPercent', Number(ev.target.value))}
+                      navRow={idx}
+                      navCol={0}
+                      onValueChange={(v) => handleCellChange(idx, 'efficiencyPercent', v)}
                       className="w-full text-center bg-transparent px-1 py-1 font-semibold text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
                     />
                   </td>
@@ -435,11 +429,12 @@ export default function TechnicalEfficiencyPage() {
                     style={{ width: `${widths.salaryEarned}px`, minWidth: `${widths.salaryEarned}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
                   >
-                    <input
-                      type="number"
-                      value={e.salaryEarned || ''}
+                    <NumericCellInput
+                      value={e.salaryEarned || 0}
                       disabled={!canEditAccounts}
-                      onChange={(ev) => handleCellChange(idx, 'salaryEarned', Number(ev.target.value))}
+                      navRow={idx}
+                      navCol={1}
+                      onValueChange={(v) => handleCellChange(idx, 'salaryEarned', v)}
                       className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
                     />
                   </td>

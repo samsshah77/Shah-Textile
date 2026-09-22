@@ -15,6 +15,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 
 export default function ChallanPage() {
   const { canEditProduction, isAccountant } = useAuth()
@@ -108,6 +109,7 @@ export default function ChallanPage() {
               <Printer className="size-3.5" />
               <span>Print Challan #001414</span>
             </Link>
+            <ExportPdfButton filename="Chalan-FOI" />
           </>
         }
       />

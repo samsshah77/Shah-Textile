@@ -11,7 +11,7 @@ export interface CustomColumn {
   width?: number; // custom width in px
 }
 
-export type EmployeeCategory = 'Admin' | 'Staff' | 'Contract' | 'Weaver' | 'Helper' | 'Contractor';
+export type EmployeeCategory = 'Admin' | 'Staff' | 'Contract' | 'Weaver' | 'Helper' | 'Contractor' | string;
 export type EmployeeStatus = 'Active' | 'Resigned' | 'On Leave';
 
 export interface EmployeeProfile {
@@ -37,6 +37,10 @@ export interface EmployeeProfile {
   doj: string; // Date of joining
   contractStatus: 'Permanent' | 'Company Contract' | 'Daily Wage' | 'Contractor' | string;
   status?: EmployeeStatus;
+  /** Last day / resign date (YYYY-MM-DD). Used to drop person from later month sheets. */
+  resignedAt?: string;
+  /** When true, person appears in Advance (Peshgi) search — only a few staff get advances. */
+  advanceEligible?: boolean;
   remarks?: string; // e.g. "Resignation 31 Oct 2022" or "Rejoining 08 Jun-21"
   customFields?: Record<string, string | number>;
 }

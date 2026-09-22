@@ -22,13 +22,9 @@ import {
   Save,
   X,
   Printer,
-  ShieldCheck,
   UserCheck,
   CheckCircle2,
-  Filter,
   FileSpreadsheet,
-  ArrowRight,
-  Eye,
   LayoutGrid,
   Table as TableIcon,
   Calendar,
@@ -36,21 +32,20 @@ import {
   Layers,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 
 function EmployeeProfilesContent() {
-  const { canEditAccounts, isEditModeEnabled } = useAuth()
+  const { canEditAccounts, canViewAccounts } = useAuth()
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get('search') || ''
 
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
   const [search, setSearch] = useState(initialSearch)
   const [filterCategory, setFilterCategory] = useState<string>('ALL')
-  const [filterStatus, setFilterStatus] = useState<string>('ALL')
+  /** Default: Active only. Admin/Accountant can switch to All / Resigned. */
+  const [filterStatus, setFilterStatus] = useState<string>('ACTIVE')
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [saveSuccess, setSaveSuccess] = useState(false)
-
-  // Selected Profile for ID Card / Detailed View Modal
-  const [idCardProfile, setIdCardProfile] = useState<EmployeeProfile | null>(null)
 
   // Edit / Add Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -71,6 +66,7 @@ function EmployeeProfilesContent() {
   const [doj, setDoj] = useState('')
   const [contractStatus, setContractStatus] = useState<string>('Company Contract')
   const [status, setStatus] = useState<EmployeeStatus>('Active')
+  const [resignedAt, setResignedAt] = useState('')
   const [remarks, setRemarks] = useState('')
 
   // Delete Confirmation Modal State
@@ -117,6 +113,7 @@ function EmployeeProfilesContent() {
     setDoj(new Date().toISOString().split('T')[0])
     setContractStatus('Company Contract')
     setStatus('Active')
+    setResignedAt('')
     setRemarks('')
     setIsModalOpen(true)
   }
@@ -137,6 +134,7 @@ function EmployeeProfilesContent() {
     setDoj(emp.doj || '')
     setContractStatus(emp.contractStatus || 'Company Contract')
     setStatus(emp.status || 'Active')
+    setResignedAt(emp.resignedAt || '')
     setRemarks(emp.remarks || '')
     setIsModalOpen(true)
   }
@@ -163,6 +161,7 @@ function EmployeeProfilesContent() {
         doj,
         contractStatus,
         status,
+        resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
         remarks,
       })
     } else {
@@ -181,6 +180,7 @@ function EmployeeProfilesContent() {
         doj: doj || new Date().toISOString().split('T')[0],
         contractStatus,
         status,
+        resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
         remarks: remarks || undefined,
       })
     }
@@ -198,8 +198,12 @@ function EmployeeProfilesContent() {
     }
   }
 
-  // Filter Logic
+  // Default Active only. Admin/Accountant may filter All / Resigned.
+  const effectiveStatus = canViewAccounts ? filterStatus : 'ACTIVE'
+
   const filtered = employees.filter((e) => {
+    const empStatus = (e.status || 'Active').toUpperCase()
+
     const matchSearch =
       (e.name || '').toLowerCase().includes(search.toLowerCase()) ||
       (e.fatherName || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -212,16 +216,27 @@ function EmployeeProfilesContent() {
       filterCategory === 'ALL' || (e.employeeCategory || 'Staff').toUpperCase() === filterCategory.toUpperCase()
 
     const matchStatus =
-      filterStatus === 'ALL' || (e.status || 'Active').toUpperCase() === filterStatus.toUpperCase()
+      effectiveStatus === 'ALL' || empStatus === effectiveStatus.toUpperCase()
 
     return matchSearch && matchCategory && matchStatus
   })
 
-  const totalMonthlyBase = employees.reduce((s, e) => s + (e.salary || 0), 0)
+  const totalMonthlyBase = employees
+    .filter((e) => (e.status || 'Active') !== 'Resigned')
+    .reduce((s, e) => s + (e.salary || 0), 0)
   const activeCount = employees.filter((e) => (e.status || 'Active') === 'Active').length
-  const weaversCount = employees.filter((e) => e.employeeCategory === 'Weaver').length
-  const staffCount = employees.filter((e) => e.employeeCategory === 'Staff' || e.employeeCategory === 'Admin').length
-  const helpersCount = employees.filter((e) => e.employeeCategory === 'Helper').length
+  const resignedCount = employees.filter((e) => (e.status || 'Active') === 'Resigned').length
+  const weaversCount = employees.filter(
+    (e) => e.employeeCategory === 'Weaver' && (e.status || 'Active') !== 'Resigned'
+  ).length
+  const staffCount = employees.filter(
+    (e) =>
+      (e.employeeCategory === 'Staff' || e.employeeCategory === 'Admin') &&
+      (e.status || 'Active') !== 'Resigned'
+  ).length
+  const helpersCount = employees.filter(
+    (e) => e.employeeCategory === 'Helper' && (e.status || 'Active') !== 'Resigned'
+  ).length
 
   return (
     <div className="space-y-6 pb-24">
@@ -234,6 +249,10 @@ function EmployeeProfilesContent() {
         ]}
         actions={
           <>
+            <Link href="/payroll/resigned" className="erp-btn-secondary text-xs flex items-center gap-1.5">
+              <UserCheck className="h-3.5 w-3.5 text-rose-600" />
+              <span>Resigned{resignedCount > 0 ? ` (${resignedCount})` : ''}</span>
+            </Link>
             <Link href="/payroll/employees" className="erp-btn-secondary text-xs flex items-center gap-1.5">
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>General Wages</span>
@@ -252,6 +271,7 @@ function EmployeeProfilesContent() {
               <Printer className="h-3.5 w-3.5 text-slate-500" />
               <span>Print</span>
             </button>
+            <ExportPdfButton filename="HR-Profiles" />
           </>
         }
       />
@@ -290,20 +310,23 @@ function EmployeeProfilesContent() {
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 )}
               >
-                {cat === 'ALL' ? `All (${employees.length})` : cat}
+                {cat === 'ALL' ? `All (${filtered.length})` : cat}
               </button>
             ))}
           </div>
 
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="text-sm px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-[#0066cc] cursor-pointer"
-          >
-            <option value="ALL">All Status</option>
-            <option value="ACTIVE">Active Only</option>
-            <option value="RESIGNED">Resigned / Inactive</option>
-          </select>
+          {canViewAccounts && (
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              title="Status filter (Admin / Accountant)"
+              className="text-sm px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-[#0066cc] cursor-pointer"
+            >
+              <option value="ACTIVE">Active only</option>
+              <option value="ALL">All (Active + Resigned)</option>
+              <option value="RESIGNED">Resigned only</option>
+            </select>
+          )}
 
           {/* View Toggle */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -401,13 +424,13 @@ function EmployeeProfilesContent() {
                       </span>
                     </div>
 
-                    {/* CNIC */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400 flex items-center gap-1">
+                    {/* CNIC — company ID cards nahi; sirf national CNIC */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-400 flex items-center gap-1 shrink-0">
                         <IdCard className="h-3.5 w-3.5 text-indigo-500" />
-                        CNIC:
+                        CNIC
                       </span>
-                      <span className="font-mono font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-900/80 px-2 py-0.5 rounded text-[11px]">
+                      <span className="font-mono font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-900/80 px-2 py-0.5 rounded text-[11px] tracking-wide">
                         {emp.cnic || '—'}
                       </span>
                     </div>
@@ -440,6 +463,16 @@ function EmployeeProfilesContent() {
                         {emp.address || 'Industrial Area, Karachi'}
                       </span>
                     </div>
+
+                    {(emp.status || 'Active') === 'Resigned' && (
+                      <div className="flex items-center justify-between text-rose-700 dark:text-rose-400">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          Resign date:
+                        </span>
+                        <span className="font-mono font-semibold">{emp.resignedAt || '—'}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Duty & Compensation Pill */}
@@ -461,13 +494,13 @@ function EmployeeProfilesContent() {
 
                 {/* Card Actions Footer */}
                 <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => setIdCardProfile(emp)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 dark:text-indigo-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                  <div
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-900/80 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg max-w-[70%]"
+                    title="National CNIC (no company ID card)"
                   >
-                    <IdCard className="h-3.5 w-3.5" />
-                    ID Card
-                  </button>
+                    <IdCard className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                    <span className="font-mono truncate">{emp.cnic || 'CNIC not set'}</span>
+                  </div>
 
                   <div className="flex items-center gap-1">
                     {canEditAccounts && (
@@ -554,13 +587,6 @@ function EmployeeProfilesContent() {
                     </td>
                     <td className="py-2 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => setIdCardProfile(emp)}
-                          title="View Official ID Card"
-                          className="p-1 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                        >
-                          <IdCard className="h-3.5 w-3.5" />
-                        </button>
                         {canEditAccounts && (
                           <button
                             onClick={() => openEditModal(emp)}
@@ -591,127 +617,6 @@ function EmployeeProfilesContent() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* Official Sara Textile Mills ID Card Modal */}
-      {idCardProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md overflow-hidden">
-            {/* Modal Header */}
-            <div className="bg-slate-900 p-3 text-white flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Official Employee Identity Card
-              </span>
-              <button
-                onClick={() => setIdCardProfile(null)}
-                className="p-1 rounded hover:bg-white/20 transition-colors text-white cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* ID Card Graphic Container */}
-            <div className="p-6 bg-slate-100 dark:bg-slate-900/50 flex justify-center">
-              <div
-                id="printable-id-card"
-                className="w-80 bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden shadow-lg"
-              >
-                {/* Mill Header Banner */}
-                <div className="bg-[#0066cc] text-white p-3 text-center">
-                  <h2 className="text-sm font-bold uppercase tracking-widest leading-tight">
-                    SARA TEXTILE MILLS
-                  </h2>
-                  <p className="text-[10px] text-slate-300 font-medium tracking-wide">
-                    Plot # C-14, Sector 15, Korangi Industrial Area, Karachi
-                  </p>
-                </div>
-
-                {/* Photo & Name */}
-                <div className="p-4 text-center">
-                  <div className="inline-block relative">
-                    <div className="h-20 w-20 mx-auto rounded-full bg-slate-200 dark:bg-slate-700 border-2 border-indigo-600 flex items-center justify-center text-2xl font-black text-slate-700 dark:text-slate-200 shadow-inner">
-                      {idCardProfile.name.charAt(0)}
-                    </div>
-                    <span className="absolute bottom-0 right-0 bg-emerald-500 h-4 w-4 rounded-full border-2 border-white dark:border-slate-800" />
-                  </div>
-
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mt-2">
-                    {idCardProfile.name}
-                  </h3>
-                  <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                    {idCardProfile.designation}
-                  </p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    {idCardProfile.department || 'Production & Operations'}
-                  </p>
-                </div>
-
-                {/* Key Particulars */}
-                <div className="px-4 pb-3 space-y-1.5 text-[11px] border-t border-b border-slate-200 dark:border-slate-700 py-3 bg-slate-50/60 dark:bg-slate-850">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Card / Emp ID:</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                      STM-{String(idCardProfile.serialNo).padStart(3, '0')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Father Name:</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {idCardProfile.fatherName || '—'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">CNIC No:</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 px-1 rounded border border-slate-200 dark:border-slate-700">
-                      {idCardProfile.cnic || '—'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Emergency Phone:</span>
-                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                      {idCardProfile.phone || '—'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Joining Date:</span>
-                    <span className="text-slate-700 dark:text-slate-300">
-                      {idCardProfile.doj || '—'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Card Bottom: Signatures */}
-                <div className="p-3 bg-white dark:bg-slate-800 flex items-end justify-between text-[9px] text-slate-400">
-                  <div className="text-center">
-                    <div className="w-16 border-b border-slate-400 dark:border-slate-600 mb-1" />
-                    <span>Card Holder</span>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-16 border-b border-slate-400 dark:border-slate-600 mb-1" />
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Authorized Sign</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2">
-              <button
-                onClick={() => setIdCardProfile(null)}
-                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="h-3.5 w-3.5" />
-                Print ID Card
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -930,7 +835,13 @@ function EmployeeProfilesContent() {
                   </label>
                   <select
                     value={status}
-                    onChange={(e) => setStatus(e.target.value as EmployeeStatus)}
+                    onChange={(e) => {
+                      const next = e.target.value as EmployeeStatus
+                      setStatus(next)
+                      if (next === 'Resigned' && !resignedAt) {
+                        setResignedAt(new Date().toISOString().slice(0, 10))
+                      }
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
                     <option value="Active">Active</option>
@@ -938,6 +849,23 @@ function EmployeeProfilesContent() {
                     <option value="On Leave">On Leave</option>
                   </select>
                 </div>
+
+                {status === 'Resigned' && (
+                  <div>
+                    <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Resign Date
+                    </label>
+                    <input
+                      type="date"
+                      value={resignedAt}
+                      onChange={(e) => setResignedAt(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Agle months ki salary sheets se naam auto-remove ho jayega.
+                    </p>
+                  </div>
+                )}
 
                 <div className="sm:col-span-2">
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">

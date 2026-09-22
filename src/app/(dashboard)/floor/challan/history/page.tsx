@@ -14,6 +14,8 @@ import {
   Calendar,
   Building,
 } from 'lucide-react'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 
 export default function ChallanHistoryRegisterPage() {
   const [challans, setChallans] = useState<DeliveryChallan[]>([])
@@ -43,8 +45,9 @@ export default function ChallanHistoryRegisterPage() {
 
   return (
     <div className="space-y-6 pb-12">
+      <PrintBrandHeader sheetTitle="Challan Dispatch History" />
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
@@ -59,13 +62,16 @@ export default function ChallanHistoryRegisterPage() {
           </p>
         </div>
 
-        <Link
-          href="/floor/challan"
-          className="erp-btn-primary"
-        >
-          <Truck className="size-4" />
-          <span>+ Create New Challan</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportPdfButton filename="Challan-Dispatch-History" />
+          <Link
+            href="/floor/challan"
+            className="erp-btn-primary"
+          >
+            <Truck className="size-4" />
+            <span>+ Create New Challan</span>
+          </Link>
+        </div>
       </div>
 
       {/* Filter and Table */}

@@ -25,6 +25,8 @@ import {
   Lock,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_CONTRACTOR_WIDTHS = {
   serialNo: 56,
@@ -229,6 +231,7 @@ function ContractorsPayrollContent() {
                 <Printer className="size-3.5 text-slate-500" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Contractors-${selectedMonth}-${activeFortnight || '1-15'}`} />
             </>
           }
         />
@@ -429,11 +432,12 @@ function ContractorsPayrollContent() {
                     style={{ width: `${widths.contractualAmount}px`, minWidth: `${widths.contractualAmount}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
                   >
-                    <input
-                      type="number"
-                      value={c.contractualAmount || ''}
+                    <NumericCellInput
+                      value={c.contractualAmount || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'contractualAmount', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={0}
+                      onValueChange={(v) => handleCellChange(idx, 'contractualAmount', v)}
                       className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
                     />
                   </td>
@@ -443,11 +447,12 @@ function ContractorsPayrollContent() {
                     style={{ width: `${widths.extraIncentive}px`, minWidth: `${widths.extraIncentive}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
                   >
-                    <input
-                      type="number"
-                      value={c.extraIncentive}
+                    <NumericCellInput
+                      value={c.extraIncentive || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'extraIncentive', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={1}
+                      onValueChange={(v) => handleCellChange(idx, 'extraIncentive', v)}
                       className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
                     />
                   </td>
@@ -465,11 +470,12 @@ function ContractorsPayrollContent() {
                     style={{ width: `${widths.lessAdvance}px`, minWidth: `${widths.lessAdvance}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
                   >
-                    <input
-                      type="number"
-                      value={c.lessAdvance}
+                    <NumericCellInput
+                      value={c.lessAdvance || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'lessAdvance', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={2}
+                      onValueChange={(v) => handleCellChange(idx, 'lessAdvance', v)}
                       className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs text-red-600 dark:text-red-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
                     />
                   </td>

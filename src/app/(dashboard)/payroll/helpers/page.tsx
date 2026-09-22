@@ -24,6 +24,8 @@ import {
   Lock,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_HELPER_WIDTHS = {
   serialNo: 56,
@@ -227,6 +229,7 @@ function HelpersPayrollContent() {
                 <Printer className="size-3.5 text-slate-500" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Helpers-${selectedMonth}-${activeFortnight || '1-15'}`} />
             </>
           }
         />
@@ -394,24 +397,20 @@ function HelpersPayrollContent() {
                     onInsertRow={handleInsertRow}
                   />
                   
-                  {/* Name Input */}
+                  {/* Name — from HR */}
                   <td
                     style={{ width: `${widths.employeeName}px`, minWidth: `${widths.employeeName}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50"
+                    title="From HR Profiles / General Wages"
                   >
-                    <input
-                      type="text"
-                      value={h.employeeName}
-                      disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'employeeName', e.target.value)}
-                      className="w-full bg-transparent px-2 py-1 font-semibold font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-900 dark:text-white"
-                    />
+                    <span className="font-semibold font-sans text-xs text-slate-500">{h.employeeName}</span>
                   </td>
 
-                  {/* Designation */}
+                  {/* Designation — from HR */}
                   <td
                     style={{ width: `${widths.designation}px`, minWidth: `${widths.designation}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-3 font-sans text-slate-500 whitespace-nowrap text-xs"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-3 bg-slate-50 font-sans text-slate-500 whitespace-nowrap text-xs"
+                    title="From HR Profiles / General Wages"
                   >
                     {h.designation}
                   </td>
@@ -421,11 +420,12 @@ function HelpersPayrollContent() {
                     style={{ width: `${widths.wagePerDay}px`, minWidth: `${widths.wagePerDay}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
                   >
-                    <input
-                      type="number"
-                      value={h.wagePerDay}
+                    <NumericCellInput
+                      value={h.wagePerDay || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'wagePerDay', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={0}
+                      onValueChange={(v) => handleCellChange(idx, 'wagePerDay', v)}
                       className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
                     />
                   </td>
@@ -435,11 +435,12 @@ function HelpersPayrollContent() {
                     style={{ width: `${widths.attendanceDays}px`, minWidth: `${widths.attendanceDays}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center"
                   >
-                    <input
-                      type="number"
-                      value={h.attendanceDays}
+                    <NumericCellInput
+                      value={h.attendanceDays || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'attendanceDays', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={1}
+                      onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
                       className="w-full text-center bg-transparent px-1 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
                     />
                   </td>
@@ -457,11 +458,12 @@ function HelpersPayrollContent() {
                     style={{ width: `${widths.holidayAttendance}px`, minWidth: `${widths.holidayAttendance}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center"
                   >
-                    <input
-                      type="number"
-                      value={h.holidayAttendance}
+                    <NumericCellInput
+                      value={h.holidayAttendance || 0}
                       disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'holidayAttendance', Number(e.target.value))}
+                      navRow={idx}
+                      navCol={2}
+                      onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
                       className="w-full text-center bg-transparent px-1 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
                     />
                   </td>

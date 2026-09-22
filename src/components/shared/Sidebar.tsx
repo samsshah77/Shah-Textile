@@ -71,12 +71,6 @@ const FLOOR_ITEMS: NavLeaf[] = [
       p === '/floor/production' &&
       (sp.get('tab') === 'quality' || sp.get('tab') === 'qualities'),
   },
-  {
-    title: 'Delivery Challan',
-    href: '/floor/challan',
-    icon: 'bi-truck',
-    activeCheck: (p) => p.startsWith('/floor/challan'),
-  },
 ]
 
 const ACCOUNTS_ITEMS: NavLeaf[] = [
@@ -124,6 +118,12 @@ const PAYROLL_ITEMS: NavLeaf[] = [
     href: '/payroll/profiles',
     icon: 'bi-person-vcard',
     activeCheck: (p) => p === '/payroll/profiles',
+  },
+  {
+    title: 'Resigned Employees',
+    href: '/payroll/resigned',
+    icon: 'bi-person-x',
+    activeCheck: (p) => p === '/payroll/resigned',
   },
   {
     title: 'General Wages',

@@ -17,6 +17,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 
 function DisbursementSynopsisContent() {
   const searchParams = useSearchParams()
@@ -75,6 +76,7 @@ function DisbursementSynopsisContent() {
                 <Printer className="size-3.5" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Synopsis-${selectedMonth || 'month'}`} />
             </>
           }
         />

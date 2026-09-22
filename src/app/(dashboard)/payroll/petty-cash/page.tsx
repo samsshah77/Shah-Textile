@@ -24,6 +24,8 @@ import {
   Lock,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_PETTY_CASH_WIDTHS = {
   serialNo: 56,
@@ -229,6 +231,7 @@ function PettyCashContent() {
                 <Printer className="size-3.5 text-slate-500" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename={`Petty-Cash-${selectedMonth}-${activeFortnight}`} />
             </>
           }
         />
@@ -396,17 +399,14 @@ function PettyCashContent() {
                     style={{ width: `${widths.drAmount}px`, minWidth: `${widths.drAmount}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-3 text-right"
                   >
-                    <input
-                      type="number"
-                      value={entry.drAmount ?? ''}
+                    <NumericCellInput
+                      value={entry.drAmount ?? 0}
                       placeholder="-"
                       disabled={!canEditAccounts}
-                      onChange={(e) =>
-                        handleCellChange(
-                          idx,
-                          'drAmount',
-                          e.target.value === '' ? null : Number(e.target.value)
-                        )
+                      navRow={idx}
+                      navCol={0}
+                      onValueChange={(v) =>
+                        handleCellChange(idx, 'drAmount', v === 0 ? null : v)
                       }
                       className="w-full text-right bg-transparent px-1 text-xs font-medium text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono"
                     />
@@ -416,17 +416,14 @@ function PettyCashContent() {
                     style={{ width: `${widths.crAmount}px`, minWidth: `${widths.crAmount}px` }}
                     className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-3 text-right"
                   >
-                    <input
-                      type="number"
-                      value={entry.crAmount ?? ''}
+                    <NumericCellInput
+                      value={entry.crAmount ?? 0}
                       placeholder="-"
                       disabled={!canEditAccounts}
-                      onChange={(e) =>
-                        handleCellChange(
-                          idx,
-                          'crAmount',
-                          e.target.value === '' ? null : Number(e.target.value)
-                        )
+                      navRow={idx}
+                      navCol={1}
+                      onValueChange={(v) =>
+                        handleCellChange(idx, 'crAmount', v === 0 ? null : v)
                       }
                       className="w-full text-right bg-transparent px-1 text-xs font-medium text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono"
                     />

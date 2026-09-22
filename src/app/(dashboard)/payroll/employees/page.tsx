@@ -26,6 +26,8 @@ import {
   FileSpreadsheet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_GW_WIDTHS: Record<string, number> = {
   serial: 52,
@@ -240,6 +242,7 @@ export default function GeneralWagesPage() {
                 <Printer className="size-3.5" />
                 <span>Print</span>
               </button>
+              <ExportPdfButton filename="General-Wages" />
             </>
           }
         />
@@ -564,10 +567,11 @@ export default function GeneralWagesPage() {
                     {/* Duty Hrs */}
                     <td className="border-r border-slate-100 py-1 px-1 text-center text-slate-700">
                       {canEditAccounts ? (
-                        <input
-                          type="number"
-                          value={emp.dutyHrs}
-                          onChange={(e) => handleCellChange(idx, 'dutyHrs', Number(e.target.value))}
+                        <NumericCellInput
+                          value={emp.dutyHrs || 0}
+                          navRow={idx}
+                          navCol={0}
+                          onValueChange={(v) => handleCellChange(idx, 'dutyHrs', v)}
                           className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
                         />
                       ) : (
@@ -592,10 +596,11 @@ export default function GeneralWagesPage() {
                     {/* Salary */}
                     <td className="border-r border-slate-100 py-1 px-2 text-right font-semibold text-slate-900">
                       {canEditAccounts ? (
-                        <input
-                          type="number"
-                          value={emp.salary}
-                          onChange={(e) => handleCellChange(idx, 'salary', Number(e.target.value))}
+                        <NumericCellInput
+                          value={emp.salary || 0}
+                          navRow={idx}
+                          navCol={1}
+                          onValueChange={(v) => handleCellChange(idx, 'salary', v)}
                           className="w-full text-right bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] font-semibold text-slate-900"
                         />
                       ) : (

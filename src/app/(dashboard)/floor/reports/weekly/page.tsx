@@ -6,6 +6,7 @@ import { MetricCard } from '@/components/shared/MetricCard'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import { CalendarRange, Layers, Gauge, DollarSign, ArrowUpRight, BarChart3 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 
 export default function WeeklyProductionReportsPage() {
   const [reports, setReports] = useState<FloorWeeklyReport[]>([])
@@ -33,18 +34,23 @@ export default function WeeklyProductionReportsPage() {
           { label: 'Weekly Report' },
         ]}
         actions={
-          <div className="btn-group btn-group-sm" role="group" aria-label="Week selector">
-            {reports.map((r, index) => (
-              <button
-                key={r.weekLabel}
-                type="button"
-                onClick={() => setSelectedWeek(index)}
-                className={cn('btn', selectedWeek === index ? 'btn-primary' : 'btn-outline-primary')}
-              >
-                Week {index + 1}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="btn-group btn-group-sm" role="group" aria-label="Week selector">
+              {reports.map((r, index) => (
+                <button
+                  key={r.weekLabel}
+                  type="button"
+                  onClick={() => setSelectedWeek(index)}
+                  className={cn('btn', selectedWeek === index ? 'btn-primary' : 'btn-outline-primary')}
+                >
+                  Week {index + 1}
+                </button>
+              ))}
+            </div>
+            <ExportPdfButton
+              filename={`Production-Weekly-${current?.weekLabel || `week-${selectedWeek + 1}`}`}
+            />
+          </>
         }
       />
 

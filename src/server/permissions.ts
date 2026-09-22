@@ -4,6 +4,7 @@ import type { PermissionAction, PermissionEffect, PermissionScope } from "@prism
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@/server/current-user";
 import { ensurePermissionCatalog } from "@/server/ensure-permission-catalog";
+import { ROLE_MODULE_ACTIONS } from "@/server/permission-catalog";
 
 export type PermissionDecision = {
   allowed: boolean;
@@ -23,6 +24,11 @@ function decision(
   source: PermissionDecision["source"],
 ): PermissionDecision {
   return { allowed: effect === "ALLOW", scope, source };
+}
+
+function roleExpectsModuleAction(roleKey: string, moduleKey: string, action: PermissionAction) {
+  const actions = ROLE_MODULE_ACTIONS[roleKey]?.[moduleKey];
+  return Array.isArray(actions) && actions.includes(action);
 }
 
 async function resolvePermissionOnce(
@@ -61,10 +67,14 @@ async function resolvePermissionOnce(
     select: { id: true },
   });
 
-  // Live DB often missing RBAC catalog — heal once then retry
+  // Live DB often has partial RBAC (e.g. floor grants but missing payroll) — heal once then retry
   if (!healed) {
     const grantCount = await prisma.roleModuleGrant.count({ where: { roleId } });
-    if (!moduleRecord || grantCount === 0) {
+    const moduleGrantCount = moduleRecord
+      ? await prisma.roleModuleGrant.count({ where: { roleId, moduleId: moduleRecord.id } })
+      : 0;
+    const expects = roleExpectsModuleAction(roleKey, target.moduleKey, target.action);
+    if (!moduleRecord || grantCount === 0 || (expects && moduleGrantCount === 0)) {
       await ensurePermissionCatalog();
       return resolvePermissionOnce(userId, target, true);
     }
@@ -76,18 +86,36 @@ async function resolvePermissionOnce(
       select: { id: true },
     });
   }
-  if (!moduleRecord) return { allowed: false };
+  if (!moduleRecord) {
+    if (!healed && roleExpectsModuleAction(roleKey, target.moduleKey, target.action)) {
+      await ensurePermissionCatalog();
+      return resolvePermissionOnce(userId, target, true);
+    }
+    return { allowed: false };
+  }
 
   const resource = await prisma.resource.findUnique({
     where: { moduleId_key: { moduleId: moduleRecord.id, key: target.resourceKey } },
     select: { id: true },
   });
-  if (!resource) return { allowed: false };
+  if (!resource) {
+    if (!healed && roleExpectsModuleAction(roleKey, target.moduleKey, target.action)) {
+      await ensurePermissionCatalog();
+      return resolvePermissionOnce(userId, target, true);
+    }
+    return { allowed: false };
+  }
   const permission = await prisma.permission.findUnique({
     where: { resourceId_action: { resourceId: resource.id, action: target.action } },
     select: { id: true },
   });
-  if (!permission) return { allowed: false };
+  if (!permission) {
+    if (!healed && roleExpectsModuleAction(roleKey, target.moduleKey, target.action)) {
+      await ensurePermissionCatalog();
+      return resolvePermissionOnce(userId, target, true);
+    }
+    return { allowed: false };
+  }
 
   const userOverride = await prisma.userPermission.findUnique({
     where: { userId_permissionId: { userId, permissionId: permission.id } },
@@ -108,6 +136,13 @@ async function resolvePermissionOnce(
     select: { effect: true, scope: true },
   });
   if (moduleGrant) return decision(moduleGrant.effect, moduleGrant.scope, "ROLE_MODULE");
+
+  // Catalog says this role should have the action but DB row is missing — heal once
+  if (!healed && roleExpectsModuleAction(roleKey, target.moduleKey, target.action)) {
+    await ensurePermissionCatalog();
+    return resolvePermissionOnce(userId, target, true);
+  }
+
   return { allowed: false };
 }
 

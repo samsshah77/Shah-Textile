@@ -63,7 +63,7 @@ export function ProductionDateFilterBar({
   }
 
   return (
-    <div className="card mb-3">
+    <div className="card mb-3 print:hidden d-print-none">
       <div className="card-body py-2">
         <div className="d-flex flex-column flex-lg-row gap-2 align-items-lg-center justify-content-lg-between">
           <div className="d-flex flex-wrap align-items-center gap-2">
