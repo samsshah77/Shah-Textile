@@ -84,6 +84,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok && data.user) {
         const next = toAppUser(data.user)
         setUser(next)
+        const role = (data.user.role || '').toLowerCase()
+        if (role === 'accountant' || role === 'admin') {
+          setIsEditModeEnabled(true)
+        }
         return {
           id: next.id,
           name: next.name,
@@ -127,7 +131,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const next = toAppUser(data.user)
       setUser(next)
-      setIsEditModeEnabled(false)
+      // Accountant needs Accounts/Payroll edit; production edit stays role-gated
+      const role = (data.user.role || '').toLowerCase()
+      setIsEditModeEnabled(role === 'accountant' || role === 'admin')
       router.replace('/dashboard')
       return { success: true }
     } catch (err: unknown) {

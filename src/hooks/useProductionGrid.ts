@@ -62,8 +62,10 @@ export function useProductionGrid() {
 
   const updateLoom = useCallback(
     (loomNumber: number, patch: Partial<LoomMaster>) => {
-      setLooms(productionMastersService.updateLoom(loomNumber, patch, selectedDate))
-      setBeams(productionMastersService.getBeams())
+      const nextLooms = productionMastersService.updateLoom(loomNumber, patch, selectedDate)
+      setLooms(nextLooms)
+      // Always re-read beams so Loom Status → Beam End appears without page refresh
+      setBeams(productionMastersService.getBeams().map((b) => ({ ...b })))
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
     [selectedDate]

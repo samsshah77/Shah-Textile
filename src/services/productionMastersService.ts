@@ -268,7 +268,7 @@ class ProductionMastersService {
     )
     this.saveLooms(looms)
 
-    // Status is controlled only from Loom table → Beam table only shows "Ended today"
+    // Loom Status → Beam End: unmount + flag on Beam table (live, no page refresh)
     if (patch.status === 'BEAM_END') {
       this.flagBeamEndFromLoom(loomNumber, dateStr)
       this.updateSheetEntry(dateStr, loomNumber, {
@@ -276,6 +276,7 @@ class ProductionMastersService {
         remarks: 'Beam End',
         rollerHours: 0,
       })
+      this.reconcileBeamEndsWithLooms(dateStr)
     }
 
     return looms
@@ -283,18 +284,21 @@ class ProductionMastersService {
 
   /** Unmount beam on this loom and flag it for Beam table display (does not set loom status). */
   private flagBeamEndFromLoom(loomNumber: number, dateStr: string): void {
-    const beam = this.getBeams().find((b) => beamOnLoom(b, loomNumber))
-    if (!beam) return
+    const loomKey = String(loomNumber)
+    let changed = false
     const beams = this.getBeams().map((b) => {
-      if (b.beamNo !== beam.beamNo) return b
+      const onThisLoom =
+        normalizeLoomRef(b.usedInLoom) === loomKey || Number(b.usedInLoom) === loomNumber
+      if (!onThisLoom) return b
+      changed = true
       return normalizeBeam({
         ...b,
         usedInLoom: null,
         beamEndedOn: dateStr,
-        endedFromLoom: String(loomNumber),
+        endedFromLoom: loomKey,
       })
     })
-    this.saveBeams(beams)
+    if (changed) this.saveBeams(beams)
   }
 
   /**

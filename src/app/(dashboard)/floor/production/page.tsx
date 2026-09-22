@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable } from '@/components/floor/ProductionSheetTable'
@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 
 function ProductionWorkspaceContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const rawTab = searchParams.get('tab') || 'sheet'
   const currentTab =
@@ -31,6 +32,13 @@ function ProductionWorkspaceContent() {
 
   const { isAccountant, canEditProduction } = useAuth()
   const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
+
+  // Accountant: Production Sheet only (view)
+  useEffect(() => {
+    if (isAccountant && currentTab !== 'sheet') {
+      router.replace('/floor/production')
+    }
+  }, [isAccountant, currentTab, router])
 
   const {
     looms,
@@ -92,10 +100,12 @@ function ProductionWorkspaceContent() {
         ]}
         actions={
           <>
-            <Link href="/floor/challan" className="btn btn-sm btn-outline-primary">
-              <span className="d-none d-sm-inline">Delivery Challan</span>
-              <span className="d-sm-none">Challan</span>
-            </Link>
+            {!isAccountant && (
+              <Link href="/floor/challan" className="btn btn-sm btn-outline-primary">
+                <span className="d-none d-sm-inline">Delivery Challan</span>
+                <span className="d-sm-none">Challan</span>
+              </Link>
+            )}
             {showDateBar && (
               <span className="badge text-bg-secondary text-truncate" style={{ maxWidth: 160 }}>
                 {getFormattedDateLabel(selectedDate)}

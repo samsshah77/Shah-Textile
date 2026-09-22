@@ -5,6 +5,8 @@ import { BeamMaster, LoomMaster } from '@/services/productionMastersService'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
+import { LOOM_STATUS_COLOR, LOOM_STATUS_LABEL } from '@/components/floor/LoomStatusSelect'
+import type { LoomStatus } from '@/types/loom'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 100,
@@ -14,7 +16,6 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   threads: 84,
   length: 84,
   machine: 100,
-  fill: 110,
   mounted: 120,
   beamEnd: 150,
 }
@@ -30,13 +31,47 @@ interface BeamMasterTableProps {
   readOnly?: boolean
 }
 
-function BeamEndNote({ beam, selectedDate }: { beam: BeamMaster; selectedDate: string }) {
-  if (beam.beamEndedOn !== selectedDate) return <span className="text-secondary">—</span>
-  const from =
-    beam.endedFromLoom != null && beam.endedFromLoom !== ''
-      ? ` · Loom ${beam.endedFromLoom}`
-      : ''
-  return <span className="small">Beam Ended{from}</span>
+/**
+ * Shows what the Looms table did for this beam (e.g. Beam End · Loom 5).
+ * Heading is "Status" — not fixed as "Beam End".
+ */
+function LoomStatusNote({
+  beam,
+  looms,
+  selectedDate,
+}: {
+  beam: BeamMaster
+  looms: LoomMaster[]
+  selectedDate: string
+}) {
+  // Ended today from Looms tab → purple Beam End text
+  if (beam.beamEndedOn === selectedDate) {
+    const from =
+      beam.endedFromLoom != null && beam.endedFromLoom !== ''
+        ? ` · Loom ${beam.endedFromLoom}`
+        : ''
+    return (
+      <span className="fw-semibold" style={{ color: LOOM_STATUS_COLOR.BEAM_END }}>
+        {LOOM_STATUS_LABEL.BEAM_END}
+        {from}
+      </span>
+    )
+  }
+
+  // Still mounted: show that loom's live status (same colors as Looms table)
+  if (beam.usedInLoom) {
+    const loom = looms.find((l) => String(l.loomNumber) === String(beam.usedInLoom))
+    if (loom) {
+      const status = loom.status as LoomStatus
+      return (
+        <span className="fw-semibold" style={{ color: LOOM_STATUS_COLOR[status] }}>
+          {LOOM_STATUS_LABEL[status]} · Loom {loom.loomNumber}
+        </span>
+      )
+    }
+  }
+
+  return <span className="text-secondary">—</span>
 }
 
 export function BeamMasterTable({
@@ -52,7 +87,7 @@ export function BeamMasterTable({
   const [newBeamNo, setNewBeamNo] = useState('')
   const [mode, setMode] = useState<TableGridMode>('table')
   const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
-    'sara_beam_col_widths_v2',
+    'sara_beam_col_widths_v3',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -79,20 +114,15 @@ export function BeamMasterTable({
     <select
       className="form-select form-select-sm"
       style={{ width: '100%', minWidth: 0 }}
-      value={b.usedInLoom || ''}
-      disabled={readOnly || b.fillStatus === 'EMPTY'}
-      title={
-        b.fillStatus === 'EMPTY'
-          ? 'Empty beam cannot mount — mark Full first'
-          : 'Mount / remount on a loom (Status still changes only on Looms tab)'
-      }
+      value={b.usedInLoom ?? ''}
+      disabled={readOnly}
       onChange={(e) => {
         const v = e.target.value
         if (!v) onUnmount(b.beamNo)
         else onMount(b.beamNo, Number(v))
       }}
     >
-      <option value="">— Not mounted —</option>
+      <option value="">—</option>
       {activeLooms.map((l) => (
         <option key={l.loomNumber} value={l.loomNumber}>
           Loom {l.loomNumber}
@@ -145,7 +175,7 @@ export function BeamMasterTable({
             <div key={b.beamNo} className="master-grid-card">
               <div className="d-flex justify-content-between align-items-start gap-2">
                 <div className="fw-semibold">Beam Identity {b.beamNo}</div>
-                <BeamEndNote beam={b} selectedDate={selectedDate} />
+                <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
               </div>
               <input
                 className="form-control form-control-sm"
@@ -193,21 +223,7 @@ export function BeamMasterTable({
                 <option value="G6300">G6300</option>
                 <option value="PU">PU</option>
               </select>
-              <select
-                className="form-select form-select-sm"
-                value={b.fillStatus}
-                disabled={readOnly || !!b.usedInLoom}
-                onChange={(e) =>
-                  onUpdate(b.beamNo, { fillStatus: e.target.value as 'EMPTY' | 'FULL' })
-                }
-              >
-                <option value="EMPTY">Empty beam</option>
-                <option value="FULL">Full beam</option>
-              </select>
               {renderMountSelect(b)}
-              {!b.usedInLoom && b.beamEndedOn === selectedDate && b.fillStatus !== 'EMPTY' && (
-                <span className="small text-secondary">Ready to remount</span>
-              )}
             </div>
           ))}
         </div>
@@ -248,14 +264,11 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="machine" width={widths.machine} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Machine Type
                 </ResizableTh>
-                <ResizableTh columnKey="fill" width={widths.fill} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Empty / Full
-                </ResizableTh>
                 <ResizableTh columnKey="mounted" width={widths.mounted} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Mounted Loom
                 </ResizableTh>
                 <ResizableTh columnKey="beamEnd" width={widths.beamEnd} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Beam End
+                  Status
                 </ResizableTh>
               </tr>
             </thead>
@@ -316,28 +329,9 @@ export function BeamMasterTable({
                       <option value="PU">PU</option>
                     </select>
                   </td>
-                  <td className="px-1">
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={b.fillStatus}
-                      disabled={readOnly || !!b.usedInLoom}
-                      onChange={(e) =>
-                        onUpdate(b.beamNo, { fillStatus: e.target.value as 'EMPTY' | 'FULL' })
-                      }
-                    >
-                      <option value="EMPTY">Empty beam</option>
-                      <option value="FULL">Full beam</option>
-                    </select>
-                  </td>
                   <td className="px-1">{renderMountSelect(b)}</td>
-                  <td className="px-1">
-                    <BeamEndNote beam={b} selectedDate={selectedDate} />
-                    {!b.usedInLoom &&
-                      b.beamEndedOn === selectedDate &&
-                      b.fillStatus !== 'EMPTY' && (
-                        <div className="small text-secondary">Ready to remount</div>
-                      )}
+                  <td className="px-2">
+                    <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
                   </td>
                 </tr>
               ))}
@@ -345,11 +339,6 @@ export function BeamMasterTable({
           </table>
         </div>
       )}
-
-      <div className="card-footer small text-secondary">
-        Set Status → Beam End on Looms tab · this table shows “Beam Ended” as plain text · remount
-        same beam on another loom while Full · note clears next day
-      </div>
     </div>
   )
 }

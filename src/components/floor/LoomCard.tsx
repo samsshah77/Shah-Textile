@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { DailyLoomProductionEntry, calculateProductionMetrics } from '@/types/production'
 import { LoomCategory, LoomStatus } from '@/types/loom'
 import { LoomEfficiencyBadge } from './LoomEfficiencyBadge'
+import { LoomStatusSelect } from '@/components/floor/LoomStatusSelect'
 import { cn } from '@/lib/utils'
-import { PlayCircle, PauseCircle, Wrench, RefreshCw, AlertOctagon, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 
 interface LoomCardProps {
   entry: DailyLoomProductionEntry
@@ -13,34 +14,6 @@ interface LoomCardProps {
   isModified?: boolean
   readOnly?: boolean
   availableQualities?: string[]
-}
-
-const statusConfig: Record<LoomStatus, { label: string; icon: any; badge: string }> = {
-  RUNNING: {
-    label: 'RUNNING',
-    icon: PlayCircle,
-    badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
-  },
-  STOPPED: {
-    label: 'STOPPED',
-    icon: PauseCircle,
-    badge: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
-  },
-  BREAKDOWN: {
-    label: 'BREAKDOWN',
-    icon: Wrench,
-    badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
-  },
-  KNOTTING: {
-    label: 'KNOTTING',
-    icon: RefreshCw,
-    badge: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30',
-  },
-  BEAM_END: {
-    label: 'BEAM END',
-    icon: AlertOctagon,
-    badge: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
-  },
 }
 
 export function LoomCard({
@@ -137,21 +110,11 @@ export function LoomCard({
         </div>
 
         {/* Status Dropdown */}
-        <select
+        <LoomStatusSelect
           value={status}
           disabled={readOnly}
-          onChange={(e) => handleStatusChange(e.target.value as LoomStatus)}
-          className={cn(
-            'rounded-lg border px-2.5 py-1.5 text-xs font-bold outline-none cursor-pointer transition-colors shadow-xs',
-            statusConfig[status]?.badge || 'bg-slate-100 border-slate-200 text-slate-800'
-          )}
-        >
-          <option value="RUNNING">RUNNING</option>
-          <option value="STOPPED">STOPPED</option>
-          <option value="KNOTTING">KNOTTING</option>
-          <option value="BREAKDOWN">BREAKDOWN</option>
-          <option value="BEAM_END">BEAM END</option>
-        </select>
+          onChange={handleStatusChange}
+        />
       </div>
 
       {/* Fabric / Quality Info */}

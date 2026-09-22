@@ -229,6 +229,30 @@ async function main() {
       })
     }
   }
+
+  // Drop stale DENY overrides that are no longer in the catalog (e.g. salary_components VIEW)
+  for (const roleKey of Object.keys(ROLE_MODULE_ACTIONS)) {
+    const roleId = seededRoles[roleKey]
+    if (!roleId) continue
+    const catalogDenies = ROLE_RESOURCE_DENIES.filter((d) => d.roleKey === roleKey)
+    const existingDenies = await prisma.rolePermission.findMany({
+      where: { roleId, effect: 'DENY' },
+      include: { permission: { include: { resource: { include: { module: true } } } } },
+    })
+    for (const row of existingDenies) {
+      const keep = catalogDenies.some(
+        (d) =>
+          d.moduleKey === row.permission.resource.module.key &&
+          d.resourceKey === row.permission.resource.key &&
+          d.actions.includes(row.permission.action)
+      )
+      if (!keep) {
+        await prisma.rolePermission.delete({
+          where: { roleId_permissionId: { roleId, permissionId: row.permissionId } },
+        })
+      }
+    }
+  }
   console.log('✓ Permission catalog & role grants ready.')
 
   // 3. Seed Looms (34 Rapier & PU Looms)

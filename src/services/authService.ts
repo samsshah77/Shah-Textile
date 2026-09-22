@@ -26,7 +26,7 @@ export const DEMO_USERS: Record<string, User & { passwordHash: string }> = {
     role: 'accountant',
     roleLabel: 'Accountant',
     department: 'Accounts & Payroll',
-    passwordHash: 'tufail123',
+    passwordHash: 'rYVCEJjdXcvz88KyggaAQ0DLC4X2pCFx',
   },
   'accountant@saratextile.com': {
     id: 'usr_acc_tufail',
@@ -35,7 +35,7 @@ export const DEMO_USERS: Record<string, User & { passwordHash: string }> = {
     role: 'accountant',
     roleLabel: 'Accountant',
     department: 'Accounts & Payroll',
-    passwordHash: 'tufail123',
+    passwordHash: 'rYVCEJjdXcvz88KyggaAQ0DLC4X2pCFx',
   },
   'ahmer@saratextile.com': {
     id: 'usr_qc_ahmer',

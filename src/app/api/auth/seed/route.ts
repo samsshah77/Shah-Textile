@@ -1,60 +1,20 @@
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import {
+  PERMISSION_ACTIONS,
+  PERMISSION_CATALOG,
+  ROLE_MODULE_ACTIONS,
+  ROLE_RESOURCE_DENIES,
+} from '@/server/permission-catalog'
+
+const ACCOUNTANT_PASSWORD = 'rYVCEJjdXcvz88KyggaAQ0DLC4X2pCFx'
+const ADMIN_PASSWORD = 'IVRmUTxljGWnf1uWNfOYZLV2MCcQPKV6'
+const QC_PASSWORD = '1S2615J4Zkyh-xqdT32GAD6vBmJ61vR7'
 
 export async function ensureDatabaseSeeded() {
-  // 1. Create tables if they do not exist
-  try {
-    await prisma.$executeRawUnsafe(`
-      DO $$ BEGIN
-        CREATE TYPE "UserStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
-      EXCEPTION
-        WHEN duplicate_object THEN null;
-      END $$;
-    `)
-  } catch {
-    // Enum might already exist or not supported, continue
-  }
-
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "roles" (
-        "id" TEXT PRIMARY KEY,
-        "key" TEXT UNIQUE NOT NULL,
-        "label" TEXT NOT NULL,
-        "department" TEXT,
-        "description" TEXT,
-        "canSignup" BOOLEAN DEFAULT true,
-        "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
-      );
-    `)
-
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "users" (
-        "id" TEXT PRIMARY KEY,
-        "name" TEXT NOT NULL,
-        "email" TEXT UNIQUE NOT NULL,
-        "passwordHash" TEXT NOT NULL,
-        "roleKey" TEXT DEFAULT 'ACCOUNTANT',
-        "roleId" TEXT,
-        "department" TEXT,
-        "status" TEXT DEFAULT 'APPROVED',
-        "isActive" BOOLEAN DEFAULT true,
-        "approvedAt" TIMESTAMP(3),
-        "approvedBy" TEXT,
-        "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
-      );
-    `)
-  } catch (err) {
-    console.error('Table creation error:', err)
-  }
-
-  // 2. Seed Default Roles
   const rolesData = [
     {
-      id: 'role_admin',
       key: 'admin',
       label: 'Main Admin',
       department: 'Executive Management',
@@ -62,7 +22,6 @@ export async function ensureDatabaseSeeded() {
       canSignup: false,
     },
     {
-      id: 'role_accountant',
       key: 'accountant',
       label: 'Accountant',
       department: 'Accounts & Payroll',
@@ -70,7 +29,6 @@ export async function ensureDatabaseSeeded() {
       canSignup: true,
     },
     {
-      id: 'role_qc',
       key: 'quality_controller',
       label: 'Quality Controller',
       department: 'Floor & Quality Control',
@@ -79,26 +37,26 @@ export async function ensureDatabaseSeeded() {
     },
   ]
 
+  const seededRoles: Record<string, string> = {}
   for (const r of rolesData) {
-    try {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "roles" ("id", "key", "label", "department", "description", "canSignup", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-         ON CONFLICT ("key") DO NOTHING`,
-        r.id,
-        r.key,
-        r.label,
-        r.department,
-        r.description,
-        r.canSignup
-      )
-    } catch {}
+    const role = await prisma.role.upsert({
+      where: { key: r.key },
+      update: {
+        label: r.label,
+        department: r.department,
+        description: r.description,
+        canSignup: r.canSignup,
+      },
+      create: r,
+    })
+    seededRoles[r.key] = role.id
   }
 
-  // 3. Seed Default Admin & Manager Users
-  const adminPassword = await bcrypt.hash('admin123', 10)
-  const accountantPassword = await bcrypt.hash('tufail123', 10)
-  const qcPassword = await bcrypt.hash('ahmer123', 10)
+  const [adminPassword, accountantPassword, qcPassword] = await Promise.all([
+    bcrypt.hash(ADMIN_PASSWORD, 10),
+    bcrypt.hash(ACCOUNTANT_PASSWORD, 10),
+    bcrypt.hash(QC_PASSWORD, 10),
+  ])
 
   const users = [
     {
@@ -107,9 +65,8 @@ export async function ensureDatabaseSeeded() {
       email: 'javed@saratextile.com',
       passwordHash: adminPassword,
       roleKey: 'admin',
-      roleId: 'role_admin',
+      roleId: seededRoles.admin,
       department: 'Executive Management',
-      status: 'APPROVED',
     },
     {
       id: 'usr_acc_tufail',
@@ -117,9 +74,8 @@ export async function ensureDatabaseSeeded() {
       email: 'tufail@saratextile.com',
       passwordHash: accountantPassword,
       roleKey: 'accountant',
-      roleId: 'role_accountant',
+      roleId: seededRoles.accountant,
       department: 'Accounts & Payroll',
-      status: 'APPROVED',
     },
     {
       id: 'usr_qc_ahmer',
@@ -127,30 +83,140 @@ export async function ensureDatabaseSeeded() {
       email: 'ahmer@saratextile.com',
       passwordHash: qcPassword,
       roleKey: 'quality_controller',
-      roleId: 'role_qc',
+      roleId: seededRoles.quality_controller,
       department: 'Floor & Quality Control',
-      status: 'APPROVED',
     },
   ]
 
-  const seeded = []
+  const seeded: string[] = []
   for (const u of users) {
-    try {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "users" ("id", "name", "email", "passwordHash", "roleKey", "roleId", "department", "status", "isActive", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW())
-         ON CONFLICT ("email") DO UPDATE SET "passwordHash" = $4, "status" = 'APPROVED'`,
-        u.id,
-        u.name,
-        u.email,
-        u.passwordHash,
-        u.roleKey,
-        u.roleId,
-        u.department,
-        u.status
-      )
-      seeded.push(u.email)
-    } catch {}
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: {
+        name: u.name,
+        passwordHash: u.passwordHash,
+        roleKey: u.roleKey,
+        roleId: u.roleId,
+        department: u.department,
+        status: 'APPROVED',
+        isActive: true,
+        approvedAt: new Date(),
+      },
+      create: {
+        ...u,
+        status: 'APPROVED',
+        isActive: true,
+        approvedAt: new Date(),
+        approvedBy: 'SYSTEM_SEED',
+      },
+    })
+    seeded.push(u.email)
+  }
+
+  // Permission catalog + role grants (needed for accounts/payroll page access)
+  for (const moduleDef of PERMISSION_CATALOG) {
+    const moduleRecord = await prisma.module.upsert({
+      where: { key: moduleDef.key },
+      update: {
+        label: moduleDef.label,
+        description: moduleDef.description,
+        sortOrder: moduleDef.sortOrder,
+        isActive: true,
+      },
+      create: {
+        key: moduleDef.key,
+        label: moduleDef.label,
+        description: moduleDef.description,
+        sortOrder: moduleDef.sortOrder,
+      },
+    })
+
+    for (const resourceDef of moduleDef.resources) {
+      const resource = await prisma.resource.upsert({
+        where: { moduleId_key: { moduleId: moduleRecord.id, key: resourceDef.key } },
+        update: {
+          label: resourceDef.label,
+          description: resourceDef.description,
+          sensitive: Boolean(resourceDef.sensitive),
+        },
+        create: {
+          moduleId: moduleRecord.id,
+          key: resourceDef.key,
+          label: resourceDef.label,
+          description: resourceDef.description,
+          sensitive: Boolean(resourceDef.sensitive),
+        },
+      })
+
+      for (const action of PERMISSION_ACTIONS) {
+        await prisma.permission.upsert({
+          where: { resourceId_action: { resourceId: resource.id, action } },
+          update: {},
+          create: { resourceId: resource.id, action },
+        })
+      }
+    }
+  }
+
+  for (const [roleKey, moduleActions] of Object.entries(ROLE_MODULE_ACTIONS)) {
+    const roleId = seededRoles[roleKey]
+    if (!roleId) continue
+    for (const [moduleKey, actions] of Object.entries(moduleActions)) {
+      const moduleRecord = await prisma.module.findUnique({ where: { key: moduleKey } })
+      if (!moduleRecord || !actions) continue
+      for (const action of actions) {
+        await prisma.roleModuleGrant.upsert({
+          where: {
+            roleId_moduleId_action: {
+              roleId,
+              moduleId: moduleRecord.id,
+              action,
+            },
+          },
+          update: { effect: 'ALLOW', scope: 'ALL' },
+          create: {
+            roleId,
+            moduleId: moduleRecord.id,
+            action,
+            effect: 'ALLOW',
+            scope: 'ALL',
+          },
+        })
+      }
+    }
+  }
+
+  // Clear stale resource denies, then apply catalog denies only
+  for (const roleKey of Object.keys(ROLE_MODULE_ACTIONS)) {
+    const roleId = seededRoles[roleKey]
+    if (!roleId) continue
+    await prisma.rolePermission.deleteMany({ where: { roleId, effect: 'DENY' } })
+  }
+
+  for (const deny of ROLE_RESOURCE_DENIES) {
+    const roleId = seededRoles[deny.roleKey]
+    const moduleRecord = await prisma.module.findUnique({ where: { key: deny.moduleKey } })
+    if (!roleId || !moduleRecord) continue
+    const resource = await prisma.resource.findUnique({
+      where: { moduleId_key: { moduleId: moduleRecord.id, key: deny.resourceKey } },
+    })
+    if (!resource) continue
+    for (const action of deny.actions) {
+      const permission = await prisma.permission.findUnique({
+        where: { resourceId_action: { resourceId: resource.id, action } },
+      })
+      if (!permission) continue
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId, permissionId: permission.id } },
+        update: { effect: 'DENY', scope: 'ALL' },
+        create: {
+          roleId,
+          permissionId: permission.id,
+          effect: 'DENY',
+          scope: 'ALL',
+        },
+      })
+    }
   }
 
   return seeded

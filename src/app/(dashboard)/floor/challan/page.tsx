@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { challanService } from '@/services/challanService'
 import { productionService } from '@/services/productionService'
 import { DeliveryChallan, ChalanFoiItem } from '@/types/challan'
@@ -17,6 +18,11 @@ import { PageHeader } from '@/components/shared/PageHeader'
 
 export default function ChallanPage() {
   const { canEditProduction, isAccountant } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (isAccountant) router.replace('/floor/production')
+  }, [isAccountant, router])
 
   const [foiItems, setFoiItems] = useState<ChalanFoiItem[]>([])
   const [loadingFoi, setLoadingFoi] = useState(true)

@@ -27,7 +27,19 @@ export async function resolvePermission(userId: string, target: PermissionTarget
   });
   if (!user || !user.isActive || user.status !== "APPROVED") return { allowed: false };
   if (user.roleKey.toLowerCase() === "admin") return { allowed: true, source: "ADMIN", scope: "ALL" };
-  if (!user.roleId) return { allowed: false };
+
+  let roleId = user.roleId;
+  if (!roleId && user.roleKey) {
+    const byKey = await prisma.role.findUnique({
+      where: { key: user.roleKey.toLowerCase() },
+      select: { id: true },
+    });
+    roleId = byKey?.id ?? null;
+    if (roleId) {
+      await prisma.user.update({ where: { id: userId }, data: { roleId } }).catch(() => undefined);
+    }
+  }
+  if (!roleId) return { allowed: false };
 
   const moduleRecord = await prisma.module.findUnique({ where: { key: target.moduleKey }, select: { id: true } });
   if (!moduleRecord) return { allowed: false };
@@ -49,13 +61,13 @@ export async function resolvePermission(userId: string, target: PermissionTarget
   if (userOverride) return decision(userOverride.effect, userOverride.scope, "USER");
 
   const roleOverride = await prisma.rolePermission.findUnique({
-    where: { roleId_permissionId: { roleId: user.roleId, permissionId: permission.id } },
+    where: { roleId_permissionId: { roleId, permissionId: permission.id } },
     select: { effect: true, scope: true },
   });
   if (roleOverride) return decision(roleOverride.effect, roleOverride.scope, "ROLE_RESOURCE");
 
   const moduleGrant = await prisma.roleModuleGrant.findUnique({
-    where: { roleId_moduleId_action: { roleId: user.roleId, moduleId: moduleRecord.id, action: target.action } },
+    where: { roleId_moduleId_action: { roleId, moduleId: moduleRecord.id, action: target.action } },
     select: { effect: true, scope: true },
   });
   if (moduleGrant) return decision(moduleGrant.effect, moduleGrant.scope, "ROLE_MODULE");

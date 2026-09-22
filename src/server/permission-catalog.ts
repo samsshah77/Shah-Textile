@@ -122,12 +122,6 @@ export const ROLE_RESOURCE_DENIES: Array<{
   {
     roleKey: "accountant",
     moduleKey: "payroll",
-    resourceKey: "salary_components",
-    actions: ["VIEW", "UPDATE"],
-  },
-  {
-    roleKey: "accountant",
-    moduleKey: "payroll",
     resourceKey: "payroll_runs",
     actions: ["APPROVE", "POST"],
   },

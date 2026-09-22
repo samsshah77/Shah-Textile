@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import { LoomMaster, QualityMaster, YarnMaster } from '@/services/productionMastersService'
-import { LoomCategory, LoomStatus } from '@/types/loom'
+import { LoomCategory } from '@/types/loom'
 import { AvatarImageUpload } from '@/components/shared/AvatarImageUpload'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
+import { LoomStatusSelect } from '@/components/floor/LoomStatusSelect'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 
 const MODELS: LoomCategory[] = ['G6200', 'G6300', 'PU']
-const STATUSES: LoomStatus[] = ['RUNNING', 'STOPPED', 'KNOTTING', 'BREAKDOWN', 'BEAM_END']
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   loom: 72,
@@ -116,18 +116,11 @@ function LoomFields({
         placeholder="Shed"
         onChange={(e) => onUpdate(l.loomNumber, { shed: e.target.value })}
       />
-      <select
-        className="form-select form-select-sm"
+      <LoomStatusSelect
         value={l.status}
         disabled={readOnly}
-        onChange={(e) => onUpdate(l.loomNumber, { status: e.target.value as LoomStatus })}
-      >
-        {STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {s === 'BEAM_END' ? 'Beam End' : s === 'KNOTTING' ? 'Knotting' : s}
-          </option>
-        ))}
-      </select>
+        onChange={(status) => onUpdate(l.loomNumber, { status })}
+      />
     </>
   )
 }
@@ -355,21 +348,12 @@ export function LoomMasterTable({
                     />
                   </td>
                   <td className="px-1">
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: '100%', minWidth: 0 }}
+                    <LoomStatusSelect
                       value={l.status}
                       disabled={readOnly}
-                      onChange={(e) =>
-                        onUpdate(l.loomNumber, { status: e.target.value as LoomStatus })
-                      }
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s === 'BEAM_END' ? 'Beam End' : s === 'KNOTTING' ? 'Knotting' : s}
-                        </option>
-                      ))}
-                    </select>
+                      style={{ width: '100%', minWidth: 0 }}
+                      onChange={(status) => onUpdate(l.loomNumber, { status })}
+                    />
                   </td>
                 </tr>
               ))}

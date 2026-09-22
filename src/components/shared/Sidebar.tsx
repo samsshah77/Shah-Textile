@@ -212,7 +212,7 @@ const ADMIN_ITEMS: NavLeaf[] = [
 function SidebarContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { isQualityController, canViewAccounts, isAdmin } = useAuth()
+  const { isQualityController, canViewAccounts, isAdmin, isAccountant } = useAuth()
 
   useEffect(() => {
     ensureSidebarOverlay()
@@ -229,11 +229,15 @@ function SidebarContent() {
   }, [pathname, searchParams])
 
   const trees: NavTree[] = useMemo(() => {
+    const floorItems = isAccountant
+      ? FLOOR_ITEMS.filter((item) => item.title === 'Production Sheet')
+      : FLOOR_ITEMS
+
     const list: NavTree[] = [
       {
         title: 'Production',
         icon: 'bi-buildings',
-        items: FLOOR_ITEMS,
+        items: floorItems,
       },
     ]
     if (!isQualityController && canViewAccounts) {
@@ -258,7 +262,7 @@ function SidebarContent() {
       })
     }
     return list
-  }, [isQualityController, canViewAccounts, isAdmin])
+  }, [isQualityController, canViewAccounts, isAdmin, isAccountant])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 
