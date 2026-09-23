@@ -74,13 +74,15 @@ export async function uploadImageFile(file: File): Promise<string> {
 
   if (res.ok && url) return url
 
-  const message =
-    (body &&
-      typeof body === 'object' &&
-      (String((body as Record<string, unknown>).message || '') ||
-        String((body as Record<string, unknown>).error || ''))) ||
-    (typeof body === 'string' && body) ||
-    `Upload failed (HTTP ${res.status}).`
+  let message = `Upload failed (HTTP ${res.status}).`
+  if (body && typeof body === 'object') {
+    const rec = body as Record<string, unknown>
+    const raw = rec.message ?? rec.error
+    if (typeof raw === 'string' && raw.trim()) message = raw.trim()
+    else if (raw != null && String(raw).trim()) message = String(raw).trim()
+  } else if (typeof body === 'string' && body.trim()) {
+    message = body.trim()
+  }
 
   throw new Error(message)
 }
