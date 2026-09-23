@@ -5,6 +5,7 @@ import {
   consumeLoginAttempt,
   loginFingerprint,
 } from "@/server/login-throttle";
+import { ensurePermissionCatalog } from "@/server/ensure-permission-catalog";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,16 @@ const handler = createLoginHandler({
 
 export async function POST(request: Request) {
   try {
-    return await handler(request);
+    const response = await handler(request);
+    // After successful login, heal RBAC so accountant (Tufail) gets module grants
+    if (response.status === 200) {
+      try {
+        await ensurePermissionCatalog();
+      } catch (healErr) {
+        console.error("[login] permission catalog heal failed", healErr);
+      }
+    }
+    return response;
   } catch (err: any) {
     console.error("LOGIN API ERROR:", err);
     return new Response(JSON.stringify({ error: err.message || "Internal Server Error", stack: err.stack }), {

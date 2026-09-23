@@ -7,7 +7,31 @@ import {
   ROLE_RESOURCE_DENIES,
 } from "@/server/permission-catalog";
 
-/** Sync modules/resources/permissions + role grants from catalog (no password changes). */
+const ROLE_META: Record<string, { label: string; department: string; description: string; canSignup: boolean }> = {
+  admin: {
+    label: "Main Admin",
+    department: "Executive Management",
+    description: "Full executive control over all accounts, production, payroll, and users.",
+    canSignup: false,
+  },
+  accountant: {
+    label: "Accountant",
+    department: "Accounts & Payroll",
+    description: "Access to manage salaries, invoices, payroll, and financial reports.",
+    canSignup: true,
+  },
+  quality_controller: {
+    label: "Quality Controller",
+    department: "Floor & Quality Control",
+    description: "Access to manage loom production, quality logs, and warp records.",
+    canSignup: true,
+  },
+};
+
+/**
+ * Sync modules/resources/permissions + role grants from catalog.
+ * Also normalizes VPS leftovers (role key ACCOUNTANT vs accountant) and re-links users.
+ */
 export async function ensurePermissionCatalog() {
   for (const moduleDef of PERMISSION_CATALOG) {
     const moduleRecord = await prisma.module.upsert({
@@ -53,11 +77,91 @@ export async function ensurePermissionCatalog() {
     }
   }
 
-  const roles = await prisma.role.findMany({
-    where: { key: { in: Object.keys(ROLE_MODULE_ACTIONS) } },
-    select: { id: true, key: true },
-  });
-  const seededRoles = Object.fromEntries(roles.map((r) => [r.key.toLowerCase(), r.id]));
+  // Normalize / create canonical roles (lowercase keys)
+  const allRoles = await prisma.role.findMany({ select: { id: true, key: true } });
+  const seededRoles: Record<string, string> = {};
+
+  for (const canonKey of Object.keys(ROLE_MODULE_ACTIONS)) {
+    const meta = ROLE_META[canonKey] || {
+      label: canonKey,
+      department: null as string | null,
+      description: null as string | null,
+      canSignup: true,
+    };
+
+    let canonical = allRoles.find((r) => r.key === canonKey);
+    if (!canonical) {
+      // Reuse case-variant row if present (e.g. ACCOUNTANT → rename to accountant)
+      const variant = allRoles.find((r) => r.key.toLowerCase() === canonKey);
+      if (variant) {
+        canonical = await prisma.role.update({
+          where: { id: variant.id },
+          data: {
+            key: canonKey,
+            label: meta.label,
+            department: meta.department ?? undefined,
+            description: meta.description ?? undefined,
+            canSignup: meta.canSignup,
+          },
+          select: { id: true, key: true },
+        });
+      } else {
+        canonical = await prisma.role.create({
+          data: {
+            key: canonKey,
+            label: meta.label,
+            department: meta.department,
+            description: meta.description,
+            canSignup: meta.canSignup,
+          },
+          select: { id: true, key: true },
+        });
+      }
+    } else {
+      await prisma.role.update({
+        where: { id: canonical.id },
+        data: {
+          label: meta.label,
+          department: meta.department ?? undefined,
+          description: meta.description ?? undefined,
+          canSignup: meta.canSignup,
+        },
+      });
+    }
+    seededRoles[canonKey] = canonical.id;
+  }
+
+  // Re-link users whose roleKey is ACCOUNTANT / Accountant / etc.
+  for (const [canonKey, roleId] of Object.entries(seededRoles)) {
+    await prisma.user.updateMany({
+      where: {
+        OR: [
+          { roleKey: { equals: canonKey, mode: "insensitive" } },
+          { roleId },
+        ],
+      },
+      data: { roleKey: canonKey, roleId },
+    });
+  }
+
+  // Explicit known mill users
+  if (seededRoles.accountant) {
+    await prisma.user.updateMany({
+      where: {
+        OR: [
+          { email: "tufail@saratextile.com" },
+          { email: "accountant@saratextile.com" },
+          { id: "usr_acc_tufail" },
+        ],
+      },
+      data: {
+        roleKey: "accountant",
+        roleId: seededRoles.accountant,
+        status: "APPROVED",
+        isActive: true,
+      },
+    });
+  }
 
   for (const [roleKey, moduleActions] of Object.entries(ROLE_MODULE_ACTIONS)) {
     const roleId = seededRoles[roleKey.toLowerCase()];

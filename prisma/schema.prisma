@@ -58,7 +58,7 @@ model User {
   name         String
   email        String     @unique
   passwordHash String
-  roleKey      String     @default("ACCOUNTANT") // Role key (e.g. "admin", "accountant", "quality_controller")
+  roleKey      String     @default("accountant") // admin | accountant | quality_controller
   roleId       String?
   role         Role?      @relation(fields: [roleId], references: [id])
   department   String?
