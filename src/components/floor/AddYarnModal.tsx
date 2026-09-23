@@ -6,11 +6,17 @@ import { YarnMaster, kgToLbs } from '@/services/productionMastersService'
 interface AddYarnModalProps {
   isOpen: boolean
   onClose: () => void
-  onAdd: (yarn: Partial<YarnMaster>) => void
+  onAdd: (
+    yarn: Partial<YarnMaster>,
+    arrival?: { date: string; bags: number; weightKg: number; lotOrSupplier?: string }
+  ) => void
+  activeDate?: string
 }
 
-export function AddYarnModal({ isOpen, onClose, onAdd }: AddYarnModalProps) {
+export function AddYarnModal({ isOpen, onClose, onAdd, activeDate }: AddYarnModalProps) {
   const [yarnType, setYarnType] = useState('')
+  const [date, setDate] = useState(activeDate || '2026-09-24')
+  const [lotOrSupplier, setLotOrSupplier] = useState('')
   const [bags, setBags] = useState<number | ''>(10)
   const [receivedKg, setReceivedKg] = useState<number | ''>(500)
 
@@ -22,13 +28,23 @@ export function AddYarnModal({ isOpen, onClose, onAdd }: AddYarnModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!yarnType.trim()) return
-    onAdd({
-      yarnType: yarnType.trim(),
-      bags: Number(bags) || 0,
-      receivedKg: numKg,
-      issuedKg: 0,
-    })
+    const numBags = Number(bags) || 0
+    onAdd(
+      {
+        yarnType: yarnType.trim(),
+        bags: numBags,
+        receivedKg: numKg,
+        issuedKg: 0,
+      },
+      {
+        date,
+        bags: numBags,
+        weightKg: numKg,
+        lotOrSupplier: lotOrSupplier.trim() || undefined,
+      }
+    )
     setYarnType('')
+    setLotOrSupplier('')
     setBags(10)
     setReceivedKg(500)
     onClose()
@@ -74,6 +90,34 @@ export function AddYarnModal({ isOpen, onClose, onAdd }: AddYarnModalProps) {
                   autoFocus
                   required
                 />
+              </div>
+
+              <div className="row g-3 mb-3">
+                <div className="col-6">
+                  <label className="form-label small fw-semibold text-secondary mb-1">
+                    Inward Date
+                  </label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="col-6">
+                  <label className="form-label small fw-semibold text-secondary mb-1">
+                    Lot / Supplier / Challan #
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Lot #129 · Nishat"
+                    value={lotOrSupplier}
+                    onChange={(e) => setLotOrSupplier(e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="row g-3">

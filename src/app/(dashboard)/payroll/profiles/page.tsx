@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, resolveResignedAt } from '@/services/payrollService'
 import { EmployeeProfile, EmployeeCategory, EmployeeStatus } from '@/types/payroll'
 import { useAuth } from '@/context/AuthContext'
 import { AlertModal } from '@/components/ui/AlertModal'
@@ -22,7 +22,6 @@ import {
   Save,
   X,
   Printer,
-  UserCheck,
   CheckCircle2,
   FileSpreadsheet,
   LayoutGrid,
@@ -67,6 +66,7 @@ function EmployeeProfilesContent() {
   const [contractStatus, setContractStatus] = useState<string>('Company Contract')
   const [status, setStatus] = useState<EmployeeStatus>('Active')
   const [resignedAt, setResignedAt] = useState('')
+  const [advanceEligible, setAdvanceEligible] = useState(false)
   const [remarks, setRemarks] = useState('')
 
   // Delete Confirmation Modal State
@@ -114,6 +114,7 @@ function EmployeeProfilesContent() {
     setContractStatus('Company Contract')
     setStatus('Active')
     setResignedAt('')
+    setAdvanceEligible(false)
     setRemarks('')
     setIsModalOpen(true)
   }
@@ -134,7 +135,8 @@ function EmployeeProfilesContent() {
     setDoj(emp.doj || '')
     setContractStatus(emp.contractStatus || 'Company Contract')
     setStatus(emp.status || 'Active')
-    setResignedAt(emp.resignedAt || '')
+    setResignedAt(resolveResignedAt(emp) || '')
+    setAdvanceEligible(Boolean(emp.advanceEligible))
     setRemarks(emp.remarks || '')
     setIsModalOpen(true)
   }
@@ -162,6 +164,7 @@ function EmployeeProfilesContent() {
         contractStatus,
         status,
         resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
+        advanceEligible,
         remarks,
       })
     } else {
@@ -181,6 +184,7 @@ function EmployeeProfilesContent() {
         contractStatus,
         status,
         resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
+        advanceEligible,
         remarks: remarks || undefined,
       })
     }
@@ -224,8 +228,6 @@ function EmployeeProfilesContent() {
   const totalMonthlyBase = employees
     .filter((e) => (e.status || 'Active') !== 'Resigned')
     .reduce((s, e) => s + (e.salary || 0), 0)
-  const activeCount = employees.filter((e) => (e.status || 'Active') === 'Active').length
-  const resignedCount = employees.filter((e) => (e.status || 'Active') === 'Resigned').length
   const weaversCount = employees.filter(
     (e) => e.employeeCategory === 'Weaver' && (e.status || 'Active') !== 'Resigned'
   ).length
@@ -249,10 +251,6 @@ function EmployeeProfilesContent() {
         ]}
         actions={
           <>
-            <Link href="/payroll/resigned" className="erp-btn-secondary text-xs flex items-center gap-1.5">
-              <UserCheck className="h-3.5 w-3.5 text-rose-600" />
-              <span>Resigned{resignedCount > 0 ? ` (${resignedCount})` : ''}</span>
-            </Link>
             <Link href="/payroll/employees" className="erp-btn-secondary text-xs flex items-center gap-1.5">
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>General Wages</span>
@@ -372,50 +370,59 @@ function EmployeeProfilesContent() {
                   isSpecial && 'border-indigo-300 dark:border-indigo-700 ring-1 ring-indigo-400/20'
                 )}
               >
-                {/* Card Top: Avatar, Name, Designation */}
+                {/* Card Top: Avatar, role, badges */}
                 <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={cn(
-                          'h-11 w-11 rounded-full flex items-center justify-center font-bold text-sm text-white shadow-xs shrink-0',
-                          emp.employeeCategory === 'Admin' && 'bg-purple-600',
-                          emp.employeeCategory === 'Staff' && 'bg-indigo-600',
-                          emp.employeeCategory === 'Weaver' && 'bg-emerald-600',
-                          emp.employeeCategory === 'Contract' && 'bg-amber-600',
-                          emp.employeeCategory === 'Helper' && 'bg-slate-600',
-                          emp.employeeCategory === 'Contractor' && 'bg-rose-600'
-                        )}
-                      >
-                        {emp.name.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-tight">
-                            {emp.name}
-                          </h3>
-                          <span className="text-[10px] text-slate-400 font-mono">#{emp.serialNo}</span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          {emp.designation}
-                        </p>
-                      </div>
-                    </div>
-
-                    <span
+                  <div className="flex items-start gap-3">
+                    <div
                       className={cn(
-                        'px-2 py-0.5 text-[10px] font-semibold rounded-full shrink-0',
-                        (emp.status || 'Active') === 'Active'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                        'h-11 w-11 rounded-full flex items-center justify-center font-bold text-sm text-white shadow-xs shrink-0',
+                        emp.employeeCategory === 'Admin' && 'bg-purple-600',
+                        emp.employeeCategory === 'Staff' && 'bg-indigo-600',
+                        emp.employeeCategory === 'Weaver' && 'bg-emerald-600',
+                        emp.employeeCategory === 'Contract' && 'bg-amber-600',
+                        emp.employeeCategory === 'Helper' && 'bg-slate-600',
+                        emp.employeeCategory === 'Contractor' && 'bg-rose-600'
                       )}
                     >
-                      {emp.status || 'Active'}
-                    </span>
+                      {emp.name.charAt(0)}
+                    </div>
+
+                    <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium pt-0.5">
+                        {emp.designation}
+                        <span className="text-slate-300 dark:text-slate-600"> · </span>
+                        <span className="font-mono text-[10px] text-slate-400">#{emp.serialNo}</span>
+                      </p>
+
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 text-[10px] font-semibold rounded-full',
+                            (emp.status || 'Active') === 'Active'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                          )}
+                        >
+                          {emp.status || 'Active'}
+                        </span>
+                        {emp.advanceEligible && (emp.status || 'Active') !== 'Resigned' && (
+                          <span
+                            className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+                            title="Can take salary advance"
+                          >
+                            Advance
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Personal & CNIC Details */}
                   <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-700/60 space-y-2 text-xs">
+                    <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug break-words">
+                      {emp.name}
+                    </h3>
+
                     {/* Father Name */}
                     <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                       <span className="text-slate-400">Father Name:</span>
@@ -470,7 +477,9 @@ function EmployeeProfilesContent() {
                           <Calendar className="h-3.5 w-3.5" />
                           Resign date:
                         </span>
-                        <span className="font-mono font-semibold">{emp.resignedAt || '—'}</span>
+                        <span className="font-mono font-semibold">
+                          {resolveResignedAt(emp) || emp.remarks?.replace(/^Resignation\s*/i, '') || '—'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -552,6 +561,7 @@ function EmployeeProfilesContent() {
                   <th className="py-2 px-3">Category</th>
                   <th className="py-2 px-3 text-right">Salary (PKR)</th>
                   <th className="py-2 px-3 text-center">Status</th>
+                  <th className="py-2 px-3">Resign Date</th>
                   <th className="py-2 px-3 text-center">Actions</th>
                 </tr>
               </thead>
@@ -584,6 +594,11 @@ function EmployeeProfilesContent() {
                       >
                         {emp.status || 'Active'}
                       </span>
+                    </td>
+                    <td className="py-2 px-3 font-mono text-rose-700 dark:text-rose-400">
+                      {(emp.status || 'Active') === 'Resigned'
+                        ? resolveResignedAt(emp) || '—'
+                        : '—'}
                     </td>
                     <td className="py-2 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -866,6 +881,25 @@ function EmployeeProfilesContent() {
                     </p>
                   </div>
                 )}
+
+                <div className="sm:col-span-2">
+                  <label className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={advanceEligible}
+                      onChange={(e) => setAdvanceEligible(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0066cc] focus:ring-[#0066cc]"
+                    />
+                    <span>
+                      <span className="block font-medium text-slate-800 dark:text-slate-100">
+                        Advance Eligible (Peshgi)
+                      </span>
+                      <span className="block text-[11px] text-slate-500 mt-0.5">
+                        Enable karne se ye banda Advance form ki search list me aayega. Sirf jinko company advance deti hai.
+                      </span>
+                    </span>
+                  </label>
+                </div>
 
                 <div className="sm:col-span-2">
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">

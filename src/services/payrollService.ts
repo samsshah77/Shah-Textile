@@ -68,12 +68,107 @@ export function isActiveEmployee(emp?: EmployeeProfile | null): boolean {
   return (emp.status || 'Active') !== 'Resigned'
 }
 
+const MONTH_NAME_TO_NUM: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+}
+
+/**
+ * Parse dates from remarks like "Resignation 31 Oct 2022" / "Resignation 06-Jan-26".
+ * Returns YYYY-MM-DD when possible.
+ */
+export function parseResignationDateFromRemarks(remarks?: string): string | undefined {
+  if (!remarks) return undefined
+  const text = remarks.trim()
+  const afterLabel = text.replace(/^resign(?:ation|ed)?\s*[:\-]?\s*/i, '').trim() || text
+
+  // 31 Oct 2022 | 30 June-24 | 06-Jan-26 | 18-Sep-2022
+  const named = afterLabel.match(/(\d{1,2})[\s.\-\/]+([A-Za-z]+)[\s.\-\/]+(\d{2,4})/)
+  if (named) {
+    const day = Number(named[1])
+    const mon = MONTH_NAME_TO_NUM[named[2].toLowerCase()]
+    let year = Number(named[3])
+    if (year < 100) year += 2000
+    if (mon && day >= 1 && day <= 31 && year >= 1990 && year <= 2100) {
+      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  // ISO already
+  if (/^\d{4}-\d{2}-\d{2}/.test(afterLabel)) return afterLabel.slice(0, 10)
+
+  // 31-10-2022 or 31/10/22 (D-M-Y)
+  const dmy = afterLabel.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/)
+  if (dmy) {
+    let a = Number(dmy[1])
+    let b = Number(dmy[2])
+    let year = Number(dmy[3])
+    if (year < 100) year += 2000
+    // Prefer D-M-Y when first > 12
+    let day = a
+    let mon = b
+    if (a <= 12 && b > 12) {
+      mon = a
+      day = b
+    }
+    if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  return undefined
+}
+
+/** Prefer resignedAt; else parse from remarks. */
+export function resolveResignedAt(emp?: EmployeeProfile | null): string {
+  if (!emp) return ''
+  const direct = (emp.resignedAt || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}/.test(direct)) return direct.slice(0, 10)
+  if (direct) return direct
+  return parseResignationDateFromRemarks(emp.remarks) || ''
+}
+
 /** YYYY-MM of resignation (empty if not resigned). */
 export function resignedMonth(emp?: EmployeeProfile | null): string {
   if (!emp || (emp.status || 'Active') !== 'Resigned') return ''
-  const raw = (emp.resignedAt || '').trim()
+  const raw = resolveResignedAt(emp)
   if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7)
   return ''
+}
+
+function hydrateResignedDates(list: EmployeeProfile[]): { list: EmployeeProfile[]; changed: boolean } {
+  let changed = false
+  const next = list.map((e) => {
+    if ((e.status || 'Active') !== 'Resigned') return e
+    if ((e.resignedAt || '').trim()) return e
+    const parsed = parseResignationDateFromRemarks(e.remarks)
+    if (!parsed) return e
+    changed = true
+    return { ...e, resignedAt: parsed }
+  })
+  return { list: next, changed }
 }
 
 /**
@@ -167,7 +262,9 @@ function findLinkedEmployee(
 }
 
 // Master Employee Directory loaded with Pakistani CNICs, Father Names, Phone, Address, Category & Status (Sheet 1: 46 Master Roster Employees)
-const INITIAL_EMPLOYEES: EmployeeProfile[] = (allEmployeesData as unknown as EmployeeProfile[]).slice(0, 46)
+const INITIAL_EMPLOYEES: EmployeeProfile[] = hydrateResignedDates(
+  (allEmployeesData as unknown as EmployeeProfile[]).slice(0, 46)
+).list
 
 // Seed data directly transcribed from August-2026 Excel sheets
 const INITIAL_STAFF_SALARIES: StaffSalaryRecord[] = [
@@ -2290,15 +2387,24 @@ class PayrollService {
   // ==========================================
 
   getEmployees(): EmployeeProfile[] {
+    let list: EmployeeProfile[] = INITIAL_EMPLOYEES
     if (this.isClient()) {
       try {
         const stored = localStorage.getItem(STORAGE_KEYS.EMPLOYEES)
-        if (stored) return JSON.parse(stored)
+        if (stored) list = JSON.parse(stored)
       } catch (err) {
         console.error(err)
       }
     }
-    return INITIAL_EMPLOYEES
+    const { list: hydrated, changed } = hydrateResignedDates(list)
+    if (changed && this.isClient()) {
+      try {
+        localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(hydrated))
+      } catch {
+        /* ignore quota */
+      }
+    }
+    return hydrated
   }
 
   /** Working roster only — excludes Resigned (for Profiles / General Wages / new month seed). */
@@ -2309,7 +2415,7 @@ class PayrollService {
   getResignedEmployees(): EmployeeProfile[] {
     return this.getEmployees()
       .filter((e) => (e.status || 'Active') === 'Resigned')
-      .sort((a, b) => (b.resignedAt || '').localeCompare(a.resignedAt || ''))
+      .sort((a, b) => resolveResignedAt(b).localeCompare(resolveResignedAt(a)))
   }
 
   /** Staff marked Advance-eligible in HR Profiles (active only). */
@@ -2476,7 +2582,10 @@ class PayrollService {
     const nextStatus = updatedFields.status ?? current.status ?? 'Active'
     let resignedAt = updatedFields.resignedAt !== undefined ? updatedFields.resignedAt : current.resignedAt
     if (nextStatus === 'Resigned') {
-      resignedAt = resignedAt || todayIsoDate()
+      resignedAt =
+        resignedAt ||
+        parseResignationDateFromRemarks(updatedFields.remarks ?? current.remarks) ||
+        todayIsoDate()
     } else if (updatedFields.status && updatedFields.status !== 'Resigned') {
       resignedAt = undefined
     }

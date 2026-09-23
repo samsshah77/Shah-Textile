@@ -2068,7 +2068,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/1 Pv China(Sw#335)",
+      "warp": "20/1 PV",
       "reedWidth": "60/66",
       "ends": 4000,
       "length": 5000,
@@ -2078,7 +2078,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/1 Pv China(Sw#335)",
+      "warp": "20/1 PV",
       "reedWidth": "60/66",
       "ends": 4000,
       "length": 3600,
@@ -2088,7 +2088,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/2 Pvt Kohat",
+      "warp": "20/2 PV",
       "reedWidth": "68/66",
       "ends": 2244,
       "length": 2300,
@@ -2098,7 +2098,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/1 Pv China(Sw#333)",
+      "warp": "20/1 PV",
       "reedWidth": "74/67",
       "ends": 4960,
       "length": 3800,
@@ -2108,7 +2108,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/1 Pv China(Sw#333)",
+      "warp": "20/1 PV",
       "reedWidth": "74/67",
       "ends": 4960,
       "length": 1650,
@@ -2118,7 +2118,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/1 Pv China(Sw#331)",
+      "warp": "20/1 PV",
       "reedWidth": "82/66",
       "ends": 5412,
       "length": 3100,
@@ -2128,7 +2128,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "40/1 PP China(Sw#323)",
+      "warp": "40/1 PP",
       "reedWidth": "82/66",
       "ends": 5412,
       "length": 5359,
@@ -2138,7 +2138,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "45/1 Pv White+46/1 Pv China(Sw#337)",
+      "warp": "45/1 PV White",
       "reedWidth": "82/66",
       "ends": 5412,
       "length": 5000,
@@ -2148,7 +2148,7 @@
       "usedInLoom": "7"
     },
     {
-      "warp": "45/1 Pv White+46/1 Pv China(Sw#337)",
+      "warp": "45/1 PV White",
       "reedWidth": "82/66",
       "ends": 5412,
       "length": 5200,
@@ -2158,7 +2158,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "45/1 Pv White+46/1 Pv China(Sw#337)",
+      "warp": "45/1 PV White",
       "reedWidth": "82/66",
       "ends": 5412,
       "length": 5000,
@@ -2168,7 +2168,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "46/1 Pv White+60/1 Pv China(Sw#339)",
+      "warp": "46/1 PV White",
       "reedWidth": "84/66",
       "ends": 5544,
       "length": 3200,
@@ -2178,7 +2178,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "46/1 Pv White+60/1 Pv China(Sw#339)",
+      "warp": "46/1 PV White",
       "reedWidth": "84/66",
       "ends": 5544,
       "length": 2450,
@@ -2188,7 +2188,7 @@
       "usedInLoom": "11"
     },
     {
-      "warp": "46/1 Pv White+60/1 Pv China(Sw#339)",
+      "warp": "46/1 PV White",
       "reedWidth": "84/66",
       "ends": 5544,
       "length": 4800,
@@ -2198,7 +2198,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "46/1 Pv White+60/1 Pv China(Sw#339)",
+      "warp": "46/1 PV White",
       "reedWidth": "84/66",
       "ends": 5544,
       "length": 4650,
@@ -2208,7 +2208,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "46/1 Pv White+60/1 Pv China(Sw#339)",
+      "warp": "46/1 PV White",
       "reedWidth": "84/66",
       "ends": 5544,
       "length": 3300,
@@ -2228,7 +2228,7 @@
       "usedInLoom": "18"
     },
     {
-      "warp": "20/1 Pv China(Sw#334)",
+      "warp": "20/1 PV",
       "reedWidth": "104/66",
       "ends": 6870,
       "length": 2000,
@@ -2238,7 +2238,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/1 Pv China(Sw#334)",
+      "warp": "20/1 PV",
       "reedWidth": "104/66",
       "ends": 6870,
       "length": 2000,
@@ -2248,7 +2248,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "20/1 Pv China(Sw#334)",
+      "warp": "20/1 PV",
       "reedWidth": "104/66",
       "ends": 6870,
       "length": 2100,
@@ -2258,7 +2258,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "30/1 Pv 65/35 China(Sw#336)",
+      "warp": "30/1 PV",
       "reedWidth": "112/66",
       "ends": 7392,
       "length": 3800,
@@ -2268,7 +2268,7 @@
       "usedInLoom": null
     },
     {
-      "warp": "30/1 Pv 65/35 China(Sw#336)",
+      "warp": "30/1 PV",
       "reedWidth": "112/66",
       "ends": 7392,
       "length": 3220,

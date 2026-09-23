@@ -1,26 +1,41 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { LoomMaster } from '@/services/productionMastersService'
+import {
+  LoomMaster,
+  QualityMaster,
+  getLoomPictures,
+  normalizeLoomPictures,
+} from '@/services/productionMastersService'
 import { LoomCategory, LoomStatus } from '@/types/loom'
 import { LoomStatusSelect } from '@/components/floor/LoomStatusSelect'
+import { LoomPicturesEditor } from '@/components/floor/LoomPicturesEditor'
 
 const MODELS: LoomCategory[] = ['G6200', 'G6300', 'PU']
 
 interface EditLoomModalProps {
   loom: LoomMaster | null
+  qualities?: QualityMaster[]
   isOpen: boolean
   onClose: () => void
   onSave: (loomNumber: number, patch: Partial<LoomMaster>) => void
 }
 
-export function EditLoomModal({ loom, isOpen, onClose, onSave }: EditLoomModalProps) {
+export function EditLoomModal({
+  loom,
+  qualities = [],
+  isOpen,
+  onClose,
+  onSave,
+}: EditLoomModalProps) {
   const [name, setName] = useState('')
   const [model, setModel] = useState<LoomCategory>('G6200')
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const [shed, setShed] = useState('')
   const [defaultRpm, setDefaultRpm] = useState<number>(340)
   const [status, setStatus] = useState<LoomStatus>('RUNNING')
+  const [qualityId, setQualityId] = useState<string>('')
+  const [pictureDataUrls, setPictureDataUrls] = useState<string[]>([])
 
   useEffect(() => {
     if (loom) {
@@ -30,6 +45,8 @@ export function EditLoomModal({ loom, isOpen, onClose, onSave }: EditLoomModalPr
       setShed(loom.shed || 'Main Floor')
       setDefaultRpm(loom.defaultRpm || 340)
       setStatus(loom.status || 'RUNNING')
+      setQualityId(loom.qualityId || '')
+      setPictureDataUrls(getLoomPictures(loom))
     }
   }, [loom])
 
@@ -37,6 +54,10 @@ export function EditLoomModal({ loom, isOpen, onClose, onSave }: EditLoomModalPr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const pictures = normalizeLoomPictures({
+      loomNumber: loom.loomNumber,
+      pictureDataUrls,
+    })
     onSave(loom.loomNumber, {
       name: name.trim() || `Loom ${loom.loomNumber}`,
       model,
@@ -44,6 +65,8 @@ export function EditLoomModal({ loom, isOpen, onClose, onSave }: EditLoomModalPr
       shed: shed.trim() || 'Main Floor',
       defaultRpm: Number(defaultRpm) || 0,
       status,
+      qualityId: qualityId || null,
+      ...pictures,
     })
     onClose()
   }
@@ -78,11 +101,19 @@ export function EditLoomModal({ loom, isOpen, onClose, onSave }: EditLoomModalPr
               <div className="alert alert-info py-2 px-3 small d-flex align-items-center gap-2 mb-3">
                 <i className="bi bi-shield-lock-fill text-primary fs-5" />
                 <div>
-                  <strong>Admin Configuration:</strong> Update machine identification, specifications, and floor assignments.
+                  <strong>Admin Configuration:</strong> Update machine identification, quality, picture, and floor assignments.
                 </div>
               </div>
 
               <div className="row g-3">
+                <div className="col-12">
+                  <LoomPicturesEditor
+                    images={pictureDataUrls}
+                    onChange={setPictureDataUrls}
+                    loomLabel={name || `Loom ${loom.loomNumber}`}
+                  />
+                </div>
+
                 <div className="col-12">
                   <label className="form-label small fw-semibold text-secondary mb-1">
                     Machine Name
@@ -126,6 +157,24 @@ export function EditLoomModal({ loom, isOpen, onClose, onSave }: EditLoomModalPr
                     max={2040}
                     onChange={(e) => setYear(Number(e.target.value) || 0)}
                   />
+                </div>
+
+                <div className="col-12">
+                  <label className="form-label small fw-semibold text-secondary mb-1">
+                    Quality Name
+                  </label>
+                  <select
+                    className="form-select"
+                    value={qualityId}
+                    onChange={(e) => setQualityId(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {qualities.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="col-6">

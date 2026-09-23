@@ -16,8 +16,6 @@ function HeaderContent() {
   const {
     user,
     isAdmin,
-    isEditModeEnabled,
-    toggleEditMode,
     isLoggingOut,
     logout,
   } = useAuth()
@@ -103,26 +101,6 @@ function HeaderContent() {
         </ul>
 
         <ul className="navbar-nav ms-auto">
-          <li className="nav-item d-flex align-items-center px-2">
-            <div className="form-check form-switch mb-0" title={isEditModeEnabled ? 'Editing enabled' : 'Safe mode'}>
-              <input
-                className="form-check-input"
-                type="checkbox"
-                role="switch"
-                id="headerEditModeToggle"
-                checked={isEditModeEnabled}
-                onChange={toggleEditMode}
-              />
-              <label
-                className={`form-check-label small user-select-none ${isEditModeEnabled ? 'text-primary' : 'text-body-secondary'}`}
-                htmlFor="headerEditModeToggle"
-              >
-                <i className={`bi ${isEditModeEnabled ? 'bi-pencil-square' : 'bi-lock'} me-1`} />
-                <span className="d-none d-sm-inline">{isEditModeEnabled ? 'Edit' : 'Safe'}</span>
-              </label>
-            </div>
-          </li>
-
           <li className="nav-item d-none d-sm-block">
             <span className="nav-link font-monospace small">
               <i className="bi bi-clock me-1" />

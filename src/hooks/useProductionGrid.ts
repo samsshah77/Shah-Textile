@@ -9,17 +9,20 @@ import {
   YarnMaster,
   QualityMaster,
 } from '@/services/productionMastersService'
-import { PRODUCTION_TODAY, PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
+import { PRODUCTION_TODAY, PRODUCTION_YESTERDAY, PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 
 export function useProductionGrid() {
+  const { showError } = useAlertDialog()
   const [looms, setLooms] = useState<LoomMaster[]>([])
   const [beams, setBeams] = useState<BeamMaster[]>([])
   const [yarn, setYarn] = useState<YarnMaster[]>([])
   const [yarnIssuances, setYarnIssuances] = useState<any[]>([])
+  const [yarnMovements, setYarnMovements] = useState<any[]>([])
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDateState] = useState<string>(PRODUCTION_TODAY)
+  const [selectedDate, setSelectedDateState] = useState<string>(PRODUCTION_YESTERDAY)
   const [selectedMonth, setSelectedMonth] = useState<string>(PRODUCTION_TODAY_MONTH)
 
   const refresh = useCallback(
@@ -31,6 +34,7 @@ export function useProductionGrid() {
       setBeams(productionMastersService.getBeams())
       setYarn(productionMastersService.getYarn())
       setYarnIssuances(productionMastersService.getYarnIssuances())
+      setYarnMovements(productionMastersService.getYarnMovements())
       setQualities(productionMastersService.getQualities())
       setEntries(productionMastersService.buildSheetForDate(d))
     },
@@ -88,24 +92,48 @@ export function useProductionGrid() {
 
   const addBeam = useCallback(
     (partial: Partial<BeamMaster> & { beamNo: string }) => {
-      setBeams(productionMastersService.addBeam(partial))
-      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+      try {
+        setBeams(productionMastersService.addBeam(partial))
+        setEntries(productionMastersService.buildSheetForDate(selectedDate))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Beam add failed'
+        showError({
+          title: 'Beam add nahi hua',
+          message: msg,
+          confirmText: 'Theek hai',
+          type: 'error',
+        })
+        throw err
+      }
     },
-    [selectedDate]
+    [selectedDate, showError]
   )
 
   const mountBeam = useCallback(
-    (beamNo: string, loomNumber: number) => {
-      setBeams(productionMastersService.mountBeam(beamNo, loomNumber))
+    (beamNo: string, loomNumber: number, dateStr?: string) => {
+      const res = productionMastersService.mountBeam(beamNo, loomNumber, dateStr || selectedDate)
+      setBeams(res.beams)
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
+      return res
     },
     [selectedDate]
   )
 
   const unmountBeam = useCallback(
-    (beamNo: string) => {
-      setBeams(productionMastersService.unmountBeam(beamNo))
+    (beamNo: string, location: 'STORE' | 'SIZING' = 'STORE', dateStr?: string) => {
+      setBeams(productionMastersService.unmountBeam(beamNo, location, dateStr || selectedDate))
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const receiveBeamFromSizing = useCallback((beamNo: string) => {
+    setBeams(productionMastersService.receiveBeamFromSizing(beamNo))
+  }, [])
+
+  const sendBeamToSizing = useCallback(
+    (beamNo: string, dateStr?: string) => {
+      setBeams(productionMastersService.sendBeamToSizing(beamNo, dateStr || selectedDate))
     },
     [selectedDate]
   )
@@ -118,6 +146,25 @@ export function useProductionGrid() {
     setYarn(productionMastersService.addYarn(partial))
   }, [])
 
+  const addYarnInward = useCallback(
+    (params: {
+      yarnId?: string
+      yarnType: string
+      bags: number
+      weightKg: number
+      dateStr?: string
+      lotOrSupplier?: string
+    }) => {
+      const res = productionMastersService.recordYarnInward({
+        ...params,
+        dateStr: params.dateStr || selectedDate,
+      })
+      setYarn(res.yarn)
+      setYarnMovements(res.movements)
+    },
+    [selectedDate]
+  )
+
   const issueYarnToLoom = useCallback(
     (yarnId: string, loomNumber: number, issuedKg: number, pick: number, dateStr: string) => {
       const res = productionMastersService.issueYarnToLoom({
@@ -129,6 +176,7 @@ export function useProductionGrid() {
       })
       setYarn(res.yarn)
       setYarnIssuances(res.issuances)
+      setYarnMovements(productionMastersService.getYarnMovements())
       setLooms(productionMastersService.getLooms())
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
@@ -167,6 +215,7 @@ export function useProductionGrid() {
     beams,
     yarn,
     yarnIssuances,
+    yarnMovements,
     qualities,
     entries,
     loading,
@@ -181,8 +230,11 @@ export function useProductionGrid() {
     addBeam,
     mountBeam,
     unmountBeam,
+    receiveBeamFromSizing,
+    sendBeamToSizing,
     updateYarn,
     addYarn,
+    addYarnInward,
     issueYarnToLoom,
     updateQuality,
     addQuality,

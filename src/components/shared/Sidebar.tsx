@@ -120,12 +120,6 @@ const PAYROLL_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p === '/payroll/profiles',
   },
   {
-    title: 'Resigned Employees',
-    href: '/payroll/resigned',
-    icon: 'bi-person-x',
-    activeCheck: (p) => p === '/payroll/resigned',
-  },
-  {
     title: 'General Wages',
     href: '/payroll/employees',
     icon: 'bi-people',

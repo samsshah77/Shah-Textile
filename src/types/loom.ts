@@ -1,10 +1,26 @@
 // src/types/loom.ts
-export type LoomCategory = 'G6200' | 'G6300' | 'PU';
-export type LoomStatus = 'RUNNING' | 'STOPPED' | 'KNOTTING' | 'BREAKDOWN' | 'BEAM_END';
+export type LoomCategory = 'G6200' | 'G6300' | 'PU'
+
+/** Loom floor conditions — drive Production Sheet row colors. */
+export type LoomStatus =
+  | 'RUNNING'
+  | 'STOPPED'
+  | 'BEAM_END' // B/End
+  | 'KNOTTING'
+  | 'SARNING'
+  | 'REKNOT'
+  | 'HKNOTTING' // HKntt
+  | 'MECH_FAULT'
+  | 'ELEC_FAULT'
+  | 'JACQUARD_FAULT'
+  | 'RSARNING'
+  | 'BEAM_CUT' // B/Cut
+  | 'RESARNING'
+  | 'BREAKDOWN' // legacy catch-all
 
 export interface LoomConfig {
-  id: number;
-  loomNumber: number;
-  category: LoomCategory;
-  defaultRpm: number;
+  id: number
+  loomNumber: number
+  category: LoomCategory
+  defaultRpm: number
 }

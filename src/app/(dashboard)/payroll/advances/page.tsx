@@ -396,23 +396,35 @@ export default function SalaryAdvancesPage() {
 
           <form onSubmit={handleAddAdvance} className="grid grid-cols-1 gap-3 sm:grid-cols-6">
             <div className="sm:col-span-2">
-              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Employee Name</label>
-              <input
-                type="text"
-                required
-                list="advance-employees-list"
-                placeholder="Type or select name..."
-                value={employeeName}
-                onChange={(e) => handleSelectMasterEmployee(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-              />
-              <datalist id="advance-employees-list">
-                {masterEmployees.map((emp) => (
-                  <option key={emp.id} value={emp.name}>
-                    {emp.designation} (Base: PKR {emp.salary})
-                  </option>
-                ))}
-              </datalist>
+                <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  Employee Name{' '}
+                  <span className="font-normal text-slate-400">(Advance-eligible only)</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  list="advance-employees-list"
+                  placeholder={
+                    masterEmployees.length
+                      ? 'Type or select eligible name…'
+                      : 'No one marked Advance Eligible in Profiles'
+                  }
+                  value={employeeName}
+                  onChange={(e) => handleSelectMasterEmployee(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
+                />
+                <datalist id="advance-employees-list">
+                  {masterEmployees.map((emp) => (
+                    <option key={emp.id} value={emp.name}>
+                      {emp.designation} (Base: PKR {emp.salary})
+                    </option>
+                  ))}
+                </datalist>
+                {masterEmployees.length === 0 && (
+                  <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
+                    HR Profiles me employee edit karke &quot;Advance Eligible&quot; enable karo.
+                  </p>
+                )}
             </div>
 
             <div>

@@ -3,30 +3,22 @@
 import type { CSSProperties } from 'react'
 import { LoomStatus } from '@/types/loom'
 import { cn } from '@/lib/utils'
+import {
+  LOOM_STATUSES,
+  LOOM_STATUS_LABEL,
+  LOOM_STATUS_COLOR,
+  LOOM_STATUS_ROW_BG,
+  resolveLoomCondition,
+  loomConditionRowStyle,
+} from '@/constants/loomConditions'
 
-export const LOOM_STATUSES: LoomStatus[] = [
-  'RUNNING',
-  'STOPPED',
-  'KNOTTING',
-  'BREAKDOWN',
-  'BEAM_END',
-]
-
-export const LOOM_STATUS_LABEL: Record<LoomStatus, string> = {
-  RUNNING: 'RUNNING',
-  STOPPED: 'STOPPED',
-  KNOTTING: 'Knotting',
-  BREAKDOWN: 'BREAKDOWN',
-  BEAM_END: 'Beam End',
-}
-
-/** Text color per status — Beam End is text-only (no fill). */
-export const LOOM_STATUS_COLOR: Record<LoomStatus, string> = {
-  RUNNING: '#198754',
-  STOPPED: '#dc3545',
-  KNOTTING: '#0d6efd',
-  BREAKDOWN: '#fd7e14',
-  BEAM_END: '#6f42c1',
+export {
+  LOOM_STATUSES,
+  LOOM_STATUS_LABEL,
+  LOOM_STATUS_COLOR,
+  LOOM_STATUS_ROW_BG,
+  resolveLoomCondition,
+  loomConditionRowStyle,
 }
 
 interface LoomStatusSelectProps {
@@ -44,18 +36,19 @@ export function LoomStatusSelect({
   className,
   style,
 }: LoomStatusSelectProps) {
-  const color = LOOM_STATUS_COLOR[value]
+  const safeValue = (LOOM_STATUSES as string[]).includes(value) ? value : 'RUNNING'
+  const color = LOOM_STATUS_COLOR[safeValue]
 
   return (
     <select
       className={cn('form-select form-select-sm fw-semibold', className)}
-      value={value}
+      value={safeValue}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value as LoomStatus)}
       style={{
         color,
         backgroundColor: '#fff',
-        borderColor: value === 'BEAM_END' ? '#ced4da' : color,
+        borderColor: safeValue === 'BEAM_END' ? '#ced4da' : color,
         ...style,
       }}
     >

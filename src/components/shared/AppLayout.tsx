@@ -4,6 +4,7 @@ import React, { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { AlertDialogProvider } from '@/context/AlertDialogContext'
 import { Sidebar } from '@/components/shared/Sidebar'
 import { Header } from '@/components/shared/Header'
 import { ExcelSheetTabBar } from '@/components/payroll/ExcelSheetTabBar'
@@ -140,7 +141,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <AppShell>{children}</AppShell>
+      <AlertDialogProvider>
+        <AppShell>{children}</AppShell>
+      </AlertDialogProvider>
     </AuthProvider>
   )
 }

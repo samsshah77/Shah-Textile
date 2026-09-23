@@ -32,6 +32,7 @@ function ProductionWorkspaceContent() {
 
   const { isAccountant, canEditProduction } = useAuth()
   const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
+  const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
 
   // Accountant: Production Sheet only (view)
   useEffect(() => {
@@ -56,10 +57,14 @@ function ProductionWorkspaceContent() {
     addBeam,
     mountBeam,
     unmountBeam,
+    receiveBeamFromSizing,
+    sendBeamToSizing,
     updateYarn,
     addYarn,
+    addYarnInward,
     issueYarnToLoom,
     yarnIssuances,
+    yarnMovements,
     updateQuality,
     addQuality,
     startNewDay,
@@ -88,18 +93,14 @@ function ProductionWorkspaceContent() {
     quality: 'Quality',
   }
 
-  const showDateBar =
-    currentTab === 'sheet' || currentTab === 'entry' || currentTab === 'beams'
+  const showDateBar = currentTab === 'sheet' || currentTab === 'entry'
+  const isYarnTab = currentTab === 'yarn'
 
   return (
     <div className="pb-3">
       <PageHeader
         title={tabTitle[currentTab] || 'Production'}
-        breadcrumbs={[
-          { label: 'Home', href: '/dashboard' },
-          { label: 'Production', href: '/floor/production' },
-          { label: tabTitle[currentTab] || 'Workspace' },
-        ]}
+        showBreadcrumbs={false}
         actions={
           <>
             {showDateBar && (
@@ -107,6 +108,41 @@ function ProductionWorkspaceContent() {
                 {getFormattedDateLabel(selectedDate)}
               </span>
             )}
+
+            {isYarnTab && (
+              <div className="d-flex flex-wrap align-items-center gap-2 print:hidden">
+                <input
+                  type="date"
+                  className="form-control form-control-sm"
+                  style={{ width: 145 }}
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value)
+                    if (yarnDateMode === 'ALL') setYarnDateMode('DAILY')
+                  }}
+                  aria-label="Yarn date"
+                />
+                <div className="btn-group btn-group-sm" role="group" aria-label="Yarn period">
+                  {(['ALL', 'DAILY', 'WEEKLY', 'MONTHLY'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`btn ${yarnDateMode === mode ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      onClick={() => setYarnDateMode(mode)}
+                    >
+                      {mode === 'ALL'
+                        ? 'All'
+                        : mode === 'DAILY'
+                          ? 'Daily'
+                          : mode === 'WEEKLY'
+                            ? 'Weekly'
+                            : 'Monthly'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <ExportPdfButton
               filename={`Production-${tabTitle[currentTab] || 'Sheet'}-${selectedDate || selectedMonth || 'export'}`}
               sheetLabel={tabTitle[currentTab] || 'Production'}
@@ -163,6 +199,8 @@ function ProductionWorkspaceContent() {
           onAdd={addBeam}
           onMount={mountBeam}
           onUnmount={unmountBeam}
+          onReceiveFromSizing={receiveBeamFromSizing}
+          onSendToSizing={sendBeamToSizing}
           readOnly={!canEditProduction}
         />
       )}
@@ -171,10 +209,25 @@ function ProductionWorkspaceContent() {
         <YarnStockTable
           yarn={yarn}
           onUpdate={updateYarn}
-          onAdd={addYarn}
+          onAdd={(yarnData, arrival) => {
+            if (arrival) {
+              addYarnInward({
+                yarnType: yarnData.yarnType || 'New Yarn',
+                bags: arrival.bags,
+                weightKg: arrival.weightKg,
+                dateStr: arrival.date,
+                lotOrSupplier: arrival.lotOrSupplier,
+              })
+            } else {
+              addYarn(yarnData)
+            }
+          }}
           onIssue={issueYarnToLoom}
           issuances={yarnIssuances}
+          movements={yarnMovements}
           selectedDate={selectedDate}
+          dateFilterMode={yarnDateMode}
+          setDateFilterMode={setYarnDateMode}
           readOnly={!canEditProduction}
         />
       )}

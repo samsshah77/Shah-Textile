@@ -1,24 +1,30 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { BeamMaster, LoomMaster } from '@/services/productionMastersService'
+import { BeamMaster, LoomMaster, type MountBeamResult } from '@/services/productionMastersService'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { LOOM_STATUS_COLOR, LOOM_STATUS_LABEL } from '@/components/floor/LoomStatusSelect'
 import type { LoomStatus } from '@/types/loom'
+import { AddBeamModal } from '@/components/floor/AddBeamModal'
+import { useAuth } from '@/context/AuthContext'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 110,
   location: 165,
-  warp: 110,
-  reed: 64,
-  width: 64,
-  threads: 84,
-  length: 84,
+  warp: 160,
+  reed: 68,
+  width: 68,
+  threads: 95,
+  length: 95,
   machine: 100,
-  status: 140,
+  status: 180,
+  actions: 80,
 }
+
+export type BeamFilterType = 'ALL' | 'IN_STOCK' | 'AT_SIZING' | 'ON_LOOM'
 
 interface BeamMasterTableProps {
   beams: BeamMaster[]
@@ -26,14 +32,33 @@ interface BeamMasterTableProps {
   selectedDate: string
   onUpdate: (beamNo: string, patch: Partial<BeamMaster>) => void
   onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void
-  onMount: (beamNo: string, loomNumber: number) => void
-  onUnmount: (beamNo: string, location?: 'STORE' | 'SIZING') => void
+  onMount: (beamNo: string, loomNumber: number, dateStr?: string) => MountBeamResult
+  onUnmount: (beamNo: string, location?: 'STORE' | 'SIZING', dateStr?: string) => void
+  onReceiveFromSizing: (beamNo: string) => void
+  onSendToSizing: (beamNo: string, dateStr?: string) => void
   readOnly?: boolean
 }
 
+function getDaysDifference(from?: string | null, to?: string | null): number {
+  if (!from || !to) return 0
+  const d1 = new Date(`${from}T00:00:00`).getTime()
+  const d2 = new Date(`${to}T00:00:00`).getTime()
+  const diffTime = d2 - d1
+  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)))
+}
+
+function formatShortDate(dateStr?: string | null) {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(`${dateStr}T12:00:00`)
+    return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })
+  } catch {
+    return dateStr
+  }
+}
+
 /**
- * Shows what the Looms table did for this beam (e.g. Beam End · Loom 5).
- * Heading is "Status" — not fixed as "Beam End".
+ * Shows what the Looms table did for this beam (e.g. Running · Loom 5 · Mounted 14 Sep).
  */
 function LoomStatusNote({
   beam,
@@ -44,38 +69,68 @@ function LoomStatusNote({
   looms: LoomMaster[]
   selectedDate: string
 }) {
-  // Ended today from Looms tab → purple Beam End text
-  if (beam.beamEndedOn === selectedDate) {
-    const from =
-      beam.endedFromLoom != null && beam.endedFromLoom !== ''
-        ? ` · Loom ${beam.endedFromLoom}`
-        : ''
-    return (
-      <span className="fw-semibold" style={{ color: LOOM_STATUS_COLOR.BEAM_END }}>
-        {LOOM_STATUS_LABEL.BEAM_END}
-        {from}
-      </span>
-    )
-  }
-
-  // Still mounted: show that loom's live status (same colors as Looms table)
+  // Still mounted: show that loom's live status + mounting date & active days
   if (beam.usedInLoom) {
     const loom = looms.find((l) => String(l.loomNumber) === String(beam.usedInLoom))
     if (loom) {
       const status = loom.status as LoomStatus
+      const days = getDaysDifference(beam.mountedOn, selectedDate)
       return (
-        <span className="fw-semibold" style={{ color: LOOM_STATUS_COLOR[status] }}>
-          {LOOM_STATUS_LABEL[status]} · Loom {loom.loomNumber}
-        </span>
+        <div className="d-flex flex-column">
+          <span className="fw-semibold" style={{ color: LOOM_STATUS_COLOR[status] }}>
+            {LOOM_STATUS_LABEL[status]} · Loom {loom.loomNumber}
+          </span>
+          {beam.mountedOn && (
+            <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+              <i className="bi bi-calendar-check text-primary me-1" />
+              Mounted {formatShortDate(beam.mountedOn)} ({days > 0 ? `${days}d active` : 'today'})
+            </span>
+          )}
+        </div>
       )
     }
   }
 
   if (beam.location === 'SIZING') {
-    return <span className="badge bg-warning-subtle text-warning-emphasis">At Sizing</span>
+    return (
+      <div className="d-flex flex-column">
+        <span className="badge bg-warning-subtle text-warning-emphasis align-self-start">
+          At Sizing
+        </span>
+        {beam.beamEndedOn && (
+          <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+            Ended {formatShortDate(beam.beamEndedOn)}
+            {beam.endedFromLoom ? ` · Loom ${beam.endedFromLoom}` : ''}
+          </span>
+        )}
+      </div>
+    )
   }
 
-  return <span className="text-secondary small">Stored</span>
+  if (beam.beamEndedOn) {
+    const from =
+      beam.endedFromLoom != null && beam.endedFromLoom !== ''
+        ? ` · Loom ${beam.endedFromLoom}`
+        : ''
+    return (
+      <div className="d-flex flex-column">
+        <span className="fw-semibold" style={{ color: LOOM_STATUS_COLOR.BEAM_END }}>
+          {LOOM_STATUS_LABEL.BEAM_END}
+          {from}
+        </span>
+        <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+          <i className="bi bi-calendar-x text-danger me-1" />
+          Ended {formatShortDate(beam.beamEndedOn)}
+        </span>
+      </div>
+    )
+  }
+
+  if (beam.fillStatus === 'EMPTY') {
+    return <span className="badge bg-secondary-subtle text-secondary">Empty — needs sizing</span>
+  }
+
+  return <span className="text-secondary small">In Stock</span>
 }
 
 export function BeamMasterTable({
@@ -86,12 +141,20 @@ export function BeamMasterTable({
   onAdd,
   onMount,
   onUnmount,
+  onReceiveFromSizing,
+  onSendToSizing,
   readOnly,
 }: BeamMasterTableProps) {
-  const [newBeamNo, setNewBeamNo] = useState('')
+  const { isAdmin } = useAuth()
+  const { showError } = useAlertDialog()
+  const [filter, setFilter] = useState<BeamFilterType>('ALL')
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [mode, setMode] = useState<TableGridMode>('table')
+  const [editingBeamNo, setEditingBeamNo] = useState<string | null>(null)
+  const [draft, setDraft] = useState<BeamMaster | null>(null)
+
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_beam_col_widths_v4',
+    'sara_beam_col_widths_v7',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -99,23 +162,94 @@ export function BeamMasterTable({
     [widths]
   )
   const activeLooms = looms.filter((l) => l.isActive)
-  const endedTodayCount = beams.filter((b) => b.beamEndedOn === selectedDate).length
 
-  const addBeam = () => {
-    if (!newBeamNo.trim()) return
-    onAdd({
-      beamNo: newBeamNo.trim(),
-      warp: '20/1',
-      reed: 60,
-      width: 66,
-      loomType: 'G6200',
-      fillStatus: 'FULL',
-      location: 'STORE',
-    })
-    setNewBeamNo('')
+  const counts = useMemo(() => {
+    const inStock = beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE').length
+    const atSizing = beams.filter((b) => !b.usedInLoom && b.location === 'SIZING').length
+    const onLoom = beams.filter((b) => Boolean(b.usedInLoom)).length
+    return { inStock, atSizing, onLoom, all: beams.length }
+  }, [beams])
+
+  const filteredBeams = useMemo(() => {
+    if (filter === 'IN_STOCK') {
+      return beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE')
+    }
+    if (filter === 'AT_SIZING') {
+      return beams.filter((b) => !b.usedInLoom && b.location === 'SIZING')
+    }
+    if (filter === 'ON_LOOM') {
+      return beams.filter((b) => Boolean(b.usedInLoom))
+    }
+    return beams
+  }, [beams, filter])
+
+  const startEdit = (b: BeamMaster) => {
+    if (!isAdmin || readOnly) return
+    setEditingBeamNo(b.beamNo)
+    setDraft({ ...b })
   }
 
-  const renderLocationSelect = (b: BeamMaster) => {
+  const cancelEdit = () => {
+    setEditingBeamNo(null)
+    setDraft(null)
+  }
+
+  const saveEdit = (beamNo: string) => {
+    if (!draft) return
+    onUpdate(beamNo, {
+      warp: draft.warp,
+      reed: draft.reed,
+      width: draft.width,
+      totalThreads: draft.totalThreads,
+      length: draft.length,
+      loomType: draft.loomType,
+      mountedOn: draft.mountedOn,
+    })
+    setEditingBeamNo(null)
+    setDraft(null)
+  }
+
+  const patchDraft = (patch: Partial<BeamMaster>) => {
+    setDraft((prev) => {
+      if (!prev) return null
+      const updated = { ...prev, ...patch }
+      if (patch.reed !== undefined || patch.width !== undefined) {
+        updated.totalThreads = Math.round((updated.width || 0) * (updated.reed || 0) * 0.95)
+      }
+      return updated
+    })
+  }
+
+  const handleLocationChange = (b: BeamMaster, v: string) => {
+    if (v === 'STORE') {
+      if (b.location === 'SIZING' && !b.usedInLoom) {
+        onReceiveFromSizing(b.beamNo)
+        return
+      }
+      onUnmount(b.beamNo, 'STORE', selectedDate)
+      return
+    }
+
+    if (v === 'SIZING') {
+      onSendToSizing(b.beamNo, selectedDate)
+      return
+    }
+
+    const loomNum = Number(v)
+    if (!Number.isFinite(loomNum) || loomNum <= 0) return
+
+    const res = onMount(b.beamNo, loomNum, selectedDate)
+    if (!res.ok) {
+      showError({
+        title: `Loom ${loomNum} pe mount nahi hua`,
+        message: res.message,
+        confirmText: 'Theek hai',
+        type: 'error',
+      })
+    }
+  }
+
+  const renderLocationSelect = (b: BeamMaster, isEditing: boolean) => {
     const currentValue = b.usedInLoom ? String(b.usedInLoom) : (b.location || 'STORE')
 
     return (
@@ -123,30 +257,16 @@ export function BeamMasterTable({
         className="form-select form-select-sm"
         style={{ width: '100%', minWidth: 0 }}
         value={currentValue}
-        disabled={readOnly}
-        onChange={(e) => {
-          const v = e.target.value
-          if (v === 'STORE') {
-            onUnmount(b.beamNo, 'STORE')
-            onUpdate(b.beamNo, { location: 'STORE', usedInLoom: null })
-          } else if (v === 'SIZING') {
-            onUnmount(b.beamNo, 'SIZING')
-            onUpdate(b.beamNo, { location: 'SIZING', usedInLoom: null })
-          } else {
-            const loomNum = Number(v)
-            onMount(b.beamNo, loomNum)
-            onUpdate(b.beamNo, { location: v, usedInLoom: String(loomNum) })
-          }
-        }}
+        disabled={readOnly || !isAdmin || (editingBeamNo !== null && !isEditing)}
+        onChange={(e) => handleLocationChange(b, e.target.value)}
       >
-        <optgroup label="Warehouse & Pre-Weaving">
-          <option value="STORE">In Store (Warehouse)</option>
-          <option value="SIZING">Sizing Section</option>
-        </optgroup>
-        <optgroup label="Mounted on Loom">
+        <option value="STORE">In Stock (Store)</option>
+        <option value="SIZING">At Sizing</option>
+        <optgroup label="Mount on Loom">
           {activeLooms.map((l) => (
             <option key={l.loomNumber} value={String(l.loomNumber)}>
-              Loom {l.loomNumber} {l.status === 'RUNNING' ? '🟢' : '⏸️'}
+              Loom {l.loomNumber}
+              {l.model ? ` (${l.model})` : ''} — {LOOM_STATUS_LABEL[l.status as LoomStatus]}
             </option>
           ))}
         </optgroup>
@@ -156,119 +276,226 @@ export function BeamMasterTable({
 
   return (
     <div className="card">
-      <div className="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
-        <div className="d-flex align-items-center gap-2 min-w-0">
-          <h3 className="card-title mb-0">Beam Inventory</h3>
-          {endedTodayCount > 0 && (
-            <span className="badge text-bg-secondary">{endedTodayCount} ended</span>
-          )}
+      <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
+        <div className="d-flex align-items-center gap-3">
+          <h3 className="card-title mb-0">Beams</h3>
+          
+          {/* Segmented Filter Controls */}
+          <div className="btn-group btn-group-sm" role="group" aria-label="Beam Stock Category Filter">
+            <button
+              type="button"
+              className={`btn ${filter === 'ALL' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => setFilter('ALL')}
+            >
+              All ({counts.all})
+            </button>
+            <button
+              type="button"
+              className={`btn ${filter === 'IN_STOCK' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => setFilter('IN_STOCK')}
+            >
+              In Stock ({counts.inStock})
+            </button>
+            <button
+              type="button"
+              className={`btn ${filter === 'AT_SIZING' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => setFilter('AT_SIZING')}
+            >
+              At Sizing ({counts.atSizing})
+            </button>
+            <button
+              type="button"
+              className={`btn ${filter === 'ON_LOOM' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => setFilter('ON_LOOM')}
+            >
+              On Loom ({counts.onLoom})
+            </button>
+          </div>
         </div>
+
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && (
-            <>
-              <input
-                className="form-control form-control-sm"
-                style={{ minWidth: 110, width: 120, maxWidth: '100%' }}
-                placeholder="Beam ID"
-                value={newBeamNo}
-                onChange={(e) => setNewBeamNo(e.target.value)}
-              />
-              <button
-                type="button"
-                className="btn btn-sm btn-primary"
-                disabled={!newBeamNo.trim()}
-                onClick={addBeam}
-              >
-                <i className="bi bi-plus-lg me-1" /> Add
-              </button>
-            </>
+          {!readOnly && isAdmin && (
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <i className="bi bi-plus-lg me-1" /> Add Beam
+            </button>
           )}
         </div>
       </div>
 
       {mode === 'grid' ? (
         <div className="master-grid">
-          {beams.map((b) => (
-            <div key={b.beamNo} className="master-grid-card">
-              <div className="d-flex justify-content-between align-items-start gap-2 border-bottom pb-2">
-                <div>
-                  <div className="fw-semibold">Beam #{b.beamNo}</div>
-                  <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
-                </div>
-                <div style={{ width: 140 }}>
-                  {renderLocationSelect(b)}
-                </div>
-              </div>
-
-              <div>
-                <label className="form-label small mb-1 fw-semibold">Yarn Warp</label>
-                <input
-                  className="form-control form-control-sm"
-                  value={b.warp}
-                  disabled={readOnly}
-                  placeholder="Yarn Warp"
-                  onChange={(e) => onUpdate(b.beamNo, { warp: e.target.value })}
-                />
-              </div>
-
-              <div className="d-flex gap-2">
-                <div className="flex-fill">
-                  <label className="form-label small mb-1 fw-semibold">Reed</label>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    value={b.reed}
-                    disabled={readOnly}
-                    title="Reed"
-                    onChange={(e) => onUpdate(b.beamNo, { reed: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="flex-fill">
-                  <label className="form-label small mb-1 fw-semibold">Width (in)</label>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    value={b.width}
-                    disabled={readOnly}
-                    title="Width"
-                    onChange={(e) => onUpdate(b.beamNo, { width: Number(e.target.value) || 0 })}
-                  />
-                </div>
-              </div>
-
-              <div className="small text-secondary">
-                Total Thread: <strong className="text-dark">{b.totalThreads.toLocaleString()}</strong>
-              </div>
-
-              <div className="d-flex gap-2">
-                <div className="flex-fill">
-                  <label className="form-label small mb-1 fw-semibold">Length (m)</label>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    value={b.length}
-                    disabled={readOnly}
-                    title="Length (meters)"
-                    onChange={(e) => onUpdate(b.beamNo, { length: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="flex-fill">
-                  <label className="form-label small mb-1 fw-semibold">Machine</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={b.loomType}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(b.beamNo, { loomType: e.target.value })}
-                  >
-                    <option value="G6200">G6200</option>
-                    <option value="G6300">G6300</option>
-                    <option value="PU">PU</option>
-                  </select>
-                </div>
-              </div>
+          {filteredBeams.length === 0 ? (
+            <div className="col-12 py-5 text-center text-muted">
+              <i className="bi bi-inbox fs-2 d-block mb-2" />
+              No beams found in category:{' '}
+              <strong>
+                {filter === 'IN_STOCK'
+                  ? 'In Stock'
+                  : filter === 'AT_SIZING'
+                    ? 'At Sizing'
+                    : filter === 'ON_LOOM'
+                      ? 'On Loom'
+                      : 'All'}
+              </strong>
             </div>
-          ))}
+          ) : (
+            filteredBeams.map((b) => {
+              const isEditing = editingBeamNo === b.beamNo && !!draft
+              const d = isEditing ? draft! : null
+
+              return (
+                <div
+                  key={b.beamNo}
+                  className={`master-grid-card ${isEditing ? 'border border-primary shadow-sm' : ''}`}
+                  style={isEditing ? { backgroundColor: '#eef5ff' } : undefined}
+                >
+                  <div className="d-flex justify-content-between align-items-start gap-2 border-bottom pb-2">
+                    <div>
+                      <div className="fw-semibold">Beam #{b.beamNo}</div>
+                      <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                    </div>
+                    <div className="d-flex align-items-center gap-1">
+                      <div style={{ width: 140 }}>
+                        {renderLocationSelect(b, isEditing)}
+                      </div>
+                      {isEditing ? (
+                        <div className="d-flex gap-1 ms-1">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-success py-0 px-2 d-inline-flex align-items-center gap-1 shadow-sm"
+                            style={{ height: 26, fontSize: '0.78rem' }}
+                            title="Save changes"
+                            onClick={() => saveEdit(b.beamNo)}
+                          >
+                            <i className="bi bi-check-lg" />
+                            <span>Save</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary py-0 px-1"
+                            style={{ height: 26, width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Cancel"
+                            onClick={cancelEdit}
+                          >
+                            <i className="bi bi-x-lg" style={{ fontSize: '0.72rem' }} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary p-0 ms-1"
+                          style={{
+                            width: 22,
+                            height: 22,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 4,
+                            opacity: isAdmin && !readOnly ? 0.75 : 0.35,
+                          }}
+                          title={isAdmin ? `Edit Beam ${b.beamNo}` : 'Admin privileges required'}
+                          disabled={!isAdmin || readOnly || (editingBeamNo !== null && editingBeamNo !== b.beamNo)}
+                          onClick={() => startEdit(b)}
+                        >
+                          <i className="bi bi-pencil" style={{ fontSize: '0.68rem' }} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="form-label small mb-1 fw-semibold">Yarn Warp</label>
+                    {isEditing ? (
+                      <input
+                        className="form-control form-control-sm"
+                        value={d!.warp}
+                        onChange={(e) => patchDraft({ warp: e.target.value })}
+                      />
+                    ) : (
+                      <div className="small">{b.warp || '—'}</div>
+                    )}
+                  </div>
+
+                  <div className="d-flex gap-2">
+                    <div className="flex-fill">
+                      <label className="form-label small mb-1 fw-semibold">Reed</label>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          className="form-control form-control-sm"
+                          value={d!.reed}
+                          onChange={(e) => patchDraft({ reed: Number(e.target.value) || 0 })}
+                        />
+                      ) : (
+                        <div className="small">{b.reed}</div>
+                      )}
+                    </div>
+                    <div className="flex-fill">
+                      <label className="form-label small mb-1 fw-semibold">Width (in)</label>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          className="form-control form-control-sm"
+                          value={d!.width}
+                          onChange={(e) => patchDraft({ width: Number(e.target.value) || 0 })}
+                        />
+                      ) : (
+                        <div className="small">{b.width}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="small text-secondary">
+                    Total Thread:{' '}
+                    <strong className="text-dark">
+                      {(isEditing ? d!.totalThreads : b.totalThreads).toLocaleString()}
+                    </strong>
+                  </div>
+
+                  <div className="d-flex gap-2">
+                    <div className="flex-fill">
+                      <label className="form-label small mb-1 fw-semibold">Length (m)</label>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          className="form-control form-control-sm"
+                          value={d!.length}
+                          onChange={(e) => patchDraft({ length: Number(e.target.value) || 0 })}
+                        />
+                      ) : (
+                        <div className="small">{b.length.toLocaleString()}</div>
+                      )}
+                    </div>
+                    <div className="flex-fill">
+                      <label className="form-label small mb-1 fw-semibold">Machine</label>
+                      {isEditing ? (
+                        <select
+                          className="form-select form-select-sm"
+                          value={d!.loomType}
+                          onChange={(e) => patchDraft({ loomType: e.target.value })}
+                        >
+                          <option value="G6200">G6200</option>
+                          <option value="G6300">G6300</option>
+                          <option value="PU">PU</option>
+                        </select>
+                      ) : (
+                        <div className="small">{b.loomType}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-top mt-2">
+                    <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       ) : (
         <div
@@ -313,75 +540,215 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="status" width={widths.status} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Status
                 </ResizableTh>
+                <ResizableTh columnKey="actions" width={widths.actions} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center"
+                  style={{ fontSize: '0.75rem' }}>
+                  Action
+                </ResizableTh>
               </tr>
             </thead>
             <tbody>
-              {beams.map((b) => (
-                <tr key={b.beamNo}>
-                  <td className="fw-semibold px-2">{b.beamNo}</td>
-                  <td className="px-1">{renderLocationSelect(b)}</td>
-                  <td className="px-1">
-                    <input
-                      className="form-control form-control-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={b.warp}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(b.beamNo, { warp: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-1">
-                    <input
-                      type="number"
-                      className="form-control form-control-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={b.reed}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(b.beamNo, { reed: Number(e.target.value) || 0 })}
-                    />
-                  </td>
-                  <td className="px-1">
-                    <input
-                      type="number"
-                      className="form-control form-control-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={b.width}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(b.beamNo, { width: Number(e.target.value) || 0 })}
-                    />
-                  </td>
-                  <td className="fw-semibold text-end pe-3">{b.totalThreads.toLocaleString()}</td>
-                  <td className="px-1">
-                    <input
-                      type="number"
-                      className="form-control form-control-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={b.length}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(b.beamNo, { length: Number(e.target.value) || 0 })}
-                    />
-                  </td>
-                  <td className="px-1">
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: '100%', minWidth: 0 }}
-                      value={b.loomType}
-                      disabled={readOnly}
-                      onChange={(e) => onUpdate(b.beamNo, { loomType: e.target.value })}
-                    >
-                      <option value="G6200">G6200</option>
-                      <option value="G6300">G6300</option>
-                      <option value="PU">PU</option>
-                    </select>
-                  </td>
-                  <td className="px-2">
-                    <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+              {filteredBeams.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-4 text-center text-muted">
+                    <i className="bi bi-inbox me-2" />
+                    No beams found in category:{' '}
+              <strong>
+                {filter === 'IN_STOCK'
+                  ? 'In Stock'
+                  : filter === 'AT_SIZING'
+                    ? 'At Sizing'
+                    : filter === 'ON_LOOM'
+                      ? 'On Loom'
+                      : 'All'}
+              </strong>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredBeams.map((b) => {
+                  const isEditing = editingBeamNo === b.beamNo && !!draft
+                  const d = isEditing ? draft! : null
+
+                  return (
+                    <tr
+                      key={b.beamNo}
+                      className={isEditing ? 'table-primary' : undefined}
+                      style={
+                        isEditing
+                          ? { backgroundColor: '#eef5ff', boxShadow: 'inset 0 0 0 1px #90b8f8' }
+                          : undefined
+                      }
+                    >
+                      <td className="fw-semibold px-2">{b.beamNo}</td>
+                      <td className="px-1">{renderLocationSelect(b, isEditing)}</td>
+                      <td
+                        className="px-2 text-truncate"
+                        style={{
+                          maxWidth: widths.warp,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={b.warp || undefined}
+                      >
+                        {isEditing ? (
+                          <input
+                            className="form-control form-control-sm"
+                            style={{ width: '100%', minWidth: 0 }}
+                            value={d!.warp}
+                            autoFocus
+                            onChange={(e) => patchDraft({ warp: e.target.value })}
+                          />
+                        ) : (
+                          <span
+                            className="text-secondary d-block text-truncate"
+                            title={b.warp || undefined}
+                          >
+                            {b.warp || '—'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-1">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            className="form-control form-control-sm text-end"
+                            style={{ width: '100%', minWidth: 0 }}
+                            value={d!.reed}
+                            onChange={(e) => patchDraft({ reed: Number(e.target.value) || 0 })}
+                          />
+                        ) : (
+                          <div className="text-end px-1">{b.reed}</div>
+                        )}
+                      </td>
+                      <td className="px-1">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            className="form-control form-control-sm text-end"
+                            style={{ width: '100%', minWidth: 0 }}
+                            value={d!.width}
+                            onChange={(e) => patchDraft({ width: Number(e.target.value) || 0 })}
+                          />
+                        ) : (
+                          <div className="text-end px-1">{b.width}</div>
+                        )}
+                      </td>
+                      <td className="fw-semibold text-end pe-3">
+                        {(isEditing ? d!.totalThreads : b.totalThreads).toLocaleString()}
+                      </td>
+                      <td className="px-1">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            className="form-control form-control-sm text-end"
+                            style={{ width: '100%', minWidth: 0 }}
+                            value={d!.length}
+                            onChange={(e) => patchDraft({ length: Number(e.target.value) || 0 })}
+                          />
+                        ) : (
+                          <div className="text-end px-1">{b.length.toLocaleString()}</div>
+                        )}
+                      </td>
+                      <td className="px-1">
+                        {isEditing ? (
+                          <select
+                            className="form-select form-select-sm"
+                            style={{ width: '100%', minWidth: 0 }}
+                            value={d!.loomType}
+                            onChange={(e) => patchDraft({ loomType: e.target.value })}
+                          >
+                            <option value="G6200">G6200</option>
+                            <option value="G6300">G6300</option>
+                            <option value="PU">PU</option>
+                          </select>
+                        ) : (
+                          <span className="badge bg-light text-dark border px-2 py-1">{b.loomType}</span>
+                        )}
+                      </td>
+                      <td className="px-2">
+                        {isEditing && d!.usedInLoom ? (
+                          <div className="d-flex flex-column gap-1">
+                            <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                            <div className="d-flex align-items-center gap-1 mt-1">
+                              <span className="text-muted small" style={{ fontSize: '0.70rem' }}>
+                                Mounted:
+                              </span>
+                              <input
+                                type="date"
+                                className="form-control form-control-sm py-0 px-1"
+                                style={{ width: 110, fontSize: '0.72rem', height: 22 }}
+                                value={d!.mountedOn || ''}
+                                onChange={(e) => patchDraft({ mountedOn: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                        )}
+                      </td>
+                      <td className="px-1 text-center">
+                        {isEditing ? (
+                          <div className="d-flex align-items-center justify-content-center gap-1">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-success py-0 px-2 d-inline-flex align-items-center gap-1 shadow-sm"
+                              style={{ height: 26, fontSize: '0.78rem' }}
+                              title="Save changes"
+                              onClick={() => saveEdit(b.beamNo)}
+                            >
+                              <i className="bi bi-check-lg" />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary py-0 px-1"
+                              style={{ height: 26, width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                              title="Cancel"
+                              onClick={cancelEdit}
+                            >
+                              <i className="bi bi-x-lg" style={{ fontSize: '0.72rem' }} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="d-flex align-items-center justify-content-center">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary p-0"
+                              style={{
+                                width: 22,
+                                height: 22,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: 4,
+                                opacity: isAdmin && !readOnly ? 0.75 : 0.35,
+                              }}
+                              title={isAdmin ? `Edit Beam ${b.beamNo}` : 'Admin privileges required'}
+                              disabled={!isAdmin || readOnly || (editingBeamNo !== null && editingBeamNo !== b.beamNo)}
+                              onClick={() => startEdit(b)}
+                            >
+                              <i className="bi bi-pencil" style={{ fontSize: '0.68rem' }} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Add Beam Modal Dialog */}
+      <AddBeamModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAdd={(newBeam) => onAdd(newBeam)}
+        existingBeamNos={beams.map((b) => b.beamNo)}
+        activeLooms={activeLooms}
+      />
     </div>
   )
 }

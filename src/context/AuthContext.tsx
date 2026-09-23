@@ -166,9 +166,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAccountant = user?.role?.toLowerCase() === 'accountant'
   const isQualityController = user?.role?.toLowerCase() === 'quality_controller'
   const canViewAccounts = isAdmin || isAccountant
-  const canEditAccounts = (isAdmin || isAccountant) && isEditModeEnabled
+  const canEditAccounts = isAdmin || isAccountant
   const canViewProduction = true
-  const canEditProduction = (isAdmin || isQualityController) && isEditModeEnabled
+  const canEditProduction = isAdmin || isQualityController
 
   return (
     <AuthContext.Provider

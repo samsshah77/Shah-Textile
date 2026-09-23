@@ -177,7 +177,7 @@ export default function CostStatementPage() {
     <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800 print:hidden">
       <Link2 className="size-2.5" />
       {label}
-    </span>
+            </span>
   )
 
   return (
@@ -192,42 +192,42 @@ export default function CostStatementPage() {
           ]}
           actions={
             <>
-              <button
+          <button
                 type="button"
-                onClick={() => setIsEditing(!isEditing)}
-                className={cn(
+            onClick={() => setIsEditing(!isEditing)}
+            className={cn(
                   'btn btn-sm d-inline-flex align-items-center gap-1',
                   isEditing ? 'btn-warning' : 'btn-outline-secondary'
                 )}
               >
                 {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
                 <span>{isEditing ? 'View Mode' : 'Edit'}</span>
-              </button>
-              <button
+          </button>
+          <button
                 type="button"
-                onClick={handleReset}
-                title="Reset to Authentic Excel Defaults"
+            onClick={handleReset}
+            title="Reset to Authentic Excel Defaults"
                 className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button
+          >
+            <RotateCcw className="size-3.5" />
+            <span>Reset</span>
+          </button>
+          <button
                 type="button"
-                onClick={handleSave}
+            onClick={handleSave}
                 className="btn btn-sm btn-success d-inline-flex align-items-center gap-1"
-              >
+          >
                 <Save className="size-3.5" />
                 <span>{isSaved ? 'Saved!' : 'Save'}</span>
-              </button>
-              <button
+          </button>
+          <button
                 type="button"
-                onClick={handlePrint}
+            onClick={handlePrint}
                 className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
-              >
-                <Printer className="size-3.5" />
+          >
+            <Printer className="size-3.5" />
                 <span>Print</span>
-              </button>
+          </button>
             </>
           }
         />
@@ -310,9 +310,9 @@ export default function CostStatementPage() {
                     <tr key={label} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
                       <td className="py-2 px-3 border-r border-slate-200 dark:border-slate-700 font-sans text-slate-700 dark:text-slate-300">
                         {label}
-                      </td>
+                    </td>
                       <td className="py-2 px-3 text-right">{formatNumber(value, 0)}</td>
-                    </tr>
+                  </tr>
                   ))}
                 </tbody>
               </table>

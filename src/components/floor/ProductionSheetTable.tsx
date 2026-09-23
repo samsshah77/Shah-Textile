@@ -4,6 +4,7 @@ import { useMemo, type CSSProperties } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
+import { loomConditionRowStyle, LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 
 interface ProductionSheetTableProps {
   entries: DailyLoomProductionEntry[]
@@ -215,32 +216,48 @@ export function ProductionSheetTable({ entries }: ProductionSheetTableProps) {
             </tr>
           </thead>
           <tbody>
-            {entries.map((e) => (
-              <tr key={e.loomNumber}>
-                <td className="fw-semibold text-nowrap px-2 text-truncate">{e.loomNumber}</td>
-                <td className="px-2 small text-truncate">{e.qualityName}</td>
-                <td className="px-2 small text-truncate">{e.fabricType || '—'}</td>
-                <td className="px-2 small text-truncate">{e.warpYarn || '—'}</td>
-                <td className="px-2 small text-truncate">{e.weftYarn || '—'}</td>
-                <td className="text-end px-1">{e.rpm}</td>
-                <td className="text-end px-1">{e.reed}</td>
-                <td className="text-end px-1">{e.pick}</td>
-                <td className="text-end px-1">{e.widthInch}</td>
-                <td className="text-end px-1">{e.gsm || '—'}</td>
-                <td className="text-end px-1">{num(e.rollerHours, 2)}</td>
-                <td className="text-end fw-semibold px-1">{num(e.runningTheoretical)}</td>
-                <td className="text-end px-1">{num(e.shiftAMeters)}</td>
-                <td className="text-end px-1">{num(e.shiftBMeters)}</td>
-                <td className="text-end fw-semibold px-1">{num(e.totalMeters)}</td>
-                <td className="text-end px-1">{num(e.efficiencyPercentage, 1)}</td>
-                <td className="text-end text-secondary px-1">{num(e.stopLossMeters)}</td>
-                <td className="text-end px-1">{num(e.theoretical24h)}</td>
-                <td className="text-end px-1">{num(e.efficiency24h, 1)}</td>
-                <td className="text-end text-secondary px-1">{num(e.loss24h)}</td>
-                <td className="px-2 small text-truncate">{e.remarks || '—'}</td>
-                <td className="px-2 small text-truncate">{e.lot || '—'}</td>
-              </tr>
-            ))}
+            {entries.map((e) => {
+              const condition = resolveLoomCondition(e.status, e.remarks)
+              const rowStyle = loomConditionRowStyle(e.status, e.remarks)
+              const remarkText =
+                e.remarks?.trim() ||
+                (condition !== 'RUNNING' ? LOOM_STATUS_LABEL[condition] : '—')
+              return (
+                <tr
+                  key={e.loomNumber}
+                  className={condition !== 'RUNNING' ? 'prod-sheet-row--issue' : undefined}
+                  style={rowStyle}
+                  title={
+                    condition !== 'RUNNING'
+                      ? `Condition: ${LOOM_STATUS_LABEL[condition]}`
+                      : undefined
+                  }
+                >
+                  <td className="fw-semibold text-nowrap px-2 text-truncate">{e.loomNumber}</td>
+                  <td className="px-2 small text-truncate">{e.qualityName}</td>
+                  <td className="px-2 small text-truncate">{e.fabricType || '—'}</td>
+                  <td className="px-2 small text-truncate">{e.warpYarn || '—'}</td>
+                  <td className="px-2 small text-truncate">{e.weftYarn || '—'}</td>
+                  <td className="text-end px-1">{e.rpm}</td>
+                  <td className="text-end px-1">{e.reed}</td>
+                  <td className="text-end px-1">{e.pick}</td>
+                  <td className="text-end px-1">{e.widthInch}</td>
+                  <td className="text-end px-1">{e.gsm || '—'}</td>
+                  <td className="text-end px-1">{num(e.rollerHours, 2)}</td>
+                  <td className="text-end fw-semibold px-1">{num(e.runningTheoretical)}</td>
+                  <td className="text-end px-1">{num(e.shiftAMeters)}</td>
+                  <td className="text-end px-1">{num(e.shiftBMeters)}</td>
+                  <td className="text-end fw-semibold px-1">{num(e.totalMeters)}</td>
+                  <td className="text-end px-1">{num(e.efficiencyPercentage, 1)}</td>
+                  <td className="text-end text-secondary px-1">{num(e.stopLossMeters)}</td>
+                  <td className="text-end px-1">{num(e.theoretical24h)}</td>
+                  <td className="text-end px-1">{num(e.efficiency24h, 1)}</td>
+                  <td className="text-end text-secondary px-1">{num(e.loss24h)}</td>
+                  <td className="px-2 small text-truncate fw-semibold">{remarkText}</td>
+                  <td className="px-2 small text-truncate">{e.lot || '—'}</td>
+                </tr>
+              )
+            })}
           </tbody>
           <tfoot className="table-light fw-semibold">
             <tr>

@@ -1424,6 +1424,9 @@ body.auth-route .primary-button {
   cursor: pointer;
   flex-shrink: 0;
 }
+.avatar-upload--rect {
+  border-radius: 8px;
+}
 .avatar-upload:disabled {
   cursor: default;
   opacity: 0.85;
@@ -1449,14 +1452,24 @@ body.auth-route .primary-button {
   font-size: 1rem;
   opacity: 0;
   transition: opacity 0.15s ease;
+  cursor: pointer;
 }
 .avatar-upload:not(:disabled):hover .avatar-upload__overlay,
-.avatar-upload:not(:disabled):focus-visible .avatar-upload__overlay {
+.avatar-upload:not(:disabled):focus-visible .avatar-upload__overlay,
+.avatar-upload--rect:hover .avatar-upload__overlay {
   opacity: 1;
+}
+.avatar-upload--rect .avatar-upload__overlay {
+  z-index: 3;
 }
 .avatar-upload:not(:disabled):focus-visible {
   outline: 2px solid var(--bs-primary, #0d6efd);
   outline-offset: 2px;
+}
+
+/* Production sheet: keep condition row tint on cells (survives table-hover) */
+tr.prod-sheet-row--issue > td {
+  background-color: inherit !important;
 }
 
 /* Master grid cards */

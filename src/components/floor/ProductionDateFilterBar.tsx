@@ -99,19 +99,21 @@ export function ProductionDateFilterBar({
             <div className="btn-group btn-group-sm" role="group" aria-label="Quick day">
               <button
                 type="button"
-                onClick={() => setSelectedDate(PRODUCTION_TODAY)}
-                className={cn(smBtn, isToday ? 'btn-primary' : 'btn-outline-secondary')}
-              >
-                Today
-                <span className="d-none d-md-inline"> ({shortDayLabel(PRODUCTION_TODAY)})</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setSelectedDate(PRODUCTION_YESTERDAY)}
                 className={cn(smBtn, isYesterday ? 'btn-primary' : 'btn-outline-secondary')}
+                title="Yesterday's complete 24h production (cloth off roller)"
               >
                 Yesterday
                 <span className="d-none d-md-inline"> ({shortDayLabel(PRODUCTION_YESTERDAY)})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDate(PRODUCTION_TODAY)}
+                className={cn(smBtn, isToday ? 'btn-primary' : 'btn-outline-secondary')}
+                title="Today's live running shift"
+              >
+                Today
+                <span className="d-none d-md-inline"> ({shortDayLabel(PRODUCTION_TODAY)})</span>
               </button>
             </div>
 
@@ -124,7 +126,7 @@ export function ProductionDateFilterBar({
                 )}
                 onClick={() => {
                   setSelectedMonth('2026-09')
-                  if (!selectedDate.startsWith('2026-09')) setSelectedDate(PRODUCTION_TODAY)
+                  if (!selectedDate.startsWith('2026-09')) setSelectedDate(PRODUCTION_YESTERDAY)
                 }}
               >
                 Sept 2026
@@ -137,7 +139,7 @@ export function ProductionDateFilterBar({
                 )}
                 onClick={() => {
                   setSelectedMonth('2026-08')
-                  if (!selectedDate.startsWith('2026-08')) setSelectedDate('2026-08-15')
+                  if (!selectedDate.startsWith('2026-08')) setSelectedDate('2026-08-31')
                 }}
               >
                 Aug 2026
@@ -147,18 +149,32 @@ export function ProductionDateFilterBar({
 
           <div className="d-flex flex-wrap align-items-center gap-2">
             <div className="d-inline-flex align-items-center gap-1.5 px-2 py-1 rounded border bg-light small">
-              {isToday ? (
+              {isYesterday ? (
+                <>
+                  <span
+                    className="rounded-circle bg-primary flex-shrink-0"
+                    style={{ width: 8, height: 8 }}
+                  />
+                  <span className="fw-semibold text-primary">
+                    Yesterday&apos;s Roller Report (Completed 24h Cycle)
+                  </span>
+                </>
+              ) : isToday ? (
                 <>
                   <span
                     className="rounded-circle bg-success flex-shrink-0"
                     style={{ width: 8, height: 8 }}
                   />
-                  <span className="fw-semibold text-success">Today&apos;s Active Shift</span>
+                  <span className="fw-semibold text-success">
+                    Today&apos;s Active Shift (Live Floor Entry)
+                  </span>
                 </>
               ) : (
                 <>
-                  <History className="size-3.5 text-primary flex-shrink-0" />
-                  <span className="fw-semibold text-truncate">{longDayLabel(selectedDate)}</span>
+                  <History className="size-3.5 text-secondary flex-shrink-0" />
+                  <span className="fw-semibold text-truncate">
+                    {longDayLabel(selectedDate)} (Roller Record)
+                  </span>
                 </>
               )}
             </div>

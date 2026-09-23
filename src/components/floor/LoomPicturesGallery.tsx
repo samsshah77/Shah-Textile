@@ -1,0 +1,249 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { MAX_LOOM_PICTURES } from '@/services/productionMastersService'
+import { uploadImageFile } from '@/lib/uploadImage'
+
+interface LoomPicturesGalleryProps {
+  images: string[]
+  title: string
+  open: boolean
+  initialIndex?: number
+  onClose: () => void
+  /** When set, user can add/remove photos from this dialog. */
+  editable?: boolean
+  onImagesChange?: (images: string[]) => void
+}
+
+/** Gallery dialog — prev/next, thumbnails; optional add/remove in edit mode. */
+export function LoomPicturesGallery({
+  images,
+  title,
+  open,
+  initialIndex = 0,
+  onClose,
+  editable = false,
+  onImagesChange,
+}: LoomPicturesGalleryProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [index, setIndex] = useState(initialIndex)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setIndex(Math.min(Math.max(0, initialIndex), Math.max(0, images.length - 1)))
+      setError(null)
+    }
+  }, [open, initialIndex, images.length])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setIndex((i) => (images.length ? (i - 1 + images.length) % images.length : 0))
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        setIndex((i) => (images.length ? (i + 1) % images.length : 0))
+      } else if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, images.length, onClose])
+
+  if (!open) return null
+
+  const list = images.filter(Boolean)
+  const current = list[index] || list[0]
+  const hasMany = list.length > 1
+  const canAdd = editable && !!onImagesChange && list.length < MAX_LOOM_PICTURES && !uploading
+
+  const goPrev = () => {
+    if (!list.length) return
+    setIndex((i) => (i - 1 + list.length) % list.length)
+  }
+  const goNext = () => {
+    if (!list.length) return
+    setIndex((i) => (i + 1) % list.length)
+  }
+
+  const addFiles = async (files: FileList | null) => {
+    if (!files?.length || !onImagesChange || !canAdd) return
+    const remaining = MAX_LOOM_PICTURES - list.length
+    const slice = Array.from(files).slice(0, remaining)
+    setError(null)
+    setUploading(true)
+    try {
+      const urls: string[] = []
+      for (const file of slice) {
+        urls.push(await uploadImageFile(file))
+      }
+      if (urls.length) {
+        const next = [...list, ...urls]
+        onImagesChange(next)
+        setIndex(list.length) // jump to first newly added
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const removeCurrent = () => {
+    if (!onImagesChange || !list.length) return
+    const next = list.filter((_, i) => i !== index)
+    onImagesChange(next)
+    if (next.length === 0) {
+      onClose()
+      return
+    }
+    setIndex((i) => Math.min(i, next.length - 1))
+  }
+
+  return (
+    <div
+      className="modal fade show d-block"
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      style={{ backgroundColor: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(3px)', zIndex: 1080 }}
+      onClick={onClose}
+    >
+      <div
+        className="modal-dialog modal-dialog-centered modal-lg"
+        role="document"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 14, overflow: 'hidden' }}>
+          <div className="modal-header py-2 px-3 border-bottom">
+            <h6 className="modal-title mb-0 fw-semibold text-truncate">
+              {title}
+              {list.length > 0 && (
+                <span className="text-muted fw-normal ms-2">
+                  {list.length ? `${index + 1} / ${list.length}` : '0'}
+                </span>
+              )}
+            </h6>
+            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+          </div>
+
+          <div className="modal-body p-3 text-center bg-dark position-relative" style={{ minHeight: 220 }}>
+            {list.length === 0 ? (
+              <div className="text-white-50 py-5">
+                <i className="bi bi-images fs-2 d-block mb-2" />
+                No pictures yet
+              </div>
+            ) : (
+              <>
+                {hasMany && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-light position-absolute top-50 start-0 translate-middle-y ms-2"
+                    style={{ zIndex: 2 }}
+                    aria-label="Previous"
+                    onClick={goPrev}
+                  >
+                    <i className="bi bi-chevron-left" />
+                  </button>
+                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={current}
+                  alt={`${title} ${index + 1}`}
+                  style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain', borderRadius: 8 }}
+                />
+                {hasMany && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-light position-absolute top-50 end-0 translate-middle-y me-2"
+                    style={{ zIndex: 2 }}
+                    aria-label="Next"
+                    onClick={goNext}
+                  >
+                    <i className="bi bi-chevron-right" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {list.length > 0 && (
+            <div className="px-3 py-2 d-flex gap-2 overflow-auto bg-light border-top">
+              {list.map((src, i) => (
+                <button
+                  key={`${i}-${src.slice(0, 24)}`}
+                  type="button"
+                  className={`btn p-0 border ${i === index ? 'border-primary border-2' : 'border-secondary-subtle'}`}
+                  style={{ width: 52, height: 52, overflow: 'hidden', borderRadius: 8, flexShrink: 0 }}
+                  onClick={() => setIndex(i)}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {error && (
+            <div className="alert alert-danger py-2 px-3 small mb-0 rounded-0" role="alert">
+              {error}
+            </div>
+          )}
+
+          <div className="modal-footer py-2 px-3 d-flex flex-wrap gap-2">
+            {editable && onImagesChange && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  disabled={!canAdd}
+                  onClick={() => inputRef.current?.click()}
+                >
+                  {uploading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden />
+                      Uploading…
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-plus-lg me-1" /> Add Photos
+                    </>
+                  )}
+                </button>
+                {list.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger"
+                    disabled={uploading}
+                    onClick={removeCurrent}
+                  >
+                    <i className="bi bi-trash me-1" /> Remove
+                  </button>
+                )}
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  disabled={uploading}
+                  onChange={async (e) => {
+                    await addFiles(e.target.files)
+                    e.target.value = ''
+                  }}
+                />
+              </>
+            )}
+            <button type="button" className="btn btn-sm btn-outline-secondary ms-auto" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
