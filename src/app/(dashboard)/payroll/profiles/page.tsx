@@ -147,6 +147,15 @@ function EmployeeProfilesContent() {
     const numDuty = parseFloat(dutyHrs as string) || 9
     if (!name || !designation) return
 
+    // Category field removed from form — keep existing on edit; default Staff on add.
+    // If Contract Status is Contractor, map category so list filters still work.
+    const resolvedCategory: EmployeeCategory =
+      contractStatus === 'Contractor'
+        ? 'Contractor'
+        : editingEmployee
+          ? employeeCategory || editingEmployee.employeeCategory || 'Staff'
+          : 'Staff'
+
     if (editingEmployee) {
       payrollService.updateEmployee(editingEmployee.id, {
         name,
@@ -156,7 +165,7 @@ function EmployeeProfilesContent() {
         address,
         designation,
         department,
-        employeeCategory,
+        employeeCategory: resolvedCategory,
         dutyHrs: numDuty,
         shiftFromTo,
         salary: numSalary,
@@ -176,7 +185,7 @@ function EmployeeProfilesContent() {
         address,
         designation,
         department,
-        employeeCategory,
+        employeeCategory: resolvedCategory,
         dutyHrs: numDuty,
         shiftFromTo,
         salary: numSalary,
@@ -757,24 +766,6 @@ function EmployeeProfilesContent() {
 
                 <div>
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={employeeCategory}
-                    onChange={(e) => setEmployeeCategory(e.target.value as EmployeeCategory)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="Admin">Admin / Management</option>
-                    <option value="Staff">Staff & Office</option>
-                    <option value="Contract">Contract Technicians</option>
-                    <option value="Weaver">Weaver</option>
-                    <option value="Helper">Helper / Cleaner</option>
-                    <option value="Contractor">Contractor</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Base Salary (PKR) *
                   </label>
                   <input
@@ -841,6 +832,7 @@ function EmployeeProfilesContent() {
                     <option value="Company Contract">Company Contract</option>
                     <option value="Permanent">Permanent</option>
                     <option value="Daily Wage">Daily Wage</option>
+                    <option value="Contractor">Contractor</option>
                   </select>
                 </div>
 

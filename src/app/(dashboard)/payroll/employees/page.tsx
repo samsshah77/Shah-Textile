@@ -659,15 +659,19 @@ export default function GeneralWagesPage() {
                     {/* Contract Status */}
                     <td className="border-r border-slate-100 py-1 px-2 font-sans whitespace-nowrap text-center">
                       {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={emp.contractStatus || ''}
+                        <select
+                          value={emp.contractStatus || 'Company Contract'}
                           onChange={(e) => handleCellChange(idx, 'contractStatus', e.target.value)}
                           className={cn(
-                            'w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] text-center',
+                            'w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] text-center text-[11px]',
                             isPermanent && 'font-semibold text-emerald-800'
                           )}
-                        />
+                        >
+                          <option value="Company Contract">Company Contract</option>
+                          <option value="Permanent">Permanent</option>
+                          <option value="Daily Wage">Daily Wage</option>
+                          <option value="Contractor">Contractor</option>
+                        </select>
                       ) : isPermanent ? (
                         <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                           {emp.contractStatus}
