@@ -74,8 +74,14 @@ jobs:
           SEED_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/api/auth/seed?key=sara_deploy_secret_key_2026" || true)
           echo "Seed Response: $SEED_RESPONSE"
 
-      - name: 🏭 Bootstrap floor masters in live DB (if empty)
+      - name: 🏭 Create floor/payroll tables then seed live data
         run: |
-          sleep 3
+          sleep 8
+          ENSURE=$(curl -s -k "https://saratextilesweaving.com/api/db/ensure-floor?key=sara_deploy_secret_key_2026" || true)
+          echo "Ensure tables: $ENSURE"
           FLOOR_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/api/floor/store" || true)
           echo "Floor bootstrap: $FLOOR_RESPONSE"
+          PAYROLL=$(curl -s -k "https://saratextilesweaving.com/api/payroll/store" || true)
+          echo "Payroll bootstrap: $PAYROLL"
+          SHEET=$(curl -s -k "https://saratextilesweaving.com/api/floor/seed-sheet?key=sara_deploy_secret_key_2026" || true)
+          echo "Sheet 2026-09-23: $SHEET"

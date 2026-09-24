@@ -14,6 +14,7 @@ const PUBLIC_PATHS = [
   '/api/floor/store',
   '/api/floor/seed-sheet',
   '/api/payroll/store',
+  '/api/db/ensure-floor',
 ]
 
 async function handleAuthRouting(req: NextRequest) {
