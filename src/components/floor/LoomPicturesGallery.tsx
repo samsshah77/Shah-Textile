@@ -97,11 +97,19 @@ export function LoomPicturesGallery({
     if (!onImagesChange || !list.length) return
     const next = list.filter((_, i) => i !== index)
     onImagesChange(next)
-    if (next.length === 0) {
-      onClose()
-      return
-    }
-    setIndex((i) => Math.min(i, next.length - 1))
+    setIndex((i) => Math.min(i, Math.max(0, next.length - 1)))
+  }
+
+  const removeAt = (i: number) => {
+    if (!onImagesChange || !list.length) return
+    const next = list.filter((_, idx) => idx !== i)
+    onImagesChange(next)
+    setIndex((cur) => {
+      if (next.length === 0) return 0
+      if (cur === i) return Math.min(i, next.length - 1)
+      if (cur > i) return cur - 1
+      return cur
+    })
   }
 
   return (
@@ -124,7 +132,7 @@ export function LoomPicturesGallery({
               {title}
               {list.length > 0 && (
                 <span className="text-muted fw-normal ms-2">
-                  {list.length ? `${index + 1} / ${list.length}` : '0'}
+                  {`${index + 1} / ${list.length}`}
                 </span>
               )}
             </h6>
@@ -136,6 +144,18 @@ export function LoomPicturesGallery({
               <div className="text-white-50 py-5">
                 <i className="bi bi-images fs-2 d-block mb-2" />
                 No pictures yet
+                {editable && onImagesChange && (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      disabled={!canAdd}
+                      onClick={() => inputRef.current?.click()}
+                    >
+                      <i className="bi bi-plus-lg me-1" /> Add Photos
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -167,24 +187,79 @@ export function LoomPicturesGallery({
                     <i className="bi bi-chevron-right" />
                   </button>
                 )}
+                {editable && onImagesChange && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2"
+                    style={{ zIndex: 2 }}
+                    title="Delete this photo"
+                    disabled={uploading}
+                    onClick={removeCurrent}
+                  >
+                    <i className="bi bi-trash me-1" /> Delete
+                  </button>
+                )}
               </>
             )}
           </div>
 
-          {list.length > 0 && (
-            <div className="px-3 py-2 d-flex gap-2 overflow-auto bg-light border-top">
+          {(list.length > 0 || (editable && onImagesChange)) && (
+            <div className="px-3 py-2 d-flex gap-2 overflow-auto bg-light border-top align-items-center">
               {list.map((src, i) => (
-                <button
+                <div
                   key={`${i}-${src.slice(0, 24)}`}
-                  type="button"
-                  className={`btn p-0 border ${i === index ? 'border-primary border-2' : 'border-secondary-subtle'}`}
-                  style={{ width: 52, height: 52, overflow: 'hidden', borderRadius: 8, flexShrink: 0 }}
-                  onClick={() => setIndex(i)}
+                  className="position-relative flex-shrink-0"
+                  style={{ width: 56, height: 56 }}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </button>
+                  <button
+                    type="button"
+                    className={`btn p-0 border w-100 h-100 ${i === index ? 'border-primary border-2' : 'border-secondary-subtle'}`}
+                    style={{ overflow: 'hidden', borderRadius: 8 }}
+                    onClick={() => setIndex(i)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </button>
+                  {editable && onImagesChange && (
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm position-absolute top-0 end-0 p-0 d-flex align-items-center justify-content-center"
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: '50%',
+                        fontSize: 10,
+                        transform: 'translate(25%, -25%)',
+                        zIndex: 2,
+                      }}
+                      title="Delete photo"
+                      disabled={uploading}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeAt(i)
+                      }}
+                    >
+                      <i className="bi bi-x" />
+                    </button>
+                  )}
+                </div>
               ))}
+              {editable && onImagesChange && canAdd && (
+                <button
+                  type="button"
+                  className="btn btn-outline-primary d-flex align-items-center justify-content-center flex-shrink-0"
+                  style={{ width: 56, height: 56, borderRadius: 8 }}
+                  title="Add photos"
+                  disabled={uploading}
+                  onClick={() => inputRef.current?.click()}
+                >
+                  {uploading ? (
+                    <span className="spinner-border spinner-border-sm" role="status" aria-hidden />
+                  ) : (
+                    <i className="bi bi-plus-lg" />
+                  )}
+                </button>
+              )}
             </div>
           )}
 
@@ -221,7 +296,7 @@ export function LoomPicturesGallery({
                     disabled={uploading}
                     onClick={removeCurrent}
                   >
-                    <i className="bi bi-trash me-1" /> Remove
+                    <i className="bi bi-trash me-1" /> Delete current
                   </button>
                 )}
                 <input

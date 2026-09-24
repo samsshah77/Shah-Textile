@@ -15,7 +15,7 @@ import {
 
 import allEmployeesData from '@/data/all_employees.json'
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   EMPLOYEES: 'sara_payroll_employees_v9',
   ADVANCES: 'sara_payroll_advances_v7',
   STAFF: 'sara_payroll_staff_v6',
@@ -2117,9 +2117,92 @@ const INITIAL_EFFICIENCY_INCENTIVES: EfficiencyIncentiveRecord[] = [
   }
 ]
 
+/** In-memory cache hydrated from PostgreSQL via /api/payroll/store. */
+const memoryStore = new Map<string, string>()
+let hydrated = false
+let hydratePromise: Promise<void> | null = null
+
+function isPayrollClient(): boolean {
+  return typeof window !== 'undefined'
+}
+
+async function persistPayrollKey(key: string, value: unknown): Promise<void> {
+  if (!isPayrollClient()) return
+  try {
+    await fetch('/api/payroll/store', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value }),
+    })
+  } catch (err) {
+    console.error('[payroll] persist failed', key, err)
+  }
+}
+
+function writeStore(key: string, value: unknown): void {
+  try {
+    memoryStore.set(key, JSON.stringify(value))
+  } catch {
+    // ignore
+  }
+  void persistPayrollKey(key, value)
+}
+
+function readHrMetaRaw(): { categories?: string[]; designations?: string[] } {
+  try {
+    const raw = memoryStore.get(STORAGE_KEYS.HR_META)
+    if (raw) return JSON.parse(raw)
+  } catch {
+    // ignore
+  }
+  if (isPayrollClient()) {
+    try {
+      const legacy = localStorage.getItem(STORAGE_KEYS.HR_META)
+      if (legacy) {
+        memoryStore.set(STORAGE_KEYS.HR_META, legacy)
+        const parsed = JSON.parse(legacy)
+        void persistPayrollKey(STORAGE_KEYS.HR_META, parsed)
+        return parsed
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return {}
+}
+
+function writeHrMeta(custom: { categories: string[]; designations: string[] }): void {
+  writeStore(STORAGE_KEYS.HR_META, custom)
+}
+
+/** Load payroll store from DB (seeds DB if empty). Call once when entering Payroll module. */
+export async function hydratePayrollFromDb(): Promise<void> {
+  if (!isPayrollClient()) return
+  if (hydrated) return
+  if (hydratePromise) return hydratePromise
+
+  hydratePromise = (async () => {
+    try {
+      const res = await fetch('/api/payroll/store', { method: 'GET', cache: 'no-store' })
+      const data = await res.json()
+      if (data?.ok && data.store && typeof data.store === 'object') {
+        Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
+          memoryStore.set(key, JSON.stringify(value))
+        })
+      }
+      hydrated = true
+    } catch (err) {
+      console.error('[payroll] hydrate failed — falling back to seed/local', err)
+      hydrated = true
+    }
+  })()
+
+  return hydratePromise
+}
+
 class PayrollService {
   private isClient(): boolean {
-    return typeof window !== 'undefined'
+    return isPayrollClient()
   }
 
   // ==========================================
@@ -2172,6 +2255,7 @@ class PayrollService {
     const efficiencyAmount = Number(row.efficiencyAmount) || 0
     const advanceDeduction = Number(row.advanceDeduction) || 0
     const ticketCharges = row.ticketCharges !== undefined ? Number(row.ticketCharges) : 5
+    const lateHours = Number(row.lateHours) || 0
 
     // Excel Contract Employees: Rate = Salary/days; Gross (H) = Attn × Rate
     const ratePerDay = Math.round((salary / daysInMonth) * 100) / 100
@@ -2219,9 +2303,17 @@ class PayrollService {
         ? Number(matchedEmp.ratePerHr30)
         : Number((salary / (30 * dutyHrs)).toFixed(2))
     const otAmount = Math.round(otHours * ratePerHr)
+    // Late Hrs Amount: keep manual value if set; else Late Hrs × Rate Per Hr
+    const lateAmount =
+      row.lateAmount !== undefined && row.lateAmount !== null && String(row.lateAmount) !== ''
+        ? Number(row.lateAmount) || 0
+        : lateHours > 0
+          ? Math.round(lateHours * ratePerHr)
+          : 0
     // Net Payment sheet: Gross = Basic (sheet4 H) + OT + Efficiency
     const grossSalary = basicSalary + otAmount + efficiencyAmount
-    const netAmount = grossSalary - advanceDeduction - ticketCharges
+    // Excel: Net = Gross − Late − Advance − Ticket
+    const netAmount = grossSalary - lateAmount - advanceDeduction - ticketCharges
 
     return {
       id: row.id || `cnt-${Date.now()}`,
@@ -2234,8 +2326,8 @@ class PayrollService {
       ratePerDay,
       ratePerHr,
       basicSalary,
-      lateHours: row.lateHours,
-      lateAmount: row.lateAmount,
+      lateHours,
+      lateAmount,
       otHours,
       otAmount,
       efficiencyAmount,
@@ -2387,22 +2479,10 @@ class PayrollService {
   // ==========================================
 
   getEmployees(): EmployeeProfile[] {
-    let list: EmployeeProfile[] = INITIAL_EMPLOYEES
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.EMPLOYEES)
-        if (stored) list = JSON.parse(stored)
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
     const { list: hydrated, changed } = hydrateResignedDates(list)
     if (changed && this.isClient()) {
-      try {
-        localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(hydrated))
-      } catch {
-        /* ignore quota */
-      }
+      writeStore(STORAGE_KEYS.EMPLOYEES, hydrated)
     }
     return hydrated
   }
@@ -2429,15 +2509,7 @@ class PayrollService {
       ...new Set(fromRoster.map((e) => e.employeeCategory || 'Staff').filter(Boolean)),
     ]
     const rosterDesigs = [...new Set(fromRoster.map((e) => e.designation).filter(Boolean))]
-    let custom: { categories?: string[]; designations?: string[] } = {}
-    if (this.isClient()) {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEYS.HR_META)
-        if (raw) custom = JSON.parse(raw)
-      } catch {
-        /* ignore */
-      }
-    }
+    const custom = readHrMetaRaw()
     const categories = [
       ...new Set([...DEFAULT_HR_CATEGORIES, ...rosterCats, ...(custom.categories || [])]),
     ].sort((a, b) => a.localeCompare(b))
@@ -2450,29 +2522,27 @@ class PayrollService {
   addHrCategory(label: string): void {
     const name = label.trim()
     if (!name || !this.isClient()) return
-    let custom: { categories: string[]; designations: string[] } = { categories: [], designations: [] }
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.HR_META)
-      if (raw) custom = { categories: [], designations: [], ...JSON.parse(raw) }
-    } catch {
-      /* ignore */
+    const raw = readHrMetaRaw()
+    const custom: { categories: string[]; designations: string[] } = {
+      categories: [],
+      designations: [],
+      ...raw,
     }
     if (!custom.categories.includes(name)) custom.categories.push(name)
-    localStorage.setItem(STORAGE_KEYS.HR_META, JSON.stringify(custom))
+    writeHrMeta(custom)
   }
 
   addHrDesignation(label: string): void {
     const name = label.trim()
     if (!name || !this.isClient()) return
-    let custom: { categories: string[]; designations: string[] } = { categories: [], designations: [] }
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.HR_META)
-      if (raw) custom = { categories: [], designations: [], ...JSON.parse(raw) }
-    } catch {
-      /* ignore */
+    const raw = readHrMetaRaw()
+    const custom: { categories: string[]; designations: string[] } = {
+      categories: [],
+      designations: [],
+      ...raw,
     }
     if (!custom.designations.includes(name)) custom.designations.push(name)
-    localStorage.setItem(STORAGE_KEYS.HR_META, JSON.stringify(custom))
+    writeHrMeta(custom)
   }
 
   private filterRowsForMonth<T extends { employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
@@ -2512,12 +2582,25 @@ class PayrollService {
   }
 
   private readStore<T>(key: string, fallback: T[]): T[] {
+    try {
+      const raw = memoryStore.get(key)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[]
+      }
+    } catch (err) {
+      console.error(err)
+    }
     if (this.isClient()) {
       try {
-        const stored = localStorage.getItem(key)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[]
+        const legacy = localStorage.getItem(key)
+        if (legacy) {
+          memoryStore.set(key, legacy)
+          const parsed = JSON.parse(legacy)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            void persistPayrollKey(key, parsed)
+            return parsed as T[]
+          }
         }
       } catch (err) {
         console.error(err)
@@ -2532,7 +2615,7 @@ class PayrollService {
     const previous = this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
     const removed = previous.filter((prev) => !list.some((emp) => emp.id === prev.id))
 
-    localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(list))
+    writeStore(STORAGE_KEYS.EMPLOYEES, list)
     removed.forEach((emp) => this.removeLinkedPayrollRows(emp))
 
     if (triggerSync) {
@@ -2940,18 +3023,7 @@ class PayrollService {
   // ==========================================
 
   getAdvances(month: string = '2026-08', fortnight?: string): AdvanceRecord[] {
-    let list: AdvanceRecord[] = INITIAL_ADVANCES
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.ADVANCES)
-        if (stored) {
-          const parsed: AdvanceRecord[] = JSON.parse(stored)
-          if (parsed.length > 0) list = parsed
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
     let filtered = list.filter((a) => (a.month || '2026-08') === month)
     if (fortnight && fortnight !== 'all') {
       filtered = filtered.filter((a) => (a.fortnight || '1-15') === fortnight)
@@ -2962,9 +3034,8 @@ class PayrollService {
   saveAdvances(list: AdvanceRecord[], triggerCascade: boolean = true, month?: string, fortnight?: string): void {
     if (this.isClient()) {
       try {
-        const stored = localStorage.getItem(STORAGE_KEYS.ADVANCES)
-        let masterList: AdvanceRecord[] = stored ? JSON.parse(stored) : [...INITIAL_ADVANCES]
-        
+        let masterList = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
+
         if (month) {
           masterList = masterList.filter((a) => {
             if ((a.month || '2026-08') !== month) return true
@@ -2975,11 +3046,11 @@ class PayrollService {
         } else {
           masterList = list
         }
-        
-        localStorage.setItem(STORAGE_KEYS.ADVANCES, JSON.stringify(masterList))
+
+        writeStore(STORAGE_KEYS.ADVANCES, masterList)
       } catch (err) {
         console.error(err)
-        localStorage.setItem(STORAGE_KEYS.ADVANCES, JSON.stringify(list))
+        writeStore(STORAGE_KEYS.ADVANCES, list)
       }
 
       if (triggerCascade) {
@@ -3069,18 +3140,7 @@ class PayrollService {
   // ==========================================
 
   getStaffSalaries(month: string = '2026-08'): StaffSalaryRecord[] {
-    let list: StaffSalaryRecord[] = INITIAL_STAFF_SALARIES
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.STAFF)
-        if (stored) {
-          const parsed: StaffSalaryRecord[] = JSON.parse(stored)
-          if (parsed.length > 0) list = parsed
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
     return this.filterRowsForMonth(
       list.filter((s) => s.month === month),
       month,
@@ -3090,7 +3150,7 @@ class PayrollService {
 
   saveStaffSalaries(list: StaffSalaryRecord[], broadcast: boolean = true): void {
     if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(list))
+      writeStore(STORAGE_KEYS.STAFF, list)
       if (broadcast) this.notifyDataChanged()
     }
   }
@@ -3100,18 +3160,7 @@ class PayrollService {
   // ==========================================
 
   getContractSalaries(month: string = '2026-08'): ContractSalaryRecord[] {
-    let list: ContractSalaryRecord[] = INITIAL_CONTRACT_SALARIES
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.CONTRACT)
-        if (stored) {
-          const parsed: ContractSalaryRecord[] = JSON.parse(stored)
-          if (parsed.length > 0) list = parsed
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
     return this.filterRowsForMonth(
       list.filter((c) => c.month === month),
       month,
@@ -3123,7 +3172,7 @@ class PayrollService {
     const data = Array.isArray(monthOrList) ? monthOrList : (Array.isArray(listOrBroadcast) ? listOrBroadcast : [])
     const shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEYS.CONTRACT, JSON.stringify(data))
+      writeStore(STORAGE_KEYS.CONTRACT, data)
       if (shouldBroadcast) {
         this.syncContractBasicsToEfficiency(data)
         this.notifyDataChanged()
@@ -3160,18 +3209,7 @@ class PayrollService {
   // ==========================================
 
   getEfficiencyIncentives(month: string = '2026-08'): EfficiencyIncentiveRecord[] {
-    let list: EfficiencyIncentiveRecord[] = INITIAL_EFFICIENCY_INCENTIVES
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.EFFICIENCY)
-        if (stored) {
-          const parsed: EfficiencyIncentiveRecord[] = JSON.parse(stored)
-          if (parsed.length > 0) list = parsed
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
     return this.filterRowsForMonth(
       list.filter((e) => e.month === month),
       month,
@@ -3181,7 +3219,7 @@ class PayrollService {
 
   saveEfficiencyIncentives(list: EfficiencyIncentiveRecord[], triggerCascade: boolean = true): void {
     if (!this.isClient()) return
-    localStorage.setItem(STORAGE_KEYS.EFFICIENCY, JSON.stringify(list))
+    writeStore(STORAGE_KEYS.EFFICIENCY, list)
     if (triggerCascade) {
       list.forEach((eff) => {
         this.syncEfficiencyToSalaries(eff.name, eff.month || '2026-08', eff.amount || 0, false)
@@ -3195,18 +3233,7 @@ class PayrollService {
   // ==========================================
 
   getWeaversWages(month: string = '2026-08', fortnight?: '1-15' | '16-31'): WeaverWageRecord[] {
-    let list: WeaverWageRecord[] = INITIAL_WEAVERS_WAGES
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.WEAVERS)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          if (Array.isArray(parsed) && parsed.length > 0) list = parsed
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
     return this.filterRowsForMonth(
       list.filter((w) => w.month === month && (!fortnight || w.fortnight === fortnight)),
       month,
@@ -3244,7 +3271,7 @@ class PayrollService {
       shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     }
 
-    localStorage.setItem(STORAGE_KEYS.WEAVERS, JSON.stringify(next))
+    writeStore(STORAGE_KEYS.WEAVERS, next)
     if (shouldBroadcast) this.notifyDataChanged()
   }
 
@@ -3253,18 +3280,7 @@ class PayrollService {
   // ==========================================
 
   getHelpersWages(month: string = '2026-08', fortnight?: '1-15' | '16-31'): HelperWageRecord[] {
-    let list: HelperWageRecord[] = INITIAL_HELPERS_WAGES
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.HELPERS)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          if (Array.isArray(parsed) && parsed.length > 0) list = parsed
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
     return this.filterRowsForMonth(
       list.filter((h) => h.month === month && (!fortnight || h.fortnight === fortnight)),
       month,
@@ -3302,7 +3318,7 @@ class PayrollService {
       shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     }
 
-    localStorage.setItem(STORAGE_KEYS.HELPERS, JSON.stringify(next))
+    writeStore(STORAGE_KEYS.HELPERS, next)
     if (shouldBroadcast) this.notifyDataChanged()
   }
 
@@ -3311,18 +3327,7 @@ class PayrollService {
   // ==========================================
 
   getContractorsPayments(month: string = '2026-08', fortnight?: '1-15' | '16-31'): ContractorPaymentRecord[] {
-    let list: ContractorPaymentRecord[] = INITIAL_CONTRACTORS
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEYS.CONTRACTORS)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          if (Array.isArray(parsed) && parsed.length > 0) list = parsed
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
     return this.filterRowsForMonth(
       list.filter((c) => c.month === month && (!fortnight || c.fortnight === fortnight)),
       month,
@@ -3360,7 +3365,7 @@ class PayrollService {
       shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     }
 
-    localStorage.setItem(STORAGE_KEYS.CONTRACTORS, JSON.stringify(next))
+    writeStore(STORAGE_KEYS.CONTRACTORS, next)
     if (shouldBroadcast) this.notifyDataChanged()
   }
 
@@ -3524,18 +3529,9 @@ class PayrollService {
 
   // Petty Cash Register (Sheets 13 & 20)
   getPettyCashEntries(month: string = '2026-08', fortnight: '1-15' | '16-31'): PettyCashRecord[] {
-    if (this.isClient()) {
-      const stored = localStorage.getItem(STORAGE_KEYS.PETTY_CASH)
-      if (stored) {
-        try {
-          const parsed: PettyCashRecord[] = JSON.parse(stored)
-          const filtered = parsed.filter((e) => e.fortnight === fortnight)
-          if (filtered.length > 0) return filtered
-        } catch (e) {
-          console.error('Failed to parse petty cash', e)
-        }
-      }
-    }
+    const list = this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH)
+    const filtered = list.filter((e) => e.fortnight === fortnight)
+    if (filtered.length > 0) return filtered
     return INITIAL_PETTY_CASH.filter((e) => e.fortnight === fortnight)
   }
 
@@ -3566,7 +3562,7 @@ class PayrollService {
       next = list || []
     }
 
-    localStorage.setItem(STORAGE_KEYS.PETTY_CASH, JSON.stringify(next))
+    writeStore(STORAGE_KEYS.PETTY_CASH, next)
     this.notifyDataChanged()
   }
 
@@ -3575,18 +3571,20 @@ class PayrollService {
   }
 
   resetToDefaults(): void {
-    if (this.isClient()) {
-      localStorage.removeItem(STORAGE_KEYS.EMPLOYEES)
-      localStorage.removeItem(STORAGE_KEYS.ADVANCES)
-      localStorage.removeItem(STORAGE_KEYS.STAFF)
-      localStorage.removeItem(STORAGE_KEYS.CONTRACT)
-      localStorage.removeItem(STORAGE_KEYS.EFFICIENCY)
-      localStorage.removeItem(STORAGE_KEYS.WEAVERS)
-      localStorage.removeItem(STORAGE_KEYS.HELPERS)
-      localStorage.removeItem(STORAGE_KEYS.CONTRACTORS)
-      localStorage.removeItem(STORAGE_KEYS.PETTY_CASH)
-      this.notifyDataChanged()
+    if (!this.isClient()) return
+    for (const key of Object.values(STORAGE_KEYS)) {
+      memoryStore.delete(key)
+      try {
+        localStorage.removeItem(key)
+      } catch {
+        /* ignore */
+      }
     }
+    const seed = getPayrollSeedStore()
+    for (const [key, value] of Object.entries(seed)) {
+      writeStore(key, value)
+    }
+    this.notifyDataChanged()
   }
 }
 
@@ -3623,5 +3621,21 @@ const INITIAL_PETTY_CASH: PettyCashRecord[] = [
   { id: 'pc-2-14', serialNo: 14, date: '2026-08-31', description: 'Bearing 6304N 6pcs, Silicon Tube 5pcs', drAmount: null, crAmount: 4350, balance: 9135, fortnight: '16-31', month: '2026-08' },
   { id: 'pc-2-15', serialNo: 15, date: '2026-08-31', description: 'JeckQuard LCD Repaired, Ribbon Cable 3+1 10pcs', drAmount: null, crAmount: 4500, balance: 4635, fortnight: '16-31', month: '2026-08' },
 ]
+
+/** Default bootstrap payload for empty `payroll_store` (server GET /api/payroll/store). */
+export function getPayrollSeedStore(): Record<string, unknown> {
+  return {
+    [STORAGE_KEYS.EMPLOYEES]: INITIAL_EMPLOYEES,
+    [STORAGE_KEYS.ADVANCES]: INITIAL_ADVANCES,
+    [STORAGE_KEYS.STAFF]: INITIAL_STAFF_SALARIES,
+    [STORAGE_KEYS.CONTRACT]: INITIAL_CONTRACT_SALARIES,
+    [STORAGE_KEYS.EFFICIENCY]: INITIAL_EFFICIENCY_INCENTIVES,
+    [STORAGE_KEYS.WEAVERS]: INITIAL_WEAVERS_WAGES,
+    [STORAGE_KEYS.HELPERS]: INITIAL_HELPERS_WAGES,
+    [STORAGE_KEYS.CONTRACTORS]: INITIAL_CONTRACTORS,
+    [STORAGE_KEYS.PETTY_CASH]: INITIAL_PETTY_CASH,
+    [STORAGE_KEYS.HR_META]: {},
+  }
+}
 
 export const payrollService = new PayrollService()

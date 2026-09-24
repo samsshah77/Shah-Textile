@@ -30,14 +30,18 @@ import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_CONTRACT_SALARY_WIDTHS = {
   serialNo: 56,
-  employeeName: 220,
-  designation: 180,
-  salary: 110,
-  attendanceDays: 75,
-  ratePerDay: 95,
-  ratePerHr: 95,
-  basicSalary: 110,
-  advanceDeduction: 95,
+  employeeName: 200,
+  designation: 160,
+  salary: 100,
+  attendanceDays: 70,
+  ratePerDay: 90,
+  ratePerHr: 85,
+  basicSalary: 100,
+  lateHours: 75,
+  lateAmount: 95,
+  advanceDeduction: 90,
+  ticketCharges: 70,
+  netAmount: 110,
   action: 48,
 }
 
@@ -130,6 +134,10 @@ function ContractPayrollContent() {
     setContractList((prev) => {
       const updated = [...prev]
       const current = { ...updated[index], [field]: value }
+      // When late hours change, clear lateAmount so calculator re-derives from hrs × rate
+      if (field === 'lateHours') {
+        current.lateAmount = undefined
+      }
       const recalculated = payrollService.calculateContractSalaryRow(current, daysInMonth)
       updated[index] = recalculated
       return updated
@@ -430,6 +438,28 @@ function ContractPayrollContent() {
                   </ResizableTh>
 
                   <ResizableTh
+                    columnKey="lateHours"
+                    width={salaryWidths.lateHours}
+                    minWidth={70}
+                    onResize={setSalaryColWidth}
+                    onReset={resetSalaryColWidth}
+                    className="border-r border-slate-200 py-2 px-2 text-right whitespace-nowrap"
+                  >
+                    Late Hrs
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="lateAmount"
+                    width={salaryWidths.lateAmount}
+                    minWidth={80}
+                    onResize={setSalaryColWidth}
+                    onReset={resetSalaryColWidth}
+                    className="border-r border-slate-200 py-2 px-2 text-right text-red-600 whitespace-nowrap"
+                  >
+                    Late Amount
+                  </ResizableTh>
+
+                  <ResizableTh
                     columnKey="advanceDeduction"
                     width={salaryWidths.advanceDeduction}
                     minWidth={80}
@@ -438,6 +468,28 @@ function ContractPayrollContent() {
                     className="border-r border-slate-200 py-2 px-2 text-right text-red-600 whitespace-nowrap"
                   >
                     Advance
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="ticketCharges"
+                    width={salaryWidths.ticketCharges}
+                    minWidth={60}
+                    onResize={setSalaryColWidth}
+                    onReset={resetSalaryColWidth}
+                    className="border-r border-slate-200 py-2 px-2 text-right text-red-600 whitespace-nowrap"
+                  >
+                    Ticket
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="netAmount"
+                    width={salaryWidths.netAmount}
+                    minWidth={90}
+                    onResize={setSalaryColWidth}
+                    onReset={resetSalaryColWidth}
+                    className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-[#0066cc] whitespace-nowrap"
+                  >
+                    Net Salary
                   </ResizableTh>
                   
                   {/* Custom Columns */}
@@ -540,6 +592,36 @@ function ContractPayrollContent() {
                       {formatNumber(c.basicSalary, 0)}
                     </td>
 
+                    {/* Late Hrs */}
+                    <td
+                      style={{ width: `${salaryWidths.lateHours}px`, minWidth: `${salaryWidths.lateHours}px` }}
+                      className="border-r border-slate-100 py-1 px-1 text-center"
+                    >
+                      <NumericCellInput
+                        value={c.lateHours || 0}
+                        disabled={!canEditAccounts}
+                        navRow={idx}
+                        navCol={1}
+                        onValueChange={(v) => handleCellChange(idx, 'lateHours', v)}
+                        className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-800"
+                      />
+                    </td>
+
+                    {/* Late Amount */}
+                    <td
+                      style={{ width: `${salaryWidths.lateAmount}px`, minWidth: `${salaryWidths.lateAmount}px` }}
+                      className="border-r border-slate-100 py-1 px-1"
+                    >
+                      <NumericCellInput
+                        value={c.lateAmount || 0}
+                        disabled={!canEditAccounts}
+                        navRow={idx}
+                        navCol={2}
+                        onValueChange={(v) => handleCellChange(idx, 'lateAmount', v)}
+                        className="w-full text-right bg-transparent px-1 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      />
+                    </td>
+
                     {/* Advance Input */}
                     <td
                       style={{ width: `${salaryWidths.advanceDeduction}px`, minWidth: `${salaryWidths.advanceDeduction}px` }}
@@ -549,10 +631,34 @@ function ContractPayrollContent() {
                         value={c.advanceDeduction || 0}
                         disabled={!canEditAccounts}
                         navRow={idx}
-                        navCol={1}
+                        navCol={3}
                         onValueChange={(v) => handleCellChange(idx, 'advanceDeduction', v)}
                         className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                       />
+                    </td>
+
+                    {/* Ticket Charges */}
+                    <td
+                      style={{ width: `${salaryWidths.ticketCharges}px`, minWidth: `${salaryWidths.ticketCharges}px` }}
+                      className="border-r border-slate-100 py-1 px-1"
+                    >
+                      <NumericCellInput
+                        value={c.ticketCharges ?? 5}
+                        disabled={!canEditAccounts}
+                        navRow={idx}
+                        navCol={4}
+                        onValueChange={(v) => handleCellChange(idx, 'ticketCharges', v)}
+                        className="w-full text-right bg-transparent px-1 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      />
+                    </td>
+
+                    {/* Net Salary */}
+                    <td
+                      style={{ width: `${salaryWidths.netAmount}px`, minWidth: `${salaryWidths.netAmount}px` }}
+                      className="border-r border-slate-100 py-1.5 px-2 text-right font-bold text-[#0066cc] whitespace-nowrap bg-slate-50"
+                      title="Gross − Late − Advance − Ticket"
+                    >
+                      {formatNumber(c.netAmount, 0)}
                     </td>
 
                     {/* Custom Column Cells */}
@@ -600,7 +706,11 @@ function ContractPayrollContent() {
                   <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm">{formatCurrency(totalBasic)}</td>
+                  <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
+                  <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(contractList.reduce((s, c) => s + (c.lateAmount || 0), 0), 0)}</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalAdvance, 0)}</td>
+                  <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalTicket, 0)}</td>
+                  <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm">{formatCurrency(totalNet)}</td>
                   {customColumns.map((col) => (
                     <td key={col.id} className="border-r border-slate-200 py-2 px-2 text-center font-sans text-[10px] text-slate-500">
                       —
@@ -1113,9 +1223,16 @@ function ContractPayrollContent() {
 
                     <td
                       style={{ width: `${netWidths.ticketCharges}px`, minWidth: `${netWidths.ticketCharges}px` }}
-                      className="border-r border-slate-100 py-1.5 px-1 text-center text-slate-500 whitespace-nowrap"
+                      className="border-r border-slate-100 py-1 px-1 text-center"
                     >
-                      {c.ticketCharges}
+                      <NumericCellInput
+                        value={c.ticketCharges ?? 5}
+                        disabled={!canEditAccounts}
+                        navRow={idx}
+                        navCol={1}
+                        onValueChange={(v) => handleCellChange(idx, 'ticketCharges', v)}
+                        className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      />
                     </td>
 
                     <td

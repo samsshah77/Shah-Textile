@@ -186,18 +186,143 @@ model LoginThrottle {
 }
 
 // ==========================================
-// FLOOR PRODUCTION, LOOMS & STORE RELATIONS
+// FLOOR PRODUCTION (UI masters → PostgreSQL)
+// Local vs live use separate DATABASE_URL hosts.
 // ==========================================
 
+model FloorLoom {
+  loomNumber      Int      @id
+  name            String
+  model           String
+  category        String   @default("G6200")
+  year            Int?
+  pictureDataUrl  String?  @db.Text
+  pictureDataUrls Json     @default("[]")
+  defaultRpm      Int      @default(340)
+  shed            String?  @default("Main Floor")
+  isActive        Boolean  @default(true)
+  status          String   @default("RUNNING")
+  statusSince     String?
+  qualityId       String?
+  weftYarnId      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("floor_looms")
+}
+
+model FloorBeam {
+  beamNo         String   @id
+  warp           String   @default("")
+  reed           Int      @default(60)
+  width          Float    @default(66)
+  totalThreads   Int      @default(0)
+  length         Float    @default(0)
+  loomType       String   @default("G6200")
+  fillStatus     String   @default("FULL") // EMPTY | FULL
+  usedInLoom     String?
+  location       String?  @default("STORE") // STORE | SIZING | loom#
+  mountedOn      String?
+  beamEndedOn    String?
+  endedFromLoom  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("floor_beams")
+}
+
+model FloorYarn {
+  id          String   @id
+  yarnType    String
+  bags        Int      @default(0)
+  receivedKg  Float    @default(0)
+  issuedKg    Float    @default(0)
+  balanceKg   Float    @default(0)
+  receivedLbs Float    @default(0)
+  issuedLbs   Float    @default(0)
+  balanceLbs  Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("floor_yarns")
+}
+
+model FloorYarnMovement {
+  id           String   @id
+  type         String // INWARD | OUTWARD
+  yarnId       String
+  yarnType     String
+  date         String // YYYY-MM-DD
+  weightKg     Float   @default(0)
+  weightLbs    Float   @default(0)
+  bags         Int?
+  loomNumber   Int?
+  pick         Int?
+  lotOrSupplier String?
+  createdAt    String
+  updatedAt    DateTime @updatedAt
+
+  @@index([date])
+  @@index([yarnId])
+  @@map("floor_yarn_movements")
+}
+
+model FloorYarnIssuance {
+  id         String   @id
+  yarnId     String
+  yarnType   String
+  loomNumber Int
+  issuedKg   Float    @default(0)
+  pick       Int      @default(0)
+  date       String
+  createdAt  String
+  updatedAt  DateTime @updatedAt
+
+  @@index([date])
+  @@index([yarnId])
+  @@map("floor_yarn_issuances")
+}
+
+model FloorQuality {
+  id         String   @id
+  name       String
+  fabricType String   @default("Suiting")
+  warpYarn   String   @default("")
+  weftYarn   String   @default("")
+  reed       Int      @default(120)
+  pick       Int      @default(60)
+  widthInch  Float    @default(66)
+  gsm        Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("floor_qualities")
+}
+
+/** One row per loom per day — full sheet entry as JSON (matches DailyLoomProductionEntry). */
+model FloorDailySheet {
+  id         String   @id @default(uuid())
+  date       String // YYYY-MM-DD
+  loomNumber Int
+  payload    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([date, loomNumber])
+  @@index([date])
+  @@map("floor_daily_sheets")
+}
+
+/** Legacy / unused by UI — kept for auth-era schema compatibility if already pushed. */
 model Loom {
   id            Int               @id @default(autoincrement())
-  loomNumber    Int               @unique // 1 to 34
-  model         String            // "G6200", "G6300", "PU"
+  loomNumber    Int               @unique
+  model         String
   category      String            @default("G6200")
   defaultRpm    Int               @default(340)
   shed          String?           @default("Main Floor")
   isActive      Boolean           @default(true)
-  currentStatus String            @default("RUNNING") // RUNNING, STOPPED, KNOTTING, BEAM_END, BREAKDOWN
+  currentStatus String            @default("RUNNING")
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -209,14 +334,14 @@ model Loom {
 
 model FabricQuality {
   id           String            @id @default(uuid())
-  qualityName  String            @unique // "PARCOPV", "DESIGN-2x1", etc.
-  fabricType   String            // "Suiting", "Ribstop", etc.
-  warpYarn     String            // "20/1-Pv-China"
-  weftYarn     String            // "20/1-Pv-China"
-  reed         Int               // 120
-  pick         Int               // 60
-  widthInch    Float             // 66
-  gsm          Float?            // 1.77
+  qualityName  String            @unique
+  fabricType   String
+  warpYarn     String
+  weftYarn     String
+  reed         Int
+  pick         Int
+  widthInch    Float
+  gsm          Float?
   ratePerPick  Float             @default(0.95)
   targetMeters Float             @default(10000)
   lot          String?
@@ -231,78 +356,84 @@ model FabricQuality {
 }
 
 model BeamStock {
-  id            String            @id @default(uuid())
-  beamNo        String            @unique
+  id            String   @id @default(uuid())
+  beamNo        String   @unique
   warpYarn      String
   reedWidth     String
   ends          Int
   lengthMeters  Float
-  loomType      String            // "G6200", "G6300"
-  status        String            @default("IN_STOCK") // "IN_STOCK", "MOUNTED", "EXHAUSTED"
+  loomType      String
+  status        String   @default("IN_STOCK")
   mountedLoomId Int?
-  mountedLoom   Loom?             @relation(fields: [mountedLoomId], references: [loomNumber])
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  mountedLoom   Loom?    @relation(fields: [mountedLoomId], references: [loomNumber])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@map("beam_stocks")
 }
 
 model DailyProduction {
-  id                   String        @id @default(uuid())
-  date                 DateTime      @db.Date
+  id                   String         @id @default(uuid())
+  date                 DateTime       @db.Date
   loomNumber           Int
-  loom                 Loom          @relation(fields: [loomNumber], references: [loomNumber])
-  qualityId            String
-  quality              FabricQuality @relation(fields: [qualityId], references: [id])
-
-  shiftAMeters         Float         @default(0)
-  shiftBMeters         Float         @default(0)
-  totalMeters          Float         @default(0)
-  rollerHours          Int           @default(24)
-  runningHours         Float         @default(24)
-  rpm                  Int
-  pick                 Int
-  theoreticalMeters    Float
-  efficiencyPercentage Float
-  stopLossMeters       Float
-  status               String        @default("RUNNING") // RUNNING, STOPPED, KNOTTING, BEAM_END, BREAKDOWN
+  loom                 Loom           @relation(fields: [loomNumber], references: [loomNumber])
+  qualityId            String?
+  quality              FabricQuality? @relation(fields: [qualityId], references: [id])
+  shiftAMeters         Float          @default(0)
+  shiftBMeters         Float          @default(0)
+  totalMeters          Float          @default(0)
+  rollerHours          Int            @default(24)
+  runningHours         Float          @default(24)
+  rpm                  Int            @default(340)
+  pick                 Int            @default(60)
+  theoreticalMeters    Float          @default(0)
+  efficiencyPercentage Float          @default(0)
+  stopLossMeters       Float          @default(0)
+  status               String         @default("RUNNING")
   remarks              String?
   lot                  String?
-
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@unique([date, loomNumber])
   @@map("daily_productions")
 }
 
 model WeftStockRecord {
-  id                   String        @id @default(uuid())
-  date                 DateTime      @db.Date
-  yarnType             String        // "20/1-Pv-China"
-  quantityKg           Float         @default(0)
-  issuedToLoomNumber   Int?
-  balanceKg            Float?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  id                 String   @id @default(uuid())
+  date               DateTime @db.Date
+  yarnType           String
+  quantityKg         Float    @default(0)
+  issuedToLoomNumber Int?
+  balanceKg          Float?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@map("weft_stock_records")
 }
 
 model YarnStock {
-  id             String    @id @default(uuid())
-  yarnType       String    @unique // e.g. "20/1-Pv-China", "45/1-Pv-China", "40/1-Pv-China"
-  fiberBlend     String?   @default("Polyester Viscose")
+  id             String   @id @default(uuid())
+  yarnType       String   @unique
+  fiberBlend     String?  @default("Polyester Viscose")
   lotNumber      String?
-  totalBags      Int       @default(0)
-  receivedKg     Float     @default(0)
-  issuedKg       Float     @default(0)
-  balanceKg      Float     @default(0)
-  unitPriceKg    Float?    @default(650) // PKR per Kg
-  minThresholdKg Float?    @default(500)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  totalBags      Int      @default(0)
+  receivedKg     Float    @default(0)
+  issuedKg       Float    @default(0)
+  balanceKg      Float    @default(0)
+  unitPriceKg    Float?   @default(650)
+  minThresholdKg Float?   @default(500)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@map("yarn_stocks")
+}
+
+model PayrollStore {
+  key       String   @id
+  payload   Json
+  updatedAt DateTime @updatedAt
+
+  @@map("payroll_store")
 }
 

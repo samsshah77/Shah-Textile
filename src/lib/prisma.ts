@@ -5,19 +5,27 @@ import pg from 'pg'
 const connectionString =
   process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/sara_textile?schema=public'
 
+/** Bump when Prisma models change so hot-reload drops stale PrismaClient. */
+const PRISMA_CLIENT_GEN = 4
+
 const pool = new pg.Pool({ connectionString })
 const adapter = new PrismaPg(pool)
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
+  prismaGen?: number
 }
 
-if (!globalForPrisma.prisma || !('loginThrottle' in globalForPrisma.prisma)) {
-  globalForPrisma.prisma = new PrismaClient({
+function createClient() {
+  return new PrismaClient({
     adapter,
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   })
 }
 
-export const prisma = globalForPrisma.prisma
+if (!globalForPrisma.prisma || globalForPrisma.prismaGen !== PRISMA_CLIENT_GEN) {
+  globalForPrisma.prisma = createClient()
+  globalForPrisma.prismaGen = PRISMA_CLIENT_GEN
+}
 
+export const prisma = globalForPrisma.prisma

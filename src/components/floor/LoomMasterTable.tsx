@@ -130,6 +130,20 @@ export function LoomMasterTable({
     cancelEdit()
   }
 
+  const canManagePics = isAdmin && !readOnly
+
+  const applyLoomPictures = (loom: LoomMaster, urls: string[]) => {
+    if (editingNumber === loom.loomNumber && draft) {
+      patchDraft({ pictureDataUrls: urls })
+      return
+    }
+    const pics = normalizeLoomPictures({
+      loomNumber: loom.loomNumber,
+      pictureDataUrls: urls,
+    })
+    onUpdate(loom.loomNumber, pics)
+  }
+
   const qualityName = (qualityId: string | null) =>
     qualities.find((q) => q.id === qualityId)?.name || '—'
 
@@ -246,11 +260,9 @@ export function LoomMasterTable({
                       images={d ? d.pictureDataUrls : getLoomPictures(l)}
                       alt={d?.name || l.name || `Loom ${l.loomNumber}`}
                       size={52}
-                      editable={editing}
+                      editable={canManagePics}
                       onImagesChange={
-                        editing
-                          ? (urls) => patchDraft({ pictureDataUrls: urls })
-                          : undefined
+                        canManagePics ? (urls) => applyLoomPictures(l, urls) : undefined
                       }
                     />
                     <div>
@@ -432,11 +444,9 @@ export function LoomMasterTable({
                         images={d ? d.pictureDataUrls : getLoomPictures(l)}
                         alt={d?.name || l.name || `Loom ${l.loomNumber}`}
                         size={40}
-                        editable={editing}
+                        editable={canManagePics}
                         onImagesChange={
-                          editing
-                            ? (urls) => patchDraft({ pictureDataUrls: urls })
-                            : undefined
+                          canManagePics ? (urls) => applyLoomPictures(l, urls) : undefined
                         }
                       />
                     </td>

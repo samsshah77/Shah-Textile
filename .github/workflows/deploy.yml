@@ -73,3 +73,9 @@ jobs:
           sleep 8
           SEED_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/api/auth/seed?key=sara_deploy_secret_key_2026" || true)
           echo "Seed Response: $SEED_RESPONSE"
+
+      - name: 🏭 Bootstrap floor masters in live DB (if empty)
+        run: |
+          sleep 3
+          FLOOR_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/api/floor/store" || true)
+          echo "Floor bootstrap: $FLOOR_RESPONSE"

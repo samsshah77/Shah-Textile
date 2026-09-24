@@ -3,7 +3,7 @@ import { calculateProductionMetrics, DailyLoomProductionEntry } from '@/types/pr
 import { INITIAL_34_LOOMS_CONFIG } from '@/constants/looms-init'
 import { getExcelBeamStock, getExcelWeftStock, getExcelDailyLoomsForDate } from '@/data/productionData'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
-import { LOOM_STATUS_LABEL } from '@/constants/loomConditions'
+import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 
 /** 1 kg = 2.2046 lbs → kg = lbs / 2.2046 */
 export const LBS_PER_KG = 2.2046
@@ -123,7 +123,7 @@ function isClient() {
   return typeof window !== 'undefined'
 }
 
-function withYarnWeights(partial: Partial<YarnMaster> & { yarnType: string; id: string }): YarnMaster {
+export function withYarnWeights(partial: Partial<YarnMaster> & { yarnType: string; id: string }): YarnMaster {
   const receivedKg = partial.receivedKg ?? (partial.receivedLbs != null ? lbsToKg(partial.receivedLbs) : 0)
   const issuedKg = partial.issuedKg ?? (partial.issuedLbs != null ? lbsToKg(partial.issuedLbs) : 0)
   const balanceKg = Number((receivedKg - issuedKg).toFixed(2))
@@ -671,11 +671,45 @@ function seedYarnMovements(): YarnMovementRecord[] {
   return [...inward, ...outward].sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
 }
 
+/** In-memory cache hydrated from PostgreSQL via /api/floor/store. */
+const memoryStore = new Map<string, string>()
+let hydratePromise: Promise<void> | null = null
+let hydrated = false
+
+async function persistKey(key: string, value: unknown): Promise<void> {
+  if (!isClient()) return
+  try {
+    await fetch('/api/floor/store', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value }),
+    })
+  } catch (err) {
+    console.error('[floor] persist failed', key, err)
+  }
+}
+
 function loadJson<T>(key: string, fallback: () => T): T {
+  try {
+    const raw = memoryStore.get(key)
+    if (raw) return JSON.parse(raw) as T
+  } catch {
+    // ignore
+  }
+  // Legacy localStorage one-time read (migrate into memory if present)
   if (isClient()) {
     try {
-      const raw = localStorage.getItem(key)
-      if (raw) return JSON.parse(raw) as T
+      const legacy = localStorage.getItem(key)
+      if (legacy) {
+        memoryStore.set(key, legacy)
+        try {
+          const parsed = JSON.parse(legacy) as T
+          void persistKey(key, parsed)
+          return parsed
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // ignore
     }
@@ -684,12 +718,82 @@ function loadJson<T>(key: string, fallback: () => T): T {
 }
 
 function saveJson<T>(key: string, value: T) {
-  if (!isClient()) return
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    memoryStore.set(key, JSON.stringify(value))
   } catch {
     // ignore
   }
+  void persistKey(key, value)
+}
+
+function removeStoreKey(key: string) {
+  memoryStore.delete(key)
+  if (isClient()) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // ignore
+    }
+  }
+  void fetch('/api/floor/store', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'deleteSheet',
+      date: key.replace(`${KEY_SHEET}_`, ''),
+    }),
+  }).catch(() => {})
+}
+
+/** Load floor masters from DB (seeds DB if empty). Call once before using the grid. */
+export async function hydrateFloorFromDb(): Promise<void> {
+  if (!isClient()) return
+  if (hydrated) return
+  if (hydratePromise) return hydratePromise
+
+  hydratePromise = (async () => {
+    try {
+      const res = await fetch('/api/floor/store', { method: 'GET', cache: 'no-store' })
+      const data = await res.json()
+      if (data?.ok && data.store && typeof data.store === 'object') {
+        Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
+          memoryStore.set(key, JSON.stringify(value))
+        })
+      }
+      hydrated = true
+    } catch (err) {
+      console.error('[floor] hydrate failed — falling back to seed/local', err)
+      hydrated = true
+    }
+  })()
+
+  return hydratePromise
+}
+
+async function loadSheetFromDb(dateStr: string): Promise<DailyLoomProductionEntry[] | null> {
+  if (!isClient()) return null
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getSheet', date: dateStr }),
+    })
+    const data = await res.json()
+    if (data?.ok && Array.isArray(data.entries)) return data.entries
+    if (data?.ok && data.entries === null) return null
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+/** Prefetch one day's sheet into memory from DB (call after hydrate). */
+export async function preloadFloorSheet(dateStr: string): Promise<void> {
+  if (!isClient()) return
+  const key = `${KEY_SHEET}_${dateStr}`
+  if (memoryStore.has(key)) return
+  const entries = await loadSheetFromDb(dateStr)
+  if (entries) memoryStore.set(key, JSON.stringify(entries))
 }
 
 class ProductionMastersService {
@@ -1265,7 +1369,11 @@ class ProductionMastersService {
       const pick = loomIss?.pick || quality?.pick || 60
       const reed = beam?.reed || quality?.reed || 60
       const rpm = loom.defaultRpm
-      const status = loom.status as LoomStatus
+      const remarks =
+        prev?.remarks ||
+        (loom.status && loom.status !== 'RUNNING' ? LOOM_STATUS_LABEL[loom.status] || '' : '')
+      // Prefer sheet remarks for the day's condition (historical sheets stay accurate)
+      const status = resolveLoomCondition(loom.status, remarks)
 
       const rollerHours =
         prev?.rollerHours != null
@@ -1298,7 +1406,7 @@ class ProductionMastersService {
         reed,
         pick,
         widthInch: beam?.width || quality?.widthInch || 66,
-        gsm: quality?.gsm ?? prev?.gsm ?? 0,
+        gsm: prev?.gsm ?? quality?.gsm ?? 0,
         rollerHours,
         runningHours: rollerHours,
         runningTheoretical: metrics.theoreticalMeters,
@@ -1311,9 +1419,7 @@ class ProductionMastersService {
         efficiency24h: metrics.efficiency24h,
         loss24h: metrics.loss24h,
         status,
-        remarks:
-          prev?.remarks ||
-          (status && status !== 'RUNNING' ? LOOM_STATUS_LABEL[status] || '' : ''),
+        remarks,
         lot: prev?.lot || beam?.beamNo || '',
       } satisfies DailyLoomProductionEntry
     })
@@ -1361,7 +1467,7 @@ class ProductionMastersService {
     this.clearExpiredBeamEnds(dateStr)
     if (isClient()) {
       try {
-        localStorage.removeItem(this.sheetKey(dateStr))
+        removeStoreKey(this.sheetKey(dateStr))
       } catch {
         // ignore
       }

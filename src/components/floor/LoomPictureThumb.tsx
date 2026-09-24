@@ -10,12 +10,12 @@ interface LoomPictureThumbProps {
   alt: string
   /** Short side of rectangular thumb (width = size * 1.25). */
   size?: number
-  /** When true (row edit mode), hover shows Add photos. */
+  /** Admin can add/delete photos (gallery + overlay). */
   editable?: boolean
   onImagesChange?: (images: string[]) => void
 }
 
-/** Rectangular loom thumb — click opens gallery (← →); edit mode adds multiple photos. */
+/** Rectangular loom thumb — click opens gallery; admin can add/delete photos. */
 export function LoomPictureThumb({
   images,
   alt,
@@ -70,30 +70,44 @@ export function LoomPictureThumb({
     />
   ) : null
 
+  const gallery = (
+    <LoomPicturesGallery
+      images={list}
+      title={alt}
+      open={open}
+      onClose={() => setOpen(false)}
+      editable={editable}
+      onImagesChange={onImagesChange}
+    />
+  )
+
   if (!cover) {
     return (
-      <div className="d-inline-flex flex-column align-items-center gap-1">
-        <div className="avatar-upload avatar-upload--rect" style={{ width, height }}>
-          {uploading ? (
-            <span className="spinner-border spinner-border-sm" role="status" aria-hidden />
-          ) : (
-            <i className="bi bi-image avatar-upload__placeholder" aria-hidden />
-          )}
-          {editable && (
-            <button
-              type="button"
-              className="avatar-upload__overlay border-0"
-              title="Add photos"
-              disabled={!canAdd}
-              onClick={() => inputRef.current?.click()}
-            >
-              <span className="small fw-semibold">Add</span>
-            </button>
-          )}
+      <>
+        <div className="d-inline-flex flex-column align-items-center gap-1">
+          <div className="avatar-upload avatar-upload--rect" style={{ width, height }}>
+            {uploading ? (
+              <span className="spinner-border spinner-border-sm" role="status" aria-hidden />
+            ) : (
+              <i className="bi bi-image avatar-upload__placeholder" aria-hidden />
+            )}
+            {editable && (
+              <button
+                type="button"
+                className="avatar-upload__overlay border-0"
+                title="Add photos"
+                disabled={!canAdd}
+                onClick={() => inputRef.current?.click()}
+              >
+                <span className="small fw-semibold">Add</span>
+              </button>
+            )}
+          </div>
+          {fileInput}
+          {error && <span className="text-danger" style={{ fontSize: 9 }}>{error}</span>}
         </div>
-        {fileInput}
-        {error && <span className="text-danger" style={{ fontSize: 9 }}>{error}</span>}
-      </div>
+        {gallery}
+      </>
     )
   }
 
@@ -106,9 +120,11 @@ export function LoomPictureThumb({
             className="border-0 p-0 bg-transparent w-100 h-100"
             style={{ display: 'block', cursor: 'pointer' }}
             title={
-              list.length > 1
-                ? `View ${list.length} pictures`
-                : 'View picture'
+              editable
+                ? 'View / manage pictures'
+                : list.length > 1
+                  ? `View ${list.length} pictures`
+                  : 'View picture'
             }
             onClick={() => setOpen(true)}
           >
@@ -127,18 +143,15 @@ export function LoomPictureThumb({
             <button
               type="button"
               className="avatar-upload__overlay border-0"
-              title="Add more photos"
-              disabled={!canAdd}
-              onClick={() => {
-                if (canAdd) inputRef.current?.click()
-              }}
+              title="Manage photos"
+              onClick={() => setOpen(true)}
             >
               {uploading ? (
                 <span className="spinner-border spinner-border-sm" role="status" aria-hidden />
               ) : (
                 <span className="small fw-semibold text-center lh-1 px-1">
                   <i className="bi bi-images d-block mb-1" />
-                  Add
+                  Edit
                 </span>
               )}
             </button>
@@ -147,14 +160,7 @@ export function LoomPictureThumb({
         {fileInput}
         {error && <span className="text-danger" style={{ fontSize: 9 }}>{error}</span>}
       </div>
-      <LoomPicturesGallery
-        images={list}
-        title={alt}
-        open={open}
-        onClose={() => setOpen(false)}
-        editable={editable}
-        onImagesChange={onImagesChange}
-      />
+      {gallery}
     </>
   )
 }

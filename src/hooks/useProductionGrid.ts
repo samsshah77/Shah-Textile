@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
 import {
   productionMastersService,
+  hydrateFloorFromDb,
+  preloadFloorSheet,
   LoomMaster,
   BeamMaster,
   YarnMaster,
@@ -42,22 +44,30 @@ export function useProductionGrid() {
   )
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
-    try {
-      refresh(selectedDate)
-    } finally {
-      setLoading(false)
+    ;(async () => {
+      try {
+        await hydrateFloorFromDb()
+        await preloadFloorSheet(selectedDate)
+        if (cancelled) return
+        refresh(selectedDate)
+      } catch (err) {
+        console.error('[useProductionGrid] hydrate', err)
+        if (!cancelled) refresh(selectedDate)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [refresh, selectedDate])
 
-  const setSelectedDate = useCallback(
-    (newDate: string) => {
-      setSelectedDateState(newDate)
-      setSelectedMonth(newDate.startsWith('2026-08') ? '2026-08' : '2026-09')
-      refresh(newDate)
-    },
-    [refresh]
-  )
+  const setSelectedDate = useCallback((newDate: string) => {
+    setSelectedDateState(newDate)
+    setSelectedMonth(newDate.startsWith('2026-08') ? '2026-08' : '2026-09')
+  }, [])
 
   const updateEntry = useCallback(
     (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
