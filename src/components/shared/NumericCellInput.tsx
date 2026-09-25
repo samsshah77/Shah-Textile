@@ -11,6 +11,20 @@ import { cn } from '@/lib/utils'
 
 type NavDir = 'up' | 'down' | 'left' | 'right'
 
+function focusNavCell(row: number, col: number) {
+  const next = document.querySelector<HTMLElement>(
+    `[data-nav-row="${row}"][data-nav-col="${col}"]`
+  )
+  if (next && !next.hasAttribute('disabled') && !(next as HTMLInputElement).disabled) {
+    next.focus()
+    if (next instanceof HTMLInputElement || next instanceof HTMLTextAreaElement) {
+      next.select?.()
+    }
+    return true
+  }
+  return false
+}
+
 function focusSiblingCell(el: HTMLElement, dir: NavDir) {
   const row = Number(el.dataset.navRow)
   const col = Number(el.dataset.navCol)
@@ -23,12 +37,19 @@ function focusSiblingCell(el: HTMLElement, dir: NavDir) {
   if (dir === 'left') nextCol -= 1
   if (dir === 'right') nextCol += 1
 
-  const next = document.querySelector<HTMLElement>(
-    `[data-nav-row="${nextRow}"][data-nav-col="${nextCol}"]`
-  )
-  if (next && !next.hasAttribute('disabled')) {
-    next.focus()
-    if (next instanceof HTMLInputElement) next.select()
+  if (!focusNavCell(nextRow, nextCol) && dir === 'right') {
+    // wrap to next row, first editable col
+    focusNavCell(row + 1, 0)
+  }
+}
+
+/** Enter / Tab: next field (right), wrap to next row. */
+export function focusNextField(el: HTMLElement) {
+  const row = Number(el.dataset.navRow)
+  const col = Number(el.dataset.navCol)
+  if (Number.isNaN(row) || Number.isNaN(col)) return
+  if (!focusNavCell(row, col + 1)) {
+    focusNavCell(row + 1, 0)
   }
 }
 
@@ -36,17 +57,15 @@ export interface NumericCellInputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onChange'> {
   value: number
   onValueChange: (value: number) => void
-  /** Grid keyboard nav: row index (0-based) */
   navRow?: number
-  /** Grid keyboard nav: column index (0-based) */
   navCol?: number
 }
 
 /**
  * Number cell for floor/ERP grids:
  * - no spinner arrows
- * - empty while focused when value is 0 (so typing is not blocked by zero)
- * - Arrow / Enter move between cells when data-nav-* is set
+ * - empty while focused when value is 0 (typing not blocked by zero)
+ * - Enter / Tab → next field; arrows move between cells
  */
 export function NumericCellInput({
   value,
@@ -59,7 +78,7 @@ export function NumericCellInput({
   onKeyDown,
   ...rest
 }: NumericCellInputProps) {
-  const [text, setText] = useState(value === 0 ? '' : String(value))
+  const [text, setText] = useState(() => (value === 0 ? '' : String(value)))
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -84,12 +103,26 @@ export function NumericCellInput({
     onKeyDown?.(e)
     if (e.defaultPrevented) return
 
+    if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) {
+      if (navRow === undefined || navCol === undefined) return
+      e.preventDefault()
+      commit(text)
+      focusNextField(e.currentTarget)
+      return
+    }
+    if (e.key === 'Tab' && e.shiftKey) {
+      if (navRow === undefined || navCol === undefined) return
+      e.preventDefault()
+      commit(text)
+      focusSiblingCell(e.currentTarget, 'left')
+      return
+    }
+
     const map: Record<string, NavDir | undefined> = {
       ArrowUp: 'up',
       ArrowDown: 'down',
       ArrowLeft: 'left',
       ArrowRight: 'right',
-      Enter: 'down',
     }
     const dir = map[e.key]
     if (!dir) return
@@ -98,7 +131,6 @@ export function NumericCellInput({
       return
     }
 
-    // Left/right: move cell when caret at edge (or whole value selected); else allow typing caret
     if (dir === 'left' || dir === 'right') {
       const el = e.currentTarget
       const start = el.selectionStart ?? 0
@@ -124,6 +156,7 @@ export function NumericCellInput({
       data-nav-row={navRow}
       data-nav-col={navCol}
       value={focused ? text : value === 0 ? '' : String(value)}
+      placeholder={focused ? '' : '0'}
       className={cn('sara-num-input', className)}
       onFocus={(e) => {
         setFocused(true)
@@ -140,7 +173,79 @@ export function NumericCellInput({
         const next = e.target.value
         if (next !== '' && !/^-?\d*\.?\d*$/.test(next)) return
         setText(next)
+        // live parse when complete number so totals update while typing
+        if (next !== '' && next !== '-' && next !== '.' && /^-?\d+\.?\d*$/.test(next)) {
+          const n = Number(next)
+          if (Number.isFinite(n)) onValueChange(n)
+        } else if (next === '') {
+          onValueChange(0)
+        }
       }}
+      onKeyDown={handleKeyDown}
+    />
+  )
+}
+
+export interface TextCellInputProps
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
+  value: string
+  onValueChange: (value: string) => void
+  navRow?: number
+  navCol?: number
+}
+
+/** Text cell with same Enter / arrow nav as NumericCellInput. */
+export function TextCellInput({
+  value,
+  onValueChange,
+  navRow,
+  navCol,
+  className,
+  onKeyDown,
+  onFocus,
+  ...rest
+}: TextCellInputProps) {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    onKeyDown?.(e)
+    if (e.defaultPrevented) return
+
+    if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) {
+      if (navRow === undefined || navCol === undefined) return
+      e.preventDefault()
+      focusNextField(e.currentTarget)
+      return
+    }
+    if (e.key === 'Tab' && e.shiftKey) {
+      if (navRow === undefined || navCol === undefined) return
+      e.preventDefault()
+      focusSiblingCell(e.currentTarget, 'left')
+      return
+    }
+
+    const map: Record<string, NavDir | undefined> = {
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+    }
+    const dir = map[e.key]
+    if (!dir || navRow === undefined || navCol === undefined) return
+    e.preventDefault()
+    focusSiblingCell(e.currentTarget, dir)
+  }
+
+  return (
+    <input
+      {...rest}
+      type="text"
+      autoComplete="off"
+      data-nav-row={navRow}
+      data-nav-col={navCol}
+      value={value}
+      className={className}
+      onFocus={(e) => {
+        requestAnimationFrame(() => e.currentTarget.select())
+        onFocus?.(e)
+      }}
+      onChange={(e) => onValueChange(e.target.value)}
       onKeyDown={handleKeyDown}
     />
   )

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { MAX_LOOM_PICTURES } from '@/services/productionMastersService'
 import { uploadImageFile } from '@/lib/uploadImage'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 
 interface LoomPicturesEditorProps {
   images: string[]
@@ -15,6 +16,7 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { showConfirm } = useAlertDialog()
   const canAdd = images.length < MAX_LOOM_PICTURES && !uploading
 
   const addFiles = async (files: FileList | null) => {
@@ -38,7 +40,14 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
   }
 
   const removeAt = (index: number) => {
-    onChange(images.filter((_, i) => i !== index))
+    showConfirm({
+      title: 'Photo Delete Karein?',
+      message: 'Kya aap ye photo delete karna chahte hain? Ye action undo nahi hoga.',
+      type: 'confirm',
+      confirmText: 'Haan, Delete',
+      cancelText: 'Cancel',
+      onConfirm: () => onChange(images.filter((_, i) => i !== index)),
+    })
   }
 
   const setCover = (index: number) => {
@@ -114,15 +123,19 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
           )}
         </button>
       ) : (
-        <div className="d-flex flex-wrap gap-2">
+        <div className="d-flex flex-wrap gap-2 justify-content-center">
           {images.map((src, i) => (
             <div
               key={`${i}-${src.slice(0, 32)}`}
-              className="position-relative border rounded overflow-hidden bg-light"
+              className="loom-gallery-thumb position-relative border rounded overflow-hidden bg-light"
               style={{ width: 88, height: 88 }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img
+                src={src}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
+              />
               {i === 0 && (
                 <span
                   className="position-absolute top-0 start-0 badge bg-primary rounded-0"
@@ -131,30 +144,28 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
                   Cover
                 </span>
               )}
-              <div className="position-absolute bottom-0 start-0 end-0 d-flex">
-                {i > 0 && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-dark rounded-0 flex-fill py-0"
-                    style={{ fontSize: 10 }}
-                    title="Set as cover"
-                    disabled={uploading}
-                    onClick={() => setCover(i)}
-                  >
-                    Cover
-                  </button>
-                )}
+              {i > 0 && (
                 <button
                   type="button"
-                  className="btn btn-sm btn-danger rounded-0 flex-fill py-0"
-                  style={{ fontSize: 10 }}
-                  title="Remove"
+                  className="btn btn-sm btn-dark position-absolute bottom-0 start-0 end-0 rounded-0 py-0"
+                  style={{ fontSize: 10, zIndex: 1 }}
+                  title="Set as cover"
                   disabled={uploading}
-                  onClick={() => removeAt(i)}
+                  onClick={() => setCover(i)}
                 >
-                  <i className="bi bi-trash" />
+                  Cover
                 </button>
-              </div>
+              )}
+              <button
+                type="button"
+                className="loom-gallery-thumb__del btn btn-danger btn-sm position-absolute top-50 start-50 translate-middle p-0 d-flex align-items-center justify-content-center"
+                style={{ width: 28, height: 28, borderRadius: '50%', zIndex: 2 }}
+                title="Remove"
+                disabled={uploading}
+                onClick={() => removeAt(i)}
+              >
+                <i className="bi bi-trash" style={{ fontSize: 12 }} />
+              </button>
             </div>
           ))}
           {canAdd && (

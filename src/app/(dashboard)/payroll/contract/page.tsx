@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { payrollService } from '@/services/payrollService'
 import { ContractSalaryRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
-import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
+import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
@@ -195,6 +195,13 @@ function ContractPayrollContent() {
     setContractList(renumbered)
   }
 
+  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
+    if (!canEditAccounts) return
+    const next = reorderSerialRows(contractList, index, direction)
+    if (!next) return
+    setContractList(next)
+  }
+
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
     const filtered = contractList
@@ -254,11 +261,24 @@ function ContractPayrollContent() {
     <div className="space-y-6 print:space-y-2">
       <div className="print:hidden">
         <PageHeader
-          title="Contract Staff Register"
+          title={
+            activeTab === 'overtime'
+              ? 'Contract OverTime'
+              : activeTab === 'net-payment'
+                ? 'Net Payment Contract 1 to 31'
+                : 'Contract Employees'
+          }
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/contract' },
-            { label: 'Contract Staff' },
+            {
+              label:
+                activeTab === 'overtime'
+                  ? 'Contract OverTime'
+                  : activeTab === 'net-payment'
+                    ? 'Net Payment Contract 1 to 31'
+                    : 'Contract Employees',
+            },
           ]}
           actions={
             <>
@@ -520,7 +540,10 @@ function ContractPayrollContent() {
                     <SerialCellWithInsert
                       serialNo={c.serialNo}
                       index={idx}
-                      onInsertRow={handleInsertRow}
+                      onMoveUp={(i) => handleMoveRow(i, 'up')}
+                      onMoveDown={(i) => handleMoveRow(i, 'down')}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < contractList.length - 1}
                     />
                     
                     {/* Name — from HR / General Wages */}
@@ -844,7 +867,10 @@ function ContractPayrollContent() {
                     <SerialCellWithInsert
                       serialNo={c.serialNo}
                       index={idx}
-                      onInsertRow={handleInsertRow}
+                      onMoveUp={(i) => handleMoveRow(i, 'up')}
+                      onMoveDown={(i) => handleMoveRow(i, 'down')}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < contractList.length - 1}
                     />
                     
                     <td
@@ -1141,7 +1167,10 @@ function ContractPayrollContent() {
                     <SerialCellWithInsert
                       serialNo={c.serialNo}
                       index={idx}
-                      onInsertRow={handleInsertRow}
+                      onMoveUp={(i) => handleMoveRow(i, 'up')}
+                      onMoveDown={(i) => handleMoveRow(i, 'down')}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < contractList.length - 1}
                     />
                     
                     <td

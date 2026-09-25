@@ -1,5 +1,5 @@
 import productionRawData from './productionExcelData.json'
-import { PRODUCTION_TODAY } from '@/constants/productionCalendar';
+import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import {
   DailyLoomProductionEntry,
   ProductionSummary,
@@ -59,78 +59,52 @@ export function getExcelDailyLoomEntries(): DailyLoomProductionEntry[] {
   });
 }
 
-function getDeterministicSeed(dateStr: string, loomNumber: number): number {
-  let hash = 0
-  const str = `${dateStr}-loom-${loomNumber}`
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i)
-    hash |= 0
-  }
-  return Math.abs(hash)
-}
-
 export function getExcelDailyLoomsForDate(dateStr: string): DailyLoomProductionEntry[] {
-  const history = (productionRawData as any).dailyHistory;
-  const hasHistory = history && history[dateStr] && Array.isArray(history[dateStr]);
-  const rawList = hasHistory ? history[dateStr] : productionRawData.dailyLooms;
-  
+  // No August (or other) fabricated history — only real entered days / blank template
+  if (dateStr.startsWith('2026-08')) {
+    return []
+  }
+
+  const history = (productionRawData as any).dailyHistory
+  const hasHistory = history && history[dateStr] && Array.isArray(history[dateStr])
+  const rawList = hasHistory ? history[dateStr] : productionRawData.dailyLooms
+
+  const blankDay = !hasHistory || dateStr >= PRODUCTION_TODAY
+
   return rawList.map((l: any) => {
-    let category: LoomCategory = 'G6200';
-    if (l.model === 'G6300') category = 'G6300';
-    else if (l.model === 'PU') category = 'PU';
+    let category: LoomCategory = 'G6200'
+    if (l.model === 'G6300') category = 'G6300'
+    else if (l.model === 'PU') category = 'PU'
 
-    let status: LoomStatus = 'RUNNING';
-    let remarks = l.remarks || '';
-    let rollerHours = l.rollerHours || 24;
-    let shiftA = l.shiftAMeters ?? 0;
-    let shiftB = l.shiftBMeters ?? 0;
+    let status: LoomStatus = 'RUNNING'
+    let remarks = ''
+    let rollerHours = 0
+    let shiftA = 0
+    let shiftB = 0
 
-    if (!hasHistory) {
-      const seed = getDeterministicSeed(dateStr, l.loomNumber);
-      // Realistic mill conditions on ~5-8% of loom-days:
-      if (seed % 34 === 0) {
-        status = 'BEAM_END';
-        remarks = 'Beam End';
-        rollerHours = 0;
-        shiftA = 0;
-        shiftB = 0;
-      } else if (seed % 47 === 0) {
-        status = 'BREAKDOWN';
-        remarks = 'Electric / Mechanical Fault';
-        rollerHours = Math.floor(10 + (seed % 6));
-        shiftA = Math.round((l.shiftAMeters || 160) * 0.55);
-        shiftB = 0;
-      } else if (seed % 29 === 0) {
-        status = 'KNOTTING';
-        remarks = 'Knotting';
-        rollerHours = Math.floor(16 + (seed % 6));
-        shiftA = Math.round((l.shiftAMeters || 160) * 0.7);
-        shiftB = Math.round((l.shiftBMeters || 160) * 0.85);
-      } else {
-        status = 'RUNNING';
-        remarks = '';
-        rollerHours = 24;
-        const factorA = 0.94 + ((seed % 14) / 100);
-        const factorB = 0.93 + (((seed >> 3) % 15) / 100);
-        shiftA = Math.round((l.shiftAMeters || 170) * factorA);
-        shiftB = Math.round((l.shiftBMeters || 165) * factorB);
-      }
-    } else {
-      if (l.status === 'BEAM_END' || l.remarks?.includes('B/End')) status = 'BEAM_END';
-      else if (l.status === 'KNOTTING' || l.remarks?.includes('Knotting')) status = 'KNOTTING';
-      else if (l.status === 'STOPPED' || l.totalMeters === 0) status = 'STOPPED';
-      else if (l.status === 'BREAKDOWN') status = 'BREAKDOWN';
+    if (!blankDay) {
+      remarks = l.remarks || ''
+      rollerHours = l.rollerHours ?? 0
+      shiftA = l.shiftAMeters ?? 0
+      shiftB = l.shiftBMeters ?? 0
+      if (l.status === 'BEAM_END' || l.remarks?.includes('B/End')) status = 'BEAM_END'
+      else if (l.status === 'KNOTTING' || l.remarks?.includes('Knotting')) status = 'KNOTTING'
+      else if (l.status === 'STOPPED' || l.totalMeters === 0) status = 'STOPPED'
+      else if (l.status === 'BREAKDOWN') status = 'BREAKDOWN'
+      else status = (l.status as LoomStatus) || 'RUNNING'
     }
 
-    const totalMeters = shiftA + shiftB;
-    const rpm = l.rpm || 350;
-    const pick = l.pick || 60;
-    const runningTheoretical = Number(((rpm / pick) * (60 / 39.38) * rollerHours).toFixed(2));
-    const efficiencyRunning = runningTheoretical > 0 ? Number(((totalMeters / runningTheoretical) * 100).toFixed(2)) : 0;
-    const lossRunning = Number(Math.max(0, runningTheoretical - totalMeters).toFixed(2));
-    const theoretical24h = Number(((rpm / pick) * (60 / 39.38) * 24).toFixed(2));
-    const efficiency24h = theoretical24h > 0 ? Number(((totalMeters / theoretical24h) * 100).toFixed(2)) : 0;
-    const loss24h = Number(Math.max(0, theoretical24h - totalMeters).toFixed(2));
+    const totalMeters = shiftA + shiftB
+    const rpm = l.rpm || 350
+    const pick = l.pick || 60
+    const runningTheo = (rpm / pick) * (60 / 39.38) * rollerHours
+    const theo24h = (rpm / pick) * (60 / 39.38) * 24
+    const efficiencyRunning = runningTheo > 0 ? Math.round((totalMeters / runningTheo) * 100) : 0
+    const efficiency24h = theo24h > 0 ? Math.round((totalMeters / theo24h) * 100) : 0
+    const runningTheoretical = Math.round(runningTheo)
+    const theoretical24h = Math.round(theo24h)
+    const lossRunning = Math.round(runningTheo - totalMeters)
+    const loss24h = Math.round(theo24h - totalMeters)
 
     return {
       id: `PROD-${dateStr}-${l.loomNumber}`,
@@ -160,9 +134,9 @@ export function getExcelDailyLoomsForDate(dateStr: string): DailyLoomProductionE
       loss24h,
       status,
       remarks: remarks || undefined,
-      lot: l.lot || `Sw # ${300 + l.loomNumber}`,
-    };
-  });
+      lot: blankDay ? l.lot || undefined : l.lot || undefined,
+    }
+  })
 }
 
 export function getExcelFloorSummary(dateStr?: string): ProductionSummary {
@@ -204,24 +178,24 @@ export function getExcelMonthlyMatrix(month: string = '2026-09'): {
   grandTotalMeters: number;
   avgPerDay: number;
 } {
-  if (month === '2026-08' && (productionRawData as any).augustMatrix) {
-    return (productionRawData as any).augustMatrix;
+  if (month === '2026-08') {
+    return { days: [], loomTotals: {}, grandTotalMeters: 0, avgPerDay: 0 }
   }
-  return productionRawData.monthlyMatrix as any;
+  return productionRawData.monthlyMatrix as any
 }
 
 export function getExcelBeamStock(): BeamStockItem[] {
-  return productionRawData.beamStock as BeamStockItem[];
+  return productionRawData.beamStock as BeamStockItem[]
 }
 
 export function getExcelWeftStock(month: string = '2026-09'): {
-  yarnColumns: string[];
-  days: WeftStockDay[];
+  yarnColumns: string[]
+  days: WeftStockDay[]
 } {
-  if (month === '2026-08' && (productionRawData as any).augustWeftStock) {
-    return (productionRawData as any).augustWeftStock;
+  if (month === '2026-08') {
+    return { yarnColumns: [], days: [] }
   }
-  return productionRawData.weftStock as any;
+  return productionRawData.weftStock as any
 }
 
 export function getExcelQualityEndRecords(): QualityEndRecord[] {

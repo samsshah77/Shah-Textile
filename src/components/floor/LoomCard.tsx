@@ -124,7 +124,7 @@ export function LoomCard({
             {entry.qualityName}
           </h4>
           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-            {entry.fabricType} • {entry.widthInch}&quot; • {entry.gsm} GSM
+            {entry.fabricType} • {entry.widthInch}&quot; • {typeof entry.gsm === 'number' && entry.gsm > 0 ? entry.gsm.toFixed(2) : (entry.gsm ?? '—')} GSM
             {entry.reed > 0 && ` • Reed ${entry.reed}`}
           </p>
         </div>

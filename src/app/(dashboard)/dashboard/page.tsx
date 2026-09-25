@@ -1,39 +1,81 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/shared/MiniCharts'
-import { productionService, type FloorWeeklyReport } from '@/services/productionService'
-import { formatNumber } from '@/lib/utils'
 import {
+  hydrateFloorFromDb,
+  listPersistedSheetDates,
+  preloadFloorSheet,
+  productionMastersService,
+} from '@/services/productionMastersService'
+import { formatNumber, cn } from '@/lib/utils'
+import {
+  PRODUCTION_START,
   PRODUCTION_TODAY,
-  PRODUCTION_TODAY_MONTH,
+  PRODUCTION_YESTERDAY,
   formatProductionDayLabel,
+  shiftProductionDate,
 } from '@/constants/productionCalendar'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 import type { LoomStatus } from '@/types/loom'
+import type { LoomCategory } from '@/types/loom'
+import type { DailyLoomProductionEntry } from '@/types/production'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-type Period = 'day' | 'week' | 'lastWeek' | 'month' | 'lastMonth'
+function summarizeDay(live: DailyLoomProductionEntry[]) {
+  const totalLooms = live.length || 0
+  const shiftA = live.reduce((s, e) => s + (e.shiftAMeters || 0), 0)
+  const shiftB = live.reduce((s, e) => s + (e.shiftBMeters || 0), 0)
+  const meters = live.reduce((s, e) => s + (e.totalMeters || 0), 0)
+  const effSum = live.reduce((s, e) => s + (e.efficiencyPercentage || 0), 0)
+  const efficiency = live.length ? effSum / live.length : 0
+  const running = live.filter((e) => resolveLoomCondition(e.status, e.remarks) === 'RUNNING').length
 
-function prevMonth(monthStr: string): string {
-  const [y, m] = monthStr.split('-').map(Number)
-  const d = new Date(y, m - 2, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const conditions: Partial<Record<LoomStatus, number>> = {}
+  live.forEach((e) => {
+    const c = resolveLoomCondition(e.status, e.remarks)
+    conditions[c] = (conditions[c] || 0) + 1
+  })
+
+  const modelTotals: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+  live.forEach((e) => {
+    const cat = (e.category || e.model || 'G6200') as LoomCategory
+    modelTotals[cat] = (modelTotals[cat] || 0) + (e.totalMeters || 0)
+  })
+
+  return {
+    meters,
+    efficiency,
+    running,
+    totalLooms: totalLooms || 34,
+    shiftA,
+    shiftB,
+    conditions,
+    modelBars: [
+      { label: 'G6200', value: modelTotals.G6200 || 0, color: '#0d6efd' },
+      { label: 'G6300', value: modelTotals.G6300 || 0, color: '#198754' },
+      { label: 'PU', value: modelTotals.PU || 0, color: '#fd7e14' },
+    ],
+  }
 }
 
-function monthLabel(monthStr: string): string {
+function shortDay(dateStr: string) {
   try {
-    const [y, m] = monthStr.split('-').map(Number)
-    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+    })
   } catch {
-    return monthStr
+    return dateStr
   }
 }
 
 export default function DashboardPage() {
-  const [period, setPeriod] = useState<Period>('day')
+  const [selectedDate, setSelectedDate] = useState(PRODUCTION_YESTERDAY)
+  const [loading, setLoading] = useState(true)
   const [day, setDay] = useState({
     meters: 0,
     efficiency: 0,
@@ -43,157 +85,66 @@ export default function DashboardPage() {
     shiftB: 0,
     conditions: {} as Partial<Record<LoomStatus, number>>,
   })
-  const [weeks, setWeeks] = useState<FloorWeeklyReport[]>([])
-  const [monthMeters, setMonthMeters] = useState(0)
-  const [avgPerDay, setAvgPerDay] = useState(0)
-  const [daySeries, setDaySeries] = useState<{ label: string; value: number }[]>([])
   const [modelBars, setModelBars] = useState<{ label: string; value: number; color: string }[]>([])
-  const [lastMonthMeters, setLastMonthMeters] = useState(0)
-  const [lastMonthAvg, setLastMonthAvg] = useState(0)
+  const [daySeries, setDaySeries] = useState<{ label: string; value: number }[]>([])
+  const [availableDates, setAvailableDates] = useState<string[]>([])
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const summary = await productionService.getFloorSummary(PRODUCTION_TODAY)
-        const weekly = await productionService.getWeeklyRollups()
-        const matrix = productionService.getMonthlyMatrix(PRODUCTION_TODAY_MONTH)
-        const lastMatrix = productionService.getMonthlyMatrix(prevMonth(PRODUCTION_TODAY_MONTH))
-        const live = await productionService.getAllEntries(PRODUCTION_TODAY)
+  const loadDate = useCallback(async (dateStr: string) => {
+    setLoading(true)
+    try {
+      await hydrateFloorFromDb()
+      await preloadFloorSheet(dateStr)
+      // Also preload known neighbour days for the mini chart (real sheets only)
+      const dates = listPersistedSheetDates()
+      setAvailableDates(dates)
+      await Promise.all(dates.map((d) => preloadFloorSheet(d)))
 
-        const conditionCounts: Partial<Record<LoomStatus, number>> = {}
-        live.forEach((e) => {
-          const c = resolveLoomCondition(e.status, e.remarks)
-          conditionCounts[c] = (conditionCounts[c] || 0) + 1
+      const live = productionMastersService.hasPersistedSheet(dateStr)
+        ? productionMastersService.buildSheetForDate(dateStr)
+        : []
+      const summary = summarizeDay(live)
+      setDay({
+        meters: summary.meters,
+        efficiency: summary.efficiency,
+        running: summary.running,
+        totalLooms: summary.totalLooms,
+        shiftA: summary.shiftA,
+        shiftB: summary.shiftB,
+        conditions: summary.conditions,
+      })
+      setModelBars(summary.modelBars)
+
+      const refreshed = listPersistedSheetDates()
+      setAvailableDates(refreshed)
+      setDaySeries(
+        refreshed.map((d) => {
+          const rows = productionMastersService.hasPersistedSheet(d)
+            ? productionMastersService.buildSheetForDate(d)
+            : []
+          const m = rows.reduce((s, e) => s + (e.totalMeters || 0), 0)
+          return { label: shortDay(d), value: m }
         })
-        if (Object.keys(conditionCounts).length === 0) {
-          conditionCounts.RUNNING = summary.runningLooms
-          conditionCounts.STOPPED = summary.stoppedLooms
-          conditionCounts.KNOTTING = summary.knottingLooms
-          conditionCounts.BREAKDOWN = summary.breakdownLooms
-          conditionCounts.BEAM_END = summary.beamEndLooms
-        }
-
-        if (cancelled) return
-
-        setDay({
-          meters: summary.grandTotalMeters,
-          efficiency: summary.averageEfficiency,
-          running: summary.runningLooms,
-          totalLooms: summary.totalLooms || 34,
-          shiftA: summary.totalShiftAMeters,
-          shiftB: summary.totalShiftBMeters,
-          conditions: conditionCounts,
-        })
-        setWeeks(weekly)
-        setMonthMeters(matrix.grandTotalMeters || summary.monthlyProduction || 0)
-        setAvgPerDay(matrix.avgPerDay || 0)
-        setLastMonthMeters(lastMatrix.grandTotalMeters || 0)
-        setLastMonthAvg(lastMatrix.avgPerDay || 0)
-        setDaySeries(
-          matrix.days.map((d) => ({
-            label: String(d.day),
-            value: d.totalMeters || 0,
-          }))
-        )
-        setModelBars([
-          {
-            label: 'G6200',
-            value: summary.modelBreakdown?.G6200?.production || 0,
-            color: '#0d6efd',
-          },
-          {
-            label: 'G6300',
-            value: summary.modelBreakdown?.G6300?.production || 0,
-            color: '#198754',
-          },
-          {
-            label: 'PU',
-            value: summary.modelBreakdown?.PU?.production || 0,
-            color: '#fd7e14',
-          },
-        ])
-      } catch {
-        // keep zeros / defaults
-      }
-    })()
-    return () => {
-      cancelled = true
+      )
+    } catch {
+      setDay({
+        meters: 0,
+        efficiency: 0,
+        running: 0,
+        totalLooms: 34,
+        shiftA: 0,
+        shiftB: 0,
+        conditions: {},
+      })
+      setModelBars([])
+      setDaySeries([])
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  const thisWeek = weeks[0] || null
-  const lastWeek = weeks[1] || null
-
-  const overview = useMemo(() => {
-    switch (period) {
-      case 'week':
-        return {
-          title: 'This Week',
-          meters: thisWeek?.totalMeters || 0,
-          sub: thisWeek?.weekLabel || 'Weekly rollup',
-          shiftA: thisWeek?.shiftAMeters || 0,
-          shiftB: thisWeek?.shiftBMeters || 0,
-          efficiency: thisWeek?.averageEfficiency || 0,
-          chart: daySeries.slice(0, 7),
-          chartTitle: 'This week (days)',
-        }
-      case 'lastWeek':
-        return {
-          title: 'Last Week',
-          meters: lastWeek?.totalMeters || 0,
-          sub: lastWeek?.weekLabel || 'Previous week',
-          shiftA: lastWeek?.shiftAMeters || 0,
-          shiftB: lastWeek?.shiftBMeters || 0,
-          efficiency: lastWeek?.averageEfficiency || 0,
-          chart: daySeries.slice(7, 14),
-          chartTitle: 'Last week (days)',
-        }
-      case 'month':
-        return {
-          title: monthLabel(PRODUCTION_TODAY_MONTH),
-          meters: monthMeters,
-          sub: `Avg ${formatNumber(avgPerDay, 0)} m / day`,
-          shiftA: 0,
-          shiftB: 0,
-          efficiency: day.efficiency,
-          chart: daySeries,
-          chartTitle: 'Daily trend (this month)',
-        }
-      case 'lastMonth':
-        return {
-          title: monthLabel(prevMonth(PRODUCTION_TODAY_MONTH)),
-          meters: lastMonthMeters,
-          sub: `Avg ${formatNumber(lastMonthAvg, 0)} m / day`,
-          shiftA: 0,
-          shiftB: 0,
-          efficiency: 0,
-          chart: [],
-          chartTitle: 'Previous month',
-        }
-      default:
-        return {
-          title: 'Today',
-          meters: day.meters,
-          sub: formatProductionDayLabel(PRODUCTION_TODAY),
-          shiftA: day.shiftA,
-          shiftB: day.shiftB,
-          efficiency: day.efficiency,
-          chart: daySeries.slice(-7),
-          chartTitle: 'Last 7 days',
-        }
-    }
-  }, [
-    period,
-    thisWeek,
-    lastWeek,
-    monthMeters,
-    avgPerDay,
-    lastMonthMeters,
-    lastMonthAvg,
-    day,
-    daySeries,
-  ])
+  useEffect(() => {
+    void loadDate(selectedDate)
+  }, [selectedDate, loadDate])
 
   const conditionBars = useMemo(() => {
     return (Object.entries(day.conditions) as [LoomStatus, number][])
@@ -205,17 +156,21 @@ export default function DashboardPage() {
       .sort((a, b) => b.value - a.value)
   }, [day.conditions])
 
-  const weekCompare = useMemo(() => {
-    const w = period === 'lastWeek' ? lastWeek : thisWeek
-    if (!w) return []
-    return [
-      { label: 'Shift A', value: w.shiftAMeters, color: '#0d6efd' },
-      { label: 'Shift B', value: w.shiftBMeters, color: '#6610f2' },
-      { label: 'Total', value: w.totalMeters, color: '#198754' },
-    ]
-  }, [period, thisWeek, lastWeek])
+  const isYesterday = selectedDate === PRODUCTION_YESTERDAY
+  const isToday = selectedDate === PRODUCTION_TODAY
+  const hasSheet = availableDates.includes(selectedDate)
 
-  const trackingHref = '/floor/reports/total'
+  const shiftDay = (delta: number) => {
+    try {
+      const next = shiftProductionDate(selectedDate, delta)
+      if (next < PRODUCTION_START || next > PRODUCTION_TODAY) return
+      setSelectedDate(next)
+    } catch {
+      // ignore
+    }
+  }
+
+  const sheetHref = '/floor/production'
 
   return (
     <>
@@ -224,35 +179,79 @@ export default function DashboardPage() {
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <h2 className="h6 mb-0 text-secondary text-uppercase">Production overview</h2>
         <div className="d-flex flex-wrap align-items-center gap-2">
-          <select
-            className="form-select form-select-sm"
-            style={{ width: 'auto', minWidth: 160 }}
-            value={period}
-            aria-label="Period filter"
-            onChange={(e) => setPeriod(e.target.value as Period)}
-          >
-            <option value="day">Today (Day)</option>
-            <option value="week">This Week</option>
-            <option value="lastWeek">Last Week</option>
-            <option value="month">This Month</option>
-            <option value="lastMonth">Last Month</option>
-          </select>
-          <Link href={trackingHref} className="btn btn-sm btn-outline-primary">
-            More info — Total tracking
+          <div className="d-flex align-items-center gap-1">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary px-2"
+              title="Previous day"
+              onClick={() => shiftDay(-1)}
+              disabled={selectedDate <= PRODUCTION_START}
+            >
+              <ChevronLeft className="size-3.5" />
+            </button>
+            <input
+              type="date"
+              className="form-control form-control-sm fw-semibold"
+              style={{ width: 'auto', minWidth: 140 }}
+              value={selectedDate}
+              min={PRODUCTION_START}
+              max={PRODUCTION_TODAY}
+              aria-label="Production date"
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary px-2"
+              title="Next day"
+              onClick={() => shiftDay(1)}
+              disabled={selectedDate >= PRODUCTION_TODAY}
+            >
+              <ChevronRight className="size-3.5" />
+            </button>
+          </div>
+
+          <div className="btn-group btn-group-sm" role="group" aria-label="Quick day">
+            <button
+              type="button"
+              className={cn('btn btn-sm', isYesterday ? 'btn-primary' : 'btn-outline-secondary')}
+              onClick={() => setSelectedDate(PRODUCTION_YESTERDAY)}
+            >
+              Yesterday
+              <span className="d-none d-md-inline"> ({shortDay(PRODUCTION_YESTERDAY)})</span>
+            </button>
+            <button
+              type="button"
+              className={cn('btn btn-sm', isToday ? 'btn-primary' : 'btn-outline-secondary')}
+              onClick={() => setSelectedDate(PRODUCTION_TODAY)}
+            >
+              Today
+              <span className="d-none d-md-inline"> ({shortDay(PRODUCTION_TODAY)})</span>
+            </button>
+          </div>
+
+          <Link href={sheetHref} className="btn btn-sm btn-outline-primary">
+            Open Production Sheet
             <i className="bi bi-arrow-right-short ms-1" />
           </Link>
         </div>
       </div>
 
+      {!loading && !hasSheet && (
+        <div className="alert alert-light border py-2 mb-3 small" role="status">
+          Is date ki production sheet abhi enter nahi hui — zeros dikh rahe hain. Pehle{' '}
+          <Link href="/floor/production">Production</Link> se data bharo.
+        </div>
+      )}
+
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <MetricCard
-            title={overview.title}
-            value={`${formatNumber(overview.meters, 0)} m`}
-            subValue={overview.sub}
+            title="Production"
+            value={`${formatNumber(day.meters, 0)} m`}
+            subValue={formatProductionDayLabel(selectedDate)}
             biIcon="bi-speedometer2"
             colorVariant="primary"
-            href={trackingHref}
+            href={sheetHref}
             footerLabel="More info"
           />
         </div>
@@ -260,25 +259,25 @@ export default function DashboardPage() {
           <MetricCard
             title="Shift A / B"
             value={
-              overview.shiftA || overview.shiftB
-                ? `${formatNumber(overview.shiftA, 0)} / ${formatNumber(overview.shiftB, 0)}`
+              day.shiftA || day.shiftB
+                ? `${formatNumber(day.shiftA, 0)} / ${formatNumber(day.shiftB, 0)}`
                 : '—'
             }
             subValue="Meters"
             biIcon="bi-columns-gap"
             colorVariant="success"
-            href={trackingHref}
+            href={sheetHref}
             footerLabel="More info"
           />
         </div>
         <div className="col-6 col-lg-3">
           <MetricCard
             title="Efficiency"
-            value={overview.efficiency ? `${overview.efficiency.toFixed(1)}%` : '—'}
-            subValue={period === 'day' ? 'Today' : 'Period'}
+            value={day.efficiency ? `${Math.round(day.efficiency)}%` : '—'}
+            subValue="Avg running"
             biIcon="bi-percent"
             colorVariant="warning"
-            href={trackingHref}
+            href={sheetHref}
             footerLabel="More info"
           />
         </div>
@@ -286,10 +285,10 @@ export default function DashboardPage() {
           <MetricCard
             title="Active Looms"
             value={`${day.running} / ${day.totalLooms}`}
-            subValue="Running now"
+            subValue="On selected day"
             biIcon="bi-gear-wide-connected"
             colorVariant="info"
-            href={trackingHref}
+            href={sheetHref}
             footerLabel="More info"
           />
         </div>
@@ -299,56 +298,46 @@ export default function DashboardPage() {
         <div className="col-lg-7">
           <div className="card h-100">
             <div className="card-header d-flex justify-content-between align-items-center">
-              <h3 className="card-title mb-0">{overview.chartTitle}</h3>
-              <Link href={trackingHref} className="small">
-                Total tracking
+              <h3 className="card-title mb-0">Entered days (real sheets)</h3>
+              <Link href={sheetHref} className="small">
+                Production Sheet
               </Link>
             </div>
             <div className="card-body">
-              {overview.chart.length > 0 ? (
+              {daySeries.length > 0 ? (
                 <>
-                  <SimpleBarChart data={overview.chart} height={150} />
+                  <SimpleBarChart data={daySeries} height={150} />
                   <div className="mt-2">
-                    <SimpleLineChart data={overview.chart} height={100} />
+                    <SimpleLineChart data={daySeries} height={100} />
                   </div>
                 </>
               ) : (
                 <p className="text-secondary small mb-0">
-                  Open{' '}
-                  <Link href={trackingHref}>Total tracking</Link> to see the full matrix for this
-                  period.
+                  Abhi koi entered production day chart ke liye available nahi.
                 </p>
               )}
             </div>
           </div>
         </div>
         <div className="col-lg-5">
-          {period === 'day' && (
-            <div className="card mb-3">
-              <div className="card-header">
-                <h3 className="card-title mb-0">Today by model</h3>
-              </div>
-              <div className="card-body">
-                <SimpleHBarList data={modelBars} maxBars={3} />
-              </div>
-            </div>
-          )}
-          {(period === 'week' || period === 'lastWeek') && (
-            <div className="card mb-3">
-              <div className="card-header">
-                <h3 className="card-title mb-0">Week shifts</h3>
-              </div>
-              <div className="card-body">
-                <SimpleBarChart data={weekCompare} height={120} />
-              </div>
-            </div>
-          )}
-          <div className="card">
+          <div className="card mb-3">
             <div className="card-header">
-              <h3 className="card-title mb-0">Floor conditions (today)</h3>
+              <h3 className="card-title mb-0">By model</h3>
             </div>
             <div className="card-body">
-              <SimpleHBarList data={conditionBars} maxBars={8} />
+              <SimpleHBarList data={modelBars} maxBars={3} />
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title mb-0">Floor conditions</h3>
+            </div>
+            <div className="card-body">
+              {conditionBars.length > 0 ? (
+                <SimpleHBarList data={conditionBars} maxBars={8} />
+              ) : (
+                <p className="text-secondary small mb-0">No loom conditions for this date.</p>
+              )}
             </div>
           </div>
         </div>
@@ -363,9 +352,9 @@ export default function DashboardPage() {
             <strong>Sara Textile</strong> — 34 Rapier &amp; PU looms
           </p>
           <p className="text-body-secondary mb-0 small">
-            Filter day / week / month above.{' '}
-            <Link href={trackingHref}>Total tracking</Link> opens the loom×day matrix (Excel Total
-            tab style).
+            Dashboard sirf floor production sheets se data leta hai (dummy history nahi). Date
+            calendar se koi bhi entered din dekho — default{' '}
+            <strong>{shortDay(PRODUCTION_YESTERDAY)}</strong> (completed day).
           </p>
         </div>
       </div>

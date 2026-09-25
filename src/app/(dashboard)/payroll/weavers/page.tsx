@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { payrollService } from '@/services/payrollService'
 import { WeaverWageRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
-import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
+import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
@@ -198,6 +198,13 @@ function WeaversPayrollContent() {
     setWeaversList(renumbered)
   }
 
+  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
+    if (!canEditAccounts) return
+    const next = reorderSerialRows(weaversList, index, direction)
+    if (!next) return
+    setWeaversList(next)
+  }
+
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
     const filtered = weaversList
@@ -252,11 +259,24 @@ function WeaversPayrollContent() {
     <div className="space-y-6 print:space-y-2">
       <div className="print:hidden">
         <PageHeader
-          title="Weavers Payroll"
+          title={
+            activeTab === 'overtime'
+              ? `Weawers OT ${activeFortnight}`
+              : activeTab === 'net-payment'
+                ? `Net Payment Weawers ${activeFortnight}`
+                : `Weawers Wages ${activeFortnight}`
+          }
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/weavers' },
-            { label: 'Weavers' },
+            {
+              label:
+                activeTab === 'overtime'
+                  ? `Weawers OT ${activeFortnight}`
+                  : activeTab === 'net-payment'
+                    ? `Net Payment Weawers ${activeFortnight}`
+                    : `Weawers Wages ${activeFortnight}`,
+            },
           ]}
           actions={
             <>
@@ -481,7 +501,10 @@ function WeaversPayrollContent() {
                     <SerialCellWithInsert
                       serialNo={w.serialNo}
                       index={idx}
-                      onInsertRow={handleInsertRow}
+                      onMoveUp={(i) => handleMoveRow(i, 'up')}
+                      onMoveDown={(i) => handleMoveRow(i, 'down')}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < weaversList.length - 1}
                     />
                     
                     {/* Name — from HR */}
@@ -767,7 +790,10 @@ function WeaversPayrollContent() {
                     <SerialCellWithInsert
                       serialNo={w.serialNo}
                       index={idx}
-                      onInsertRow={handleInsertRow}
+                      onMoveUp={(i) => handleMoveRow(i, 'up')}
+                      onMoveDown={(i) => handleMoveRow(i, 'down')}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < weaversList.length - 1}
                     />
                     
                     <td
@@ -1055,7 +1081,10 @@ function WeaversPayrollContent() {
                     <SerialCellWithInsert
                       serialNo={w.serialNo}
                       index={idx}
-                      onInsertRow={handleInsertRow}
+                      onMoveUp={(i) => handleMoveRow(i, 'up')}
+                      onMoveDown={(i) => handleMoveRow(i, 'down')}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < weaversList.length - 1}
                     />
                     
                     <td

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { payrollService } from '@/services/payrollService'
 import { StaffSalaryRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
-import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
+import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
@@ -139,6 +139,14 @@ export default function StaffSalariesPage() {
     const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setStaffList(renumbered)
     payrollService.saveStaffSalaries(renumbered)
+  }
+
+  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
+    if (!canEditAccounts) return
+    const next = reorderSerialRows(staffList, index, direction)
+    if (!next) return
+    setStaffList(next)
+    payrollService.saveStaffSalaries(next)
   }
 
   // Delete row and auto-renumber
@@ -305,7 +313,7 @@ export default function StaffSalariesPage() {
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 py-2 px-1 text-center"
-                  title="Hover row serial to insert row at position"
+                  title="Hover the row to move it up or down"
                 >
                   S.#
                 </ResizableTh>
@@ -488,11 +496,13 @@ export default function StaffSalariesPage() {
             <tbody className="divide-y divide-slate-100">
               {staffList.map((st, idx) => (
                 <tr key={st.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
-                  {/* S.# with Hover Row Insertion */}
                   <SerialCellWithInsert
                     serialNo={st.serialNo}
                     index={idx}
-                    onInsertRow={handleInsertRow}
+                    onMoveUp={(i) => handleMoveRow(i, 'up')}
+                    onMoveDown={(i) => handleMoveRow(i, 'down')}
+                    canMoveUp={idx > 0}
+                    canMoveDown={idx < staffList.length - 1}
                   />
                   
                   {/* Name — from HR / General Wages */}

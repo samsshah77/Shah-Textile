@@ -865,9 +865,58 @@ button, input, select, a {
   touch-action: manipulation;
 }
 
+/* Salary sheet: up/down arrows sit on the serial number when the row is hovered */
+.sara-serial-arrows {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px #cbd5e1;
+}
+tr:hover .sara-serial-arrows {
+  display: flex;
+}
+.sara-serial-arrows button {
+  line-height: 1;
+  color: #0f172a;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.sara-serial-arrows button:hover {
+  color: #0066cc;
+}
+.sara-serial-arrows button:disabled {
+  color: #cbd5e1;
+  cursor: default;
+}
+@media print {
+  .sara-serial-arrows {
+    display: none !important;
+  }
+}
+
 /* ==========================================================================
    A4 PRINT ENGINE STYLES (AUTOMATIC FIT-TO-PAGE ON A4 LANDSCAPE)
    ========================================================================== */
+
+/* Accounts + Salary: everyone except Tufail is view-only */
+.sara-finance-readonly input:not([type='date']):not([type='month']):not([type='search']),
+.sara-finance-readonly textarea,
+.sara-finance-readonly button:not(.sara-allow-readonly) {
+  pointer-events: none !important;
+}
+
+.sara-finance-readonly a,
+.sara-finance-readonly .sara-allow-readonly {
+  pointer-events: auto !important;
+}
 
 /* Print brand header — screen hidden, PDF/print only */
 .sara-print-doc-header {
@@ -877,7 +926,7 @@ button, input, select, a {
 @media print {
   @page {
     size: A4 landscape;
-    margin: 10mm 8mm 8mm 8mm;
+    margin: 5mm 4mm 4mm 4mm;
   }
 
   body {
@@ -1017,6 +1066,76 @@ button, input, select, a {
 
   input::placeholder {
     display: none !important;
+  }
+
+  /* Production Sheet PDF — landscape, compact so all columns fit on one page */
+  .sara-prod-sheet-print {
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  .sara-prod-sheet-print__body {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .sara-prod-sheet-print__table,
+  .sara-prod-sheet-print table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    font-size: 5.5pt !important;
+    border-collapse: collapse !important;
+  }
+
+  .sara-prod-sheet-print col {
+    width: auto !important;
+  }
+
+  .sara-prod-sheet-print th,
+  .sara-prod-sheet-print td {
+    padding: 0.5px 1px !important;
+    font-size: 5.5pt !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+    vertical-align: middle !important;
+    border-width: 0.4pt !important;
+  }
+
+  .sara-prod-sheet-print thead th {
+    font-size: 5pt !important;
+    font-weight: 700 !important;
+    padding: 1px 1px !important;
+    line-height: 1.05 !important;
+  }
+
+  .sara-prod-sheet-print tfoot td {
+    font-size: 5.5pt !important;
+    font-weight: 700 !important;
+  }
+
+  .sara-prod-sheet-print .sara-print-doc-header,
+  body:has(.sara-prod-sheet-print) .sara-print-doc-header {
+    margin-bottom: 4px !important;
+    padding-bottom: 4px !important;
+  }
+
+  body:has(.sara-prod-sheet-print) .sara-print-doc-header__company {
+    font-size: 10pt !important;
+  }
+
+  body:has(.sara-prod-sheet-print) .sara-print-doc-header__sheet,
+  body:has(.sara-prod-sheet-print) .sara-print-doc-header__meta-value {
+    font-size: 7.5pt !important;
+  }
+
+  body:has(.sara-prod-sheet-print) .sara-print-doc-header__logo {
+    width: 28px !important;
+    height: 28px !important;
   }
 }
 /* ==========================================================================
@@ -1492,3 +1611,73 @@ tr.prod-sheet-row--issue > td {
 .master-grid-card .form-select {
   width: 100%;
 }
+
+/* Global route navigation — thin bar above header, no white overlay */
+.sara-nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 20000;
+  pointer-events: none;
+  overflow: hidden;
+  background: transparent;
+}
+
+.sara-nav-progress__bar {
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg, #0d6efd 0%, #66a3ff 50%, #0d6efd 100%);
+  box-shadow: 0 0 8px rgba(13, 110, 253, 0.55);
+  border-radius: 0 2px 2px 0;
+  animation: sara-nav-indeterminate 1.1s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+.sara-nav-progress[data-completing='true'] .sara-nav-progress__bar {
+  animation: none;
+  width: 100%;
+  transition: width 0.18s ease-out;
+  opacity: 0.85;
+}
+
+@keyframes sara-nav-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+/* Soft edit-state tint — warm amber (pairs with Edit/Done), not bright blue */
+.sara-edit-row > td,
+.sara-edit-row > th {
+  background-color: rgba(180, 140, 60, 0.07) !important;
+}
+.sara-edit-card {
+  background-color: rgba(180, 140, 60, 0.06) !important;
+  border-color: rgba(180, 140, 60, 0.28) !important;
+}
+.table.table-hover > tbody > tr.sara-edit-row:hover > td {
+  background-color: rgba(180, 140, 60, 0.11) !important;
+}
+
+/* Loom gallery: delete icon only on thumbnail hover */
+.loom-gallery-thumb__del {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.loom-gallery-thumb:hover .loom-gallery-thumb__del,
+.loom-gallery-thumb:focus-within .loom-gallery-thumb__del {
+  opacity: 1;
+  pointer-events: auto;
+}
+.loom-gallery-thumb:hover > .btn:first-child img {
+  filter: brightness(0.55);
+}
+
+

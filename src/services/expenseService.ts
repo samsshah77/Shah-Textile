@@ -7,11 +7,13 @@ import {
   accountsData,
 } from '@/data/accountsData'
 import { payrollService } from '@/services/payrollService'
+import { accountsRead, accountsRemove, accountsWrite } from '@/services/accountsStore'
+import { ACCOUNTS_KEYS } from '@/lib/accountsKeys'
 
-const STORAGE_KEY_PETTY_CASH = 'sara_textile_petty_cash_v4'
-const STORAGE_KEY_INVENTORY_PURCHASE = 'sara_textile_inventory_purchase_v4'
-const STORAGE_KEY_COST_STATEMENT = 'sara_textile_cost_statement_v5'
-const STORAGE_KEY_COST_OVERRIDES = 'sara_textile_cost_statement_overrides_v1'
+const STORAGE_KEY_PETTY_CASH = ACCOUNTS_KEYS.PETTY_CASH
+const STORAGE_KEY_INVENTORY_PURCHASE = ACCOUNTS_KEYS.INVENTORY_PURCHASE
+const STORAGE_KEY_COST_STATEMENT = ACCOUNTS_KEYS.COST_STATEMENT_PREFIX.slice(0, -1)
+const STORAGE_KEY_COST_OVERRIDES = ACCOUNTS_KEYS.COST_OVERRIDES_PREFIX.slice(0, -1)
 
 export interface NamedCostItem {
   name: string
@@ -255,22 +257,13 @@ class ExpenseService {
 
   // --- Petty Cash ---
   getPettyCashEntries(): PettyCashEntry[] {
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY_PETTY_CASH)
-        if (stored) return JSON.parse(stored)
-      } catch (err) {
-        console.error(err)
-      }
-    }
-    return INITIAL_PETTY_CASH
+    return accountsRead(STORAGE_KEY_PETTY_CASH, INITIAL_PETTY_CASH)
   }
 
   savePettyCashEntries(entries: PettyCashEntry[]): void {
-    if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEY_PETTY_CASH, JSON.stringify(entries))
-      this.notifyDataChanged()
-    }
+    if (!this.isClient()) return
+    accountsWrite(STORAGE_KEY_PETTY_CASH, entries)
+    this.notifyDataChanged()
   }
 
   addPettyCashEntry(entry: Omit<PettyCashEntry, 'id' | 'balance'>): PettyCashEntry {
@@ -333,15 +326,7 @@ class ExpenseService {
 
   // --- Inventory Purchases & Inward ---
   getInventoryPurchases(): InventoryPurchaseEntry[] {
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY_INVENTORY_PURCHASE)
-        if (stored) return JSON.parse(stored)
-      } catch (err) {
-        console.error(err)
-      }
-    }
-    return INITIAL_INVENTORY_PURCHASES
+    return accountsRead(STORAGE_KEY_INVENTORY_PURCHASE, INITIAL_INVENTORY_PURCHASES)
   }
 
   addInventoryPurchase(purchase: Omit<InventoryPurchaseEntry, 'id' | 'totalPrice'>): InventoryPurchaseEntry {
@@ -355,7 +340,7 @@ class ExpenseService {
 
     list.unshift(newRecord)
     if (this.isClient()) {
-      localStorage.setItem(STORAGE_KEY_INVENTORY_PURCHASE, JSON.stringify(list))
+      accountsWrite(STORAGE_KEY_INVENTORY_PURCHASE, list)
       this.notifyDataChanged()
     }
     return newRecord
@@ -504,20 +489,12 @@ class ExpenseService {
   // ==========================================
 
   getCostStatementOverrides(monthStr: string = '2026-08'): CostStatementOverrides {
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(`${STORAGE_KEY_COST_OVERRIDES}_${monthStr}`)
-        if (stored) return JSON.parse(stored)
-      } catch (err) {
-        console.error(err)
-      }
-    }
-    return {}
+    return accountsRead(`${STORAGE_KEY_COST_OVERRIDES}_${monthStr}`, {})
   }
 
   saveCostStatementOverrides(monthStr: string, overrides: CostStatementOverrides): void {
     if (!this.isClient()) return
-    localStorage.setItem(`${STORAGE_KEY_COST_OVERRIDES}_${monthStr}`, JSON.stringify(overrides))
+    accountsWrite(`${STORAGE_KEY_COST_OVERRIDES}_${monthStr}`, overrides)
     this.notifyDataChanged(monthStr)
   }
 
@@ -534,22 +511,19 @@ class ExpenseService {
     // Inventory page uses "Febraury" typo key — try both
     const candidates = [monthName, monthName === 'February' ? 'Febraury' : monthName]
 
-    if (this.isClient()) {
+    const storedMonths = accountsRead<Record<
+      string,
+      { items?: { itemDescription?: string; quantity?: number; totalPrice?: number }[] }
+    > | null>(ACCOUNTS_KEYS.INVENTORY_CONTROL, null)
+    if (storedMonths) {
       try {
-        const stored = localStorage.getItem('sara_textile_inventory_control_v2')
-        if (stored) {
-          const months = JSON.parse(stored) as Record<
-            string,
-            { items?: { itemDescription?: string; quantity?: number; totalPrice?: number }[] }
-          >
-          for (const key of candidates) {
-            const sheet = months[key]
-            if (sheet?.items?.length) {
-              return sheet.items.slice(0, 12).map((it) => ({
-                item: `${it.itemDescription || 'Item'}${it.quantity ? ` (${it.quantity} Pieces)` : ''}`,
-                amount: Math.round(it.totalPrice || 0),
-              }))
-            }
+        for (const key of candidates) {
+          const sheet = storedMonths[key]
+          if (sheet?.items?.length) {
+            return sheet.items.slice(0, 12).map((it) => ({
+              item: `${it.itemDescription || 'Item'}${it.quantity ? ` (${it.quantity} Pieces)` : ''}`,
+              amount: Math.round(it.totalPrice || 0),
+            }))
           }
         }
       } catch (err) {
@@ -757,14 +731,11 @@ class ExpenseService {
   }
 
   getCostStatement(monthStr: string = '2026-08'): MonthlyCostStatement {
-    if (this.isClient()) {
-      try {
-        const stored = localStorage.getItem(`${STORAGE_KEY_COST_STATEMENT}_${monthStr}`)
-        if (stored) return JSON.parse(stored)
-      } catch (err) {
-        console.error(err)
-      }
-    }
+    const stored = accountsRead<MonthlyCostStatement | null>(
+      `${STORAGE_KEY_COST_STATEMENT}_${monthStr}`,
+      null
+    )
+    if (stored) return stored
     const live = this.buildCostStatement(monthStr)
     return {
       id: `cs-${monthStr}`,
@@ -791,20 +762,16 @@ class ExpenseService {
   }
 
   saveCostStatement(statement: MonthlyCostStatement): void {
-    if (this.isClient()) {
-      localStorage.setItem(
-        `${STORAGE_KEY_COST_STATEMENT}_${statement.month}`,
-        JSON.stringify(statement)
-      )
-      this.notifyDataChanged(statement.month)
-    }
+    if (!this.isClient()) return
+    accountsWrite(`${STORAGE_KEY_COST_STATEMENT}_${statement.month}`, statement)
+    this.notifyDataChanged(statement.month)
   }
 
   resetCostStatement(monthStr: string = '2026-08'): CostStatementModel {
     if (this.isClient()) {
-      localStorage.removeItem(`${STORAGE_KEY_COST_OVERRIDES}_${monthStr}`)
-      localStorage.removeItem(`${STORAGE_KEY_COST_STATEMENT}_${monthStr}`)
-      localStorage.removeItem('sara_textile_cost_statement_editable_v1')
+      accountsRemove(`${STORAGE_KEY_COST_OVERRIDES}_${monthStr}`)
+      accountsRemove(`${STORAGE_KEY_COST_STATEMENT}_${monthStr}`)
+      accountsRemove('sara_textile_cost_statement_editable_v1')
     }
     const model = this.buildCostStatement(monthStr)
     this.notifyDataChanged(monthStr)

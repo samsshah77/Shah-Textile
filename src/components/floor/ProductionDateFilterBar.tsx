@@ -16,6 +16,8 @@ interface ProductionDateFilterBarProps {
   setSelectedMonth: (month: string) => void
   onOpenNewDayModal: () => void
   canEdit: boolean
+  /** When today's sheet already exists, hide Start New Day (no blank re-generate). */
+  showStartNewDay?: boolean
 }
 
 function shortDayLabel(dateStr: string) {
@@ -50,6 +52,7 @@ export function ProductionDateFilterBar({
   setSelectedMonth,
   onOpenNewDayModal,
   canEdit,
+  showStartNewDay = true,
 }: ProductionDateFilterBarProps) {
   const isToday = selectedDate === PRODUCTION_TODAY
   const isYesterday = selectedDate === PRODUCTION_YESTERDAY
@@ -120,29 +123,13 @@ export function ProductionDateFilterBar({
             <div className="btn-group btn-group-sm" role="group" aria-label="Month">
               <button
                 type="button"
-                className={cn(
-                  smBtn,
-                  selectedMonth === '2026-09' ? 'btn-dark' : 'btn-outline-secondary'
-                )}
+                className={cn(smBtn, 'btn-dark')}
                 onClick={() => {
                   setSelectedMonth('2026-09')
                   if (!selectedDate.startsWith('2026-09')) setSelectedDate(PRODUCTION_YESTERDAY)
                 }}
               >
                 Sept 2026
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  smBtn,
-                  selectedMonth === '2026-08' ? 'btn-dark' : 'btn-outline-secondary'
-                )}
-                onClick={() => {
-                  setSelectedMonth('2026-08')
-                  if (!selectedDate.startsWith('2026-08')) setSelectedDate('2026-08-31')
-                }}
-              >
-                Aug 2026
               </button>
             </div>
           </div>
@@ -179,7 +166,7 @@ export function ProductionDateFilterBar({
               )}
             </div>
 
-            {canEdit && (
+            {canEdit && showStartNewDay && (
               <button
                 type="button"
                 onClick={onOpenNewDayModal}

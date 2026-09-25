@@ -138,7 +138,7 @@ export function LoomDataRow({
           <span>•</span>
           <span>{entry.widthInch}&quot;</span>
           <span>•</span>
-          <span>{entry.gsm} GSM</span>
+          <span>{typeof entry.gsm === 'number' && entry.gsm > 0 ? entry.gsm.toFixed(2) : (entry.gsm ?? '—')} GSM</span>
           {entry.reed > 0 && (
             <>
               <span>•</span>

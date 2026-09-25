@@ -1,8 +1,12 @@
 import { LoomCategory, LoomStatus } from '@/types/loom'
-import { calculateProductionMetrics, DailyLoomProductionEntry } from '@/types/production'
+import {
+  calculateProductionMetrics,
+  DailyLoomProductionEntry,
+  type MonthlyMatrixDay,
+} from '@/types/production'
 import { INITIAL_34_LOOMS_CONFIG } from '@/constants/looms-init'
 import { getExcelBeamStock, getExcelWeftStock, getExcelDailyLoomsForDate } from '@/data/productionData'
-import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
+import { PRODUCTION_TODAY, PRODUCTION_TODAY_MONTH, PRODUCTION_YESTERDAY } from '@/constants/productionCalendar'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 
 /** 1 kg = 2.2046 lbs → kg = lbs / 2.2046 */
@@ -105,6 +109,62 @@ export interface QualityMaster {
   pick: number
   widthInch: number
   gsm: number
+  status?: 'ACTIVE' | 'ENDED'
+  /** YYYY-MM-DD when quality was ended */
+  endedOn?: string | null
+}
+
+function normalizeQuality(q: QualityMaster): QualityMaster {
+  const status = q.status === 'ENDED' ? 'ENDED' : 'ACTIVE'
+  return {
+    ...q,
+    status,
+    endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
+  }
+}
+
+/** Order quality master rows to match loom allotment (Loom 1 → N first appearance). */
+export function orderQualitiesByLoomAllotment(
+  qualities: QualityMaster[],
+  looms: LoomMaster[],
+  entries?: { loomNumber: number; qualityName: string }[]
+): QualityMaster[] {
+  const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const ordered: QualityMaster[] = []
+  const seen = new Set<string>()
+  const sortedLooms = [...looms].sort((a, b) => a.loomNumber - b.loomNumber)
+
+  for (const l of sortedLooms) {
+    let q = l.qualityId ? qualities.find((item) => item.id === l.qualityId) : undefined
+    if (!q && entries?.length) {
+      const entry = entries.find((e) => e.loomNumber === l.loomNumber)
+      if (entry?.qualityName) {
+        q = qualities.find((item) => clean(item.name) === clean(entry.qualityName))
+      }
+    }
+    if (q && !seen.has(q.id)) {
+      seen.add(q.id)
+      ordered.push(q)
+    }
+  }
+
+  if (entries?.length) {
+    for (const e of [...entries].sort((a, b) => a.loomNumber - b.loomNumber)) {
+      const q = qualities.find((item) => clean(item.name) === clean(e.qualityName))
+      if (q && !seen.has(q.id)) {
+        seen.add(q.id)
+        ordered.push(q)
+      }
+    }
+  }
+
+  for (const q of qualities) {
+    if (!seen.has(q.id)) {
+      seen.add(q.id)
+      ordered.push(q)
+    }
+  }
+  return ordered
 }
 
 export function kgToLbs(kg: number) {
@@ -483,8 +543,8 @@ function seedYarnIssuances(): YarnLoomIssuance[] {
       loomNumber: 14,
       issuedKg: 125,
       pick: 68,
-      date: '2026-08-30',
-      createdAt: '2026-08-30T09:15:00Z',
+      date: '2026-09-12',
+      createdAt: '2026-09-12T09:15:00Z',
     },
     {
       id: 'iss-14',
@@ -493,8 +553,8 @@ function seedYarnIssuances(): YarnLoomIssuance[] {
       loomNumber: 15,
       issuedKg: 100,
       pick: 60,
-      date: '2026-08-25',
-      createdAt: '2026-08-25T11:00:00Z',
+      date: '2026-09-11',
+      createdAt: '2026-09-11T11:00:00Z',
     },
     {
       id: 'iss-15',
@@ -503,8 +563,8 @@ function seedYarnIssuances(): YarnLoomIssuance[] {
       loomNumber: 16,
       issuedKg: 90,
       pick: 95,
-      date: '2026-08-20',
-      createdAt: '2026-08-20T07:30:00Z',
+      date: '2026-09-09',
+      createdAt: '2026-09-09T07:30:00Z',
     },
     {
       id: 'iss-16',
@@ -513,8 +573,8 @@ function seedYarnIssuances(): YarnLoomIssuance[] {
       loomNumber: 18,
       issuedKg: 110,
       pick: 64,
-      date: '2026-08-15',
-      createdAt: '2026-08-15T08:45:00Z',
+      date: '2026-09-05',
+      createdAt: '2026-09-05T08:45:00Z',
     },
   ]
 }
@@ -623,48 +683,48 @@ function seedYarnMovements(): YarnMovementRecord[] {
       type: 'INWARD',
       yarnId: 'yarn-4',
       yarnType: '24/1 Pv China',
-      date: '2026-08-28',
+      date: '2026-09-14',
       weightKg: 750,
       weightLbs: kgToLbs(750),
       bags: 30,
       lotOrSupplier: 'Lot #405 · Master Spinning',
-      createdAt: '2026-08-28T10:00:00Z',
+      createdAt: '2026-09-14T10:00:00Z',
     },
     {
       id: 'mov-in-9',
       type: 'INWARD',
       yarnId: 'yarn-3',
       yarnType: '30/1 Pv China',
-      date: '2026-08-18',
+      date: '2026-09-07',
       weightKg: 875,
       weightLbs: kgToLbs(875),
       bags: 35,
       lotOrSupplier: 'Lot #308 · Crescent',
-      createdAt: '2026-08-18T08:00:00Z',
+      createdAt: '2026-09-07T08:00:00Z',
     },
     {
       id: 'mov-in-10',
       type: 'INWARD',
       yarnId: 'yarn-2',
       yarnType: '45/1-Pv-China',
-      date: '2026-08-10',
+      date: '2026-09-03',
       weightKg: 850,
       weightLbs: kgToLbs(850),
       bags: 34,
       lotOrSupplier: 'Lot #204 · Sapphire',
-      createdAt: '2026-08-10T09:30:00Z',
+      createdAt: '2026-09-03T09:30:00Z',
     },
     {
       id: 'mov-in-11',
       type: 'INWARD',
       yarnId: 'yarn-1',
       yarnType: '20/1 Pv China',
-      date: '2026-08-02',
+      date: '2026-09-01',
       weightKg: 800,
       weightLbs: kgToLbs(800),
       bags: 32,
       lotOrSupplier: 'Lot #101 · Nishat Mills',
-      createdAt: '2026-08-02T07:45:00Z',
+      createdAt: '2026-09-01T07:45:00Z',
     },
   ]
 
@@ -796,6 +856,35 @@ export async function preloadFloorSheet(dateStr: string): Promise<void> {
   if (entries) memoryStore.set(key, JSON.stringify(entries))
 }
 
+/** Dates that have a saved production sheet in memory (after hydrate). */
+export function listPersistedSheetDates(): string[] {
+  const dates: string[] = []
+  const prefix = `${KEY_SHEET}_`
+  for (const key of memoryStore.keys()) {
+    if (key.startsWith(prefix)) {
+      dates.push(key.slice(prefix.length))
+    }
+  }
+  return dates.sort()
+}
+
+/** Prefetch every day of a month into memory (DB getSheet per date). */
+export async function preloadMonthSheets(monthStr: string = PRODUCTION_TODAY_MONTH): Promise<void> {
+  if (!isClient()) return
+  const [y, m] = monthStr.split('-').map(Number)
+  if (!y || !m) return
+  const daysInMonth = new Date(y, m, 0).getDate()
+  const todayDay =
+    monthStr === PRODUCTION_TODAY_MONTH ? Number(PRODUCTION_TODAY.slice(-2)) : daysInMonth
+  const lastDay = Math.min(daysInMonth, Math.max(todayDay, 1))
+  await Promise.all(
+    Array.from({ length: lastDay }, (_, i) => {
+      const day = String(i + 1).padStart(2, '0')
+      return preloadFloorSheet(`${monthStr}-${day}`)
+    })
+  )
+}
+
 class ProductionMastersService {
   getLooms(): LoomMaster[] {
     const looms = loadJson(KEY_LOOMS, seedLooms)
@@ -856,6 +945,11 @@ class ProductionMastersService {
       return merged
     })
     this.saveLooms(looms)
+
+    // Keep Quality Master list order = loom allotment order (same as production sheet)
+    if (patch.qualityId !== undefined) {
+      this.saveQualities(orderQualitiesByLoomAllotment(this.getQualities(), looms))
+    }
 
     // Loom condition → today's Production Sheet (row color via status + remarks)
     if (patch.status) {
@@ -950,6 +1044,28 @@ class ProductionMastersService {
     })
     this.saveLooms(looms)
     return looms
+  }
+
+  deleteLoom(loomNumber: number): LoomMaster[] {
+    const looms = this.getLooms().filter((l) => l.loomNumber !== loomNumber)
+    this.saveLooms(looms)
+    const beams = this.getBeams().map((b) => {
+      if (String(b.usedInLoom) !== String(loomNumber)) return b
+      return normalizeBeam({
+        ...b,
+        usedInLoom: null,
+        location: 'STORE',
+        mountedOn: null,
+      })
+    })
+    this.saveBeams(beams)
+    return looms
+  }
+
+  deleteBeam(beamNo: string): BeamMaster[] {
+    const beams = this.getBeams().filter((b) => b.beamNo !== beamNo)
+    this.saveBeams(beams)
+    return beams
   }
 
   getBeams(): BeamMaster[] {
@@ -1164,6 +1280,12 @@ class ProductionMastersService {
     return yarn
   }
 
+  deleteYarn(id: string): YarnMaster[] {
+    const yarn = this.getYarn().filter((y) => y.id !== id)
+    this.saveYarn(yarn)
+    return yarn
+  }
+
   getYarnIssuances(yarnId?: string): YarnLoomIssuance[] {
     const list = loadJson(KEY_YARN_ISSUANCE, seedYarnIssuances)
     if (yarnId) {
@@ -1295,7 +1417,12 @@ class ProductionMastersService {
   }
 
   getQualities(): QualityMaster[] {
-    return loadJson(KEY_QUALITY, seedQualities)
+    return loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality)
+  }
+
+  /** Qualities ordered by loom allotment (Loom 1 → N). */
+  getQualitiesOrdered(entries?: DailyLoomProductionEntry[]): QualityMaster[] {
+    return orderQualitiesByLoomAllotment(this.getQualities(), this.getLooms(), entries)
   }
 
   saveQualities(qualities: QualityMaster[]) {
@@ -1303,24 +1430,49 @@ class ProductionMastersService {
   }
 
   updateQuality(id: string, patch: Partial<QualityMaster>): QualityMaster[] {
-    const qualities = this.getQualities().map((q) => (q.id === id ? { ...q, ...patch } : q))
+    const qualities = this.getQualities().map((q) => {
+      if (q.id !== id) return q
+      return normalizeQuality({
+        ...q,
+        ...patch,
+        gsm: patch.gsm !== undefined ? Number(Number(patch.gsm).toFixed(2)) : q.gsm,
+      })
+    })
     this.saveQualities(qualities)
     return qualities
   }
 
   addQuality(partial?: Partial<QualityMaster>): QualityMaster[] {
     const qualities = this.getQualities()
-    qualities.push({
-      id: `q-${Date.now()}`,
-      name: partial?.name || 'New Quality',
-      fabricType: partial?.fabricType || 'Suiting',
-      warpYarn: partial?.warpYarn || '20/1',
-      weftYarn: partial?.weftYarn || '20/1',
-      reed: partial?.reed ?? 120,
-      pick: partial?.pick ?? 60,
-      widthInch: partial?.widthInch ?? 66,
-      gsm: partial?.gsm ?? 0,
-    })
+    qualities.push(
+      normalizeQuality({
+        id: `q-${Date.now()}`,
+        name: partial?.name || 'New Quality',
+        fabricType: partial?.fabricType || 'Suiting',
+        warpYarn: partial?.warpYarn || '20/1',
+        weftYarn: partial?.weftYarn || '20/1',
+        reed: partial?.reed ?? 120,
+        pick: partial?.pick ?? 60,
+        widthInch: partial?.widthInch ?? 66,
+        gsm: partial?.gsm !== undefined ? Number(Number(partial.gsm).toFixed(2)) : 0,
+        status: partial?.status ?? 'ACTIVE',
+        endedOn: partial?.endedOn ?? null,
+      })
+    )
+    this.saveQualities(qualities)
+    return qualities
+  }
+
+  endQuality(id: string, endedOn: string): QualityMaster[] {
+    return this.updateQuality(id, { status: 'ENDED', endedOn })
+  }
+
+  restartQuality(id: string): QualityMaster[] {
+    return this.updateQuality(id, { status: 'ACTIVE', endedOn: null })
+  }
+
+  deleteQuality(id: string): QualityMaster[] {
+    const qualities = this.getQualities().filter((q) => q.id !== id)
     this.saveQualities(qualities)
     return qualities
   }
@@ -1329,8 +1481,33 @@ class ProductionMastersService {
     return `${KEY_SHEET}_${dateStr}`
   }
 
+  /** True when a production sheet was explicitly saved/seeded for this date (not a view-only rebuild). */
+  hasPersistedSheet(dateStr: string): boolean {
+    return this.peekSheetDay(dateStr) != null
+  }
+
+  private peekSheetDay(dateStr: string): DailyLoomProductionEntry[] | null {
+    const key = this.sheetKey(dateStr)
+    try {
+      const raw = memoryStore.get(key)
+      if (raw) return JSON.parse(raw) as DailyLoomProductionEntry[]
+    } catch {
+      // ignore
+    }
+    return null
+  }
+
+  /**
+   * Load saved meters for a day. Prefer persisted sheet; for past dates without a DB sheet,
+   * fall back to Excel history. Never invent a blank "today" file just by opening the date.
+   */
   private loadSheetDay(dateStr: string): DailyLoomProductionEntry[] {
-    return loadJson(this.sheetKey(dateStr), () => getExcelDailyLoomsForDate(dateStr))
+    const peeked = this.peekSheetDay(dateStr)
+    if (peeked) return peeked
+    if (dateStr < PRODUCTION_TODAY) {
+      return getExcelDailyLoomsForDate(dateStr)
+    }
+    return []
   }
 
   /**
@@ -1343,13 +1520,21 @@ class ProductionMastersService {
    *   100% 24h = RPM/Pick * 60/39.38 * 24
    *   Eff 24h = (A+B) / 100%24h * 100
    *   Loss 24h = 100%24h - (A+B)
+   *
+   * Viewing a date does NOT create a blank DB/local sheet. Persist only when:
+   * - a sheet already exists for that date, or
+   * - `{ persist: true }` (Start New Day / first edit).
    */
-  buildSheetForDate(dateStr: string = PRODUCTION_TODAY): DailyLoomProductionEntry[] {
+  buildSheetForDate(
+    dateStr: string = PRODUCTION_TODAY,
+    opts?: { persist?: boolean }
+  ): DailyLoomProductionEntry[] {
     const looms = this.getLooms().filter((l) => l.isActive)
     const beams = this.getBeams()
     const yarns = this.getYarn()
     const qualities = this.getQualities()
     const issuances = this.getYarnIssuances()
+    const hadPersisted = this.peekSheetDay(dateStr) != null
     const prevByLoom = new Map(this.loadSheetDay(dateStr).map((e) => [e.loomNumber, e]))
 
     // Find the latest yarn issuance for each loom
@@ -1366,8 +1551,9 @@ class ProductionMastersService {
       const quality = qualities.find((q) => q.id === loom.qualityId) || null
       const loomIss = latestIssuanceByLoom.get(loom.loomNumber)
       const weft = (loomIss ? yarns.find((y) => y.id === loomIss.yarnId) : null) || yarns.find((y) => y.id === loom.weftYarnId)
-      const pick = loomIss?.pick || quality?.pick || 60
-      const reed = beam?.reed || quality?.reed || 60
+      // Quality master is source of truth for recipe (Pick/Reed/Warp/Weft/Width/GSM) — same as Quality tab
+      const pick = quality?.pick || loomIss?.pick || 60
+      const reed = quality?.reed || beam?.reed || 60
       const rpm = loom.defaultRpm
       const remarks =
         prev?.remarks ||
@@ -1378,7 +1564,7 @@ class ProductionMastersService {
       const rollerHours =
         prev?.rollerHours != null
           ? prev.rollerHours
-          : status === 'BEAM_END' || status === 'STOPPED'
+          : status === 'BEAM_END' || status === 'STOPPED' || dateStr >= PRODUCTION_TODAY
             ? 0
             : 24
       const shiftA = prev?.shiftAMeters ?? 0
@@ -1400,13 +1586,13 @@ class ProductionMastersService {
         model: loom.model,
         qualityName: quality?.name || '—',
         fabricType: quality?.fabricType || '',
-        warpYarn: beam?.warp || quality?.warpYarn || '',
-        weftYarn: weft?.yarnType || quality?.weftYarn || '',
+        warpYarn: quality?.warpYarn || beam?.warp || '',
+        weftYarn: quality?.weftYarn || weft?.yarnType || '',
         rpm,
         reed,
         pick,
-        widthInch: beam?.width || quality?.widthInch || 66,
-        gsm: prev?.gsm ?? quality?.gsm ?? 0,
+        widthInch: quality?.widthInch || beam?.width || 66,
+        gsm: quality?.gsm ?? prev?.gsm ?? 0,
         rollerHours,
         runningHours: rollerHours,
         runningTheoretical: metrics.theoreticalMeters,
@@ -1420,11 +1606,13 @@ class ProductionMastersService {
         loss24h: metrics.loss24h,
         status,
         remarks,
-        lot: prev?.lot || beam?.beamNo || '',
+        lot: prev != null ? prev.lot || '' : beam?.beamNo || '',
       } satisfies DailyLoomProductionEntry
     })
 
-    saveJson(this.sheetKey(dateStr), entries)
+    if (opts?.persist || hadPersisted) {
+      saveJson(this.sheetKey(dateStr), entries)
+    }
     return entries
   }
 
@@ -1433,7 +1621,7 @@ class ProductionMastersService {
     loomNumber: number,
     patch: Partial<DailyLoomProductionEntry>
   ): DailyLoomProductionEntry[] {
-    const current = this.buildSheetForDate(dateStr)
+    const current = this.buildSheetForDate(dateStr, { persist: true })
     const next = current.map((e) => {
       if (e.loomNumber !== loomNumber) return e
       const merged = { ...e, ...patch }
@@ -1472,7 +1660,84 @@ class ProductionMastersService {
         // ignore
       }
     }
-    return this.buildSheetForDate(dateStr)
+    return this.buildSheetForDate(dateStr, { persist: true })
+  }
+
+  /**
+   * Loom × day meters for Total tracking — only real floor sheets (seeded / started days).
+   * Days without a persisted sheet stay empty (UI shows —).
+   */
+  buildMonthlyMatrix(monthStr: string = PRODUCTION_TODAY_MONTH): {
+    days: MonthlyMatrixDay[]
+    loomTotals: Record<number, number>
+    grandTotalMeters: number
+    avgPerDay: number
+  } {
+    const [y, m] = monthStr.split('-').map(Number)
+    const daysInMonth = y && m ? new Date(y, m, 0).getDate() : 30
+    const todayDay =
+      monthStr === PRODUCTION_TODAY_MONTH ? Number(PRODUCTION_TODAY.slice(-2)) : daysInMonth
+    const lastDay = Math.min(daysInMonth, Math.max(todayDay || 1, 1))
+
+    const loomNumbers = this.getLooms()
+      .filter((l) => l.isActive)
+      .map((l) => l.loomNumber)
+      .sort((a, b) => a - b)
+
+    const loomTotals: Record<number, number> = {}
+    loomNumbers.forEach((n) => {
+      loomTotals[n] = 0
+    })
+
+    const days: MonthlyMatrixDay[] = []
+    for (let day = 1; day <= lastDay; day++) {
+      const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`
+      const peeked = this.peekSheetDay(dateStr)
+      const loomMeters: Record<number, number> = {}
+      loomNumbers.forEach((n) => {
+        loomMeters[n] = 0
+      })
+      let totalMeters = 0
+      let entries = peeked
+      let hasSheet = peeked != null && peeked.length > 0
+
+      // Seeded yesterday sheet: allow Excel dailyHistory if DB sheet not hydrated yet
+      if (!hasSheet && dateStr === PRODUCTION_YESTERDAY) {
+        const excel = getExcelDailyLoomsForDate(dateStr)
+        const anyMeters = excel.some(
+          (e) =>
+            (Number(e.totalMeters) || 0) > 0 ||
+            (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0) > 0
+        )
+        if (anyMeters) {
+          entries = excel
+          hasSheet = true
+        }
+      }
+
+      if (hasSheet && entries) {
+        for (const e of entries) {
+          const meters =
+            e.totalMeters != null
+              ? Number(e.totalMeters) || 0
+              : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
+          loomMeters[e.loomNumber] = meters
+          loomTotals[e.loomNumber] = (loomTotals[e.loomNumber] || 0) + meters
+          totalMeters += meters
+        }
+      }
+
+      days.push({ day, date: dateStr, totalMeters, loomMeters, hasSheet })
+    }
+
+    const daysWithSheet = days.filter((d) => d.hasSheet).length
+    const grandTotalMeters = days.reduce((s, d) => s + (d.totalMeters || 0), 0)
+    return {
+      days,
+      loomTotals,
+      grandTotalMeters,
+      avgPerDay: daysWithSheet > 0 ? grandTotalMeters / daysWithSheet : 0,
+    }
   }
 }
 

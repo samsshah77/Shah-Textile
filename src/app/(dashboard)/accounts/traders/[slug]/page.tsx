@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { expenseService, TraderSummary } from '@/services/expenseService'
+import { accountsRead, accountsRemove, accountsWrite } from '@/services/accountsStore'
 import { InventoryPurchaseEntry } from '@/types/expense'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import {
@@ -57,18 +58,11 @@ export default function TraderSpecificLedgerPage() {
     const data = expenseService.getTraderBySlug(slug)
     if (data) {
       setTrader(data)
-      // Check localStorage for customized entries
-      if (typeof window !== 'undefined') {
-        try {
-          const stored = localStorage.getItem(storageKey)
-          if (stored) {
-            setEntries(JSON.parse(stored))
-            setLoading(false)
-            return
-          }
-        } catch (e) {
-          console.error(e)
-        }
+      const stored = accountsRead<InventoryPurchaseEntry[] | null>(storageKey, null)
+      if (stored) {
+        setEntries(stored)
+        setLoading(false)
+        return
       }
       setEntries(data.entries)
     }
@@ -103,11 +97,8 @@ export default function TraderSpecificLedgerPage() {
     setEntries((prev) => prev.filter((item) => item.id !== id))
   }
 
-  // Save to LocalStorage
   const handleSave = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(storageKey, JSON.stringify(entries))
-    }
+    accountsWrite(storageKey, entries)
     setIsSaved(true)
     setTimeout(() => setIsSaved(false), 2500)
   }
@@ -115,9 +106,7 @@ export default function TraderSpecificLedgerPage() {
   // Reset to Excel Defaults
   const handleReset = () => {
     if (confirm('Reset ledger to the authentic Excel original records?')) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(storageKey)
-      }
+      accountsRemove(storageKey)
       const data = expenseService.getTraderBySlug(slug)
       if (data) {
         setEntries(data.entries)
@@ -155,9 +144,7 @@ export default function TraderSpecificLedgerPage() {
 
     const updated = [...entries, newRecord]
     setEntries(updated)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(storageKey, JSON.stringify(updated))
-    }
+    accountsWrite(storageKey, updated)
 
     setBillNo('')
     setInwardNo('')

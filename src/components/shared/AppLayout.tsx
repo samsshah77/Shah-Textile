@@ -9,6 +9,7 @@ import { Sidebar } from '@/components/shared/Sidebar'
 import { Header } from '@/components/shared/Header'
 import { ExcelSheetTabBar } from '@/components/payroll/ExcelSheetTabBar'
 import { AdminLteAssets } from '@/components/shared/AdminLteAssets'
+import { NavigationProgress } from '@/components/shared/NavigationProgress'
 
 const BODY_ERP_CLASSES = ['layout-fixed', 'sidebar-expand-lg', 'bg-body-tertiary'] as const
 
@@ -90,6 +91,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <NavigationProgress />
       {isLoggingOut && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center"

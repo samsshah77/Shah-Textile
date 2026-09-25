@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { payrollService } from '@/services/payrollService'
 import { EfficiencyIncentiveRecord, LoomCategoryFilter, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
-import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
+import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
@@ -120,6 +120,14 @@ export default function TechnicalEfficiencyPage() {
     const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setIncentiveList(renumbered)
     payrollService.saveEfficiencyIncentives(renumbered)
+  }
+
+  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
+    if (!canEditAccounts) return
+    const next = reorderSerialRows(incentiveList, index, direction)
+    if (!next) return
+    setIncentiveList(next)
+    payrollService.saveEfficiencyIncentives(next)
   }
 
   // Delete row and renumber
@@ -366,11 +374,13 @@ export default function TechnicalEfficiencyPage() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {incentiveList.map((e, idx) => (
                 <tr key={e.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                  {/* S.# with Hover Row Insertion */}
                   <SerialCellWithInsert
                     serialNo={e.serialNo}
                     index={idx}
-                    onInsertRow={handleInsertRow}
+                    onMoveUp={(i) => handleMoveRow(i, 'up')}
+                    onMoveDown={(i) => handleMoveRow(i, 'down')}
+                    canMoveUp={idx > 0}
+                    canMoveDown={idx < incentiveList.length - 1}
                   />
                   
                   {/* Loom Group */}

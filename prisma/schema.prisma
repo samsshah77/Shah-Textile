@@ -437,3 +437,11 @@ model PayrollStore {
   @@map("payroll_store")
 }
 
+model AccountsStore {
+  key       String   @id
+  payload   Json
+  updatedAt DateTime @updatedAt
+
+  @@map("accounts_store")
+}
+

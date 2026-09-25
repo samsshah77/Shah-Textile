@@ -23,6 +23,8 @@ import {
   Check,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { accountsRead, accountsWrite } from '@/services/accountsStore'
+import { ACCOUNTS_KEYS } from '@/lib/accountsKeys'
 
 const MONTH_KEYS = [
   'January',
@@ -36,24 +38,16 @@ const MONTH_KEYS = [
   'September',
 ] as const
 
-const STORAGE_KEY_INVENTORY = 'sara_textile_inventory_control_v2'
+const STORAGE_KEY_INVENTORY = ACCOUNTS_KEYS.INVENTORY_CONTROL
 
 export default function InventoryInwardPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>('August')
   const [search, setSearch] = useState('')
   const [filterMachine, setFilterMachine] = useState<string>('ALL')
 
-  const [monthsData, setMonthsData] = useState<Record<string, MonthlyInventorySheet>>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY_INVENTORY)
-        if (stored) return JSON.parse(stored)
-      } catch (err) {
-        console.error(err)
-      }
-    }
-    return accountsData.inventoryControl.months
-  })
+  const [monthsData, setMonthsData] = useState<Record<string, MonthlyInventorySheet>>(() =>
+    accountsRead(STORAGE_KEY_INVENTORY, accountsData.inventoryControl.months)
+  )
 
   const [isSaved, setIsSaved] = useState(false)
 
@@ -150,8 +144,8 @@ export default function InventoryInwardPage() {
   // Persistence helpers
   const saveMonthsData = (updated: Record<string, MonthlyInventorySheet>) => {
     setMonthsData(updated)
+    accountsWrite(STORAGE_KEY_INVENTORY, updated)
     if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(updated))
       try {
         window.dispatchEvent(new CustomEvent('accounts_synced', { detail: { source: 'inventory' } }))
       } catch (err) {
@@ -165,9 +159,6 @@ export default function InventoryInwardPage() {
   const handleReset = () => {
     if (confirm('Reset Store Inventory Control to authentic Excel defaults (418 purchases • PKR 4,070,962)?')) {
       saveMonthsData(accountsData.inventoryControl.months)
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(STORAGE_KEY_INVENTORY)
-      }
     }
   }
 

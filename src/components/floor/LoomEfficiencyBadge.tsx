@@ -45,7 +45,7 @@ export function LoomEfficiencyBadge({
             isSuboptimal && 'bg-rose-500'
           )}
         />
-        <span>{efficiency.toFixed(1)}%</span>
+        <span>{Math.round(efficiency)}%</span>
         {isHigh && <Sparkles className="size-3.5 text-blue-600 dark:text-blue-400 shrink-0" />}
         {isSuboptimal && <AlertCircle className="size-3.5 text-rose-600 dark:text-rose-400 shrink-0" />}
       </div>

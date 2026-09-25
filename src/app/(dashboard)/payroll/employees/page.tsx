@@ -2,57 +2,70 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { payrollService } from '@/services/payrollService'
+import {
+  payrollService,
+  isGeneralWagesEmployee,
+  resolveResignedAt,
+} from '@/services/payrollService'
 import { EmployeeProfile, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
-import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
+import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import {
-  Users,
   Printer,
-  DollarSign,
-  Clock,
-  Building,
-  Plus,
-  Trash2,
   RotateCcw,
   Save,
   CheckCircle2,
   Lock,
   IdCard,
-  FileSpreadsheet,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 
 const DEFAULT_GW_WIDTHS: Record<string, number> = {
-  serial: 52,
-  name: 190,
-  designation: 150,
+  serial: 48,
+  name: 180,
+  designation: 140,
   dutyHrs: 70,
-  shiftFromTo: 85,
-  salary: 105,
+  shiftFromTo: 75,
+  salary: 95,
   ratePerDay31: 85,
-  ratePerHr31: 80,
+  ratePerHr31: 75,
   ratePerDay30: 85,
-  ratePerHr30: 80,
+  ratePerHr30: 75,
   ratePerDay28: 85,
-  ratePerHr28: 80,
-  doj: 105,
-  contractStatus: 130,
-  remarks: 160,
-  action: 48,
+  ratePerHr28: 75,
+  doj: 95,
+  contractStatus: 125,
+  remarks: 140,
 }
+
+const COMMON_GW_DESIGNATIONS = [
+  'Quality Controller',
+  'Supervisor',
+  'Incharge',
+  'Senior Technician',
+  'Electrician',
+  'Assistant Technician',
+  'Oil Man',
+  'Time Keeper',
+  'Folding',
+  'Sweeper',
+  'Contractor',
+]
 
 export default function GeneralWagesPage() {
   const { canEditAccounts } = useAuth()
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [statusNotice, setStatusNotice] = useState<string | null>(null)
+
   const crossSheetSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const CROSS_SHEET_FIELDS: Array<keyof EmployeeProfile> = ['name', 'designation', 'salary', 'dutyHrs']
 
@@ -60,13 +73,27 @@ export default function GeneralWagesPage() {
     payrollService.saveEmployees(list)
   }
 
-  const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
-    'general_wages_excel_master_v3',
+  const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
+    'general_wages_excel_exact_v1',
     DEFAULT_GW_WIDTHS
   )
 
   const reload = () => {
-    setEmployees(payrollService.getEmployees())
+    const all = payrollService.getEmployees()
+    const activeGw = all
+      .filter(isGeneralWagesEmployee)
+      .sort((a, b) => a.serialNo - b.serialNo)
+    setEmployees(activeGw)
+  }
+
+  // Move employee up/down and permanently persist the new order
+  const handleMove = (empId: string, direction: 'up' | 'down') => {
+    if (!canEditAccounts) return
+    const scopeIds = employees.map((e) => e.id)
+    payrollService.moveEmployee(empId, direction, scopeIds)
+    reload()
+    setStatusNotice('Row position updated and saved.')
+    setTimeout(() => setStatusNotice(null), 2000)
   }
 
   useEffect(() => {
@@ -79,7 +106,7 @@ export default function GeneralWagesPage() {
     }
   }, [])
 
-  // Handle live inline editing on any cell with automatic recalculation of 31, 30, 28 day rates
+  // Handle live inline editing on any cell
   const handleCellChange = (
     index: number,
     field: keyof EmployeeProfile,
@@ -117,46 +144,6 @@ export default function GeneralWagesPage() {
       }
       return updated
     })
-  }
-
-  // Insert row anywhere with auto-renumber
-  const handleInsertRow = (insertIdx?: number) => {
-    if (!canEditAccounts) return
-    const newRecord: EmployeeProfile = {
-      id: `emp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      serialNo: insertIdx !== undefined ? insertIdx + 2 : employees.length + 1,
-      name: 'New Employee',
-      designation: 'Worker',
-      dutyHrs: 8,
-      shiftFromTo: '9 to 5',
-      salary: 30000,
-      ratePerDay31: Math.round((30000 / 31) * 100) / 100,
-      ratePerDay30: 1000,
-      ratePerHr30: Math.round((1000 / 8) * 100) / 100,
-      ratePerDay28: Math.round((30000 / 28) * 100) / 100,
-      doj: new Date().toISOString().split('T')[0],
-      contractStatus: 'Company Contract',
-      remarks: '',
-    }
-
-    const updated = [...employees]
-    if (insertIdx !== undefined) {
-      updated.splice(insertIdx + 1, 0, newRecord)
-    } else {
-      updated.push(newRecord)
-    }
-
-    const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setEmployees(renumbered)
-    persistRoster(renumbered)
-  }
-
-  // Delete row and auto-renumber
-  const handleDeleteRow = (id: string) => {
-    if (!canEditAccounts) return
-    const updated = employees.filter((item) => item.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setEmployees(updated)
-    persistRoster(updated)
   }
 
   const handleAddCustomColumn = (col: CustomColumn) => {
@@ -203,7 +190,8 @@ export default function GeneralWagesPage() {
   const totalRatePerDay28 = employees.reduce((s, e) => s + (e.ratePerDay28 || Math.round(e.salary / 28)), 0)
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-4 pb-24 font-sans">
+      {/* Top Header & Actions - Hidden in Print */}
       <div className="print:hidden">
         <PageHeader
           title="General Wages Register"
@@ -214,7 +202,7 @@ export default function GeneralWagesPage() {
           ]}
           actions={
             <>
-              <Link href="/payroll/profiles" className="erp-btn-secondary">
+              <Link href="/payroll/profiles" className="erp-btn-secondary text-xs flex items-center gap-1.5">
                 <IdCard className="size-3.5 text-[#0066cc]" />
                 <span>HR Profiles</span>
               </Link>
@@ -253,7 +241,7 @@ export default function GeneralWagesPage() {
         <div className="flex items-center gap-2.5 p-3 rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 text-xs font-medium print:hidden">
           <Lock className="size-4 shrink-0 text-amber-600" />
           <span>
-            Edit Protection Active: Click <strong>&quot;Enable Editing&quot;</strong> in the top navigation bar to modify basic salaries, duty hours, shift timings, or insert employee rows.
+            Edit Protection Active: Click <strong>&quot;Enable Editing&quot;</strong> in the top navigation bar to modify basic salaries, duty hours, shift timings, or move employee rows.
           </span>
         </div>
       )}
@@ -265,523 +253,480 @@ export default function GeneralWagesPage() {
         </div>
       )}
 
-      {/* Interactive Live Spreadsheet Table (EXACT EXCEL GENERAL WAGES) */}
-      <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
-        {/* Print / Sheet Header */}
-        <div className="text-center border-b border-slate-200 pb-3 mb-4">
-          <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILE</h1>
-          <h2 className="text-xs font-semibold text-slate-600 mt-0.5">GENERAL WAGES REGISTER</h2>
-          <p className="text-[11px] text-slate-500 font-mono">Month: August-2026</p>
+      {statusNotice && (
+        <div className="flex items-center gap-2 rounded-md bg-blue-50 border border-blue-200 p-3 text-xs font-semibold text-blue-900 print:hidden animate-in fade-in">
+          <CheckCircle2 className="size-4 text-blue-600" />
+          <span>{statusNotice}</span>
         </div>
+      )}
 
-        <div className="overflow-x-auto rounded-md border border-slate-200">
-          <table
-            style={{
-              minWidth: `${Math.max(
-                1280,
-                Object.values(widths).reduce((s, w) => s + w, 0) +
-                  customColumns.reduce((s, c) => s + (c.width || 120), 0)
-              )}px`,
-            }}
-            className="w-full text-left border-collapse text-xs font-mono"
-          >
-            <thead>
-              {/* Row 1: Merged Excel Headers */}
-              <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600 text-center">
-                <th colSpan={6} className="border-r border-slate-200 py-2 px-3 text-left font-sans">
-                  Employee Profile
-                </th>
-                <th colSpan={2} className="border-r border-slate-200 py-2 px-2 bg-slate-100/70">
-                  31 days
-                </th>
-                <th colSpan={2} className="border-r border-slate-200 py-2 px-2 bg-slate-50">
-                  30 days
-                </th>
-                <th colSpan={2} className="border-r border-slate-200 py-2 px-2 bg-slate-100/70">
-                  28 days
-                </th>
-                <th colSpan={1} className="border-r border-slate-200 py-2 px-2 font-sans">
-                  D.O.J
-                </th>
-                <th colSpan={1} className="border-r border-slate-200 py-2 px-2 font-sans">
-                  Contract Status
-                </th>
-                <th colSpan={1} className="border-r border-slate-200 py-2 px-2 font-sans">
-                  Remarks
-                </th>
-                {customColumns.map((col) => (
-                  <th key={col.id} className="border-r border-slate-200 py-2 px-2 font-sans">
-                    {col.label}
-                  </th>
-                ))}
-                <th colSpan={1} className="py-2 px-1 print:hidden font-sans">
-                  Action
-                </th>
-              </tr>
 
-              {/* Row 2: Sub Headers */}
-              <tr className="bg-slate-50/80 border-b border-slate-200 font-semibold uppercase text-[10px] text-slate-600">
-                <ResizableTh
-                  columnKey="serial"
-                  width={widths.serial}
-                  minWidth={45}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-1 text-center"
-                  title="Hover row serial to insert row at position"
-                >
-                  S.No
-                </ResizableTh>
+      {/* EXACT EXCEL SPREADSHEET TABLE (Print-Friendly) */}
+      <div className="rounded-lg border border-slate-300 bg-white text-slate-900 p-4 shadow-xs print:border-none print:p-0 print:shadow-none overflow-hidden">
+        {/* Excel Header Box: Sara Textile */}
+        <div className="border border-slate-400 mb-0">
+          <div className="bg-[#f2eee7] dark:bg-slate-700 py-1.5 px-3 text-center border-b border-slate-400">
+            <h1 className="text-base font-bold uppercase text-slate-900 dark:text-white tracking-wider">
+              Sara Textile
+            </h1>
+          </div>
 
-                <ResizableTh
-                  columnKey="name"
-                  width={widths.name}
-                  minWidth={130}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-3 font-sans"
-                >
-                  Name
-                </ResizableTh>
-
-                <ResizableTh
-                  columnKey="designation"
-                  width={widths.designation}
-                  minWidth={110}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-3 font-sans"
-                >
-                  Designation
-                </ResizableTh>
-
-                <ResizableTh
-                  columnKey="dutyHrs"
-                  width={widths.dutyHrs}
-                  minWidth={60}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-1 text-center"
-                >
-                  Duty Hrs
-                </ResizableTh>
-
-                <ResizableTh
-                  columnKey="shiftFromTo"
-                  width={widths.shiftFromTo}
-                  minWidth={75}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-center"
-                >
-                  From to
-                </ResizableTh>
-
-                <ResizableTh
-                  columnKey="salary"
-                  width={widths.salary}
-                  minWidth={90}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-slate-900"
-                >
-                  Salary
-                </ResizableTh>
-
-                {/* 31 days */}
-                <ResizableTh
-                  columnKey="ratePerDay31"
-                  width={widths.ratePerDay31}
-                  minWidth={75}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right bg-slate-100/50"
-                >
-                  Per day
-                </ResizableTh>
-
-                <ResizableTh
-                  columnKey="ratePerHr31"
-                  width={widths.ratePerHr31}
-                  minWidth={70}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right bg-slate-100/50"
-                >
-                  Per Hr
-                </ResizableTh>
-
-                {/* 30 days */}
-                <ResizableTh
-                  columnKey="ratePerDay30"
-                  width={widths.ratePerDay30}
-                  minWidth={75}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right"
-                >
-                  Per day
-                </ResizableTh>
-
-                <ResizableTh
-                  columnKey="ratePerHr30"
-                  width={widths.ratePerHr30}
-                  minWidth={70}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right"
-                >
-                  Per Hr
-                </ResizableTh>
-
-                {/* 28 days */}
-                <ResizableTh
-                  columnKey="ratePerDay28"
-                  width={widths.ratePerDay28}
-                  minWidth={75}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right bg-slate-100/50"
-                >
-                  Per day
-                </ResizableTh>
-
-                <ResizableTh
-                  columnKey="ratePerHr28"
-                  width={widths.ratePerHr28}
-                  minWidth={70}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right bg-slate-100/50"
-                >
-                  Per Hr
-                </ResizableTh>
-
-                {/* D.O.J */}
-                <ResizableTh
-                  columnKey="doj"
-                  width={widths.doj}
-                  minWidth={95}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-center font-sans"
-                >
-                  D.O.J
-                </ResizableTh>
-
-                {/* Contract Status */}
-                <ResizableTh
-                  columnKey="contractStatus"
-                  width={widths.contractStatus}
-                  minWidth={110}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 font-sans"
-                >
-                  Contract Status
-                </ResizableTh>
-
-                {/* Remarks */}
-                <ResizableTh
-                  columnKey="remarks"
-                  width={widths.remarks}
-                  minWidth={120}
-                  onResize={setColumnWidth}
-                  onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 font-sans"
-                >
-                  Remarks
-                </ResizableTh>
-
-                {/* Custom Columns */}
-                {customColumns.map((col) => (
-                  <CustomColumnHeader
-                    key={col.id}
-                    column={col}
-                    onUpdateColumn={handleUpdateCustomColumn}
-                    onRemoveColumn={handleDeleteCustomColumn}
-                  />
-                ))}
-
-                <th className="py-2 px-1 text-center font-semibold text-slate-600 print:hidden font-sans">
-                  Act
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {employees.map((emp, idx) => {
-                const isPermanent = emp.contractStatus?.toLowerCase() === 'permanent'
-                const isResigned =
-                  emp.status === 'Resigned' ||
-                  Boolean(emp.remarks && emp.remarks.toLowerCase().includes('resign'))
-
-                return (
-                  <tr
-                    key={emp.id}
-                    className={cn(
-                      'hover:bg-slate-50/80 transition-colors',
-                      idx % 2 === 1 && 'bg-slate-50/40',
-                      isPermanent && 'bg-emerald-50/30',
-                      isResigned && 'bg-red-50/20'
-                    )}
+          <div className="overflow-x-auto">
+            <table
+              style={{
+                minWidth: `${Math.max(
+                  1250,
+                  Object.values(widths).reduce((s, w) => s + w, 0) +
+                    customColumns.reduce((s, c) => s + (c.width || 120), 0)
+                )}px`,
+              }}
+              className="w-full text-left border-collapse text-xs font-sans border-t border-slate-400"
+            >
+              {/* EXACT 2-ROW EXCEL HEADERS AS IN USER'S SCREENSHOT */}
+              <thead>
+                {/* Row 1: Group Super Headers */}
+                <tr className="border-b border-slate-400 font-bold uppercase text-[11px] text-slate-800 text-center">
+                  <th
+                    colSpan={6}
+                    className="border-r border-slate-400 py-1.5 px-3 bg-[#e8e4dc] dark:bg-slate-700 tracking-wide text-slate-900 dark:text-white"
                   >
-                    {/* S.No with Quick Row Insert */}
-                    <SerialCellWithInsert
-                      serialNo={emp.serialNo}
-                      index={idx}
-                      onInsertRow={canEditAccounts ? handleInsertRow : undefined}
-                      className="border-r border-slate-100 py-1.5 px-1 text-center font-semibold text-slate-700"
-                    />
+                    Employee Profile
+                  </th>
+                  <th
+                    colSpan={2}
+                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white tracking-wide"
+                  >
+                    31 days
+                  </th>
+                  <th
+                    colSpan={2}
+                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white tracking-wide"
+                  >
+                    30 days
+                  </th>
+                  <th
+                    colSpan={2}
+                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white tracking-wide"
+                  >
+                    28 days
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-center align-middle"
+                  >
+                    D.O.J
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-center align-middle"
+                  >
+                    Contract Status
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-left align-middle"
+                  >
+                    Remarks
+                  </th>
+                  {customColumns.map((col) => (
+                    <th
+                      key={col.id}
+                      rowSpan={2}
+                      className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-left align-middle"
+                    >
+                      {col.label}
+                    </th>
+                  ))}
 
-                    {/* Employee Name */}
-                    <td className="border-r border-slate-100 py-1 px-3 font-sans">
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={emp.name}
-                          onChange={(e) => handleCellChange(idx, 'name', e.target.value)}
-                          className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] font-semibold text-slate-900"
-                        />
-                      ) : (
-                        <span className={cn('font-semibold text-slate-900', isPermanent && 'text-emerald-900')}>
-                          {emp.name}
-                        </span>
+                </tr>
+
+                {/* Row 2: Sub Column Headers */}
+                <tr className="bg-[#f2eee7] dark:bg-slate-800 border-b border-slate-400 font-semibold text-[10px] text-slate-800 dark:text-slate-200 text-center">
+                  <ResizableTh
+                    columnKey="serial"
+                    width={widths.serial}
+                    minWidth={40}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1 font-mono"
+                  >
+                    S.No
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="name"
+                    width={widths.name}
+                    minWidth={130}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-2 text-left font-sans"
+                  >
+                    Name
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="designation"
+                    width={widths.designation}
+                    minWidth={110}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-2 text-left font-sans"
+                  >
+                    Designation
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="dutyHrs"
+                    width={widths.dutyHrs}
+                    minWidth={55}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1 text-center font-sans"
+                  >
+                    Duty Hrs
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="shiftFromTo"
+                    width={widths.shiftFromTo}
+                    minWidth={65}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1 text-center font-sans"
+                  >
+                    From to
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="salary"
+                    width={widths.salary}
+                    minWidth={90}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-2 text-right font-sans"
+                  >
+                    Salary
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="ratePerDay31"
+                    width={widths.ratePerDay31}
+                    minWidth={75}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                  >
+                    Per day
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="ratePerHr31"
+                    width={widths.ratePerHr31}
+                    minWidth={65}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                  >
+                    Per Hr
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="ratePerDay30"
+                    width={widths.ratePerDay30}
+                    minWidth={75}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                  >
+                    Per day
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="ratePerHr30"
+                    width={widths.ratePerHr30}
+                    minWidth={65}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                  >
+                    Per Hr
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="ratePerDay28"
+                    width={widths.ratePerDay28}
+                    minWidth={75}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                  >
+                    Per day
+                  </ResizableTh>
+
+                  <ResizableTh
+                    columnKey="ratePerHr28"
+                    width={widths.ratePerHr28}
+                    minWidth={65}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                  >
+                    Per Hr
+                  </ResizableTh>
+                </tr>
+              </thead>
+
+              {/* Exact Data Rows */}
+              <tbody className="divide-y divide-slate-200">
+                {employees.map((emp, idx) => {
+                  return (
+                    <tr
+                      key={emp.id}
+                      className={cn(
+                        'group hover:bg-slate-50 transition-colors text-xs',
+                        idx % 2 === 1 && 'bg-slate-50/40'
                       )}
-                    </td>
+                    >
+                      {/* S.No with hover-only Up/Down arrows */}
+                      <td className="border-r border-slate-300 py-1 px-1 text-center font-mono text-slate-800 font-medium select-none">
+                        <div className="relative flex items-center justify-center min-h-[28px] min-w-[36px]">
+                          <span className="tabular-nums">{emp.serialNo}</span>
+                          <div className="sara-serial-arrows">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleMove(emp.id, 'up')
+                              }}
+                              disabled={idx === 0 || !canEditAccounts}
+                              title="Move Up"
+                            >
+                              <ChevronUp className="size-4 stroke-[2.5]" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleMove(emp.id, 'down')
+                              }}
+                              disabled={idx === employees.length - 1 || !canEditAccounts}
+                              title="Move Down"
+                            >
+                              <ChevronDown className="size-4 stroke-[2.5]" />
+                            </button>
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Designation */}
-                    <td className="border-r border-slate-100 py-1 px-3 font-sans text-slate-700">
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={emp.designation}
-                          onChange={(e) => handleCellChange(idx, 'designation', e.target.value)}
-                          className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                        />
-                      ) : (
-                        emp.designation
-                      )}
-                    </td>
-
-                    {/* Duty Hrs */}
-                    <td className="border-r border-slate-100 py-1 px-1 text-center text-slate-700">
-                      {canEditAccounts ? (
-                        <NumericCellInput
-                          value={emp.dutyHrs || 0}
-                          navRow={idx}
-                          navCol={0}
-                          onValueChange={(v) => handleCellChange(idx, 'dutyHrs', v)}
-                          className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                        />
-                      ) : (
-                        `${String(emp.dutyHrs).padStart(2, '0')}:00:00`
-                      )}
-                    </td>
-
-                    {/* From to */}
-                    <td className="border-r border-slate-100 py-1 px-2 text-center whitespace-nowrap text-slate-600">
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={emp.shiftFromTo || ''}
-                          onChange={(e) => handleCellChange(idx, 'shiftFromTo', e.target.value)}
-                          className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                        />
-                      ) : (
-                        emp.shiftFromTo || '—'
-                      )}
-                    </td>
-
-                    {/* Salary */}
-                    <td className="border-r border-slate-100 py-1 px-2 text-right font-semibold text-slate-900">
-                      {canEditAccounts ? (
-                        <NumericCellInput
-                          value={emp.salary || 0}
-                          navRow={idx}
-                          navCol={1}
-                          onValueChange={(v) => handleCellChange(idx, 'salary', v)}
-                          className="w-full text-right bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] font-semibold text-slate-900"
-                        />
-                      ) : (
-                        formatNumber(emp.salary)
-                      )}
-                    </td>
-
-                    {/* 31 days - Per day */}
-                    <td className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-600 bg-slate-50/30">
-                      {formatNumber(emp.ratePerDay31 || Math.round(emp.salary / 31))}
-                    </td>
-
-                    {/* 31 days - Per Hr (Blank in Excel) */}
-                    <td className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-400 bg-slate-50/30">
-                      —
-                    </td>
-
-                    {/* 30 days - Per day */}
-                    <td className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900">
-                      {formatNumber(emp.ratePerDay30 || Math.round(emp.salary / 30))}
-                    </td>
-
-                    {/* 30 days - Per Hr */}
-                    <td className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900">
-                      {emp.dutyHrs && emp.dutyHrs > 0
-                        ? (emp.salary / (30 * emp.dutyHrs)).toFixed(2)
-                        : emp.ratePerHr30
-                        ? emp.ratePerHr30.toFixed(2)
-                        : '—'}
-                    </td>
-
-                    {/* 28 days - Per day */}
-                    <td className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-600 bg-slate-50/30">
-                      {formatNumber(emp.ratePerDay28 || Math.round(emp.salary / 28))}
-                    </td>
-
-                    {/* 28 days - Per Hr */}
-                    <td className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-400 bg-slate-50/30">
-                      —
-                    </td>
-
-                    {/* D.O.J */}
-                    <td className="border-r border-slate-100 py-1 px-2 text-center font-sans whitespace-nowrap text-[11px] text-slate-600">
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={emp.doj || ''}
-                          onChange={(e) => handleCellChange(idx, 'doj', e.target.value)}
-                          className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] text-[11px]"
-                        />
-                      ) : (
-                        emp.doj || '—'
-                      )}
-                    </td>
-
-                    {/* Contract Status */}
-                    <td className="border-r border-slate-100 py-1 px-2 font-sans whitespace-nowrap text-center">
-                      {canEditAccounts ? (
-                        <select
-                          value={emp.contractStatus || 'Company Contract'}
-                          onChange={(e) => handleCellChange(idx, 'contractStatus', e.target.value)}
-                          className={cn(
-                            'w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] text-center text-[11px]',
-                            isPermanent && 'font-semibold text-emerald-800'
-                          )}
-                        >
-                          <option value="Company Contract">Company Contract</option>
-                          <option value="Permanent">Permanent</option>
-                          <option value="Daily Wage">Daily Wage</option>
-                          <option value="Contractor">Contractor</option>
-                        </select>
-                      ) : isPermanent ? (
-                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {emp.contractStatus}
-                        </span>
-                      ) : (
-                        <span className="text-slate-600 text-xs">
-                          {emp.contractStatus || 'Company Contract'}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Remarks */}
-                    <td className="border-r border-slate-100 py-1 px-2 font-sans">
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={emp.remarks || ''}
-                          onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
-                          className={cn(
-                            'w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]',
-                            isResigned ? 'font-semibold text-red-600' : 'text-slate-600'
-                          )}
-                        />
-                      ) : isResigned ? (
-                        <span className="inline-block font-semibold text-red-600">
-                          {emp.remarks}
-                        </span>
-                      ) : (
-                        <span className="text-slate-500">{emp.remarks || '—'}</span>
-                      )}
-                    </td>
-
-                    {/* Custom Columns */}
-                    {customColumns.map((col) => (
-                      <td key={col.id} className="border-r border-slate-100 py-1 px-2 text-slate-700">
+                      {/* Name */}
+                      <td className="border-r border-slate-300 py-1 px-2 font-sans font-medium text-slate-900">
                         {canEditAccounts ? (
                           <input
                             type="text"
-                            value={emp.customFields?.[col.id] || ''}
-                            onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
+                            value={emp.name}
+                            onChange={(e) => handleCellChange(idx, 'name', e.target.value)}
                             className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
                           />
                         ) : (
-                          emp.customFields?.[col.id] || '—'
+                          emp.name
                         )}
                       </td>
-                    ))}
 
-                    {/* Action */}
-                    <td className="py-1 px-1 text-center print:hidden">
-                      <div className="flex items-center justify-center gap-1">
-                        {canEditAccounts && (
-                          <button
-                            onClick={() => handleDeleteRow(emp.id)}
-                            title="Delete Row"
-                            className="p-1 hover:text-red-600 transition-colors cursor-pointer text-slate-400"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
+                      {/* Designation */}
+                      <td className="border-r border-slate-300 py-1 px-2 font-sans text-slate-800">
+                        {canEditAccounts ? (
+                          <input
+                            type="text"
+                            value={emp.designation}
+                            onChange={(e) => handleCellChange(idx, 'designation', e.target.value)}
+                            className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                          />
+                        ) : (
+                          emp.designation
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
+                      </td>
 
-            {/* Total Row */}
-            <tfoot>
-              <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-900">
-                <td colSpan={5} className="border-r border-slate-200 py-2.5 px-3 text-right uppercase tracking-wider font-sans text-xs">
-                  Total Monthly Base ({employees.length} Employees):
-                </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-bold text-slate-900">
-                  {formatCurrency(totalBaseSalary)}
-                </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right">
-                  {formatNumber(totalRatePerDay31)}
-                </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right text-slate-400">—</td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right">
-                  {formatNumber(totalRatePerDay30)}
-                </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right text-slate-400">—</td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right">
-                  {formatNumber(totalRatePerDay28)}
-                </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right text-slate-400">—</td>
-                <td colSpan={3 + customColumns.length} className="border-r border-slate-200 py-2.5 px-2 text-center text-slate-500 font-sans text-[11px]">
-                  End of Sheet 1: General Wages
-                </td>
-                <td className="py-2.5 px-1 print:hidden" />
-              </tr>
-            </tfoot>
-          </table>
+                      {/* Duty Hrs (Formatted like 9:00, 10:00, 12:00) */}
+                      <td className="border-r border-slate-300 py-1 px-1 text-center font-mono text-slate-700">
+                        {canEditAccounts ? (
+                          <input
+                            type="text"
+                            value={emp.dutyHrs ? `${emp.dutyHrs}:00` : '9:00'}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 9
+                              handleCellChange(idx, 'dutyHrs', val)
+                            }}
+                            className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                          />
+                        ) : (
+                          emp.dutyHrs ? `${emp.dutyHrs}:00` : '9:00'
+                        )}
+                      </td>
+
+                      {/* From to (e.g. 9 to 6, 8 to 8) */}
+                      <td className="border-r border-slate-300 py-1 px-1 text-center font-sans text-slate-700 whitespace-nowrap">
+                        {canEditAccounts ? (
+                          <input
+                            type="text"
+                            value={emp.shiftFromTo || '9 to 6'}
+                            onChange={(e) => handleCellChange(idx, 'shiftFromTo', e.target.value)}
+                            className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                          />
+                        ) : (
+                          emp.shiftFromTo || '9 to 6'
+                        )}
+                      </td>
+
+                      {/* Salary */}
+                      <td className="border-r border-slate-300 py-1 px-2 text-right font-mono font-medium text-slate-900">
+                        {canEditAccounts ? (
+                          <NumericCellInput
+                            value={emp.salary || 0}
+                            navRow={idx}
+                            navCol={1}
+                            onValueChange={(v) => handleCellChange(idx, 'salary', v)}
+                            className="w-full text-right bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                          />
+                        ) : (
+                          formatNumber(emp.salary)
+                        )}
+                      </td>
+
+                      {/* 31 days - Per day */}
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-700">
+                        {formatNumber(emp.ratePerDay31 || Math.round(emp.salary / 31))}
+                      </td>
+
+                      {/* 31 days - Per Hr (Blank in Excel) */}
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-400">
+                        —
+                      </td>
+
+                      {/* 30 days - Per day */}
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-900 font-medium">
+                        {formatNumber(emp.ratePerDay30 || Math.round(emp.salary / 30))}
+                      </td>
+
+                      {/* 30 days - Per Hr */}
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono font-medium text-slate-900">
+                        {emp.dutyHrs && emp.dutyHrs > 0
+                          ? (emp.salary / (30 * emp.dutyHrs)).toFixed(2)
+                          : emp.ratePerHr30
+                          ? emp.ratePerHr30.toFixed(2)
+                          : '—'}
+                      </td>
+
+                      {/* 28 days - Per day */}
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-700">
+                        {formatNumber(emp.ratePerDay28 || Math.round(emp.salary / 28))}
+                      </td>
+
+                      {/* 28 days - Per Hr (Blank in Excel) */}
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-400">
+                        —
+                      </td>
+
+                      {/* D.O.J */}
+                      <td className="border-r border-slate-300 py-1 px-2 text-center font-sans text-[11px] text-slate-700 whitespace-nowrap">
+                        {canEditAccounts ? (
+                          <input
+                            type="text"
+                            value={emp.doj || ''}
+                            onChange={(e) => handleCellChange(idx, 'doj', e.target.value)}
+                            className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                          />
+                        ) : (
+                          emp.doj || '—'
+                        )}
+                      </td>
+
+                      {/* Contract Status (Read-only in General Wages) */}
+                      <td className="border-r border-slate-300 py-1 px-2 text-center font-sans text-xs text-slate-700 whitespace-nowrap">
+                        {emp.contractStatus || 'Company Contract'}
+                      </td>
+
+                      {/* Remarks */}
+                      <td className="border-r border-slate-300 py-1 px-2 font-sans text-slate-700">
+                        {canEditAccounts ? (
+                          <input
+                            type="text"
+                            value={emp.remarks || ''}
+                            onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
+                            className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                          />
+                        ) : (
+                          emp.remarks || '—'
+                        )}
+                      </td>
+
+                      {/* Custom Columns */}
+                      {customColumns.map((col) => (
+                        <td key={col.id} className="border-r border-slate-300 py-1 px-2 text-slate-700">
+                          {canEditAccounts ? (
+                            <input
+                              type="text"
+                              value={emp.customFields?.[col.id] || ''}
+                              onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
+                              className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                            />
+                          ) : (
+                            emp.customFields?.[col.id] || '—'
+                          )}
+                        </td>
+                      ))}
+
+                    </tr>
+                  )
+                })}
+              </tbody>
+
+              {/* Excel Total Row */}
+              <tfoot>
+                <tr className="bg-[#f2eee7] dark:bg-slate-800 border-t-2 border-slate-400 font-bold text-slate-900 text-xs">
+                  <td
+                    colSpan={5}
+                    className="border-r border-slate-400 py-2 px-3 text-right uppercase tracking-wider font-sans"
+                  >
+                    Total Monthly Base ({employees.length} Active):
+                  </td>
+                  <td className="border-r border-slate-400 py-2 px-2 text-right font-mono font-bold text-slate-900">
+                    {formatCurrency(totalBaseSalary)}
+                  </td>
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono">
+                    {formatNumber(totalRatePerDay31)}
+                  </td>
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-right text-slate-400">
+                    —
+                  </td>
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono font-bold text-slate-900">
+                    {formatNumber(totalRatePerDay30)}
+                  </td>
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono font-bold text-slate-900">
+                    {employees
+                      .reduce((s, e) => s + (e.dutyHrs ? e.salary / (30 * e.dutyHrs) : e.ratePerHr30 || 0), 0)
+                      .toFixed(2)}
+                  </td>
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono">
+                    {formatNumber(totalRatePerDay28)}
+                  </td>
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-right text-slate-400">
+                    —
+                  </td>
+                  <td
+                    colSpan={3 + customColumns.length}
+                    className="py-2 px-2 text-slate-500 text-center font-sans text-[11px]"
+                  >
+                    Sara Textile Mill Roster
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
 
-        {/* Quick Add Row Button at bottom */}
-        {canEditAccounts && (
-          <div className="mt-4 flex justify-start print:hidden">
-            <button
-              onClick={() => handleInsertRow()}
-              className="flex items-center gap-1.5 rounded-md border border-dashed border-slate-300 hover:border-slate-500 bg-slate-50 hover:bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
-            >
-              <Plus className="size-3.5 text-slate-600" />
-              <span>Add New Row (End of Sheet)</span>
-            </button>
-          </div>
-        )}
       </div>
+
+
     </div>
   )
 }

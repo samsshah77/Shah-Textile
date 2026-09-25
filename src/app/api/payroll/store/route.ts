@@ -5,7 +5,9 @@ import {
   dbPayrollIsEmpty,
   dbPayrollSave,
 } from '@/server/payrollDb'
-import { getPayrollSeedStore, STORAGE_KEYS } from '@/services/payrollService'
+import { getPayrollSeedStore, payrollService, STORAGE_KEYS } from '@/services/payrollService'
+import { currentUser } from '@/server/current-user'
+import { isAccountsController } from '@/lib/accountsAccess'
 
 export const runtime = 'nodejs'
 
@@ -26,6 +28,23 @@ export async function GET() {
     }
 
     const store = await dbPayrollGetAll()
+    const seed = getPayrollSeedStore()
+    const missing = Object.entries(seed).filter(([key]) => store[key] == null)
+    if (missing.length > 0) {
+      await Promise.all(missing.map(([key, value]) => dbPayrollSave(key, value)))
+      for (const [key, value] of missing) store[key] = value
+    }
+
+    const repaired = payrollService.integrateEmployeeRoster(
+      store[STORAGE_KEYS.EMPLOYEES],
+      store[STORAGE_KEYS.WEAVERS],
+      store[STORAGE_KEYS.HELPERS]
+    )
+    if (repaired.changed) {
+      await dbPayrollSave(STORAGE_KEYS.EMPLOYEES, repaired.list)
+      store[STORAGE_KEYS.EMPLOYEES] = repaired.list
+    }
+
     return NextResponse.json({ ok: true, store })
   } catch (err) {
     console.error('[payroll/bootstrap]', err)
@@ -41,6 +60,14 @@ export async function PUT(req: NextRequest) {
     const claims = await requireSession(req)
     if (!claims) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const actor = await currentUser(req)
+    if (!isAccountsController(actor)) {
+      return NextResponse.json(
+        { ok: false, error: 'Salary changes are limited to Tufail.' },
+        { status: 403 }
+      )
     }
 
     const body = await req.json()

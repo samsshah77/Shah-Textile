@@ -1,9 +1,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Calendar, PlusCircle, CheckCircle2, Clock, Factory, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { PRODUCTION_TODAY, shiftProductionDate } from '@/constants/productionCalendar'
+import { PlusCircle, CheckCircle2, Factory, X } from 'lucide-react'
+import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 
 interface NewDayProductionModalProps {
   isOpen: boolean
@@ -16,15 +15,8 @@ export function NewDayProductionModal({
   isOpen,
   onClose,
   onStartNewDay,
-  currentSelectedDate,
 }: NewDayProductionModalProps) {
-  const getDefaultTargetDate = () => {
-    try {
-      return shiftProductionDate(currentSelectedDate || PRODUCTION_TODAY, 1)
-    } catch {
-      return shiftProductionDate(PRODUCTION_TODAY, 1)
-    }
-  }
+  const getDefaultTargetDate = () => PRODUCTION_TODAY
 
   const [targetDate, setTargetDate] = useState(getDefaultTargetDate())
   const [carryForwardBeams, setCarryForwardBeams] = useState(true)
@@ -66,7 +58,7 @@ export function NewDayProductionModal({
                 Start New Day Production Report
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Initialize the 34-loom production register for a new operating day.
+                Create a blank sheet (Actual A/B = 0). Opening today alone does not generate a file.
               </p>
             </div>
           </div>
@@ -96,14 +88,14 @@ export function NewDayProductionModal({
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                min={shiftProductionDate(PRODUCTION_TODAY, 1)}
+                min={PRODUCTION_TODAY}
                 max="2026-10-31"
                 required
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none"
               />
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Target date for Shift A (Day Shift) and Shift B (Night Shift) meter logging.
+              Target date for Shift A (Day Shift) and Shift B (Night Shift) meter logging. Qualities &amp; beams carry forward; meters start at zero.
             </p>
           </div>
 
@@ -156,7 +148,7 @@ export function NewDayProductionModal({
               ) : (
                 <>
                   <CheckCircle2 className="size-4" />
-                  <span>Initialize &amp; Open Sheet</span>
+                  <span>Initialize &amp; Open Production Sheet</span>
                 </>
               )}
             </button>

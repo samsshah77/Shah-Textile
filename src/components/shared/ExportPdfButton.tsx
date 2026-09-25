@@ -58,7 +58,7 @@ export function ExportPdfButton({
       type="button"
       onClick={() => exportSheetPdf(filename, sheetLabel)}
       title="Generate PDF"
-      className={cn('erp-btn-secondary text-xs flex items-center gap-1.5', className)}
+      className={cn('erp-btn-secondary sara-allow-readonly text-xs flex items-center gap-1.5', className)}
     >
       <FileDown className="size-3.5 text-rose-600 shrink-0" />
       <span>{label}</span>

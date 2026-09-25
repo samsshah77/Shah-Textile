@@ -221,6 +221,12 @@ export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
       p === '/floor/production' &&
       (sp.get('tab') === 'quality' || sp.get('tab') === 'qualities'),
   },
+  {
+    sheetNumber: 7,
+    name: 'Tracking',
+    href: '/floor/reports/total',
+    activeCheck: (p) => p.startsWith('/floor/reports'),
+  },
 ]
 
 export const ACCOUNTS_EXCEL_SHEETS: SheetTabInfo[] = [

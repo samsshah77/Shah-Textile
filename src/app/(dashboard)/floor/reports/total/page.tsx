@@ -1,46 +1,164 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/shared/MiniCharts'
-import { productionService } from '@/services/productionService'
+import {
+  hydrateFloorFromDb,
+  preloadMonthSheets,
+  productionMastersService,
+} from '@/services/productionMastersService'
 import { formatNumber } from '@/lib/utils'
 import { PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
+import type { MonthlyMatrixDay } from '@/types/production'
 
-const MONTH_OPTIONS = [
-  { value: '2026-09', label: 'September 2026' },
-  { value: '2026-08', label: 'August 2026' },
-]
+const MONTH_OPTIONS = [{ value: '2026-09', label: 'September 2026' }]
+
+type MatrixState = {
+  days: MonthlyMatrixDay[]
+  loomTotals: Record<number, number>
+  grandTotalMeters: number
+  avgPerDay: number
+}
+
+const EMPTY_MATRIX: MatrixState = {
+  days: [],
+  loomTotals: {},
+  grandTotalMeters: 0,
+  avgPerDay: 0,
+}
+
+function cleanQualityName(s: string) {
+  return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function entryMatchesQuality(entryQualityName: string, targetName: string) {
+  const t = cleanQualityName(targetName)
+  const e = cleanQualityName(entryQualityName)
+  if (!t || !e) return false
+  return (
+    e === t ||
+    (t.length >= 4 && (e.includes(t) || t.includes(e)))
+  )
+}
+
+function entryMeters(e: { totalMeters?: number | null; shiftAMeters?: number; shiftBMeters?: number }) {
+  if (e.totalMeters != null) return Number(e.totalMeters) || 0
+  return (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
+}
+
+function formatShortDate(dateStr?: string | null) {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(`${dateStr}T12:00:00`)
+    return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return dateStr
+  }
+}
 
 /** Excel “Total” tab — day×loom meters matrix + fortnight / monthly rollups + charts. */
-export default function ProductionTotalTrackingPage() {
+function ProductionTotalTrackingContent() {
+  const searchParams = useSearchParams()
+  const qualityId = searchParams.get('quality')
+  const qualityNameParam = searchParams.get('name')
+
   const [month, setMonth] = useState(PRODUCTION_TODAY_MONTH)
-  const [matrix, setMatrix] = useState(() => productionService.getMonthlyMatrix(month))
+  const [matrix, setMatrix] = useState<MatrixState>(EMPTY_MATRIX)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setMatrix(productionService.getMonthlyMatrix(month))
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      try {
+        await hydrateFloorFromDb()
+        if (!cancelled) {
+          setMatrix(productionMastersService.buildMonthlyMatrix(month))
+        }
+        await preloadMonthSheets(month)
+        if (!cancelled) {
+          setMatrix(productionMastersService.buildMonthlyMatrix(month))
+        }
+      } catch (err) {
+        console.error('[total tracking] load failed', err)
+        if (!cancelled) setMatrix(EMPTY_MATRIX)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [month])
+
+  const qualityFocus = useMemo(() => {
+    if (!qualityId && !qualityNameParam) return null
+    const masters = productionMastersService.getQualities()
+    const master = qualityId ? masters.find((q) => q.id === qualityId) : undefined
+    const name = qualityNameParam || master?.name || ''
+    if (!name && !master) return null
+    return {
+      id: master?.id || qualityId || '',
+      name: name || master?.name || '',
+      endedOn: master?.status === 'ENDED' ? master.endedOn : null,
+    }
+  }, [qualityId, qualityNameParam, loading, matrix])
+
+  const qualityDaySeries = useMemo(() => {
+    if (!qualityFocus?.name) return null
+    return matrix.days.map((d) => {
+      if (!d.date || !productionMastersService.hasPersistedSheet(d.date)) {
+        return { label: String(d.day), value: 0 }
+      }
+      const entries = productionMastersService.buildSheetForDate(d.date)
+      const value = entries
+        .filter((e) => entryMatchesQuality(e.qualityName, qualityFocus.name))
+        .reduce((s, e) => s + entryMeters(e), 0)
+      return { label: String(d.day), value }
+    })
+  }, [matrix.days, qualityFocus])
 
   const daySeries = useMemo(
     () =>
-      matrix.days.map((d) => ({
+      (qualityDaySeries ?? matrix.days.map((d) => ({
         label: String(d.day),
         value: d.totalMeters || 0,
-      })),
-    [matrix.days]
+      }))),
+    [matrix.days, qualityDaySeries]
   )
+
+  const qualityLoomSet = useMemo(() => {
+    if (!qualityFocus?.name) return null
+    const set = new Set<number>()
+    for (const d of matrix.days) {
+      if (!d.date || !d.hasSheet) continue
+      const entries = productionMastersService.buildSheetForDate(d.date)
+      for (const e of entries) {
+        if (entryMatchesQuality(e.qualityName, qualityFocus.name) && entryMeters(e) > 0) {
+          set.add(e.loomNumber)
+        }
+      }
+    }
+    return set
+  }, [matrix.days, qualityFocus])
 
   const loomSeries = useMemo(() => {
     const entries = Object.entries(matrix.loomTotals || {}).map(([loom, meters]) => ({
       label: `Loom ${loom}`,
       value: Number(meters) || 0,
+      loom: Number(loom),
     }))
-    entries.sort((a, b) => b.value - a.value)
-    return entries
-  }, [matrix.loomTotals])
+    const filtered = qualityLoomSet
+      ? entries.filter((e) => qualityLoomSet.has(e.loom))
+      : entries
+    filtered.sort((a, b) => b.value - a.value)
+    return filtered.map(({ label, value }) => ({ label, value }))
+  }, [matrix.loomTotals, qualityLoomSet])
 
   const loomNumbers = useMemo(() => {
     const set = new Set<number>()
@@ -48,8 +166,12 @@ export default function ProductionTotalTrackingPage() {
       Object.keys(d.loomMeters || {}).forEach((k) => set.add(Number(k)))
     })
     Object.keys(matrix.loomTotals || {}).forEach((k) => set.add(Number(k)))
-    return Array.from(set).sort((a, b) => a - b)
-  }, [matrix])
+    let list = Array.from(set).sort((a, b) => a - b)
+    if (qualityLoomSet && qualityLoomSet.size > 0) {
+      list = list.filter((n) => qualityLoomSet.has(n))
+    }
+    return list
+  }, [matrix, qualityLoomSet])
 
   const mid = Math.ceil(matrix.days.length / 2) || 1
   const fortnight1 = matrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
@@ -69,6 +191,17 @@ export default function ProductionTotalTrackingPage() {
     }
   })()
 
+  const cellText = (d: MonthlyMatrixDay, loom: number) => {
+    if (!d.hasSheet) return '—'
+    const v = Number(d.loomMeters?.[loom]) || 0
+    return formatNumber(v, 0)
+  }
+
+  const qualityMonthTotal = useMemo(
+    () => (qualityDaySeries ? qualityDaySeries.reduce((s, p) => s + p.value, 0) : null),
+    [qualityDaySeries]
+  )
+
   return (
     <div className="pb-4">
       <PageHeader
@@ -80,7 +213,6 @@ export default function ProductionTotalTrackingPage() {
               className="form-select form-select-sm"
               style={{ width: 'auto' }}
               value={month}
-              aria-label="Month"
               onChange={(e) => setMonth(e.target.value)}
             >
               {MONTH_OPTIONS.map((o) => (
@@ -89,27 +221,48 @@ export default function ProductionTotalTrackingPage() {
                 </option>
               ))}
             </select>
-            <ExportPdfButton filename={`Production-Total-${month}`} sheetLabel="Total Tracking" />
+            <ExportPdfButton filename="Total-Production-Report" />
           </>
         }
       />
 
+      {qualityFocus && (
+        <div className="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3">
+          <div>
+            <strong>Quality records:</strong> {qualityFocus.name}
+            {qualityFocus.endedOn && (
+              <span className="ms-2 text-secondary">
+                (Ended {formatShortDate(qualityFocus.endedOn)})
+              </span>
+            )}
+            {qualityMonthTotal != null && (
+              <span className="ms-2 badge text-bg-light border">
+                {formatNumber(qualityMonthTotal, 0)} m this month
+              </span>
+            )}
+          </div>
+          <Link href="/floor/production?tab=quality" className="btn btn-sm btn-outline-secondary">
+            ← Back to Quality
+          </Link>
+        </div>
+      )}
+
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <MetricCard
-            title="Monthly Grand Total"
-            value={`${formatNumber(matrix.grandTotalMeters, 0)} m`}
-            subValue={monthLabel}
-            biIcon="bi-graph-up-arrow"
+            title="Month total"
+            value={`${formatNumber(qualityMonthTotal ?? matrix.grandTotalMeters, 0)} m`}
+            subValue={qualityFocus ? `${qualityFocus.name} · ${monthLabel}` : monthLabel}
+            biIcon="bi-calendar3"
             colorVariant="primary"
           />
         </div>
         <div className="col-6 col-lg-3">
           <MetricCard
-            title="Avg Per Day"
+            title="Avg / day"
             value={`${formatNumber(matrix.avgPerDay, 0)} m`}
-            subValue={`${matrix.days.length} days logged`}
-            biIcon="bi-calendar3"
+            subValue={loading ? 'Loading…' : 'Sheet days only'}
+            biIcon="bi-graph-up"
             colorVariant="success"
           />
         </div>
@@ -137,7 +290,11 @@ export default function ProductionTotalTrackingPage() {
         <div className="col-lg-7">
           <div className="card h-100">
             <div className="card-header">
-              <h3 className="card-title mb-0">Daily mill output (m)</h3>
+              <h3 className="card-title mb-0">
+                {qualityFocus
+                  ? `Daily output — ${qualityFocus.name} (m)`
+                  : 'Daily mill output (m)'}
+              </h3>
             </div>
             <div className="card-body">
               <SimpleBarChart data={daySeries} height={180} />
@@ -150,7 +307,9 @@ export default function ProductionTotalTrackingPage() {
         <div className="col-lg-5">
           <div className="card h-100">
             <div className="card-header">
-              <h3 className="card-title mb-0">Top looms this month</h3>
+              <h3 className="card-title mb-0">
+                {qualityFocus ? 'Looms — this quality' : 'Top looms this month'}
+              </h3>
             </div>
             <div className="card-body">
               <SimpleHBarList data={loomSeries} maxBars={12} />
@@ -186,7 +345,7 @@ export default function ProductionTotalTrackingPage() {
               {loomNumbers.map((loom) => {
                 const monthly = Number(matrix.loomTotals?.[loom]) || 0
                 const daysWith = matrix.days.filter(
-                  (d) => (Number(d.loomMeters?.[loom]) || 0) > 0
+                  (d) => d.hasSheet && (Number(d.loomMeters?.[loom]) || 0) > 0
                 ).length
                 const avg = daysWith > 0 ? monthly / daysWith : 0
                 return (
@@ -194,16 +353,17 @@ export default function ProductionTotalTrackingPage() {
                     <td className="fw-semibold px-2">{loom}</td>
                     {matrix.days.map((d) => {
                       const v = Number(d.loomMeters?.[loom]) || 0
+                      const empty = !d.hasSheet
                       return (
                         <td
                           key={`${loom}-${d.date || d.day}`}
                           className="text-end px-1"
                           style={{
                             fontSize: 11,
-                            backgroundColor: v === 0 ? '#f8f9fa' : undefined,
+                            backgroundColor: empty || v === 0 ? '#f8f9fa' : undefined,
                           }}
                         >
-                          {v || '—'}
+                          {cellText(d, loom)}
                         </td>
                       )
                     })}
@@ -224,12 +384,21 @@ export default function ProductionTotalTrackingPage() {
                 <td className="px-2">Day Total</td>
                 {matrix.days.map((d) => (
                   <td key={`t-${d.date || d.day}`} className="text-end px-1" style={{ fontSize: 11 }}>
-                    {formatNumber(d.totalMeters || 0, 0)}
+                    {d.hasSheet
+                      ? formatNumber(
+                          qualityDaySeries
+                            ? qualityDaySeries.find((p) => p.label === String(d.day))?.value ?? 0
+                            : d.totalMeters || 0,
+                          0
+                        )
+                      : '—'}
                   </td>
                 ))}
                 <td className="text-end px-2">{formatNumber(fortnight1, 0)}</td>
                 <td className="text-end px-2">{formatNumber(fortnight2, 0)}</td>
-                <td className="text-end px-2">{formatNumber(matrix.grandTotalMeters, 0)}</td>
+                <td className="text-end px-2">
+                  {formatNumber(qualityMonthTotal ?? matrix.grandTotalMeters, 0)}
+                </td>
                 <td className="text-end px-2">{formatNumber(matrix.avgPerDay, 0)}</td>
               </tr>
             </tfoot>
@@ -237,5 +406,19 @@ export default function ProductionTotalTrackingPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ProductionTotalTrackingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-4">
+          <div className="spinner-border text-primary" role="status" />
+        </div>
+      }
+    >
+      <ProductionTotalTrackingContent />
+    </Suspense>
   )
 }

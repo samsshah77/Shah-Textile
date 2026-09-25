@@ -147,7 +147,7 @@ export function ProductionCharts() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Verified daily meter production from the 34-loom August 2026 production matrix.
+                Verified daily meter production from the 34-loom September 2026 production matrix.
               </p>
             </div>
 

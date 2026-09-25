@@ -197,6 +197,22 @@ export default function SalaryAdvancesPage() {
     payrollService.saveAdvances(renumbered, true, selectedMonth)
   }
 
+  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
+    if (!canEditAccounts) return
+    const current = filtered[index]
+    const neighbor = filtered[direction === 'up' ? index - 1 : index + 1]
+    if (!current || !neighbor) return
+    const from = advances.findIndex((row) => row.id === current.id)
+    const to = advances.findIndex((row) => row.id === neighbor.id)
+    if (from < 0 || to < 0) return
+    const next = [...advances]
+    const [row] = next.splice(from, 1)
+    next.splice(to, 0, row)
+    const renumbered = next.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+    setAdvances(renumbered)
+    payrollService.saveAdvances(renumbered, true, selectedMonth)
+  }
+
   const requestDeleteAdvance = (id: string, empName: string) => {
     if (!canEditAccounts) return
     setDeleteConfirmState({
@@ -589,11 +605,13 @@ export default function SalaryAdvancesPage() {
               ) : (
                 filtered.map((adv, idx) => (
                   <tr key={adv.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                    {/* S.# with Hover Row Insertion */}
                     <SerialCellWithInsert
                       serialNo={adv.serialNo || idx + 1}
                       index={idx}
-                      onInsertRow={canEditAccounts ? handleInsertRow : undefined}
+                      onMoveUp={canEditAccounts ? (i) => handleMoveRow(i, 'up') : undefined}
+                      onMoveDown={canEditAccounts ? (i) => handleMoveRow(i, 'down') : undefined}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < filtered.length - 1}
                     />
                     
                     {/* Date / Period */}

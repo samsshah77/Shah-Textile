@@ -71,6 +71,12 @@ const FLOOR_ITEMS: NavLeaf[] = [
       p === '/floor/production' &&
       (sp.get('tab') === 'quality' || sp.get('tab') === 'qualities'),
   },
+  {
+    title: 'Tracking',
+    href: '/floor/reports/total',
+    icon: 'bi-grid-3x3-gap',
+    activeCheck: (p) => p.startsWith('/floor/reports'),
+  },
 ]
 
 const ACCOUNTS_ITEMS: NavLeaf[] = [
@@ -145,40 +151,130 @@ const PAYROLL_ITEMS: NavLeaf[] = [
       p === '/payroll/contract' && (!sp.get('tab') || sp.get('tab') === 'employees'),
   },
   {
-    title: 'Efficiency Bonus',
+    title: 'Contract OverTime',
+    href: '/payroll/contract?tab=overtime',
+    icon: 'bi-clock-history',
+    activeCheck: (p, sp) => p === '/payroll/contract' && sp.get('tab') === 'overtime',
+  },
+  {
+    title: 'Efficency',
     href: '/payroll/efficiency',
     icon: 'bi-trophy',
     activeCheck: (p) => p === '/payroll/efficiency',
   },
   {
-    title: 'Weavers Wages',
+    title: 'Net Payment Contract 1 to 31',
+    href: '/payroll/contract?tab=net-payment',
+    icon: 'bi-cash-stack',
+    activeCheck: (p, sp) => p === '/payroll/contract' && sp.get('tab') === 'net-payment',
+  },
+  {
+    title: 'Weawers Wages 1 to 15',
     href: '/payroll/weavers?tab=wages&fortnight=1-15',
     icon: 'bi-scissors',
-    activeCheck: (p) => p === '/payroll/weavers',
+    activeCheck: (p, sp) =>
+      p === '/payroll/weavers' &&
+      sp.get('fortnight') !== '16-31' &&
+      (!sp.get('tab') || sp.get('tab') === 'wages'),
   },
   {
-    title: 'Helpers',
+    title: 'Weawers OT 1 to 15',
+    href: '/payroll/weavers?tab=overtime&fortnight=1-15',
+    icon: 'bi-clock',
+    activeCheck: (p, sp) =>
+      p === '/payroll/weavers' &&
+      sp.get('fortnight') !== '16-31' &&
+      sp.get('tab') === 'overtime',
+  },
+  {
+    title: 'Net Payment Weawers 1 To 15',
+    href: '/payroll/weavers?tab=net-payment&fortnight=1-15',
+    icon: 'bi-cash',
+    activeCheck: (p, sp) =>
+      p === '/payroll/weavers' &&
+      sp.get('fortnight') !== '16-31' &&
+      sp.get('tab') === 'net-payment',
+  },
+  {
+    title: 'Helper Wages 1 to 15',
     href: '/payroll/helpers?fortnight=1-15',
     icon: 'bi-person-plus',
-    activeCheck: (p) => p === '/payroll/helpers',
+    activeCheck: (p, sp) => p === '/payroll/helpers' && sp.get('fortnight') !== '16-31',
   },
   {
-    title: 'Contractors',
+    title: 'Contractor 1 to 15',
     href: '/payroll/contractors?fortnight=1-15',
     icon: 'bi-hammer',
-    activeCheck: (p) => p === '/payroll/contractors',
+    activeCheck: (p, sp) => p === '/payroll/contractors' && sp.get('fortnight') !== '16-31',
   },
   {
-    title: 'Petty Cash (Payroll)',
+    title: 'Petty Cash 1 to 15',
     href: '/payroll/petty-cash?fortnight=1-15',
     icon: 'bi-wallet',
-    activeCheck: (p) => p === '/payroll/petty-cash',
+    activeCheck: (p, sp) => p === '/payroll/petty-cash' && sp.get('fortnight') !== '16-31',
   },
   {
-    title: 'Synopsis',
+    title: 'Synopsis 1 to 15',
     href: '/payroll/synopsis?fortnight=1-15',
     icon: 'bi-file-earmark-spreadsheet',
-    activeCheck: (p) => p === '/payroll/synopsis',
+    activeCheck: (p, sp) => p === '/payroll/synopsis' && sp.get('fortnight') === '1-15',
+  },
+  {
+    title: 'Weawers Wages 16 to 31',
+    href: '/payroll/weavers?tab=wages&fortnight=16-31',
+    icon: 'bi-scissors',
+    activeCheck: (p, sp) =>
+      p === '/payroll/weavers' &&
+      sp.get('fortnight') === '16-31' &&
+      (!sp.get('tab') || sp.get('tab') === 'wages'),
+  },
+  {
+    title: 'Weawers OT 16 to 31',
+    href: '/payroll/weavers?tab=overtime&fortnight=16-31',
+    icon: 'bi-clock',
+    activeCheck: (p, sp) =>
+      p === '/payroll/weavers' &&
+      sp.get('fortnight') === '16-31' &&
+      sp.get('tab') === 'overtime',
+  },
+  {
+    title: 'Net Payment Weawers 16 to 31',
+    href: '/payroll/weavers?tab=net-payment&fortnight=16-31',
+    icon: 'bi-cash',
+    activeCheck: (p, sp) =>
+      p === '/payroll/weavers' &&
+      sp.get('fortnight') === '16-31' &&
+      sp.get('tab') === 'net-payment',
+  },
+  {
+    title: 'Helper Wages 16 to 31',
+    href: '/payroll/helpers?fortnight=16-31',
+    icon: 'bi-person-plus',
+    activeCheck: (p, sp) => p === '/payroll/helpers' && sp.get('fortnight') === '16-31',
+  },
+  {
+    title: 'Contracter 16 to 31',
+    href: '/payroll/contractors?fortnight=16-31',
+    icon: 'bi-hammer',
+    activeCheck: (p, sp) => p === '/payroll/contractors' && sp.get('fortnight') === '16-31',
+  },
+  {
+    title: 'Petty Cash 16 to 31',
+    href: '/payroll/petty-cash?fortnight=16-31',
+    icon: 'bi-wallet',
+    activeCheck: (p, sp) => p === '/payroll/petty-cash' && sp.get('fortnight') === '16-31',
+  },
+  {
+    title: 'Synopsis 16 to 31',
+    href: '/payroll/synopsis?fortnight=16-31',
+    icon: 'bi-file-earmark-spreadsheet',
+    activeCheck: (p, sp) => p === '/payroll/synopsis' && sp.get('fortnight') === '16-31',
+  },
+  {
+    title: 'Monthly Summery',
+    href: '/payroll/synopsis?fortnight=grand',
+    icon: 'bi-calendar-month',
+    activeCheck: (p, sp) => p === '/payroll/synopsis' && sp.get('fortnight') === 'grand',
   },
 ]
 

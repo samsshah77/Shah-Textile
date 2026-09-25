@@ -1,0 +1,32 @@
+/** Keys persisted in `accounts_store`. Month and trader keys use a fixed prefix. */
+
+export const ACCOUNTS_KEYS = {
+  PETTY_CASH: 'sara_textile_petty_cash_v4',
+  INVENTORY_PURCHASE: 'sara_textile_inventory_purchase_v4',
+  INVENTORY_CONTROL: 'sara_textile_inventory_control_v2',
+  DAILY_INWARD: 'sara_textile_daily_inward_v2',
+  COST_STATEMENT_PREFIX: 'sara_textile_cost_statement_v5_',
+  COST_OVERRIDES_PREFIX: 'sara_textile_cost_statement_overrides_v1_',
+  TRADER_PREFIX: 'sara_textile_trader_custom_v1_',
+} as const
+
+const EXACT = new Set<string>([
+  ACCOUNTS_KEYS.PETTY_CASH,
+  ACCOUNTS_KEYS.INVENTORY_PURCHASE,
+  ACCOUNTS_KEYS.INVENTORY_CONTROL,
+  ACCOUNTS_KEYS.DAILY_INWARD,
+  'sara_textile_cost_statement_editable_v1',
+])
+
+const PREFIXES = [
+  ACCOUNTS_KEYS.COST_STATEMENT_PREFIX,
+  ACCOUNTS_KEYS.COST_OVERRIDES_PREFIX,
+  ACCOUNTS_KEYS.TRADER_PREFIX,
+]
+
+export function isAccountsStoreKey(key: string): boolean {
+  if (!key || key.length > 160) return false
+  if (!/^sara_textile_[a-z0-9_-]+$/i.test(key)) return false
+  if (EXACT.has(key)) return true
+  return PREFIXES.some((prefix) => key.startsWith(prefix) && key.length > prefix.length)
+}

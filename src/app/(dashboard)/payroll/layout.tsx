@@ -1,4 +1,5 @@
 import PayrollHydrate from '@/components/payroll/PayrollHydrate'
+import { FinanceReadonly } from '@/components/shared/FinanceReadonly'
 import { requirePagePermission } from '@/server/page-access'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +10,7 @@ export default async function PayrollLayout({ children }: { children: React.Reac
   return (
     <div className="sara-module-content">
       <PayrollHydrate />
-      {children}
+      <FinanceReadonly>{children}</FinanceReadonly>
     </div>
   )
 }

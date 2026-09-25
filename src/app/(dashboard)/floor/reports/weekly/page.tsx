@@ -164,7 +164,7 @@ export default function WeeklyProductionReportsPage() {
           {/* 4 Weeks Comparison Matrix Table */}
           <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
-              <h3 className="text-sm font-bold text-foreground">Monthly Weekly Trend Comparison (August 2026)</h3>
+              <h3 className="text-sm font-bold text-foreground">Monthly Weekly Trend Comparison (September 2026)</h3>
               <span className="text-xs text-muted-foreground font-mono">All 4 Weeks</span>
             </div>
 

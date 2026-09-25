@@ -7,14 +7,18 @@ import {
   YarnMaster,
   getLoomPictures,
   normalizeLoomPictures,
+  orderQualitiesByLoomAllotment,
 } from '@/services/productionMastersService'
 import { LoomCategory } from '@/types/loom'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
+import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
 import { LoomStatusSelect } from '@/components/floor/LoomStatusSelect'
+import { AddLoomModal } from '@/components/floor/AddLoomModal'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 
 const MODELS: LoomCategory[] = ['G6200', 'G6300', 'PU']
 
@@ -28,18 +32,6 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   quality: 150,
   shed: 110,
   status: 130,
-  actions: 110,
-}
-
-interface LoomDraft {
-  name: string
-  model: LoomCategory
-  year: number
-  defaultRpm: number
-  qualityId: string
-  shed: string
-  status: LoomMaster['status']
-  pictureDataUrls: string[]
 }
 
 interface LoomMasterTableProps {
@@ -47,21 +39,9 @@ interface LoomMasterTableProps {
   qualities?: QualityMaster[]
   yarn?: YarnMaster[]
   onUpdate: (loomNumber: number, patch: Partial<LoomMaster>) => void
-  onAdd: () => void
+  onAdd: (partial?: Partial<LoomMaster>) => void
+  onDelete?: (loomNumber: number) => void
   readOnly?: boolean
-}
-
-function toDraft(l: LoomMaster): LoomDraft {
-  return {
-    name: l.name || `Loom ${l.loomNumber}`,
-    model: l.model || 'G6200',
-    year: l.year || new Date().getFullYear(),
-    defaultRpm: l.defaultRpm || 340,
-    qualityId: l.qualityId || '',
-    shed: l.shed || 'Main Floor',
-    status: l.status || 'RUNNING',
-    pictureDataUrls: getLoomPictures(l),
-  }
 }
 
 export function LoomMasterTable({
@@ -69,14 +49,18 @@ export function LoomMasterTable({
   qualities = [],
   onUpdate,
   onAdd,
+  onDelete,
   readOnly,
 }: LoomMasterTableProps) {
   const [mode, setMode] = useState<TableGridMode>('table')
   const [modelFilter, setModelFilter] = useState<'ALL' | LoomCategory>('ALL')
-  const [editingNumber, setEditingNumber] = useState<number | null>(null)
-  const [draft, setDraft] = useState<LoomDraft | null>(null)
-  const [adminNotice, setAdminNotice] = useState<string | null>(null)
+  const [tableEdit, setTableEdit] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const { isAdmin } = useAuth()
+  const { showConfirm } = useAlertDialog()
+  const opsEdit = isAdmin && !readOnly && tableEdit && mode === 'table'
+  const masterEdit = isAdmin && !readOnly && tableEdit && mode === 'grid'
+  const editActive = opsEdit || masterEdit
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_loom_col_widths_v4',
@@ -92,51 +76,14 @@ export function LoomMasterTable({
     return looms.filter((l) => (l.model || l.category) === modelFilter)
   }, [looms, modelFilter])
 
-  const patchDraft = (partial: Partial<LoomDraft>) => {
-    setDraft((prev) => (prev ? { ...prev, ...partial } : prev))
-  }
-
-  const startEdit = (loom: LoomMaster) => {
-    if (!isAdmin) {
-      setAdminNotice('Only administrators can edit machine configurations.')
-      setTimeout(() => setAdminNotice(null), 4000)
-      return
-    }
-    setEditingNumber(loom.loomNumber)
-    setDraft(toDraft(loom))
-  }
-
-  const cancelEdit = () => {
-    setEditingNumber(null)
-    setDraft(null)
-  }
-
-  const saveEdit = () => {
-    if (editingNumber == null || !draft) return
-    const pics = normalizeLoomPictures({
-      loomNumber: editingNumber,
-      pictureDataUrls: draft.pictureDataUrls,
-    })
-    onUpdate(editingNumber, {
-      name: draft.name.trim() || `Loom ${editingNumber}`,
-      model: draft.model,
-      year: Number(draft.year) || 0,
-      defaultRpm: Number(draft.defaultRpm) || 0,
-      qualityId: draft.qualityId || null,
-      shed: draft.shed.trim() || 'Main Floor',
-      status: draft.status,
-      ...pics,
-    })
-    cancelEdit()
-  }
+  const orderedQualities = useMemo(
+    () => orderQualitiesByLoomAllotment(qualities, looms),
+    [qualities, looms]
+  )
 
   const canManagePics = isAdmin && !readOnly
 
   const applyLoomPictures = (loom: LoomMaster, urls: string[]) => {
-    if (editingNumber === loom.loomNumber && draft) {
-      patchDraft({ pictureDataUrls: urls })
-      return
-    }
     const pics = normalizeLoomPictures({
       loomNumber: loom.loomNumber,
       pictureDataUrls: urls,
@@ -144,57 +91,37 @@ export function LoomMasterTable({
     onUpdate(loom.loomNumber, pics)
   }
 
+  const editToggle =
+    isAdmin && !readOnly ? (
+      <button
+        type="button"
+        className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
+        title={tableEdit ? 'Lock table (view only)' : 'Enable editing'}
+        onClick={() => setTableEdit((v) => !v)}
+      >
+        <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
+        {tableEdit ? 'Done' : 'Edit'}
+      </button>
+    ) : null
+
   const qualityName = (qualityId: string | null) =>
     qualities.find((q) => q.id === qualityId)?.name || '—'
 
-  const actionButtons = (l: LoomMaster, editing: boolean) => {
-    if (editing) {
-      return (
-        <div className="d-flex align-items-center justify-content-center gap-1">
-          <button
-            type="button"
-            className="btn btn-sm btn-success py-0 px-2 d-inline-flex align-items-center gap-1 shadow-sm"
-            style={{ height: 26, fontSize: '0.78rem' }}
-            title="Save changes"
-            onClick={saveEdit}
-          >
-            <i className="bi bi-check-lg" />
-            <span>Save</span>
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-secondary py-0 px-1"
-            style={{ height: 26, width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Cancel"
-            onClick={cancelEdit}
-          >
-            <i className="bi bi-x-lg" style={{ fontSize: '0.72rem' }} />
-          </button>
-        </div>
-      )
-    }
-    return (
-      <div className="d-flex align-items-center justify-content-center">
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-secondary p-0"
-          style={{
-            width: 22,
-            height: 22,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 4,
-            opacity: isAdmin ? 0.75 : 0.35,
-          }}
-          title={isAdmin ? `Edit Loom ${l.loomNumber}` : 'Admin privileges required'}
-          disabled={readOnly || editingNumber != null}
-          onClick={() => startEdit(l)}
-        >
-          <i className="bi bi-pencil" style={{ fontSize: '0.68rem' }} />
-        </button>
-      </div>
-    )
+  const nextLoomNumber = useMemo(
+    () => looms.reduce((m, l) => Math.max(m, l.loomNumber), 0) + 1,
+    [looms]
+  )
+
+  const handleDeleteLoom = (l: LoomMaster) => {
+    if (!masterEdit || !onDelete) return
+    showConfirm({
+      title: 'Loom Delete Karein?',
+      message: `Kya aap waqai "${l.name || `Loom ${l.loomNumber}`}" (Loom #${l.loomNumber}) ko delete karna chahte hain?`,
+      type: 'confirm',
+      confirmText: 'Haan, Delete Karein',
+      cancelText: 'Cancel',
+      onConfirm: () => onDelete(l.loomNumber),
+    })
   }
 
   return (
@@ -202,17 +129,22 @@ export function LoomMasterTable({
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
         <div className="min-w-0">
           <h3 className="card-title mb-0">Looms</h3>
+          {tableEdit && (
+            <div className="small text-warning mt-1 mb-0">
+              {mode === 'table'
+                ? 'Table edit — sirf RPM, Quality, Status'
+                : 'Grid edit — full master fields + Delete'}
+            </div>
+          )}
         </div>
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
+          {editToggle}
           <select
             className="form-select form-select-sm"
             style={{ width: 'auto', minWidth: 120 }}
             value={modelFilter}
             title="Filter by model"
-            onChange={(e) => {
-              cancelEdit()
-              setModelFilter(e.target.value as 'ALL' | LoomCategory)
-            }}
+            onChange={(e) => setModelFilter(e.target.value as 'ALL' | LoomCategory)}
           >
             <option value="ALL">All Models</option>
             {MODELS.map((m) => (
@@ -222,88 +154,90 @@ export function LoomMasterTable({
             ))}
           </select>
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={onAdd}>
+          {!readOnly && isAdmin && (
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() => setIsAddModalOpen(true)}
+            >
               <i className="bi bi-plus-lg me-1" /> Add
             </button>
           )}
         </div>
       </div>
 
-      {adminNotice && (
-        <div className="alert alert-warning py-2 px-3 mx-3 mt-3 mb-0 small d-flex align-items-center justify-content-between">
-          <span>
-            <i className="bi bi-exclamation-triangle-fill me-1" /> {adminNotice}
-          </span>
-          <button
-            type="button"
-            className="btn-close btn-close-sm"
-            aria-label="Close"
-            onClick={() => setAdminNotice(null)}
-          />
-        </div>
-      )}
-
       {mode === 'grid' ? (
         <div className="master-grid">
-          {filteredLooms.map((l) => {
-            const editing = editingNumber === l.loomNumber && !!draft
-            const d = editing ? draft! : null
+          {filteredLooms.map((l, rowIdx) => {
             return (
               <div
                 key={l.loomNumber}
-                className={`master-grid-card${editing ? ' border border-primary' : ''}`}
+                className={`master-grid-card${editActive ? ' sara-edit-card' : ''}`}
               >
-                <div className="d-flex align-items-center justify-content-between gap-2 border-bottom pb-2">
-                  <div className="d-flex align-items-center gap-2">
-                    <LoomPictureThumb
-                      images={d ? d.pictureDataUrls : getLoomPictures(l)}
-                      alt={d?.name || l.name || `Loom ${l.loomNumber}`}
-                      size={52}
-                      editable={canManagePics}
-                      onImagesChange={
-                        canManagePics ? (urls) => applyLoomPictures(l, urls) : undefined
-                      }
-                    />
-                    <div>
-                      {editing ? (
-                        <input
-                          className="form-control form-control-sm fw-bold"
-                          value={d!.name}
-                          onChange={(e) => patchDraft({ name: e.target.value })}
-                        />
-                      ) : (
-                        <div className="fw-bold">{l.name}</div>
-                      )}
-                      <div className="small text-muted">Loom #{l.loomNumber}</div>
-                    </div>
+                <div className="d-flex align-items-center gap-2 border-bottom pb-2">
+                  <LoomPictureThumb
+                    images={getLoomPictures(l)}
+                    alt={l.name || `Loom ${l.loomNumber}`}
+                    size={52}
+                    editable={canManagePics}
+                    onImagesChange={
+                      canManagePics ? (urls) => applyLoomPictures(l, urls) : undefined
+                    }
+                  />
+                  <div className="flex-fill">
+                    {masterEdit ? (
+                      <TextCellInput
+                        className="form-control form-control-sm fw-bold"
+                        value={l.name || ''}
+                        navRow={rowIdx}
+                        navCol={0}
+                        onValueChange={(v) =>
+                          onUpdate(l.loomNumber, { name: v.trim() || `Loom ${l.loomNumber}` })
+                        }
+                      />
+                    ) : (
+                      <div className="fw-bold">{l.name}</div>
+                    )}
+                    <div className="small text-muted">Loom #{l.loomNumber}</div>
                   </div>
-                  {actionButtons(l, editing)}
+                  {masterEdit && onDelete && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      title={`Delete Loom ${l.loomNumber}`}
+                      onClick={() => handleDeleteLoom(l)}
+                    >
+                      <i className="bi bi-trash" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="d-flex justify-content-between small text-secondary py-1 gap-2">
                   <span>
                     Year:{' '}
-                    {editing ? (
-                      <input
-                        type="number"
-                        className="form-control form-control-sm d-inline-block"
+                    {masterEdit ? (
+                      <NumericCellInput
+                        className="form-control form-control-sm d-inline-block text-end"
                         style={{ width: 72 }}
-                        value={d!.year}
-                        onChange={(e) => patchDraft({ year: Number(e.target.value) || 0 })}
+                        value={l.year || 0}
+                        navRow={rowIdx}
+                        navCol={1}
+                        onValueChange={(v) => onUpdate(l.loomNumber, { year: v })}
                       />
                     ) : (
                       <strong className="text-dark">{l.year}</strong>
                     )}
                   </span>
-                  <span>
+                  <span className="flex-fill">
                     Shed:{' '}
-                    {editing ? (
-                      <input
+                    {masterEdit ? (
+                      <TextCellInput
                         className="form-control form-control-sm d-inline-block"
                         style={{ width: 100 }}
-                        value={d!.shed}
-                        onChange={(e) => patchDraft({ shed: e.target.value })}
+                        value={l.shed || 'Main Floor'}
+                        navRow={rowIdx}
+                        navCol={3}
+                        onValueChange={(v) => onUpdate(l.loomNumber, { shed: v.trim() || 'Main Floor' })}
                       />
                     ) : (
                       <strong className="text-dark">{l.shed || 'Main Floor'}</strong>
@@ -313,11 +247,13 @@ export function LoomMasterTable({
 
                 <div>
                   <label className="form-label small mb-1 fw-semibold">Model</label>
-                  {editing ? (
+                  {masterEdit ? (
                     <select
                       className="form-select form-select-sm"
-                      value={d!.model}
-                      onChange={(e) => patchDraft({ model: e.target.value as LoomCategory })}
+                      value={l.model || 'G6200'}
+                      onChange={(e) =>
+                        onUpdate(l.loomNumber, { model: e.target.value as LoomCategory })
+                      }
                     >
                       {MODELS.map((m) => (
                         <option key={m} value={m}>
@@ -336,12 +272,12 @@ export function LoomMasterTable({
                   <label className="form-label small mb-1 fw-semibold">Quality</label>
                   <select
                     className="form-select form-select-sm"
-                    value={editing ? d!.qualityId : l.qualityId || ''}
-                    disabled={!editing}
-                    onChange={(e) => patchDraft({ qualityId: e.target.value })}
+                    value={l.qualityId || ''}
+                    disabled={!masterEdit}
+                    onChange={(e) => onUpdate(l.loomNumber, { qualityId: e.target.value || null })}
                   >
                     <option value="">—</option>
-                    {qualities.map((q) => (
+                    {orderedQualities.map((q) => (
                       <option key={q.id} value={q.id}>
                         {q.name}
                       </option>
@@ -351,29 +287,32 @@ export function LoomMasterTable({
 
                 <div>
                   <label className="form-label small mb-1 fw-semibold">RPM</label>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    title="RPM"
-                    value={editing ? d!.defaultRpm : l.defaultRpm}
-                    disabled={!editing}
-                    onChange={(e) => patchDraft({ defaultRpm: Number(e.target.value) || 0 })}
-                  />
+                  {masterEdit ? (
+                    <NumericCellInput
+                      className="form-control form-control-sm text-end"
+                      value={l.defaultRpm || 0}
+                      navRow={rowIdx}
+                      navCol={2}
+                      onValueChange={(v) => onUpdate(l.loomNumber, { defaultRpm: v })}
+                    />
+                  ) : (
+                    <div className="form-control form-control-sm bg-light text-end">{l.defaultRpm}</div>
+                  )}
                 </div>
 
                 <div>
                   <div className="d-flex justify-content-between align-items-center mb-1">
                     <label className="form-label small mb-0 fw-semibold">Status</label>
-                    {!editing && l.status !== 'RUNNING' && l.statusSince && (
+                    {!masterEdit && l.status !== 'RUNNING' && l.statusSince && (
                       <span className="text-muted small" style={{ fontSize: '0.70rem' }}>
                         Since {l.statusSince}
                       </span>
                     )}
                   </div>
                   <LoomStatusSelect
-                    value={editing ? d!.status : l.status}
-                    disabled={!editing}
-                    onChange={(status) => patchDraft({ status })}
+                    value={l.status}
+                    disabled={!masterEdit}
+                    onChange={(status) => onUpdate(l.loomNumber, { status })}
                   />
                 </div>
               </div>
@@ -423,26 +362,20 @@ export function LoomMasterTable({
                 <ResizableTh columnKey="status" width={widths.status} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Status
                 </ResizableTh>
-                <ResizableTh columnKey="actions" width={widths.actions} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
-                  Actions
-                </ResizableTh>
               </tr>
             </thead>
             <tbody>
-              {filteredLooms.map((l) => {
-                const editing = editingNumber === l.loomNumber && !!draft
-                const d = editing ? draft! : null
+              {filteredLooms.map((l, rowIdx) => {
                 return (
                   <tr
                     key={l.loomNumber}
-                    className={editing ? 'table-primary' : undefined}
-                    style={editing ? { backgroundColor: '#eef5ff', boxShadow: 'inset 0 0 0 1px #90b8f8' } : undefined}
+                    className={editActive ? 'sara-edit-row' : undefined}
                   >
                     <td className="fw-semibold px-2">{l.loomNumber}</td>
                     <td className="px-2 text-center">
                       <LoomPictureThumb
-                        images={d ? d.pictureDataUrls : getLoomPictures(l)}
-                        alt={d?.name || l.name || `Loom ${l.loomNumber}`}
+                        images={getLoomPictures(l)}
+                        alt={l.name || `Loom ${l.loomNumber}`}
                         size={40}
                         editable={canManagePics}
                         onImagesChange={
@@ -451,71 +384,39 @@ export function LoomMasterTable({
                       />
                     </td>
                     <td className="px-2">
-                      {editing ? (
-                        <input
-                          className="form-control form-control-sm"
-                          style={{ width: '100%', minWidth: 0 }}
-                          value={d!.name}
-                          onChange={(e) => patchDraft({ name: e.target.value })}
-                        />
-                      ) : (
-                        <span className="fw-semibold text-dark">{l.name}</span>
-                      )}
+                      <span className="fw-semibold text-dark">{l.name}</span>
                     </td>
                     <td className="px-2">
-                      {editing ? (
-                        <select
-                          className="form-select form-select-sm"
-                          style={{ width: '100%', minWidth: 0 }}
-                          value={d!.model}
-                          onChange={(e) => patchDraft({ model: e.target.value as LoomCategory })}
-                        >
-                          {MODELS.map((m) => (
-                            <option key={m} value={m}>
-                              {m}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="badge bg-light text-dark border px-2 py-1">{l.model}</span>
-                      )}
+                      <span className="badge bg-light text-dark border px-2 py-1">{l.model}</span>
                     </td>
                     <td className="px-2">
-                      {editing ? (
-                        <input
-                          type="number"
-                          className="form-control form-control-sm"
-                          style={{ width: '100%', minWidth: 0 }}
-                          value={d!.year}
-                          onChange={(e) => patchDraft({ year: Number(e.target.value) || 0 })}
-                        />
-                      ) : (
-                        <span className="text-secondary">{l.year}</span>
-                      )}
+                      <span className="text-secondary">{l.year}</span>
                     </td>
                     <td className="px-1">
-                      <input
-                        type="number"
-                        className="form-control form-control-sm text-end"
-                        style={{ width: '100%', minWidth: 0 }}
-                        value={editing ? d!.defaultRpm : l.defaultRpm}
-                        disabled={!editing}
-                        onChange={(e) =>
-                          patchDraft({ defaultRpm: Number(e.target.value) || 0 })
-                        }
-                      />
+                      {opsEdit ? (
+                        <NumericCellInput
+                          className="form-control form-control-sm text-end"
+                          style={{ width: '100%', minWidth: 0 }}
+                          value={l.defaultRpm || 0}
+                          navRow={rowIdx}
+                          navCol={2}
+                          onValueChange={(v) => onUpdate(l.loomNumber, { defaultRpm: v })}
+                        />
+                      ) : (
+                        <div className="text-end px-1">{l.defaultRpm}</div>
+                      )}
                     </td>
                     <td className="px-1">
                       <select
                         className="form-select form-select-sm"
                         style={{ width: '100%', minWidth: 0 }}
-                        value={editing ? d!.qualityId : l.qualityId || ''}
-                        disabled={!editing}
-                        title={qualityName(editing ? d!.qualityId || null : l.qualityId)}
-                        onChange={(e) => patchDraft({ qualityId: e.target.value })}
+                        value={l.qualityId || ''}
+                        disabled={!opsEdit}
+                        title={qualityName(l.qualityId)}
+                        onChange={(e) => onUpdate(l.loomNumber, { qualityId: e.target.value || null })}
                       >
                         <option value="">—</option>
-                        {qualities.map((q) => (
+                        {orderedQualities.map((q) => (
                           <option key={q.id} value={q.id}>
                             {q.name}
                           </option>
@@ -523,26 +424,17 @@ export function LoomMasterTable({
                       </select>
                     </td>
                     <td className="px-2">
-                      {editing ? (
-                        <input
-                          className="form-control form-control-sm"
-                          style={{ width: '100%', minWidth: 0 }}
-                          value={d!.shed}
-                          onChange={(e) => patchDraft({ shed: e.target.value })}
-                        />
-                      ) : (
-                        <span className="text-secondary">{l.shed || 'Main Floor'}</span>
-                      )}
+                      <span className="text-secondary">{l.shed || 'Main Floor'}</span>
                     </td>
                     <td className="px-1">
                       <div className="d-flex flex-column">
                         <LoomStatusSelect
-                          value={editing ? d!.status : l.status}
-                          disabled={!editing}
+                          value={l.status}
+                          disabled={!opsEdit}
                           style={{ width: '100%', minWidth: 0 }}
-                          onChange={(status) => patchDraft({ status })}
+                          onChange={(status) => onUpdate(l.loomNumber, { status })}
                         />
-                        {!editing && l.status !== 'RUNNING' && l.statusSince && (
+                        {!opsEdit && l.status !== 'RUNNING' && l.statusSince && (
                           <span className="text-muted text-nowrap mt-0.5" style={{ fontSize: '0.68rem' }}>
                             <i className="bi bi-clock-history me-1" />
                             Since {l.statusSince}
@@ -550,7 +442,6 @@ export function LoomMasterTable({
                         )}
                       </div>
                     </td>
-                    <td className="px-1 text-center">{actionButtons(l, editing)}</td>
                   </tr>
                 )
               })}
@@ -558,6 +449,14 @@ export function LoomMasterTable({
           </table>
         </div>
       )}
+
+      <AddLoomModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAdd={onAdd}
+        qualities={qualities}
+        suggestedLoomNumber={nextLoomNumber}
+      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 // src/services/payrollService.ts
 import {
   EmployeeProfile,
+  EmployeeCategory,
   AdvanceRecord,
   StaffSalaryRecord,
   ContractSalaryRecord,
@@ -215,8 +216,8 @@ function namesMatch(a?: string, b?: string): boolean {
 function jobFamily(designation?: string, category?: string): JobFamily {
   const c = (category || '').toLowerCase()
   const d = (designation || '').toLowerCase()
-  if (c === 'weaver' || /\bweaver\b/.test(d)) return 'weaver'
-  if (c === 'helper' || d.includes('helper') || d.includes('sweeper')) return 'helper'
+  if (c === 'weaver' || /\bweaver\b/.test(d) || d.includes('spare weaver')) return 'weaver'
+  if (c === 'helper' || (d.includes('helper') && !d.includes('electrician helper')) || d.includes('winder')) return 'helper'
   if (
     c === 'contractor' ||
     d.includes('contractor') ||
@@ -229,6 +230,163 @@ function jobFamily(designation?: string, category?: string): JobFamily {
     return 'contractor'
   }
   return 'salaried'
+}
+
+/** Infer HR category from designation / contract status (Category field removed from form). */
+export function inferEmployeeCategory(input: {
+  designation?: string
+  contractStatus?: string
+  employeeCategory?: string | null
+}): EmployeeCategory {
+  const family = jobFamily(input.designation, input.employeeCategory || undefined)
+  if (family === 'weaver') return 'Weaver'
+  if (family === 'helper') return 'Helper'
+  if (family === 'contractor' || input.contractStatus === 'Contractor') return 'Contractor'
+
+  const d = (input.designation || '').toLowerCase()
+  const existing = (input.employeeCategory || '').trim()
+  if (existing && !['Staff', 'staff'].includes(existing)) {
+    // Keep explicit Admin/Contract if already set and not overridden by family
+    if (['Admin', 'Contract', 'Contractor', 'Weaver', 'Helper'].includes(existing)) {
+      if (family === 'salaried' && (existing === 'Admin' || existing === 'Contract')) return existing as EmployeeCategory
+    }
+  }
+  if (
+    d.includes('technician') ||
+    d.includes('oilman') ||
+    d.includes('oil man') ||
+    d.includes('electrician') ||
+    d.includes('mechanic') ||
+    d.includes('folding') ||
+    d.includes('time keeper') ||
+    d.includes('beem gater') ||
+    d.includes('quality controller') ||
+    d.includes('sweeper') ||
+    d.includes('kitchen')
+  ) {
+    return 'Contract'
+  }
+  if (d.includes('incharge') || d.includes('ceo') || d.includes('director') || d.includes('owner')) {
+    return 'Admin'
+  }
+  return 'Staff'
+}
+
+/** Monthly General Wages sheet — exclude daily-wage roles (Weaver / Helper / Contractor) and Resigned employees. */
+export function isGeneralWagesEmployee(
+  emp: Pick<EmployeeProfile, 'designation' | 'employeeCategory' | 'contractStatus' | 'status' | 'remarks' | 'resignedAt'>
+): boolean {
+  if (!isActiveEmployee(emp as EmployeeProfile)) return false
+  if ((emp.status || '').toLowerCase() === 'resigned') return false
+  if (emp.resignedAt && emp.resignedAt.trim()) return false
+  if (emp.remarks && emp.remarks.toLowerCase().includes('resign')) return false
+  const cat = inferEmployeeCategory(emp)
+  return cat !== 'Weaver' && cat !== 'Helper' && cat !== 'Contractor'
+}
+
+export function matchesHrCategoryFilter(
+  emp: Pick<EmployeeProfile, 'designation' | 'employeeCategory' | 'contractStatus' | 'status'>,
+  filter: string
+): boolean {
+  if (!filter || filter === 'ALL') return true
+  const f = filter.toUpperCase()
+  if (f === 'RESIGNED') {
+    return (emp.status || 'Active').toLowerCase() === 'resigned'
+  }
+  const cat = inferEmployeeCategory(emp).toUpperCase()
+  if (f === 'STAFF') return cat === 'STAFF' || cat === 'ADMIN'
+  if (f === 'WEAVER') return cat === 'WEAVER'
+  if (f === 'HELPER') return cat === 'HELPER'
+  if (f === 'CONTRACT') return cat === 'CONTRACT' || cat === 'CONTRACTOR'
+  return cat === f
+}
+
+/**
+ * Finds the optimal row index to insert an employee based on their designation / category.
+ * Places the new employee immediately beneath existing peers (e.g. under Quality Controller, Electrician, Contractor, etc.).
+ */
+export function findSmartInsertionIndex(
+  list: EmployeeProfile[],
+  designation?: string,
+  category?: string
+): number {
+  if (!list || list.length === 0) return 0
+  const dNorm = (designation || '').toLowerCase().trim()
+
+  // 1. Exact designation match: find the last active employee with the exact same designation
+  let lastExactIdx = -1
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i]
+    if ((e.status || 'Active') === 'Resigned') continue
+    if (dNorm && (e.designation || '').toLowerCase().trim() === dNorm) {
+      lastExactIdx = i
+    }
+  }
+  if (lastExactIdx !== -1) {
+    return lastExactIdx + 1
+  }
+
+  // 2. Keyword match: e.g. "quality", "technician", "electrician", "supervisor", "contractor", "sweeper", "weaver", "helper", etc.
+  const keywords = [
+    'quality',
+    'controller',
+    'incharge',
+    'supervisor',
+    'technician',
+    'electrician',
+    'mechanic',
+    'oil man',
+    'folding',
+    'time keeper',
+    'sweeper',
+    'kitchen',
+    'contractor',
+    'contracter',
+    'weaver',
+    'helper',
+    'winder',
+  ]
+  const matchedKw = keywords.find((k) => dNorm.includes(k))
+  if (matchedKw) {
+    let lastKwIdx = -1
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i]
+      if ((e.status || 'Active') === 'Resigned') continue
+      if ((e.designation || '').toLowerCase().includes(matchedKw)) {
+        lastKwIdx = i
+      }
+    }
+    if (lastKwIdx !== -1) {
+      return lastKwIdx + 1
+    }
+  }
+
+  // 3. Category match: infer category and find the last active in same category
+  const targetCategory = inferEmployeeCategory({ designation, employeeCategory: category })
+  let lastCatIdx = -1
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i]
+    if ((e.status || 'Active') === 'Resigned') continue
+    if (inferEmployeeCategory(e) === targetCategory) {
+      lastCatIdx = i
+    }
+  }
+  if (lastCatIdx !== -1) {
+    return lastCatIdx + 1
+  }
+
+  // 4. Default: insert after the last active employee (before any resigned records)
+  let lastActiveIdx = -1
+  for (let i = 0; i < list.length; i++) {
+    if ((list[i].status || 'Active') !== 'Resigned') {
+      lastActiveIdx = i
+    }
+  }
+  if (lastActiveIdx !== -1) {
+    return lastActiveIdx + 1
+  }
+
+  return list.length
 }
 
 function sameJobFamily(emp: EmployeeProfile, rowDesignation?: string): boolean {
@@ -261,10 +419,6 @@ function findLinkedEmployee(
   return undefined
 }
 
-// Master Employee Directory loaded with Pakistani CNICs, Father Names, Phone, Address, Category & Status (Sheet 1: 46 Master Roster Employees)
-const INITIAL_EMPLOYEES: EmployeeProfile[] = hydrateResignedDates(
-  (allEmployeesData as unknown as EmployeeProfile[]).slice(0, 46)
-).list
 
 // Seed data directly transcribed from August-2026 Excel sheets
 const INITIAL_STAFF_SALARIES: StaffSalaryRecord[] = [
@@ -2117,6 +2271,131 @@ const INITIAL_EFFICIENCY_INCENTIVES: EfficiencyIncentiveRecord[] = [
   }
 ]
 
+function buildInitialMasterRoster(): EmployeeProfile[] {
+  // General Wages + weavers/helpers/contractors already stored on the master roster
+  const gwList: EmployeeProfile[] = (allEmployeesData as unknown as EmployeeProfile[]).map((e) => {
+    const copy = { ...e }
+    if ((copy.designation || '').toLowerCase().includes('sweeper')) {
+      copy.employeeCategory = 'Contract'
+    }
+    const remarksLow = (copy.remarks || '').toLowerCase()
+    if (remarksLow.includes('resign') || (copy.status || '').toLowerCase() === 'resigned') {
+      copy.status = 'Resigned'
+      if (!copy.resignedAt) {
+        copy.resignedAt = parseResignationDateFromRemarks(copy.remarks) || '2026-08-31'
+      }
+    }
+    return copy
+  })
+
+  const existingNames = new Set(gwList.map((e) => normalizeName(e.name)))
+
+  // 2. Real Weavers from INITIAL_WEAVERS_WAGES (skip anyone already on the roster)
+  const weaverNamesSeen = new Set<string>()
+  const weaverProfiles: EmployeeProfile[] = []
+  let nextSerial = gwList.reduce((max, e) => Math.max(max, e.serialNo || 0), 0) + 1
+  for (const w of INITIAL_WEAVERS_WAGES) {
+    const norm = normalizeName(w.employeeName)
+    if (!weaverNamesSeen.has(norm) && !existingNames.has(norm)) {
+      weaverNamesSeen.add(norm)
+      const isSpare = (w.designation || '').toLowerCase().includes('spare')
+      const dailyWage = w.wagePerDay || (isSpare ? 1800 : 1450)
+      weaverProfiles.push({
+        id: `emp-w-${weaverProfiles.length + 1}`,
+        serialNo: nextSerial++,
+        name: w.employeeName,
+        fatherName: '',
+        cnic: `42101-${Math.floor(1000000 + Math.random() * 9000000)}-${(weaverProfiles.length % 9) + 1}`,
+        phone: '0300-0000000',
+        address: 'Karachi',
+        designation: w.designation || (isSpare ? 'Spare Weaver' : 'Weaver'),
+        department: 'Weaving Floor',
+        employeeCategory: 'Weaver',
+        dutyHrs: 12,
+        shiftFromTo: '8 to 8',
+        salary: dailyWage * 30,
+        ratePerDay31: dailyWage,
+        ratePerDay30: dailyWage,
+        ratePerHr30: Math.round((dailyWage / 12) * 100) / 100,
+        ratePerDay28: dailyWage,
+        doj: '01-Jan-2023',
+        contractStatus: 'Daily Wage',
+        status: 'Active',
+      })
+    }
+  }
+
+  // 3. Real Helpers from INITIAL_HELPERS_WAGES
+  const helperNamesSeen = new Set<string>()
+  const helperProfiles: EmployeeProfile[] = []
+  for (const h of INITIAL_HELPERS_WAGES) {
+    const norm = normalizeName(h.employeeName)
+    if (!helperNamesSeen.has(norm) && !existingNames.has(norm) && !weaverNamesSeen.has(norm)) {
+      helperNamesSeen.add(norm)
+      const dailyWage = h.wagePerDay || 1050
+      helperProfiles.push({
+        id: `emp-h-${helperProfiles.length + 1}`,
+        serialNo: nextSerial++,
+        name: h.employeeName,
+        fatherName: '',
+        cnic: `42101-${Math.floor(1000000 + Math.random() * 9000000)}-${(helperProfiles.length % 9) + 1}`,
+        phone: '0300-0000000',
+        address: 'Karachi',
+        designation: h.designation || 'Helper',
+        department: 'Weaving Floor',
+        employeeCategory: 'Helper',
+        dutyHrs: 12,
+        shiftFromTo: '8 to 8',
+        salary: dailyWage * 30,
+        ratePerDay31: dailyWage,
+        ratePerDay30: dailyWage,
+        ratePerHr30: Math.round((dailyWage / 12) * 100) / 100,
+        ratePerDay28: dailyWage,
+        doj: '01-Jan-2023',
+        contractStatus: 'Daily Wage',
+        status: 'Active',
+      })
+    }
+  }
+
+  // 4. Contractors from INITIAL_CONTRACTORS
+  const contractorNamesSeen = new Set<string>()
+  const contractorProfiles: EmployeeProfile[] = []
+  for (const c of INITIAL_CONTRACTORS) {
+    const norm = normalizeName(c.name)
+    if (!contractorNamesSeen.has(norm) && !existingNames.has(norm) && !weaverNamesSeen.has(norm) && !helperNamesSeen.has(norm)) {
+      contractorNamesSeen.add(norm)
+      const monthlyAmount = c.contractualAmount || 30000
+      contractorProfiles.push({
+        id: `emp-c-${contractorProfiles.length + 1}`,
+        serialNo: nextSerial++,
+        name: c.name,
+        fatherName: '',
+        cnic: `42101-${Math.floor(1000000 + Math.random() * 9000000)}-${(contractorProfiles.length % 9) + 1}`,
+        phone: '0300-0000000',
+        address: 'Karachi',
+        designation: c.contractType || 'Contractor',
+        department: 'Contract Services',
+        employeeCategory: 'Contractor',
+        dutyHrs: 10,
+        shiftFromTo: 'Flexible',
+        salary: monthlyAmount,
+        ratePerDay31: Math.round((monthlyAmount / 31) * 100) / 100,
+        ratePerDay30: Math.round((monthlyAmount / 30) * 100) / 100,
+        ratePerHr30: Math.round((monthlyAmount / 300) * 100) / 100,
+        ratePerDay28: Math.round((monthlyAmount / 28) * 100) / 100,
+        doj: '01-Jan-2022',
+        contractStatus: 'Contractor',
+        status: 'Active',
+      })
+    }
+  }
+
+  return [...gwList, ...weaverProfiles, ...helperProfiles, ...contractorProfiles]
+}
+
+const INITIAL_EMPLOYEES: EmployeeProfile[] = hydrateResignedDates(buildInitialMasterRoster()).list
+
 /** In-memory cache hydrated from PostgreSQL via /api/payroll/store. */
 const memoryStore = new Map<string, string>()
 let hydrated = false
@@ -2145,6 +2424,8 @@ function writeStore(key: string, value: unknown): void {
   } catch {
     // ignore
   }
+  // Wait until the DB snapshot is loaded, otherwise a first paint can overwrite Postgres.
+  if (!hydrated) return
   void persistPayrollKey(key, value)
 }
 
@@ -2480,11 +2761,248 @@ class PayrollService {
 
   getEmployees(): EmployeeProfile[] {
     const list = this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
-    const { list: hydrated, changed } = hydrateResignedDates(list)
-    if (changed && this.isClient()) {
-      writeStore(STORAGE_KEYS.EMPLOYEES, hydrated)
+    const { list: repaired, changed } = this.repairRoster(list)
+    if (changed && this.isClient() && hydrated) {
+      writeStore(STORAGE_KEYS.EMPLOYEES, repaired)
     }
-    return hydrated
+    return repaired
+  }
+
+  /**
+   * Merge resigned General Wages people and missing weaver/helper profiles.
+   * Used by GET /api/payroll/store so the roster is saved in Postgres, not only in the browser.
+   */
+  integrateEmployeeRoster(
+    employees: unknown,
+    weavers: unknown,
+    helpers: unknown
+  ): { list: EmployeeProfile[]; changed: boolean } {
+    const list =
+      Array.isArray(employees) && employees.length > 0
+        ? (employees as EmployeeProfile[])
+        : INITIAL_EMPLOYEES
+    const weaverRows = Array.isArray(weavers)
+      ? (weavers as WeaverWageRecord[])
+      : this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
+    const helperRows = Array.isArray(helpers)
+      ? (helpers as HelperWageRecord[])
+      : this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
+    return this.repairRoster(list, weaverRows, helperRows)
+  }
+
+  /**
+   * Persisted roster can predate the Excel import:
+   * - General Wages remarks like "Resignation …" stay Active, so Resigned count is 0
+   * - Weavers / Helpers live on their wage sheets but were never copied onto HR
+   */
+  private repairRoster(
+    list: EmployeeProfile[],
+    weaverRows?: WeaverWageRecord[],
+    helperRows?: HelperWageRecord[]
+  ): { list: EmployeeProfile[]; changed: boolean } {
+    let changed = false
+    let next = list.map((e) => {
+      const remarks = e.remarks || ''
+      const looksResigned = /resign/i.test(remarks) || (e.status || '').toLowerCase() === 'resigned'
+      if (!looksResigned) return e
+      const resignedAt = (e.resignedAt || '').trim() || parseResignationDateFromRemarks(remarks) || ''
+      if ((e.status || 'Active') === 'Resigned' && ((e.resignedAt || '').trim() === resignedAt || !resignedAt)) {
+        return e
+      }
+      changed = true
+      return {
+        ...e,
+        status: 'Resigned' as const,
+        resignedAt: resignedAt || e.resignedAt,
+      }
+    })
+
+    const names = () => new Set(next.map((e) => normalizeName(e.name)))
+    let known = names()
+
+    const pushMissing = (src: EmployeeProfile) => {
+      const key = normalizeName(src.name)
+      if (!key || known.has(key)) return
+      const remarks = src.remarks || ''
+      const looksResigned = /resign/i.test(remarks) || (src.status || '').toLowerCase() === 'resigned'
+      next.push({
+        ...src,
+        status: looksResigned ? 'Resigned' : src.status || 'Active',
+        resignedAt: looksResigned
+          ? src.resignedAt || parseResignationDateFromRemarks(remarks) || ''
+          : src.resignedAt,
+      })
+      known.add(key)
+      changed = true
+    }
+
+    for (const src of allEmployeesData as unknown as EmployeeProfile[]) {
+      const d = (src.designation || '').toLowerCase()
+      const isFloor = d.includes('weaver') || d.includes('helper')
+      const isResigned = /resign/i.test(src.remarks || '') || (src.status || '').toLowerCase() === 'resigned'
+      if (isFloor || isResigned) pushMissing(src)
+    }
+
+    const skipName = (name?: string) => {
+      const n = (name || '').trim().toLowerCase()
+      return !n || n.startsWith('new ')
+    }
+
+    let serial = next.reduce((max, e) => Math.max(max, e.serialNo || 0), 0)
+    const weaverSource = weaverRows ?? this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
+    for (const w of weaverSource) {
+      if (skipName(w.employeeName) || known.has(normalizeName(w.employeeName))) continue
+      const isSpare = (w.designation || '').toLowerCase().includes('spare')
+      const daily = Number(w.wagePerDay) || (isSpare ? 1800 : 1450)
+      serial += 1
+      pushMissing({
+        id: `emp-w-${normalizeName(w.employeeName).replace(/\s+/g, '-')}`,
+        serialNo: serial,
+        name: w.employeeName,
+        fatherName: '',
+        cnic: '',
+        phone: '',
+        address: '',
+        designation: isSpare ? 'Spare Weaver' : 'Weaver',
+        department: 'Weaving Floor',
+        employeeCategory: 'Weaver',
+        dutyHrs: 12,
+        shiftFromTo: '8 to 8',
+        salary: daily * 30,
+        ratePerDay31: daily,
+        ratePerDay30: daily,
+        ratePerHr30: Math.round((daily / 12) * 100) / 100,
+        ratePerDay28: daily,
+        doj: '',
+        contractStatus: 'Daily Wage',
+        status: 'Active',
+      })
+    }
+
+    const helperSource = helperRows ?? this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
+    for (const h of helperSource) {
+      if (skipName(h.employeeName) || known.has(normalizeName(h.employeeName))) continue
+      const daily = Number(h.wagePerDay) || 1050
+      serial += 1
+      pushMissing({
+        id: `emp-h-${normalizeName(h.employeeName).replace(/\s+/g, '-')}`,
+        serialNo: serial,
+        name: h.employeeName,
+        fatherName: '',
+        cnic: '',
+        phone: '',
+        address: '',
+        designation: 'Helper',
+        department: 'Weaving Floor',
+        employeeCategory: 'Helper',
+        dutyHrs: 12,
+        shiftFromTo: '8 to 8',
+        salary: daily * 30,
+        ratePerDay31: daily,
+        ratePerDay30: daily,
+        ratePerHr30: Math.round((daily / 12) * 100) / 100,
+        ratePerDay28: daily,
+        doj: '',
+        contractStatus: 'Daily Wage',
+        status: 'Active',
+      })
+    }
+
+    if (changed) {
+      next = next.map((e, i) => ({ ...e, serialNo: i + 1 }))
+    }
+    return { list: next, changed }
+  }
+
+  /** Weaver / Spare Weaver / Helper belong on their wage sheets, not General Wages. */
+  private placeOnDailyWageSheets(emp: EmployeeProfile, month = '2026-08'): void {
+    const cat = inferEmployeeCategory(emp)
+    if (cat !== 'Weaver' && cat !== 'Helper') return
+    if ((emp.status || 'Active') === 'Resigned') return
+
+    const monthsOf = (rows: { month?: string }[]) => {
+      const set = new Set<string>([month])
+      rows.forEach((r) => {
+        if (r.month) set.add(r.month)
+      })
+      return [...set]
+    }
+
+    if (cat === 'Weaver') {
+      const all = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
+      const isSpare = (emp.designation || '').toLowerCase().includes('spare')
+      const wage = Number(emp.ratePerDay30) || Math.round((Number(emp.salary) || 0) / 30) || (isSpare ? 1800 : 1450)
+      const designation = isSpare ? 'Spare Weaver' : 'Weaver'
+      let changed = false
+      const next = [...all]
+      for (const m of monthsOf(all)) {
+        for (const fortnight of ['1-15', '16-31'] as const) {
+          const exists = next.some(
+            (w) =>
+              w.month === m &&
+              w.fortnight === fortnight &&
+              (w.employeeId === emp.id || namesMatch(w.employeeName, emp.name))
+          )
+          if (exists) continue
+          const peers = next.filter((w) => w.month === m && w.fortnight === fortnight)
+          next.push(
+            this.calculateWeaverWageRow({
+              id: `w-${m}-${fortnight}-${emp.id}`,
+              serialNo: peers.length + 1,
+              employeeId: emp.id,
+              employeeName: emp.name,
+              designation,
+              wagePerDay: wage,
+              attendanceDays: 0,
+              rateLoom: 150,
+              extraLooms: 0,
+              holidayAttendance: 0,
+              holidayRate: isSpare ? 2100 : 1750,
+              efficiencyAmount: 0,
+              fortnight,
+              month: m,
+            })
+          )
+          changed = true
+        }
+      }
+      if (changed) this.saveWeaversWages(next, false)
+      return
+    }
+
+    const all = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
+    const wage = Number(emp.ratePerDay30) || Math.round((Number(emp.salary) || 0) / 30) || 1050
+    let changed = false
+    const next = [...all]
+    for (const m of monthsOf(all)) {
+      for (const fortnight of ['1-15', '16-31'] as const) {
+        const exists = next.some(
+          (h) =>
+            h.month === m &&
+            h.fortnight === fortnight &&
+            (h.employeeId === emp.id || namesMatch(h.employeeName, emp.name))
+        )
+        if (exists) continue
+        const peers = next.filter((h) => h.month === m && h.fortnight === fortnight)
+        next.push(
+          this.calculateHelperWageRow({
+            id: `h-${m}-${fortnight}-${emp.id}`,
+            serialNo: peers.length + 1,
+            employeeId: emp.id,
+            employeeName: emp.name,
+            designation: 'Helper',
+            wagePerDay: wage,
+            attendanceDays: 0,
+            otRate: 1200,
+            holidayAttendance: 0,
+            fortnight,
+            month: m,
+          })
+        )
+        changed = true
+      }
+    }
+    if (changed) this.saveHelpersWages(next, false)
   }
 
   /** Working roster only — excludes Resigned (for Profiles / General Wages / new month seed). */
@@ -2625,27 +3143,40 @@ class PayrollService {
     }
   }
 
-  addEmployee(emp: Omit<EmployeeProfile, 'id' | 'serialNo' | 'ratePerDay31' | 'ratePerDay30' | 'ratePerHr30' | 'ratePerDay28'>): EmployeeProfile {
+  addEmployee(
+    emp: Omit<EmployeeProfile, 'id' | 'serialNo' | 'ratePerDay31' | 'ratePerDay30' | 'ratePerHr30' | 'ratePerDay28'>,
+    targetIndex?: number
+  ): EmployeeProfile {
     const list = this.getEmployees()
     const ratePerDay31 = Math.round((emp.salary / 31) * 100) / 100
     const ratePerDay30 = Math.round((emp.salary / 30) * 100) / 100
     const ratePerHr30 = Math.round((emp.salary / (30 * (emp.dutyHrs || 8))) * 100) / 100
     const ratePerDay28 = Math.round((emp.salary / 28) * 100) / 100
+    const employeeCategory = inferEmployeeCategory(emp)
 
     const newEmp: EmployeeProfile = {
       ...emp,
       id: `emp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      serialNo: list.length + 1,
+      serialNo: 0,
       ratePerDay31,
       ratePerDay30,
       ratePerHr30,
       ratePerDay28,
       status: emp.status || 'Active',
-      employeeCategory: emp.employeeCategory || 'Staff',
+      employeeCategory,
     }
-    list.push(newEmp)
-    this.saveEmployees(list)
-    return newEmp
+
+    const insertIdx =
+      targetIndex !== undefined
+        ? Math.max(0, Math.min(targetIndex, list.length))
+        : findSmartInsertionIndex(list, emp.designation, employeeCategory)
+
+    list.splice(insertIdx, 0, newEmp)
+    const renumbered = list.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+    this.saveEmployees(renumbered)
+    const saved = renumbered[insertIdx]
+    this.placeOnDailyWageSheets(saved)
+    return saved
   }
 
   updateEmployee(id: string, updatedFields: Partial<EmployeeProfile>): EmployeeProfile | null {
@@ -2673,7 +3204,7 @@ class PayrollService {
       resignedAt = undefined
     }
 
-    const updated: EmployeeProfile = {
+    const merged: EmployeeProfile = {
       ...current,
       ...updatedFields,
       salary,
@@ -2685,15 +3216,53 @@ class PayrollService {
       status: nextStatus,
       resignedAt,
     }
+    merged.employeeCategory = inferEmployeeCategory(merged)
 
-    list[idx] = updated
+    list[idx] = merged
     this.saveEmployees(list, true)
+    this.placeOnDailyWageSheets(merged)
 
     if (nextStatus === 'Resigned') {
-      this.purgeResignedFromFutureMonths(updated)
+      this.purgeResignedFromFutureMonths(merged)
       this.notifyDataChanged()
     }
-    return updated
+    return merged
+  }
+
+  rejoinEmployee(id: string, newDoj?: string): EmployeeProfile | null {
+    const doj = newDoj || todayIsoDate()
+    return this.updateEmployee(id, {
+      status: 'Active',
+      resignedAt: undefined,
+      doj,
+      remarks: `Re-joined ${doj}`,
+    })
+  }
+
+  resignEmployee(id: string, resignedAt?: string, remarks?: string): EmployeeProfile | null {
+    const dateStr = resignedAt || todayIsoDate()
+    return this.updateEmployee(id, {
+      status: 'Resigned',
+      resignedAt: dateStr,
+      remarks: remarks || `Resigned ${dateStr}`,
+    })
+  }
+
+  /** Move a profile up/down within optional scope (e.g. current HR filter). */
+  moveEmployee(id: string, direction: 'up' | 'down', scopeIds?: string[]): EmployeeProfile[] {
+    let list = [...this.getEmployees()].sort((a, b) => a.serialNo - b.serialNo)
+    const scope = scopeIds?.length ? list.filter((e) => scopeIds.includes(e.id)) : list
+    const scopeIdx = scope.findIndex((e) => e.id === id)
+    if (scopeIdx < 0) return list
+    const swapWith = direction === 'up' ? scope[scopeIdx - 1] : scope[scopeIdx + 1]
+    if (!swapWith) return list
+    const i = list.findIndex((e) => e.id === id)
+    const j = list.findIndex((e) => e.id === swapWith.id)
+    if (i < 0 || j < 0) return list
+    ;[list[i], list[j]] = [list[j], list[i]]
+    list = list.map((e, n) => ({ ...e, serialNo: n + 1 }))
+    this.saveEmployees(list, false)
+    return list
   }
 
   deleteEmployee(id: string): void {
@@ -2723,6 +3292,14 @@ class PayrollService {
     const updatedStaff = staffList.map((st) => {
       const emp = isLinked(st.employeeName, st.designation, st.employeeId)
       if (!emp) return st
+      if (
+        st.employeeId === emp.id &&
+        st.employeeName === emp.name &&
+        st.designation === emp.designation &&
+        st.salary === emp.salary
+      ) {
+        return st
+      }
       staffChanged = true
       return this.calculateStaffSalaryRow(
         {
@@ -2743,6 +3320,14 @@ class PayrollService {
     const updatedContract = contractList.map((ct) => {
       const emp = isLinked(ct.employeeName, ct.designation, ct.employeeId)
       if (!emp) return ct
+      if (
+        ct.employeeId === emp.id &&
+        ct.employeeName === emp.name &&
+        ct.designation === emp.designation &&
+        ct.salary === emp.salary
+      ) {
+        return ct
+      }
       contractChanged = true
       return this.calculateContractSalaryRow(
         {

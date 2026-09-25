@@ -26,6 +26,7 @@ export function useProductionGrid() {
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDateState] = useState<string>(PRODUCTION_YESTERDAY)
   const [selectedMonth, setSelectedMonth] = useState<string>(PRODUCTION_TODAY_MONTH)
+  const [todaySheetReady, setTodaySheetReady] = useState(false)
 
   const refresh = useCallback(
     (dateStr?: string) => {
@@ -50,11 +51,16 @@ export function useProductionGrid() {
       try {
         await hydrateFloorFromDb()
         await preloadFloorSheet(selectedDate)
+        await preloadFloorSheet(PRODUCTION_TODAY)
         if (cancelled) return
         refresh(selectedDate)
+        setTodaySheetReady(productionMastersService.hasPersistedSheet(PRODUCTION_TODAY))
       } catch (err) {
         console.error('[useProductionGrid] hydrate', err)
-        if (!cancelled) refresh(selectedDate)
+        if (!cancelled) {
+          refresh(selectedDate)
+          setTodaySheetReady(productionMastersService.hasPersistedSheet(PRODUCTION_TODAY))
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -66,7 +72,7 @@ export function useProductionGrid() {
 
   const setSelectedDate = useCallback((newDate: string) => {
     setSelectedDateState(newDate)
-    setSelectedMonth(newDate.startsWith('2026-08') ? '2026-08' : '2026-09')
+    setSelectedMonth('2026-09')
   }, [])
 
   const updateEntry = useCallback(
@@ -82,15 +88,42 @@ export function useProductionGrid() {
       setLooms(nextLooms)
       // Always re-read beams so Loom Status → Beam End appears without page refresh
       setBeams(productionMastersService.getBeams().map((b) => ({ ...b })))
+      if (patch.qualityId !== undefined) {
+        setQualities(productionMastersService.getQualities())
+      }
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
     [selectedDate]
   )
 
-  const addLoom = useCallback(() => {
-    setLooms(productionMastersService.addLoom())
-    setEntries(productionMastersService.buildSheetForDate(selectedDate))
-  }, [selectedDate])
+  const addLoom = useCallback(
+    (partial?: Partial<LoomMaster>) => {
+      setLooms(productionMastersService.addLoom(partial))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const deleteLoom = useCallback(
+    (loomNumber: number) => {
+      setLooms(productionMastersService.deleteLoom(loomNumber))
+      setBeams(productionMastersService.getBeams().map((b) => ({ ...b })))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const deleteBeam = useCallback(
+    (beamNo: string) => {
+      setBeams(productionMastersService.deleteBeam(beamNo))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+    },
+    [selectedDate]
+  )
+
+  const deleteYarn = useCallback((id: string) => {
+    setYarn(productionMastersService.deleteYarn(id))
+  }, [])
 
   const updateBeam = useCallback(
     (beamNo: string, patch: Partial<BeamMaster>) => {
@@ -201,8 +234,12 @@ export function useProductionGrid() {
     [selectedDate]
   )
 
-  const addQuality = useCallback(() => {
-    setQualities(productionMastersService.addQuality())
+  const addQuality = useCallback((partial?: Partial<QualityMaster>) => {
+    setQualities(productionMastersService.addQuality(partial))
+  }, [])
+
+  const deleteQuality = useCallback((id: string) => {
+    setQualities(productionMastersService.deleteQuality(id))
   }, [])
 
   const startNewDay = useCallback(
@@ -211,8 +248,9 @@ export function useProductionGrid() {
       try {
         productionMastersService.startNewDay(targetDate)
         setSelectedDateState(targetDate)
-        setSelectedMonth(targetDate.startsWith('2026-08') ? '2026-08' : '2026-09')
+        setSelectedMonth('2026-09')
         refresh(targetDate)
+        setTodaySheetReady(productionMastersService.hasPersistedSheet(PRODUCTION_TODAY))
       } finally {
         setLoading(false)
       }
@@ -236,18 +274,23 @@ export function useProductionGrid() {
     updateEntry,
     updateLoom,
     addLoom,
+    deleteLoom,
     updateBeam,
     addBeam,
+    deleteBeam,
     mountBeam,
     unmountBeam,
     receiveBeamFromSizing,
     sendBeamToSizing,
     updateYarn,
     addYarn,
+    deleteYarn,
     addYarnInward,
     issueYarnToLoom,
     updateQuality,
     addQuality,
+    deleteQuality,
     startNewDay,
+    todaySheetReady,
   }
 }

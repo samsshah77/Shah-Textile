@@ -78,6 +78,8 @@ export interface MonthlyMatrixDay {
   date: string;
   totalMeters: number;
   loomMeters: Record<number, number>;
+  /** True when a floor production sheet exists for this date (show 0; else —). */
+  hasSheet?: boolean;
 }
 
 export interface BeamStockItem {
@@ -135,27 +137,29 @@ export function calculateProductionMetrics(input: CalculationInput) {
   const theo24h = theoreticalMeters(rpm, pick, 24);
   const totalMeters = (shiftAMeters || 0) + (shiftBMeters || 0);
 
-  const efficiencyRunning = runningTheo > 0 ? (totalMeters / runningTheo) * 100 : 0;
-  const efficiency24h = theo24h > 0 ? (totalMeters / theo24h) * 100 : 0;
-  const lossRunning = runningTheo - totalMeters;
-  const loss24h = theo24h - totalMeters;
+  const efficiencyRunning = runningTheo > 0 ? (totalMeters / runningTheo) * 100 : 0
+  // Match Excel: Eff 24h can exceed 100% when Roller Hours > 24
+  const efficiency24h = theo24h > 0 ? (totalMeters / theo24h) * 100 : 0
+  const lossRunning = runningTheo - totalMeters
+  const loss24h = theo24h - totalMeters
 
-  let bonusPercentage = 0;
+  let bonusPercentage = 0
   if (efficiencyRunning >= 70) {
-    bonusPercentage = Math.max(0, Math.round(efficiencyRunning - 60));
+    bonusPercentage = Math.max(0, Math.round(efficiencyRunning - 60))
   }
 
-  const dailyRevenue = totalMeters * (pick * ratePerPick);
+  const dailyRevenue = totalMeters * (pick * ratePerPick)
 
   return {
-    theoreticalMeters: Number(runningTheo.toFixed(2)),
-    theoretical24h: Number(theo24h.toFixed(2)),
-    totalMeters: Number(totalMeters.toFixed(2)),
-    efficiencyPercentage: Number(efficiencyRunning.toFixed(2)),
-    efficiency24h: Number(efficiency24h.toFixed(2)),
-    stopLossMeters: Number(lossRunning.toFixed(2)),
-    loss24h: Number(loss24h.toFixed(2)),
+    // Round meters/eff like Excel display (ROUND)
+    theoreticalMeters: Math.round(runningTheo),
+    theoretical24h: Math.round(theo24h),
+    totalMeters: Math.round(totalMeters),
+    efficiencyPercentage: Math.round(efficiencyRunning),
+    efficiency24h: Math.round(efficiency24h),
+    stopLossMeters: Math.round(lossRunning),
+    loss24h: Math.round(loss24h),
     bonusPercentage,
     dailyRevenue: Number(dailyRevenue.toFixed(2)),
-  };
+  }
 }

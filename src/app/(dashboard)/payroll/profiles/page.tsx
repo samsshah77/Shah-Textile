@@ -3,7 +3,12 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { payrollService, resolveResignedAt } from '@/services/payrollService'
+import {
+  payrollService,
+  resolveResignedAt,
+  inferEmployeeCategory,
+  matchesHrCategoryFilter,
+} from '@/services/payrollService'
 import { EmployeeProfile, EmployeeCategory, EmployeeStatus } from '@/types/payroll'
 import { useAuth } from '@/context/AuthContext'
 import { AlertModal } from '@/components/ui/AlertModal'
@@ -12,15 +17,12 @@ import {
   Users,
   IdCard,
   Phone,
-  MapPin,
   Building,
   DollarSign,
   Clock,
   Search,
   Plus,
   Trash2,
-  Save,
-  X,
   Printer,
   CheckCircle2,
   FileSpreadsheet,
@@ -28,23 +30,93 @@ import {
   Table as TableIcon,
   Calendar,
   Briefcase,
-  Layers,
+  UserX,
+  UserPlus,
+  Scissors,
+  UserCheck,
+  AlertCircle,
+  X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 
+const HR_TABS = [
+  { id: 'ALL', label: 'All Active' },
+  { id: 'STAFF', label: 'Staff & Admin' },
+  { id: 'WEAVER', label: 'Weavers' },
+  { id: 'HELPER', label: 'Helpers' },
+  { id: 'CONTRACT', label: 'Contract' },
+  { id: 'RESIGNED', label: 'Resigned Staff' },
+]
+
+const DESIGNATION_PRESETS = [
+  {
+    label: 'Weaver (Rs. 1,450/day)',
+    designation: 'Weaver',
+    department: 'Weaving Floor',
+    dutyHrs: 12,
+    shiftFromTo: '8 to 8',
+    contractStatus: 'Daily Wage',
+    dailyWage: 1450,
+  },
+  {
+    label: 'Spare Weaver (Rs. 1,800/day)',
+    designation: 'Spare Weaver',
+    department: 'Weaving Floor',
+    dutyHrs: 12,
+    shiftFromTo: '8 to 8',
+    contractStatus: 'Daily Wage',
+    dailyWage: 1800,
+  },
+  {
+    label: 'Helper (Rs. 1,050/day)',
+    designation: 'Helper',
+    department: 'Weaving Floor',
+    dutyHrs: 12,
+    shiftFromTo: '8 to 8',
+    contractStatus: 'Daily Wage',
+    dailyWage: 1050,
+  },
+  {
+    label: 'Winder (Rs. 1,150/day)',
+    designation: 'Winder',
+    department: 'Weaving Floor',
+    dutyHrs: 12,
+    shiftFromTo: '8 to 8',
+    contractStatus: 'Daily Wage',
+    dailyWage: 1150,
+  },
+  {
+    label: 'Supervisor / Staff',
+    designation: 'Supervisor',
+    department: 'Administration',
+    dutyHrs: 9,
+    shiftFromTo: '9 to 6',
+    contractStatus: 'Company Contract',
+    dailyWage: 0,
+  },
+  {
+    label: 'Contract Tech',
+    designation: 'Technician',
+    department: 'Maintenance & Mechanical',
+    dutyHrs: 9,
+    shiftFromTo: '9 to 6',
+    contractStatus: 'Company Contract',
+    dailyWage: 0,
+  },
+]
+
 function EmployeeProfilesContent() {
-  const { canEditAccounts, canViewAccounts } = useAuth()
+  const { canEditAccounts } = useAuth()
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get('search') || ''
+  const initialTab = (searchParams.get('tab') || 'ALL').toUpperCase()
 
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
   const [search, setSearch] = useState(initialSearch)
-  const [filterCategory, setFilterCategory] = useState<string>('ALL')
-  /** Default: Active only. Admin/Accountant can switch to All / Resigned. */
-  const [filterStatus, setFilterStatus] = useState<string>('ACTIVE')
+  const [filterCategory, setFilterCategory] = useState<string>(initialTab)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
-  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [statusNotice, setStatusNotice] = useState<string | null>(null)
 
   // Edit / Add Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -58,16 +130,40 @@ function EmployeeProfilesContent() {
   const [address, setAddress] = useState('')
   const [designation, setDesignation] = useState('')
   const [department, setDepartment] = useState('Administration')
-  const [employeeCategory, setEmployeeCategory] = useState<EmployeeCategory>('Staff')
   const [dutyHrs, setDutyHrs] = useState<number | string>('9')
   const [shiftFromTo, setShiftFromTo] = useState('9 to 6')
   const [salary, setSalary] = useState<number | string>('')
+  const [dailyWage, setDailyWage] = useState<number | string>('')
   const [doj, setDoj] = useState('')
   const [contractStatus, setContractStatus] = useState<string>('Company Contract')
   const [status, setStatus] = useState<EmployeeStatus>('Active')
   const [resignedAt, setResignedAt] = useState('')
   const [advanceEligible, setAdvanceEligible] = useState(false)
   const [remarks, setRemarks] = useState('')
+
+  // Resign Modal State
+  const [resignModal, setResignModal] = useState<{
+    isOpen: boolean
+    emp: EmployeeProfile | null
+    resignedAt: string
+    remarks: string
+  }>({
+    isOpen: false,
+    emp: null,
+    resignedAt: new Date().toISOString().split('T')[0],
+    remarks: '',
+  })
+
+  // Re-join Modal State
+  const [rejoinModal, setRejoinModal] = useState<{
+    isOpen: boolean
+    emp: EmployeeProfile | null
+    newDoj: string
+  }>({
+    isOpen: false,
+    emp: null,
+    newDoj: new Date().toISOString().split('T')[0],
+  })
 
   // Delete Confirmation Modal State
   const [deleteConfirmState, setDeleteConfirmState] = useState<{
@@ -97,6 +193,13 @@ function EmployeeProfilesContent() {
     }
   }, [initialSearch])
 
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam) {
+      setFilterCategory(tabParam.toUpperCase())
+    }
+  }, [searchParams])
+
   const openAddModal = () => {
     setEditingEmployee(null)
     setName('')
@@ -106,10 +209,10 @@ function EmployeeProfilesContent() {
     setAddress('')
     setDesignation('')
     setDepartment('Administration')
-    setEmployeeCategory('Staff')
     setDutyHrs('9')
     setShiftFromTo('9 to 6')
     setSalary('')
+    setDailyWage('')
     setDoj(new Date().toISOString().split('T')[0])
     setContractStatus('Company Contract')
     setStatus('Active')
@@ -117,6 +220,18 @@ function EmployeeProfilesContent() {
     setAdvanceEligible(false)
     setRemarks('')
     setIsModalOpen(true)
+  }
+
+  const applyPreset = (preset: typeof DESIGNATION_PRESETS[0]) => {
+    setDesignation(preset.designation)
+    setDepartment(preset.department)
+    setDutyHrs(preset.dutyHrs)
+    setShiftFromTo(preset.shiftFromTo)
+    setContractStatus(preset.contractStatus)
+    if (preset.dailyWage > 0) {
+      setDailyWage(preset.dailyWage)
+      setSalary(preset.dailyWage * 30)
+    }
   }
 
   const openEditModal = (emp: EmployeeProfile) => {
@@ -128,10 +243,12 @@ function EmployeeProfilesContent() {
     setAddress(emp.address || '')
     setDesignation(emp.designation || '')
     setDepartment(emp.department || 'Administration')
-    setEmployeeCategory(emp.employeeCategory || 'Staff')
     setDutyHrs(emp.dutyHrs || 9)
     setShiftFromTo(emp.shiftFromTo || '9 to 6')
     setSalary(emp.salary || '')
+    const isDaily = emp.contractStatus === 'Daily Wage' || ['Weaver', 'Helper'].includes(emp.employeeCategory || '')
+    const resolvedDaily = emp.ratePerDay30 || emp.ratePerDay31 || (isDaily && emp.salary ? Math.round(emp.salary / 30) : '')
+    setDailyWage(resolvedDaily || '')
     setDoj(emp.doj || '')
     setContractStatus(emp.contractStatus || 'Company Contract')
     setStatus(emp.status || 'Active')
@@ -143,18 +260,21 @@ function EmployeeProfilesContent() {
 
   const handleSaveModal = (e: React.FormEvent) => {
     e.preventDefault()
-    const numSalary = parseFloat(salary as string) || 0
-    const numDuty = parseFloat(dutyHrs as string) || 9
     if (!name || !designation) return
 
-    // Category field removed from form — keep existing on edit; default Staff on add.
-    // If Contract Status is Contractor, map category so list filters still work.
-    const resolvedCategory: EmployeeCategory =
-      contractStatus === 'Contractor'
-        ? 'Contractor'
-        : editingEmployee
-          ? employeeCategory || editingEmployee.employeeCategory || 'Staff'
-          : 'Staff'
+    const isDaily = contractStatus === 'Daily Wage' || designation.toLowerCase().includes('weaver') || designation.toLowerCase().includes('helper')
+    const numDailyWage = parseFloat(dailyWage as string) || 0
+    let numSalary = parseFloat(salary as string) || 0
+    if (isDaily && numDailyWage > 0 && (!numSalary || numSalary === 0)) {
+      numSalary = numDailyWage * 30
+    }
+    const numDuty = parseFloat(dutyHrs as string) || (isDaily ? 12 : 9)
+
+    const resolvedCategory = inferEmployeeCategory({
+      designation,
+      contractStatus,
+      employeeCategory: editingEmployee?.employeeCategory,
+    })
 
     if (editingEmployee) {
       payrollService.updateEmployee(editingEmployee.id, {
@@ -169,6 +289,9 @@ function EmployeeProfilesContent() {
         dutyHrs: numDuty,
         shiftFromTo,
         salary: numSalary,
+        ratePerDay30: isDaily && numDailyWage > 0 ? numDailyWage : undefined,
+        ratePerDay31: isDaily && numDailyWage > 0 ? numDailyWage : undefined,
+        ratePerDay28: isDaily && numDailyWage > 0 ? numDailyWage : undefined,
         doj,
         contractStatus,
         status,
@@ -176,6 +299,7 @@ function EmployeeProfilesContent() {
         advanceEligible,
         remarks,
       })
+      setStatusNotice(`Profile for "${name}" updated successfully.`)
     } else {
       payrollService.addEmployee({
         name,
@@ -190,16 +314,16 @@ function EmployeeProfilesContent() {
         shiftFromTo,
         salary: numSalary,
         doj: doj || new Date().toISOString().split('T')[0],
-        contractStatus,
+        contractStatus: isDaily ? 'Daily Wage' : contractStatus,
         status,
         resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
         advanceEligible,
         remarks: remarks || undefined,
       })
+      setStatusNotice(`Profile for "${name}" registered successfully.`)
     }
     reload()
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 2500)
+    setTimeout(() => setStatusNotice(null), 3500)
     setIsModalOpen(false)
   }
 
@@ -207,15 +331,63 @@ function EmployeeProfilesContent() {
     if (deleteConfirmState.employeeId) {
       payrollService.deleteEmployee(deleteConfirmState.employeeId)
       reload()
+      setStatusNotice(`Employee "${deleteConfirmState.employeeName}" removed from records.`)
+      setTimeout(() => setStatusNotice(null), 3000)
       setDeleteConfirmState({ isOpen: false, employeeId: '', employeeName: '' })
     }
   }
 
-  // Default Active only. Admin/Accountant may filter All / Resigned.
-  const effectiveStatus = canViewAccounts ? filterStatus : 'ACTIVE'
+  const openResignModal = (emp: EmployeeProfile) => {
+    if (!canEditAccounts) return
+    setResignModal({
+      isOpen: true,
+      emp,
+      resignedAt: new Date().toISOString().split('T')[0],
+      remarks: emp.remarks || '',
+    })
+  }
+
+  const handleConfirmResign = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!resignModal.emp) return
+    payrollService.resignEmployee(resignModal.emp.id, resignModal.resignedAt, resignModal.remarks)
+    setStatusNotice(`Employee "${resignModal.emp.name}" marked as Resigned and moved to Resigned Staff tab.`)
+    setTimeout(() => setStatusNotice(null), 4000)
+    setResignModal({ isOpen: false, emp: null, resignedAt: '', remarks: '' })
+    reload()
+  }
+
+  const openRejoinModal = (emp: EmployeeProfile) => {
+    if (!canEditAccounts) return
+    setRejoinModal({
+      isOpen: true,
+      emp,
+      newDoj: new Date().toISOString().split('T')[0],
+    })
+  }
+
+  const handleConfirmRejoin = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!rejoinModal.emp) return
+    payrollService.rejoinEmployee(rejoinModal.emp.id, rejoinModal.newDoj)
+    setStatusNotice(`Employee "${rejoinModal.emp.name}" re-joined with joining date ${rejoinModal.newDoj} and added to Active roster!`)
+    setTimeout(() => setStatusNotice(null), 4500)
+    setRejoinModal({ isOpen: false, emp: null, newDoj: '' })
+    setFilterCategory('ALL')
+    reload()
+  }
+
+  const activeEmployees = employees.filter((e) => (e.status || 'Active') !== 'Resigned')
+  const resignedEmployees = employees.filter((e) => (e.status || 'Active') === 'Resigned')
+
+  const getCategoryCount = (catId: string) => {
+    if (catId === 'ALL') return activeEmployees.length
+    if (catId === 'RESIGNED') return resignedEmployees.length
+    return activeEmployees.filter((e) => matchesHrCategoryFilter(e, catId)).length
+  }
 
   const filtered = employees.filter((e) => {
-    const empStatus = (e.status || 'Active').toUpperCase()
+    const isResigned = (e.status || 'Active') === 'Resigned'
 
     const matchSearch =
       (e.name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -225,29 +397,19 @@ function EmployeeProfilesContent() {
       (e.designation || '').toLowerCase().includes(search.toLowerCase()) ||
       (e.department || '').toLowerCase().includes(search.toLowerCase())
 
-    const matchCategory =
-      filterCategory === 'ALL' || (e.employeeCategory || 'Staff').toUpperCase() === filterCategory.toUpperCase()
+    if (!matchSearch) return false
 
-    const matchStatus =
-      effectiveStatus === 'ALL' || empStatus === effectiveStatus.toUpperCase()
+    if (filterCategory === 'RESIGNED') {
+      return isResigned
+    }
 
-    return matchSearch && matchCategory && matchStatus
+    // Active tabs exclude all resigned personnel
+    if (isResigned) return false
+
+    if (filterCategory === 'ALL') return true
+
+    return matchesHrCategoryFilter(e, filterCategory)
   })
-
-  const totalMonthlyBase = employees
-    .filter((e) => (e.status || 'Active') !== 'Resigned')
-    .reduce((s, e) => s + (e.salary || 0), 0)
-  const weaversCount = employees.filter(
-    (e) => e.employeeCategory === 'Weaver' && (e.status || 'Active') !== 'Resigned'
-  ).length
-  const staffCount = employees.filter(
-    (e) =>
-      (e.employeeCategory === 'Staff' || e.employeeCategory === 'Admin') &&
-      (e.status || 'Active') !== 'Resigned'
-  ).length
-  const helpersCount = employees.filter(
-    (e) => e.employeeCategory === 'Helper' && (e.status || 'Active') !== 'Resigned'
-  ).length
 
   return (
     <div className="space-y-6 pb-24">
@@ -265,7 +427,11 @@ function EmployeeProfilesContent() {
               <span>General Wages</span>
             </Link>
             {canEditAccounts && (
-              <button type="button" onClick={openAddModal} className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer">
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer"
+              >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Register New Profile</span>
               </button>
@@ -283,20 +449,21 @@ function EmployeeProfilesContent() {
         }
       />
 
-      {saveSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 rounded-lg flex items-center gap-2 text-xs font-semibold">
+      {statusNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 rounded-lg flex items-center gap-2 text-xs font-semibold animate-in fade-in">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-          Employee profile saved! Changes automatically synced across all payroll sheets and General Wages.
+          {statusNotice}
         </div>
       )}
 
-      {/* Search & Filter Controls */}
+
+      {/* Search & Category Filter Controls */}
       <div className="erp-card p-3 flex flex-col md:flex-row gap-3 items-center justify-between">
         <div className="relative w-full md:w-80">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search name, CNIC (42101...), phone..."
+            placeholder="Search name, CNIC, phone, designation..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] dark:text-slate-100"
@@ -306,34 +473,44 @@ function EmployeeProfilesContent() {
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {/* Category Tabs */}
           <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-            {['ALL', 'STAFF', 'WEAVER', 'HELPER', 'CONTRACT'].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFilterCategory(cat)}
-                className={cn(
-                  'erp-filter-tab',
-                  filterCategory === cat
-                    ? 'bg-white dark:bg-slate-800 text-[#0066cc] dark:text-sky-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                )}
-              >
-                {cat === 'ALL' ? `All (${filtered.length})` : cat}
-              </button>
-            ))}
-          </div>
+            {HR_TABS.map((tab) => {
+              const count = getCategoryCount(tab.id)
+              const isSelected = filterCategory === tab.id
+              const isResignedTab = tab.id === 'RESIGNED'
 
-          {canViewAccounts && (
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              title="Status filter (Admin / Accountant)"
-              className="text-sm px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-[#0066cc] cursor-pointer"
-            >
-              <option value="ACTIVE">Active only</option>
-              <option value="ALL">All (Active + Resigned)</option>
-              <option value="RESIGNED">Resigned only</option>
-            </select>
-          )}
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterCategory(tab.id)}
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5',
+                    isSelected
+                      ? isResignedTab
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-[#0066cc] dark:text-sky-400 shadow-xs'
+                      : isResignedTab
+                      ? 'text-rose-600 dark:text-rose-400 hover:text-rose-800'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  )}
+                >
+                  {isResignedTab && <UserX className="h-3 w-3" />}
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      'px-1.5 py-0.2 text-[10px] rounded-full font-mono',
+                      isSelected
+                        ? isResignedTab
+                          ? 'bg-rose-700 text-white'
+                          : 'bg-blue-100 text-[#0066cc] dark:bg-sky-950 dark:text-sky-300'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
 
           {/* View Toggle */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -365,191 +542,238 @@ function EmployeeProfilesContent() {
         </div>
       </div>
 
+      {filterCategory === 'RESIGNED' && (
+        <div className="p-3 bg-rose-50 border border-rose-200 dark:bg-rose-950/30 dark:border-rose-800/50 rounded-xl flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-300">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
+          <div>
+            <span className="font-semibold">Resigned Staff Archive:</span> Ye mulazmeen company chhor chuke hain.
+            General Wages aur active sheets se inka naam hata diya gaya hai. Agar koi dobara join kare toh{' '}
+            <strong>&quot;Re-Join / Active Karein&quot;</strong> button click karein.
+          </div>
+        </div>
+      )}
+
       {/* Grid View */}
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((emp) => {
-            const isSpecial =
-              emp.name.toLowerCase().includes('javed') || emp.name.toLowerCase().includes('tufail')
-            return (
-              <div
-                key={emp.id}
-                className={cn(
-                  'bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between',
-                  isSpecial && 'border-indigo-300 dark:border-indigo-700 ring-1 ring-indigo-400/20'
-                )}
-              >
-                {/* Card Top: Avatar, role, badges */}
-                <div>
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={cn(
-                        'h-11 w-11 rounded-full flex items-center justify-center font-bold text-sm text-white shadow-xs shrink-0',
-                        emp.employeeCategory === 'Admin' && 'bg-purple-600',
-                        emp.employeeCategory === 'Staff' && 'bg-indigo-600',
-                        emp.employeeCategory === 'Weaver' && 'bg-emerald-600',
-                        emp.employeeCategory === 'Contract' && 'bg-amber-600',
-                        emp.employeeCategory === 'Helper' && 'bg-slate-600',
-                        emp.employeeCategory === 'Contractor' && 'bg-rose-600'
-                      )}
-                    >
-                      {emp.name.charAt(0)}
-                    </div>
+          {filtered.length === 0 ? (
+            <div className="col-span-full py-12 text-center text-slate-400 text-sm">
+              No employee profiles found matching current filters.
+            </div>
+          ) : (
+            filtered.map((emp) => {
+              const cat = inferEmployeeCategory(emp)
+              const isResigned = (emp.status || 'Active') === 'Resigned'
+              const resignedDate = resolveResignedAt(emp)
 
-                    <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium pt-0.5">
-                        {emp.designation}
-                        <span className="text-slate-300 dark:text-slate-600"> · </span>
-                        <span className="font-mono text-[10px] text-slate-400">#{emp.serialNo}</span>
-                      </p>
-
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span
-                          className={cn(
-                            'px-2 py-0.5 text-[10px] font-semibold rounded-full',
-                            (emp.status || 'Active') === 'Active'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                          )}
-                        >
-                          {emp.status || 'Active'}
-                        </span>
-                        {emp.advanceEligible && (emp.status || 'Active') !== 'Resigned' && (
-                          <span
-                            className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
-                            title="Can take salary advance"
-                          >
-                            Advance
-                          </span>
+              return (
+                <div
+                  key={emp.id}
+                  className={cn(
+                    'bg-white dark:bg-slate-800 rounded-xl border p-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between',
+                    isResigned
+                      ? 'border-rose-200 dark:border-rose-900/60 bg-rose-50/20'
+                      : 'border-slate-200 dark:border-slate-700'
+                  )}
+                >
+                  {/* Card Top */}
+                  <div>
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          'h-11 w-11 rounded-full flex items-center justify-center font-bold text-sm text-white shadow-xs shrink-0',
+                          isResigned
+                            ? 'bg-rose-700'
+                            : cat === 'Admin'
+                            ? 'bg-purple-600'
+                            : cat === 'Staff'
+                            ? 'bg-indigo-600'
+                            : cat === 'Weaver'
+                            ? 'bg-emerald-600'
+                            : cat === 'Contract'
+                            ? 'bg-amber-600'
+                            : cat === 'Helper'
+                            ? 'bg-cyan-700'
+                            : cat === 'Contractor'
+                            ? 'bg-rose-600'
+                            : 'bg-indigo-600'
                         )}
+                      >
+                        {emp.name.charAt(0)}
+                      </div>
+
+                      <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium pt-0.5">
+                            {emp.designation}
+                            <span className="text-slate-300 dark:text-slate-600"> · </span>
+                            <span className="font-mono text-[10px] text-slate-400">#{emp.serialNo}</span>
+                          </p>
+                          <span className="inline-block mt-0.5 px-2 py-0.5 text-[9px] font-semibold rounded-md bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                            {cat}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span
+                            className={cn(
+                              'px-2 py-0.5 text-[10px] font-semibold rounded-full',
+                              !isResigned
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                            )}
+                          >
+                            {emp.status || 'Active'}
+                          </span>
+                          {emp.advanceEligible && !isResigned && (
+                            <span
+                              className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+                              title="Eligible for salary advance"
+                            >
+                              Advance
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Personal & CNIC Details */}
-                  <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-700/60 space-y-2 text-xs">
-                    <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug break-words">
-                      {emp.name}
-                    </h3>
+                    {/* Details */}
+                    <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-700/60 space-y-2 text-xs">
+                      <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug break-words">
+                        {emp.name}
+                      </h3>
 
-                    {/* Father Name */}
-                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                      <span className="text-slate-400">Father Name:</span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200">
-                        {emp.fatherName ? `S/O ${emp.fatherName}` : 'Not recorded'}
-                      </span>
-                    </div>
+                      {emp.fatherName && (
+                        <p className="text-slate-500 dark:text-slate-400 text-xs">
+                          S/O {emp.fatherName}
+                        </p>
+                      )}
 
-                    {/* CNIC — company ID cards nahi; sirf national CNIC */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-400 flex items-center gap-1 shrink-0">
-                        <IdCard className="h-3.5 w-3.5 text-indigo-500" />
-                        CNIC
-                      </span>
-                      <span className="font-mono font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-900/80 px-2 py-0.5 rounded text-[11px] tracking-wide">
-                        {emp.cnic || '—'}
-                      </span>
-                    </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-400 pt-1">
+                        <span className="flex items-center gap-1 truncate" title={emp.phone}>
+                          <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                          {emp.phone || 'No Phone'}
+                        </span>
+                        <span className="flex items-center gap-1 truncate" title={emp.department}>
+                          <Building className="h-3 w-3 text-slate-400 shrink-0" />
+                          {emp.department || 'Administration'}
+                        </span>
+                      </div>
 
-                    {/* Phone */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400 flex items-center gap-1">
-                        <Phone className="h-3.5 w-3.5 text-emerald-500" />
-                        Mobile:
-                      </span>
-                      {emp.phone ? (
-                        <a
-                          href={`tel:${emp.phone}`}
-                          className="font-mono text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
-                        >
-                          {emp.phone}
-                        </a>
-                      ) : (
-                        <span className="text-slate-400">—</span>
+                      <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3 text-slate-400 shrink-0" />
+                          D.O.J:
+                        </span>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">
+                          {emp.doj || '—'}
+                        </span>
+                      </div>
+
+                      {isResigned && (
+                        <div className="flex items-center justify-between text-xs text-rose-700 dark:text-rose-400 font-medium bg-rose-100/60 dark:bg-rose-950/40 p-1.5 rounded-md">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5" />
+                            Resign Date:
+                          </span>
+                          <span className="font-mono font-bold">
+                            {resignedDate || emp.remarks?.replace(/^Resignation\s*/i, '') || 'Recorded'}
+                          </span>
+                        </div>
+                      )}
+
+                      {emp.remarks && (
+                        <p className="text-[11px] text-slate-500 italic bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded border border-slate-100 dark:border-slate-800">
+                          &quot;{emp.remarks}&quot;
+                        </p>
                       )}
                     </div>
 
-                    {/* Address */}
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-slate-400 flex items-center gap-1 shrink-0">
-                        <MapPin className="h-3.5 w-3.5 text-rose-500" />
-                        Address:
-                      </span>
-                      <span className="text-right text-slate-700 dark:text-slate-300 truncate max-w-[180px]">
-                        {emp.address || 'Industrial Area, Karachi'}
-                      </span>
-                    </div>
-
-                    {(emp.status || 'Active') === 'Resigned' && (
-                      <div className="flex items-center justify-between text-rose-700 dark:text-rose-400">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5" />
-                          Resign date:
+                    {/* Duty & Compensation */}
+                    <div className="mt-3 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium">
+                          {emp.contractStatus === 'Daily Wage' || cat === 'Weaver' || cat === 'Helper'
+                            ? 'Daily Wage Rate'
+                            : 'Monthly Base'}
                         </span>
-                        <span className="font-mono font-semibold">
-                          {resolveResignedAt(emp) || emp.remarks?.replace(/^Resignation\s*/i, '') || '—'}
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                          {emp.contractStatus === 'Daily Wage' || cat === 'Weaver' || cat === 'Helper'
+                            ? formatCurrency(emp.ratePerDay30 || emp.ratePerDay31 || (emp.salary ? emp.salary / 30 : 0)) + ' /day'
+                            : formatCurrency(emp.salary)}
                         </span>
                       </div>
-                    )}
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block font-medium">Duty & Shift</span>
+                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                          {emp.dutyHrs}h ({emp.shiftFromTo || '9 to 6'})
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Duty & Compensation Pill */}
-                  <div className="mt-3 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">Monthly Base</span>
-                      <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                        {formatCurrency(emp.salary)}
-                      </span>
+                  {/* Actions Footer */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                    <div
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-900/80 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg max-w-[55%]"
+                      title="National CNIC"
+                    >
+                      <IdCard className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                      <span className="font-mono truncate">{emp.cnic || 'CNIC not set'}</span>
                     </div>
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-400 block font-medium">Duty & Shift</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
-                        {emp.dutyHrs}h ({emp.shiftFromTo || '9 to 6'})
-                      </span>
+
+                    <div className="flex items-center gap-1">
+                      {isResigned && canEditAccounts ? (
+                        <button
+                          type="button"
+                          onClick={() => openRejoinModal(emp)}
+                          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded-md shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
+                          title="Re-join Employee"
+                        >
+                          <UserPlus className="h-3 w-3" />
+                          <span>Re-Join</span>
+                        </button>
+                      ) : !isResigned && canEditAccounts ? (
+                        <button
+                          type="button"
+                          onClick={() => openResignModal(emp)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                          title="Mark as Resigned"
+                        >
+                          <UserX className="h-4 w-4" />
+                        </button>
+                      ) : null}
+
+                      {canEditAccounts && (
+                        <>
+                          <button
+                            onClick={() => openEditModal(emp)}
+                            className="p-1.5 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Full Profile"
+                          >
+                            <Briefcase className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setDeleteConfirmState({
+                                isOpen: true,
+                                employeeId: emp.id,
+                                employeeName: emp.name,
+                              })
+                            }
+                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Profile"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
-
-                {/* Card Actions Footer */}
-                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
-                  <div
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-900/80 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg max-w-[70%]"
-                    title="National CNIC (no company ID card)"
-                  >
-                    <IdCard className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-                    <span className="font-mono truncate">{emp.cnic || 'CNIC not set'}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    {canEditAccounts && (
-                      <button
-                        onClick={() => openEditModal(emp)}
-                        className="p-1.5 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                        title="Edit Full Profile"
-                      >
-                        <Briefcase className="h-4 w-4" />
-                      </button>
-                    )}
-                    {canEditAccounts && (
-                      <button
-                        onClick={() =>
-                          setDeleteConfirmState({
-                            isOpen: true,
-                            employeeId: emp.id,
-                            employeeName: emp.name,
-                          })
-                        }
-                        className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Profile"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
       )}
 
@@ -560,85 +784,124 @@ function EmployeeProfilesContent() {
             <table className="w-full text-left text-xs border-collapse font-sans">
               <thead className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-bold sticky top-0 z-20 border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="py-2 px-3 text-center">Sr #</th>
-                  <th className="py-2 px-3">Full Name</th>
-                  <th className="py-2 px-3">Father Name</th>
-                  <th className="py-2 px-3">CNIC Number</th>
-                  <th className="py-2 px-3">Phone</th>
-                  <th className="py-2 px-3">Designation</th>
-                  <th className="py-2 px-3">Department</th>
-                  <th className="py-2 px-3">Category</th>
-                  <th className="py-2 px-3 text-right">Salary (PKR)</th>
-                  <th className="py-2 px-3 text-center">Status</th>
-                  <th className="py-2 px-3">Resign Date</th>
-                  <th className="py-2 px-3 text-center">Actions</th>
+                  <th className="py-2.5 px-3 w-12 text-center">#</th>
+                  <th className="py-2.5 px-3">Name</th>
+                  <th className="py-2.5 px-3">Father Name</th>
+                  <th className="py-2.5 px-3">CNIC</th>
+                  <th className="py-2.5 px-3">Phone</th>
+                  <th className="py-2.5 px-3">Designation</th>
+                  <th className="py-2.5 px-3">Department</th>
+                  <th className="py-2.5 px-3">Category</th>
+                  <th className="py-2.5 px-3 text-right">Wage / Salary</th>
+                  <th className="py-2.5 px-3 text-center">Status</th>
+                  <th className="py-2.5 px-3">D.O.J</th>
+                  <th className="py-2.5 px-3">Resign Date</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700/60 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200">
-                {filtered.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                    <td className="py-2 px-3 text-center font-mono text-slate-400 text-xs">{emp.serialNo}</td>
-                    <td className="py-2 px-3 font-semibold text-slate-900 dark:text-slate-100">{emp.name}</td>
-                    <td className="py-2 px-3 text-slate-600 dark:text-slate-300">{emp.fatherName || '—'}</td>
-                    <td className="py-2 px-3 font-mono font-medium text-slate-800 dark:text-slate-200">{emp.cnic || '—'}</td>
-                    <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400">{emp.phone || '—'}</td>
-                    <td className="py-2 px-3 text-slate-700 dark:text-slate-300">{emp.designation}</td>
-                    <td className="py-2 px-3 text-slate-500 dark:text-slate-400">{emp.department || 'Administration'}</td>
-                    <td className="py-2 px-3">
-                      <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                        {emp.employeeCategory || 'Staff'}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatNumber(emp.salary)}
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <span
-                        className={cn(
-                          'px-2 py-0.5 text-[10px] font-semibold rounded',
-                          (emp.status || 'Active') === 'Active'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                        )}
-                      >
-                        {emp.status || 'Active'}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 font-mono text-rose-700 dark:text-rose-400">
-                      {(emp.status || 'Active') === 'Resigned'
-                        ? resolveResignedAt(emp) || '—'
-                        : '—'}
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {canEditAccounts && (
-                          <button
-                            onClick={() => openEditModal(emp)}
-                            title="Edit Profile"
-                            className="p-1 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                          >
-                            <Briefcase className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        {canEditAccounts && (
-                          <button
-                            onClick={() =>
-                              setDeleteConfirmState({
-                                isOpen: true,
-                                employeeId: emp.id,
-                                employeeName: emp.name,
-                              })
-                            }
-                            title="Delete"
-                            className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                {filtered.map((emp, idx) => {
+                  const isResigned = (emp.status || 'Active') === 'Resigned'
+                  const cat = inferEmployeeCategory(emp)
+                  const isDaily = emp.contractStatus === 'Daily Wage' || cat === 'Weaver' || cat === 'Helper'
+
+                  return (
+                    <tr
+                      key={emp.id}
+                      className={cn(
+                        'hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors',
+                        isResigned && 'bg-rose-50/30 dark:bg-rose-950/20'
+                      )}
+                    >
+                      <td className="py-2 px-3 text-center font-mono text-slate-400">{idx + 1}</td>
+                      <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white">
+                        {emp.name}
+                      </td>
+                      <td className="py-2 px-3 text-slate-600 dark:text-slate-300">{emp.fatherName || '—'}</td>
+                      <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400">{emp.cnic || '—'}</td>
+                      <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400">{emp.phone || '—'}</td>
+                      <td className="py-2 px-3 text-slate-700 dark:text-slate-300">{emp.designation}</td>
+                      <td className="py-2 px-3 text-slate-500 dark:text-slate-400">{emp.department || 'Administration'}</td>
+                      <td className="py-2 px-3">
+                        <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                          {cat}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                        {isDaily
+                          ? formatCurrency(emp.ratePerDay30 || emp.ratePerDay31 || (emp.salary ? emp.salary / 30 : 0)) + '/d'
+                          : formatCurrency(emp.salary)}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 text-[10px] font-semibold rounded',
+                            !isResigned
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                          )}
+                        >
+                          {emp.status || 'Active'}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                        {emp.doj || '—'}
+                      </td>
+                      <td className="py-2 px-3 font-mono text-rose-700 dark:text-rose-400 text-[11px]">
+                        {isResigned ? resolveResignedAt(emp) || 'Recorded' : '—'}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {isResigned && canEditAccounts ? (
+                            <button
+                              type="button"
+                              onClick={() => openRejoinModal(emp)}
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded shadow-xs flex items-center gap-1 cursor-pointer"
+                              title="Re-Join Staff"
+                            >
+                              <UserPlus className="h-3 w-3" />
+                              <span>Re-Join</span>
+                            </button>
+                          ) : !isResigned && canEditAccounts ? (
+                            <button
+                              type="button"
+                              onClick={() => openResignModal(emp)}
+                              title="Mark Resigned"
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                            >
+                              <UserX className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+
+                          {canEditAccounts && (
+                            <>
+                              <button
+                                onClick={() => openEditModal(emp)}
+                                title="Edit Profile"
+                                className="p-1 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                              >
+                                <Briefcase className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setDeleteConfirmState({
+                                    isOpen: true,
+                                    employeeId: emp.id,
+                                    employeeName: emp.name,
+                                  })
+                                }
+                                title="Delete"
+                                className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -661,6 +924,27 @@ function EmployeeProfilesContent() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {/* Quick Presets for Weaver / Helper */}
+            {!editingEmployee && (
+              <div className="p-3 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1.5">
+                  Quick Designation Presets (Auto-fills rates & department):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {DESIGNATION_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => applyPreset(p)}
+                      className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 text-slate-700 dark:text-slate-300 rounded-md cursor-pointer transition-all shadow-xs"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSaveModal} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -737,11 +1021,56 @@ function EmployeeProfilesContent() {
                   <input
                     type="text"
                     required
+                    list="hr-designation-suggestions"
                     value={designation}
-                    onChange={(e) => setDesignation(e.target.value)}
-                    placeholder="e.g. Incharge / Weaver / Electrician"
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setDesignation(val)
+                      const low = val.toLowerCase()
+                      if (low.includes('weaver')) {
+                        setDepartment('Weaving Floor')
+                        setContractStatus('Daily Wage')
+                        setDutyHrs('12')
+                        setShiftFromTo('8 to 8')
+                        if (low.includes('spare')) {
+                          setDailyWage(1800)
+                          setSalary(54000)
+                        } else {
+                          setDailyWage(1450)
+                          setSalary(43500)
+                        }
+                      } else if (low.includes('helper') || low.includes('winder')) {
+                        setDepartment('Weaving Floor')
+                        setContractStatus('Daily Wage')
+                        setDutyHrs('12')
+                        setShiftFromTo('8 to 8')
+                        if (low.includes('winder')) {
+                          setDailyWage(1150)
+                          setSalary(34500)
+                        } else {
+                          setDailyWage(1050)
+                          setSalary(31500)
+                        }
+                      }
+                    }}
+                    placeholder="e.g. Weaver / Spare Weaver / Helper / Incharge"
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
+                  <datalist id="hr-designation-suggestions">
+                    <option value="Weaver" />
+                    <option value="Spare Weaver" />
+                    <option value="Helper" />
+                    <option value="Winder" />
+                    <option value="Incharge" />
+                    <option value="Supervisor" />
+                    <option value="Accountant" />
+                    <option value="Technician" />
+                    <option value="Quality Controller" />
+                    <option value="Sweeper" />
+                  </datalist>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Weaver / Helper likhne se ye General Wages me nahi aayenge, Weavers/Helpers section me aayenge.
+                  </p>
                 </div>
 
                 <div>
@@ -755,18 +1084,65 @@ function EmployeeProfilesContent() {
                   >
                     <option value="Administration">Administration</option>
                     <option value="Accounts & Payroll">Accounts & Payroll</option>
-                    <option value="Weaving Production">Weaving Production</option>
+                    <option value="Weaving Floor">Weaving Floor</option>
                     <option value="Electrical & Power">Electrical & Power</option>
                     <option value="Maintenance & Mechanical">Maintenance & Mechanical</option>
                     <option value="Quality Control">Quality Control</option>
                     <option value="Folding & Packing">Folding & Packing</option>
-                    <option value="Floor Support & Janitorial">Floor Support & Janitorial</option>
+                    <option value="Contract Services">Contract Services</option>
                   </select>
                 </div>
 
+                {/* Contract Status */}
                 <div>
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Base Salary (PKR) *
+                    Contract / Wage Type
+                  </label>
+                  <select
+                    value={contractStatus}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setContractStatus(val)
+                      if (val === 'Daily Wage' && !dutyHrs) setDutyHrs('12')
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    <option value="Company Contract">Company Contract (Monthly)</option>
+                    <option value="Daily Wage">Daily Wage (Weavers & Helpers)</option>
+                    <option value="Permanent">Permanent (Monthly)</option>
+                    <option value="Contractor">Contractor (Fortnightly)</option>
+                  </select>
+                </div>
+
+                {/* Daily Wage Rate if Daily Wage or Weaver/Helper */}
+                {(contractStatus === 'Daily Wage' ||
+                  designation.toLowerCase().includes('weaver') ||
+                  designation.toLowerCase().includes('helper')) && (
+                  <div>
+                    <label className="block font-medium text-emerald-700 dark:text-emerald-400 mb-1">
+                      Daily Wage Rate (PKR / Day) *
+                    </label>
+                    <input
+                      type="number"
+                      value={dailyWage}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setDailyWage(val)
+                        const num = parseFloat(val) || 0
+                        setSalary(num * 30)
+                      }}
+                      placeholder="e.g. 1450 (Weaver) / 1050 (Helper)"
+                      className="w-full px-3 py-2 font-mono font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <p className="mt-0.5 text-[10px] text-emerald-600">
+                      Standard: Weaver Rs. 1450/day, Spare Weaver Rs. 1800/day, Helper Rs. 1050/day.
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Monthly Base Salary (PKR) *
                   </label>
                   <input
                     type="number"
@@ -788,9 +1164,9 @@ function EmployeeProfilesContent() {
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
                     <option value="8">8 Hours</option>
-                    <option value="9">9 Hours (Standard)</option>
+                    <option value="9">9 Hours (Standard Staff)</option>
                     <option value="10">10 Hours</option>
-                    <option value="12">12 Hours (Shift)</option>
+                    <option value="12">12 Hours (Weavers & Helpers Shift)</option>
                   </select>
                 </div>
 
@@ -822,22 +1198,6 @@ function EmployeeProfilesContent() {
 
                 <div>
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Contract Status
-                  </label>
-                  <select
-                    value={contractStatus}
-                    onChange={(e) => setContractStatus(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="Company Contract">Company Contract</option>
-                    <option value="Permanent">Permanent</option>
-                    <option value="Daily Wage">Daily Wage</option>
-                    <option value="Contractor">Contractor</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Employment Status
                   </label>
                   <select
@@ -852,24 +1212,24 @@ function EmployeeProfilesContent() {
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
                     <option value="Active">Active</option>
-                    <option value="Resigned">Resigned / Inactive</option>
+                    <option value="Resigned">Resigned / Separated</option>
                     <option value="On Leave">On Leave</option>
                   </select>
                 </div>
 
                 {status === 'Resigned' && (
                   <div>
-                    <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Resign Date
+                    <label className="block font-medium text-rose-700 dark:text-rose-400 mb-1">
+                      Resign Date *
                     </label>
                     <input
                       type="date"
                       value={resignedAt}
                       onChange={(e) => setResignedAt(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-700 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none"
                     />
                     <p className="mt-1 text-[11px] text-slate-500">
-                      Agle months ki salary sheets se naam auto-remove ho jayega.
+                      Resign hone par automatically Resigned Staff archive me move ho jayega.
                     </p>
                   </div>
                 )}
@@ -887,7 +1247,7 @@ function EmployeeProfilesContent() {
                         Advance Eligible (Peshgi)
                       </span>
                       <span className="block text-[11px] text-slate-500 mt-0.5">
-                        Enable karne se ye banda Advance form ki search list me aayega. Sirf jinko company advance deti hai.
+                        Enable karne se ye banda Advance form ki search list me aayega.
                       </span>
                     </span>
                   </label>
@@ -901,7 +1261,7 @@ function EmployeeProfilesContent() {
                     type="text"
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
-                    placeholder="e.g. Rejoining 08 Jun-21 or Special skills"
+                    placeholder="e.g. Special notes, machine allotment, etc."
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
@@ -927,13 +1287,149 @@ function EmployeeProfilesContent() {
         </div>
       )}
 
+      {/* Resign Modal */}
+      {resignModal.isOpen && resignModal.emp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-rose-200 dark:border-rose-900 w-full max-w-md overflow-hidden">
+            <div className="bg-rose-600 p-4 text-white flex items-center justify-between">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <UserX className="h-5 w-5" />
+                Mark Employee as Resigned
+              </h3>
+              <button
+                onClick={() => setResignModal({ isOpen: false, emp: null, resignedAt: '', remarks: '' })}
+                className="p-1 rounded hover:bg-white/20 transition-colors text-white cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmResign} className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-800">
+                <p className="font-semibold text-rose-900 dark:text-rose-200 text-sm">
+                  {resignModal.emp.name}
+                </p>
+                <p className="text-rose-700 dark:text-rose-300 text-xs mt-0.5">
+                  {resignModal.emp.designation} · #{resignModal.emp.serialNo}
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Resignation Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={resignModal.resignedAt}
+                  onChange={(e) => setResignModal((prev) => ({ ...prev, resignedAt: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Remarks / Reason
+                </label>
+                <input
+                  type="text"
+                  value={resignModal.remarks}
+                  onChange={(e) => setResignModal((prev) => ({ ...prev, remarks: e.target.value }))}
+                  placeholder="e.g. Resigned voluntarily / relocated"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setResignModal({ isOpen: false, emp: null, resignedAt: '', remarks: '' })}
+                  className="erp-btn-secondary text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer shadow-xs"
+                >
+                  Confirm Resignation
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Rejoin Modal */}
+      {rejoinModal.isOpen && rejoinModal.emp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-emerald-200 dark:border-emerald-900 w-full max-w-md overflow-hidden">
+            <div className="bg-emerald-600 p-4 text-white flex items-center justify-between">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Re-Join Employee (Active Karein)
+              </h3>
+              <button
+                onClick={() => setRejoinModal({ isOpen: false, emp: null, newDoj: '' })}
+                className="p-1 rounded hover:bg-white/20 transition-colors text-white cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmRejoin} className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                <p className="font-semibold text-emerald-900 dark:text-emerald-200 text-sm">
+                  {rejoinModal.emp.name}
+                </p>
+                <p className="text-emerald-700 dark:text-emerald-300 text-xs mt-0.5">
+                  {rejoinModal.emp.designation} · Previously Resigned
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  New Date of Joining (D.O.J) *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={rejoinModal.newDoj}
+                  onChange={(e) => setRejoinModal((prev) => ({ ...prev, newDoj: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Ye nayi joining date profile me set hogi aur status &quot;Active&quot; ho kar employee active list me aa jayega.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRejoinModal({ isOpen: false, emp: null, newDoj: '' })}
+                  className="erp-btn-secondary text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer shadow-xs"
+                >
+                  Confirm Re-Join
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Modal */}
       <AlertModal
         isOpen={deleteConfirmState.isOpen}
         onClose={() => setDeleteConfirmState({ isOpen: false, employeeId: '', employeeName: '' })}
         onConfirm={handleDeleteConfirm}
         title="Confirm Delete Profile"
-        message={`Are you sure you want to delete "${deleteConfirmState.employeeName}"? This profile will be removed from all payroll records and General Wages.`}
+        message={`Are you sure you want to delete "${deleteConfirmState.employeeName}"? This profile will be permanently removed from all payroll records.`}
         confirmText="Delete Profile"
         type="confirm"
       />

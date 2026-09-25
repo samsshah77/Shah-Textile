@@ -1,14 +1,24 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable } from '@/components/floor/ProductionSheetTable'
 import { FloorEntryTable } from '@/components/floor/FloorEntryTable'
 import { LoomMasterTable } from '@/components/floor/LoomMasterTable'
-import { BeamMasterTable } from '@/components/floor/BeamMasterTable'
+import {
+  BeamMasterTable,
+  BeamStockFilterBar,
+  beamStockCounts,
+  type BeamFilterType,
+} from '@/components/floor/BeamMasterTable'
 import { YarnStockTable } from '@/components/floor/YarnStockTable'
-import { QualityMasterTable } from '@/components/floor/QualityMasterTable'
+import {
+  QualityMasterTable,
+  QualityStatusFilterBar,
+  qualityStatusCounts,
+  type QualityStatusFilter,
+} from '@/components/floor/QualityMasterTable'
 import { ProductionDateFilterBar } from '@/components/floor/ProductionDateFilterBar'
 import { NewDayProductionModal } from '@/components/floor/NewDayProductionModal'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -33,6 +43,8 @@ function ProductionWorkspaceContent() {
   const { isAccountant, canEditProduction } = useAuth()
   const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
   const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
+  const [beamFilter, setBeamFilter] = useState<BeamFilterType>('ALL')
+  const [qualityStatusFilter, setQualityStatusFilter] = useState<QualityStatusFilter>('ACTIVE')
 
   // Accountant: Production Sheet only (view)
   useEffect(() => {
@@ -53,22 +65,27 @@ function ProductionWorkspaceContent() {
     setSelectedMonth,
     updateLoom,
     addLoom,
+    deleteLoom,
     updateBeam,
     addBeam,
+    deleteBeam,
     mountBeam,
     unmountBeam,
     receiveBeamFromSizing,
     sendBeamToSizing,
     updateYarn,
     addYarn,
+    deleteYarn,
     addYarnInward,
     issueYarnToLoom,
     yarnIssuances,
     yarnMovements,
     updateQuality,
     addQuality,
+    deleteQuality,
     startNewDay,
     updateEntry,
+    todaySheetReady,
   } = useProductionGrid()
 
   const getFormattedDateLabel = (dateStr: string) => {
@@ -95,6 +112,10 @@ function ProductionWorkspaceContent() {
 
   const showDateBar = currentTab === 'sheet' || currentTab === 'entry'
   const isYarnTab = currentTab === 'yarn'
+  const isBeamsTab = currentTab === 'beams'
+  const isQualityTab = currentTab === 'quality'
+  const beamCounts = useMemo(() => beamStockCounts(beams), [beams])
+  const qualityCounts = useMemo(() => qualityStatusCounts(qualities), [qualities])
 
   return (
     <div className="pb-3">
@@ -143,9 +164,25 @@ function ProductionWorkspaceContent() {
               </div>
             )}
 
+            {isBeamsTab && (
+              <BeamStockFilterBar
+                filter={beamFilter}
+                onChange={setBeamFilter}
+                counts={beamCounts}
+              />
+            )}
+
+            {isQualityTab && (
+              <QualityStatusFilterBar
+                filter={qualityStatusFilter}
+                onChange={setQualityStatusFilter}
+                counts={qualityCounts}
+              />
+            )}
+
             <ExportPdfButton
-              filename={`Production-${tabTitle[currentTab] || 'Sheet'}-${selectedDate || selectedMonth || 'export'}`}
-              sheetLabel={tabTitle[currentTab] || 'Production'}
+              filename={`Production-${tabTitle[currentTab] || 'Production-Sheet'}-${selectedDate || selectedMonth || 'export'}`}
+              sheetLabel={tabTitle[currentTab] || 'Production Sheet'}
             />
           </>
         }
@@ -159,6 +196,7 @@ function ProductionWorkspaceContent() {
           setSelectedMonth={setSelectedMonth}
           onOpenNewDayModal={() => setIsNewDayModalOpen(true)}
           canEdit={canEditProduction}
+          showStartNewDay={!todaySheetReady}
         />
       )}
 
@@ -177,7 +215,9 @@ function ProductionWorkspaceContent() {
         />
       )}
 
-      {currentTab === 'sheet' && <ProductionSheetTable entries={entries} />}
+      {currentTab === 'sheet' && (
+        <ProductionSheetTable entries={entries} sheetDate={selectedDate} />
+      )}
 
       {currentTab === 'looms' && (
         <LoomMasterTable
@@ -186,6 +226,7 @@ function ProductionWorkspaceContent() {
           yarn={yarn}
           onUpdate={updateLoom}
           onAdd={addLoom}
+          onDelete={deleteLoom}
           readOnly={!canEditProduction}
         />
       )}
@@ -201,7 +242,10 @@ function ProductionWorkspaceContent() {
           onUnmount={unmountBeam}
           onReceiveFromSizing={receiveBeamFromSizing}
           onSendToSizing={sendBeamToSizing}
+          onDelete={deleteBeam}
           readOnly={!canEditProduction}
+          filter={beamFilter}
+          onFilterChange={setBeamFilter}
         />
       )}
 
@@ -228,6 +272,7 @@ function ProductionWorkspaceContent() {
           selectedDate={selectedDate}
           dateFilterMode={yarnDateMode}
           setDateFilterMode={setYarnDateMode}
+          onDelete={deleteYarn}
           readOnly={!canEditProduction}
         />
       )}
@@ -237,7 +282,13 @@ function ProductionWorkspaceContent() {
           qualities={qualities}
           onUpdate={updateQuality}
           onAdd={addQuality}
+          onDelete={deleteQuality}
           readOnly={!canEditProduction}
+          entries={entries}
+          looms={looms}
+          statusFilter={qualityStatusFilter}
+          onStatusFilterChange={setQualityStatusFilter}
+          endDateDefault={selectedDate}
         />
       )}
 

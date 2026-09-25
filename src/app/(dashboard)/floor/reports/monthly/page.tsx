@@ -28,7 +28,7 @@ export default function MonthlyProductionReportsPage() {
     totalRevenuePKR: number
     totalBonusPayoutPKR: number
   } | null>(null)
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
+  const [selectedMonth, setSelectedMonth] = useState('2026-09')
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'G6200' | 'G6300' | 'PU'>('ALL')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -69,8 +69,6 @@ export default function MonthlyProductionReportsPage() {
               className="form-select form-select-sm"
               aria-label="Statement month"
             >
-              <option value="2026-08">August 2026</option>
-              <option value="2026-07">July 2026</option>
               <option value="2026-09">September 2026</option>
             </select>
             <ExportPdfButton filename={`Production-Monthly-${selectedMonth}`} />

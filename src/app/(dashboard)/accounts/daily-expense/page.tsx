@@ -25,21 +25,15 @@ import {
   Check,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { accountsRead, accountsWrite } from '@/services/accountsStore'
+import { ACCOUNTS_KEYS } from '@/lib/accountsKeys'
 
-const STORAGE_KEY_DAILY_EXPENSE = 'sara_textile_daily_inward_v2'
+const STORAGE_KEY_DAILY_EXPENSE = ACCOUNTS_KEYS.DAILY_INWARD
 
 export default function DailyExpensePage() {
-  const [items, setItems] = useState<DailyInwardItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY_DAILY_EXPENSE)
-        if (stored) return JSON.parse(stored)
-      } catch (err) {
-        console.error(err)
-      }
-    }
-    return accountsData.dailyExpense.inward
-  })
+  const [items, setItems] = useState<DailyInwardItem[]>(() =>
+    accountsRead(STORAGE_KEY_DAILY_EXPENSE, accountsData.dailyExpense.inward)
+  )
 
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedParty, setSelectedParty] = useState<string>('ALL')
@@ -118,12 +112,9 @@ export default function DailyExpensePage() {
     return filteredItems.reduce((s, i) => s + i.saraAp, 0)
   }, [filteredItems])
 
-  // Save to localStorage
   const saveItems = (updated: DailyInwardItem[]) => {
     setItems(updated)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY_DAILY_EXPENSE, JSON.stringify(updated))
-    }
+    accountsWrite(STORAGE_KEY_DAILY_EXPENSE, updated)
     setIsSaved(true)
     setTimeout(() => setIsSaved(false), 2000)
   }
@@ -131,9 +122,6 @@ export default function DailyExpensePage() {
   const handleReset = () => {
     if (confirm('Reset Daily Inward Expenses to the authentic Excel default (60 items • PKR 677,551)?')) {
       saveItems(accountsData.dailyExpense.inward)
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(STORAGE_KEY_DAILY_EXPENSE)
-      }
     }
   }
 

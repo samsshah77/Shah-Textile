@@ -24,7 +24,7 @@ export function MonthlyMatrixTable({
 }: MonthlyMatrixTableProps) {
   const [selectedLoom, setSelectedLoom] = useState<number | 'ALL'>('ALL')
   const loomNumbers = Array.from({ length: 34 }, (_, i) => i + 1)
-  const monthName = selectedMonth === '2026-08' ? 'August 2026' : 'September 2026'
+  const monthName = 'September 2026'
 
   const exportCsv = () => {
     let csv = 'Date / Day,' + loomNumbers.map((n) => `Loom ${n}`).join(',') + ',Total (m)\n'
@@ -74,7 +74,6 @@ export function MonthlyMatrixTable({
               className="h-9 rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/40 px-3 text-xs font-bold text-[#0066cc] dark:text-blue-300 focus:outline-none cursor-pointer"
             >
               <option value="2026-09">September 2026 (to date)</option>
-              <option value="2026-08">August 2026 (31 Days)</option>
             </select>
           )}
 

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { payrollService } from '@/services/payrollService'
 import { ContractorPaymentRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
-import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
+import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
@@ -134,6 +134,13 @@ function ContractorsPayrollContent() {
 
     const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setContractorsList(renumbered)
+  }
+
+  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
+    if (!canEditAccounts) return
+    const next = reorderSerialRows(contractorsList, index, direction)
+    if (!next) return
+    setContractorsList(next)
   }
 
   const handleDeleteRow = (id: string) => {
@@ -392,11 +399,13 @@ function ContractorsPayrollContent() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {contractorsList.map((c, idx) => (
                 <tr key={c.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                  {/* S.# with Hover Row Insertion */}
                   <SerialCellWithInsert
                     serialNo={c.serialNo}
                     index={idx}
-                    onInsertRow={handleInsertRow}
+                    onMoveUp={(i) => handleMoveRow(i, 'up')}
+                    onMoveDown={(i) => handleMoveRow(i, 'down')}
+                    canMoveUp={idx > 0}
+                    canMoveDown={idx < contractorsList.length - 1}
                   />
                   
                   {/* Name Input */}

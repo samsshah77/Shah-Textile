@@ -56,9 +56,9 @@ const DATE = SHEET_DATE_2026_09_23
 
 /** Paper sheet 23 Sep 2026 — masters + Actual A/B / roller / remarks / SW# */
 const ROWS: Row[] = [
-  { loomNumber: 1, category: 'G6200', qualityName: 'PARCOPV', fabricType: 'Suiting', warp: '20/1-Pv-China', weft: '20/1-Pv-China', rpm: 353, reed: 120, pick: 60, widthInch: 66, gsm: 1.77, rollerHours: 22, shiftA: 101, shiftB: 88, remarks: '', lot: 'Sw # 331', status: 'RUNNING' },
-  { loomNumber: 2, category: 'G6200', qualityName: 'DESIGN-2x1', fabricType: 'Ribstop', warp: '20/1-Pv-China', weft: '20/1-Pv-China', rpm: 337, reed: 66, pick: 53, widthInch: 66, gsm: 2.04, rollerHours: 22, shiftA: 111, shiftB: 95, remarks: '', lot: 'Sw # 337', status: 'RUNNING' },
-  { loomNumber: 3, category: 'G6200', qualityName: 'HARNAI', fabricType: 'Worsted Wool', warp: '20/2-Pvt-Kohat', weft: '300/2-Twisted', rpm: 360, reed: 68, pick: 39, widthInch: 66, gsm: 2.03, rollerHours: 22, shiftA: 119, shiftB: 11, remarks: 'Elec Fault', lot: 'Sw # 329', status: 'ELEC_FAULT' },
+  { loomNumber: 1, category: 'G6200', qualityName: 'PARCOPV', fabricType: 'Suiting', warp: '20/1-Pv-China', weft: '20/1-Pv-China', rpm: 353, reed: 120, pick: 60, widthInch: 66, gsm: 1.77, rollerHours: 22, shiftA: 101, shiftB: 88, remarks: '', lot: 'Sw # 335', status: 'RUNNING' },
+  { loomNumber: 2, category: 'G6200', qualityName: 'DESIGN-2x1', fabricType: 'Ribstop', warp: '20/1-Pv-China', weft: '20/1-Pv-China', rpm: 337, reed: 66, pick: 53, widthInch: 66, gsm: 2.04, rollerHours: 22, shiftA: 111, shiftB: 95, remarks: '', lot: 'Sw # 334', status: 'RUNNING' },
+  { loomNumber: 3, category: 'G6200', qualityName: 'HARNAI', fabricType: 'Worsted Wool', warp: '20/2-Pvt-Kohat', weft: '300/2-Twisted', rpm: 360, reed: 68, pick: 39, widthInch: 66, gsm: 2.03, rollerHours: 22, shiftA: 119, shiftB: 11, remarks: 'Elec Fault', lot: 'Sw # 328', status: 'ELEC_FAULT' },
   { loomNumber: 4, category: 'G6200', qualityName: 'HARNAI', fabricType: 'Worsted Wool', warp: '20/2-Pvt-Kohat', weft: '300/2-Twisted', rpm: 364, reed: 68, pick: 39, widthInch: 66, gsm: 2.03, rollerHours: 22, shiftA: 86, shiftB: 115, remarks: 'Elec Fault', lot: '', status: 'ELEC_FAULT' },
   { loomNumber: 5, category: 'G6200', qualityName: 'Gul-Ahmed-(1x1)', fabricType: 'Fabrics', warp: '45/1-Pv-White+46/1-Pv-Silver', weft: '45/1-Pv-White+75/144-Twisted', rpm: 347, reed: 82, pick: 92, widthInch: 66, gsm: 0.96, rollerHours: 22, shiftA: 54, shiftB: 54, remarks: 'Jacquard Fault', lot: 'Sw # 337', status: 'JACQUARD_FAULT' },
   { loomNumber: 6, category: 'G6200', qualityName: 'SILVER-SHINE', fabricType: 'Gabardine Suiting', warp: '45/1-Pv-China', weft: '45/1-Pv-China', rpm: 346, reed: 120, pick: 95, widthInch: 66, gsm: 1.26, rollerHours: 46, shiftA: 96, shiftB: 56, remarks: 'Elec Fault', lot: 'Sw # 328', status: 'ELEC_FAULT' },
@@ -87,7 +87,7 @@ const ROWS: Row[] = [
   { loomNumber: 21, category: 'PU', qualityName: 'VISION-SILVRA', fabricType: 'By-Gul-Ahmed', warp: '36/1-Pv-AA', weft: '36/1-Pv-Ash', rpm: 230, reed: 88, pick: 76, widthInch: 66, gsm: 1.24, rollerHours: 0, shiftA: 0, shiftB: 0, remarks: 'Knotting', lot: 'Sw # 330', status: 'KNOTTING' },
   { loomNumber: 22, category: 'PU', qualityName: 'PARCOPV', fabricType: 'Suiting', warp: '20/1-Pv-China', weft: '20/1-Pv-China', rpm: 265, reed: 120, pick: 60, widthInch: 66, gsm: 1.6, rollerHours: 23, shiftA: 76, shiftB: 70, remarks: '', lot: 'Sw # 335', status: 'RUNNING' },
   { loomNumber: 23, category: 'PU', qualityName: 'VISION-SILVRA', fabricType: 'By-Gul-Ahmed', warp: '36/1-Pv-AA', weft: '36/1-Pv-AA', rpm: 230, reed: 88, pick: 76, widthInch: 66, gsm: 1.24, rollerHours: 46, shiftA: 140, shiftB: 102, remarks: 'Jacquard Fault', lot: 'Sw # 340', status: 'JACQUARD_FAULT' },
-  { loomNumber: 24, category: 'PU', qualityName: 'VISION-SILVRA', fabricType: 'By-Gul-Ahmed', warp: '36/1-Pv-AA', weft: '36/1-Pv-AA', rpm: 230, reed: 82, pick: 82, widthInch: 66, gsm: 1.26, rollerHours: 0, shiftA: 0, shiftB: 0, remarks: 'B/End', lot: 'Sw # 326', status: 'BEAM_END' },
+  { loomNumber: 24, category: 'PU', qualityName: 'VISION-SILVRA', fabricType: 'By-Gul-Ahmed', warp: '36/1-Pv-AA', weft: '36/1-Pv-Ash', rpm: 230, reed: 82, pick: 82, widthInch: 66, gsm: 1.26, rollerHours: 0, shiftA: 0, shiftB: 0, remarks: 'B/End', lot: 'Sw # 326', status: 'BEAM_END' },
   { loomNumber: 25, category: 'PU', qualityName: 'VISION-SILVRA', fabricType: 'By-Gul-Ahmed', warp: '36/1-Pv-AA', weft: '36/1-Pv-AA', rpm: 220, reed: 88, pick: 76, widthInch: 66, gsm: 1.24, rollerHours: 22, shiftA: 86, shiftB: 74, remarks: '', lot: 'Sw # 340', status: 'RUNNING' },
   { loomNumber: 26, category: 'PU', qualityName: 'VISION-SILVRA', fabricType: 'By-Gul-Ahmed', warp: '36/1-Pv-AA', weft: '36/1-Pv-Ash', rpm: 230, reed: 82, pick: 82, widthInch: 66, gsm: 1.26, rollerHours: 0, shiftA: 0, shiftB: 0, remarks: 'B/End', lot: 'Sw # 326', status: 'BEAM_END' },
 ]
@@ -117,8 +117,9 @@ export type SeedSheetResult = {
 
 /** Upsert qualities/looms/beams/yarn + daily sheet for 2026-09-23 into the connected DATABASE_URL. */
 export async function seedSheet20260923(): Promise<SeedSheetResult> {
+  // Qualities in loom allotment order (first appearance on Loom 1 → 34), matching production sheet.
   const qualityByName = new Map<string, QualityMaster>()
-  for (const r of ROWS) {
+  for (const r of [...ROWS].sort((a, b) => a.loomNumber - b.loomNumber)) {
     if (qualityByName.has(r.qualityName)) continue
     qualityByName.set(r.qualityName, {
       id: qualityIdFor(r.qualityName),
@@ -277,6 +278,37 @@ export async function seedSheet20260923(): Promise<SeedSheetResult> {
   })
 
   await dbSaveSheet(DATE, entries)
+
+  // Today (24) — blank sheet: Actual A/B + roller hours = 0 (ready for entry later)
+  const ZERO_DATE = '2026-09-24'
+  const zeroEntries: DailyLoomProductionEntry[] = entries.map((e) => {
+    const metrics = calculateProductionMetrics({
+      rpm: e.rpm,
+      runningHours: 0,
+      pick: e.pick,
+      shiftAMeters: 0,
+      shiftBMeters: 0,
+    })
+    return {
+      ...e,
+      id: `PROD-${ZERO_DATE}-${e.loomNumber}`,
+      date: ZERO_DATE,
+      rollerHours: 0,
+      runningHours: 0,
+      shiftAMeters: 0,
+      shiftBMeters: 0,
+      runningTheoretical: metrics.theoreticalMeters,
+      totalMeters: metrics.totalMeters,
+      efficiencyPercentage: metrics.efficiencyPercentage,
+      stopLossMeters: metrics.stopLossMeters,
+      theoretical24h: metrics.theoretical24h,
+      efficiency24h: metrics.efficiency24h,
+      loss24h: metrics.loss24h,
+      remarks: '',
+      status: 'RUNNING',
+    }
+  })
+  await dbSaveSheet(ZERO_DATE, zeroEntries)
 
   const totalA = entries.reduce((s, e) => s + e.shiftAMeters, 0)
   const totalB = entries.reduce((s, e) => s + e.shiftBMeters, 0)

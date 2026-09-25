@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MAX_LOOM_PICTURES } from '@/services/productionMastersService'
 import { uploadImageFile } from '@/lib/uploadImage'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 
 interface LoomPicturesGalleryProps {
   images: string[]
@@ -29,6 +30,7 @@ export function LoomPicturesGallery({
   const [index, setIndex] = useState(initialIndex)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { showConfirm } = useAlertDialog()
 
   useEffect(() => {
     if (open) {
@@ -84,7 +86,7 @@ export function LoomPicturesGallery({
       if (urls.length) {
         const next = [...list, ...urls]
         onImagesChange(next)
-        setIndex(list.length) // jump to first newly added
+        setIndex(list.length)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -93,14 +95,7 @@ export function LoomPicturesGallery({
     }
   }
 
-  const removeCurrent = () => {
-    if (!onImagesChange || !list.length) return
-    const next = list.filter((_, i) => i !== index)
-    onImagesChange(next)
-    setIndex((i) => Math.min(i, Math.max(0, next.length - 1)))
-  }
-
-  const removeAt = (i: number) => {
+  const applyRemoveAt = (i: number) => {
     if (!onImagesChange || !list.length) return
     const next = list.filter((_, idx) => idx !== i)
     onImagesChange(next)
@@ -110,6 +105,23 @@ export function LoomPicturesGallery({
       if (cur > i) return cur - 1
       return cur
     })
+  }
+
+  const confirmRemoveAt = (i: number) => {
+    if (!onImagesChange || uploading) return
+    showConfirm({
+      title: 'Photo Delete Karein?',
+      message: 'Kya aap ye photo delete karna chahte hain? Ye action undo nahi hoga.',
+      type: 'confirm',
+      confirmText: 'Haan, Delete',
+      cancelText: 'Cancel',
+      onConfirm: () => applyRemoveAt(i),
+    })
+  }
+
+  const confirmRemoveCurrent = () => {
+    if (!list.length) return
+    confirmRemoveAt(index)
   }
 
   return (
@@ -139,9 +151,12 @@ export function LoomPicturesGallery({
             <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
           </div>
 
-          <div className="modal-body p-3 text-center bg-dark position-relative" style={{ minHeight: 220 }}>
+          <div
+            className="modal-body p-3 bg-dark position-relative d-flex align-items-center justify-content-center"
+            style={{ minHeight: 280 }}
+          >
             {list.length === 0 ? (
-              <div className="text-white-50 py-5">
+              <div className="text-white-50 py-5 text-center">
                 <i className="bi bi-images fs-2 d-block mb-2" />
                 No pictures yet
                 {editable && onImagesChange && (
@@ -174,7 +189,17 @@ export function LoomPicturesGallery({
                 <img
                   src={current}
                   alt={`${title} ${index + 1}`}
-                  style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain', borderRadius: 8 }}
+                  className="loom-gallery-main-img"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '65vh',
+                    width: 'auto',
+                    height: 'auto',
+                    objectFit: 'contain',
+                    borderRadius: 8,
+                    margin: '0 auto',
+                    display: 'block',
+                  }}
                 />
                 {hasMany && (
                   <button
@@ -194,7 +219,7 @@ export function LoomPicturesGallery({
                     style={{ zIndex: 2 }}
                     title="Delete this photo"
                     disabled={uploading}
-                    onClick={removeCurrent}
+                    onClick={confirmRemoveCurrent}
                   >
                     <i className="bi bi-trash me-1" /> Delete
                   </button>
@@ -204,11 +229,11 @@ export function LoomPicturesGallery({
           </div>
 
           {(list.length > 0 || (editable && onImagesChange)) && (
-            <div className="px-3 py-2 d-flex gap-2 overflow-auto bg-light border-top align-items-center">
+            <div className="px-3 py-2 d-flex gap-2 overflow-auto bg-light border-top align-items-center justify-content-center">
               {list.map((src, i) => (
                 <div
                   key={`${i}-${src.slice(0, 24)}`}
-                  className="position-relative flex-shrink-0"
+                  className="loom-gallery-thumb position-relative flex-shrink-0"
                   style={{ width: 56, height: 56 }}
                 >
                   <button
@@ -218,28 +243,30 @@ export function LoomPicturesGallery({
                     onClick={() => setIndex(i)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img
+                      src={src}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
+                    />
                   </button>
                   {editable && onImagesChange && (
                     <button
                       type="button"
-                      className="btn btn-danger btn-sm position-absolute top-0 end-0 p-0 d-flex align-items-center justify-content-center"
+                      className="loom-gallery-thumb__del btn btn-danger btn-sm position-absolute top-50 start-50 translate-middle p-0 d-flex align-items-center justify-content-center"
                       style={{
-                        width: 18,
-                        height: 18,
+                        width: 28,
+                        height: 28,
                         borderRadius: '50%',
-                        fontSize: 10,
-                        transform: 'translate(25%, -25%)',
                         zIndex: 2,
                       }}
                       title="Delete photo"
                       disabled={uploading}
                       onClick={(e) => {
                         e.stopPropagation()
-                        removeAt(i)
+                        confirmRemoveAt(i)
                       }}
                     >
-                      <i className="bi bi-x" />
+                      <i className="bi bi-trash" style={{ fontSize: 12 }} />
                     </button>
                   )}
                 </div>
@@ -274,7 +301,7 @@ export function LoomPicturesGallery({
               <>
                 <button
                   type="button"
-                  className="btn btn-sm btn-primary"
+                  className="btn btn-sm btn-outline-primary"
                   disabled={!canAdd}
                   onClick={() => inputRef.current?.click()}
                 >
@@ -289,16 +316,6 @@ export function LoomPicturesGallery({
                     </>
                   )}
                 </button>
-                {list.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-danger"
-                    disabled={uploading}
-                    onClick={removeCurrent}
-                  >
-                    <i className="bi bi-trash me-1" /> Delete current
-                  </button>
-                )}
                 <input
                   ref={inputRef}
                   type="file"
@@ -313,8 +330,13 @@ export function LoomPicturesGallery({
                 />
               </>
             )}
-            <button type="button" className="btn btn-sm btn-outline-secondary ms-auto" onClick={onClose}>
-              Close
+            <button
+              type="button"
+              className="btn btn-sm btn-primary ms-auto"
+              disabled={uploading}
+              onClick={onClose}
+            >
+              <i className="bi bi-check-lg me-1" /> Save
             </button>
           </div>
         </div>

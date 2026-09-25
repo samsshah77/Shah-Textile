@@ -11,10 +11,12 @@ import {
 } from '@/services/productionMastersService'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
+import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { AddYarnModal } from '@/components/floor/AddYarnModal'
 import { IssueYarnModal } from '@/components/floor/IssueYarnModal'
 import { useAuth } from '@/context/AuthContext'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 
 export type WeightUnit = 'KG' | 'LBS'
 export type YarnViewMode = 'STOCK' | 'LEDGER'
@@ -83,6 +85,7 @@ interface YarnStockTableProps {
   selectedDate: string
   dateFilterMode: YarnDateFilterMode
   setDateFilterMode: (mode: YarnDateFilterMode) => void
+  onDelete?: (id: string) => void
 }
 
 export function YarnStockTable({
@@ -96,8 +99,10 @@ export function YarnStockTable({
   selectedDate,
   dateFilterMode,
   setDateFilterMode,
+  onDelete,
 }: YarnStockTableProps) {
   const { isAdmin } = useAuth()
+  const { showConfirm } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [activeView, setActiveView] = useState<YarnViewMode>('STOCK')
   const [unit, setUnit] = useState<WeightUnit>('KG')
@@ -105,8 +110,7 @@ export function YarnStockTable({
   const [ledgerLoomFilter, setLedgerLoomFilter] = useState<string>('ALL')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [issuingYarn, setIssuingYarn] = useState<YarnMaster | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [draft, setDraft] = useState<YarnMaster | null>(null)
+  const [tableEdit, setTableEdit] = useState(false)
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_yarn_col_widths_v5',
@@ -204,69 +208,76 @@ export function YarnStockTable({
     })
   }, [allMovements, movementTypeFilter, ledgerLoomFilter, dateRange])
 
-  const startEdit = (y: YarnMaster) => {
-    if (!isAdmin || readOnly) return
-    setEditingId(y.id)
-    setDraft({ ...y })
-  }
+  const opsEdit = isAdmin && !readOnly && tableEdit && mode === 'table'
+  const masterEdit = isAdmin && !readOnly && tableEdit && mode === 'grid'
+  const editActive = opsEdit || masterEdit
 
-  const cancelEdit = () => {
-    setEditingId(null)
-    setDraft(null)
-  }
-
-  const saveEdit = (id: string) => {
-    if (!draft) return
-    const balanceKg = (draft.receivedKg || 0) - (draft.issuedKg || 0)
-    const balanceLbs = (draft.receivedLbs || 0) - (draft.issuedLbs || 0)
-    onUpdate(id, {
-      yarnType: draft.yarnType,
-      bags: draft.bags,
-      receivedKg: draft.receivedKg,
-      receivedLbs: draft.receivedLbs,
-      issuedKg: draft.issuedKg,
-      issuedLbs: draft.issuedLbs,
-      balanceKg,
-      balanceLbs,
-    })
-    setEditingId(null)
-    setDraft(null)
-  }
-
-  const patchDraftVal = (field: 'received' | 'issued' | 'bags' | 'yarnType', val: any) => {
-    setDraft((prev) => {
-      if (!prev) return null
-      const updated = { ...prev }
-      if (field === 'yarnType') {
-        updated.yarnType = val
-      } else if (field === 'bags') {
-        updated.bags = Number(val) || 0
-      } else if (field === 'received') {
-        const num = Number(val) || 0
-        if (unit === 'KG') {
-          updated.receivedKg = num
-          updated.receivedLbs = kgToLbs(num)
-        } else {
-          updated.receivedLbs = num
-          updated.receivedKg = lbsToKg(num)
-        }
-        updated.balanceKg = updated.receivedKg - (updated.issuedKg || 0)
-        updated.balanceLbs = updated.receivedLbs - (updated.issuedLbs || 0)
-      } else if (field === 'issued') {
-        const num = Number(val) || 0
-        if (unit === 'KG') {
-          updated.issuedKg = num
-          updated.issuedLbs = kgToLbs(num)
-        } else {
-          updated.issuedLbs = num
-          updated.issuedKg = lbsToKg(num)
-        }
-        updated.balanceKg = (updated.receivedKg || 0) - updated.issuedKg
-        updated.balanceLbs = (updated.receivedLbs || 0) - updated.issuedLbs
-      }
-      return updated
+  const handleDeleteYarn = (y: YarnMaster) => {
+    if (!masterEdit || !onDelete) return
+    showConfirm({
+      title: 'Yarn Delete Karein?',
+      message: `Kya aap waqai yarn type "${y.yarnType}" ko delete karna chahte hain?`,
+      type: 'confirm',
+      confirmText: 'Haan, Delete Karein',
+      cancelText: 'Cancel',
+      onConfirm: () => onDelete(y.id),
     })
   }
+
+  const patchYarn = (y: YarnMaster, field: 'received' | 'issued' | 'bags' | 'yarnType', val: string | number) => {
+    if (field === 'yarnType') {
+      onUpdate(y.id, { yarnType: String(val) })
+      return
+    }
+    if (field === 'bags') {
+      onUpdate(y.id, { bags: Number(val) || 0 })
+      return
+    }
+    const receivedKg = y.receivedKg || 0
+    const receivedLbs = y.receivedLbs || 0
+    const issuedKg = y.issuedKg || 0
+    const issuedLbs = y.issuedLbs || 0
+    if (field === 'received') {
+      const num = Number(val) || 0
+      const next =
+        unit === 'KG'
+          ? { receivedKg: num, receivedLbs: kgToLbs(num) }
+          : { receivedLbs: num, receivedKg: lbsToKg(num) }
+      const rKg = next.receivedKg ?? receivedKg
+      const rLbs = next.receivedLbs ?? receivedLbs
+      onUpdate(y.id, {
+        ...next,
+        balanceKg: rKg - issuedKg,
+        balanceLbs: rLbs - issuedLbs,
+      })
+      return
+    }
+    const num = Number(val) || 0
+    const next =
+      unit === 'KG'
+        ? { issuedKg: num, issuedLbs: kgToLbs(num) }
+        : { issuedLbs: num, issuedKg: lbsToKg(num) }
+    const iKg = next.issuedKg ?? issuedKg
+    const iLbs = next.issuedLbs ?? issuedLbs
+    onUpdate(y.id, {
+      ...next,
+      balanceKg: receivedKg - iKg,
+      balanceLbs: receivedLbs - iLbs,
+    })
+  }
+
+  const stockEditToggle =
+    activeView === 'STOCK' && isAdmin && !readOnly ? (
+      <button
+        type="button"
+        className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
+        title={tableEdit ? 'Lock table (view only)' : 'Enable editing'}
+        onClick={() => setTableEdit((v) => !v)}
+      >
+        <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
+        {tableEdit ? 'Done' : 'Edit'}
+      </button>
+    ) : null
 
   const displayWeight = (kg: number, lbs: number) => {
     const val = unit === 'KG' ? kg : lbs
@@ -419,6 +430,10 @@ export function YarnStockTable({
               </div>
             </div>
 
+            {activeView === 'STOCK' && tableEdit && (
+              <span className="small text-warning align-self-center">Edit on — Enter / Tab next field</span>
+            )}
+            {stockEditToggle}
             {activeView === 'STOCK' && <ViewModeToggle mode={mode} onChange={setMode} />}
 
             {!readOnly && isAdmin && (
@@ -440,24 +455,23 @@ export function YarnStockTable({
           <>
             {mode === 'grid' ? (
               <div className="master-grid">
-                {yarn.map((y) => {
+                {yarn.map((y, rowIdx) => {
                   const yarnIss = issuancesByYarn.get(y.id) || []
-                  const isEditing = editingId === y.id && !!draft
-                  const d = isEditing ? draft! : null
 
                   return (
                     <div
                       key={y.id}
-                      className={`master-grid-card ${isEditing ? 'border border-primary shadow-sm' : ''}`}
-                      style={isEditing ? { backgroundColor: '#eef5ff' } : undefined}
+                      className={`master-grid-card${editActive ? ' sara-edit-card' : ''}`}
                     >
                       <div className="d-flex justify-content-between align-items-start border-bottom pb-2">
-                        <div>
-                          {isEditing ? (
-                            <input
+                        <div className="flex-fill me-2">
+                          {masterEdit ? (
+                            <TextCellInput
                               className="form-control form-control-sm fw-bold"
-                              value={d!.yarnType}
-                              onChange={(e) => patchDraftVal('yarnType', e.target.value)}
+                              value={y.yarnType}
+                              navRow={rowIdx}
+                              navCol={0}
+                              onValueChange={(v) => patchYarn(y, 'yarnType', v)}
                             />
                           ) : (
                             <>
@@ -467,7 +481,17 @@ export function YarnStockTable({
                           )}
                         </div>
                         <div className="d-flex align-items-center gap-1">
-                          {onIssue && !readOnly && !isEditing && (
+                          {masterEdit && onDelete && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              title={`Delete ${y.yarnType}`}
+                              onClick={() => handleDeleteYarn(y)}
+                            >
+                              <i className="bi bi-trash" />
+                            </button>
+                          )}
+                          {onIssue && !readOnly && !editActive && (
                             <button
                               type="button"
                               className="btn btn-sm btn-outline-success"
@@ -477,89 +501,48 @@ export function YarnStockTable({
                               <i className="bi bi-box-arrow-right me-1" /> Issue
                             </button>
                           )}
-                          {isEditing ? (
-                            <div className="d-flex gap-1">
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-success py-0 px-2 d-inline-flex align-items-center gap-1 shadow-sm"
-                                style={{ height: 26, fontSize: '0.78rem' }}
-                                title="Save changes"
-                                onClick={() => saveEdit(y.id)}
-                              >
-                                <i className="bi bi-check-lg" />
-                                <span>Save</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-secondary py-0 px-1"
-                                style={{ height: 26, width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                                title="Cancel"
-                                onClick={cancelEdit}
-                              >
-                                <i className="bi bi-x-lg" style={{ fontSize: '0.72rem' }} />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-secondary p-0"
-                              style={{
-                                width: 22,
-                                height: 22,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderRadius: 4,
-                                opacity: isAdmin && !readOnly ? 0.75 : 0.35,
-                              }}
-                              title={isAdmin ? `Edit ${y.yarnType}` : 'Admin privileges required'}
-                              disabled={!isAdmin || readOnly || (editingId !== null && editingId !== y.id)}
-                              onClick={() => startEdit(y)}
-                            >
-                              <i className="bi bi-pencil" style={{ fontSize: '0.68rem' }} />
-                            </button>
-                          )}
                         </div>
                       </div>
 
-                      {isEditing ? (
+                      {masterEdit ? (
                         <div className="d-flex flex-column gap-2 mt-2">
                           <div className="d-flex gap-2">
                             <div className="flex-fill">
                               <label className="small mb-0">Bags</label>
-                              <input
-                                type="number"
+                              <NumericCellInput
                                 className="form-control form-control-sm text-end"
-                                value={d!.bags}
-                                onChange={(e) => patchDraftVal('bags', e.target.value)}
+                                value={y.bags}
+                                navRow={rowIdx}
+                                navCol={1}
+                                onValueChange={(v) => patchYarn(y, 'bags', v)}
                               />
                             </div>
                             <div className="flex-fill">
                               <label className="small mb-0">Inward ({unit})</label>
-                              <input
-                                type="number"
-                                step="0.5"
+                              <NumericCellInput
                                 className="form-control form-control-sm text-end"
-                                value={unit === 'KG' ? d!.receivedKg : d!.receivedLbs}
-                                onChange={(e) => patchDraftVal('received', e.target.value)}
+                                value={unit === 'KG' ? y.receivedKg : y.receivedLbs}
+                                navRow={rowIdx}
+                                navCol={2}
+                                onValueChange={(v) => patchYarn(y, 'received', v)}
                               />
                             </div>
                           </div>
                           <div className="d-flex gap-2">
                             <div className="flex-fill">
                               <label className="small mb-0">Outward ({unit})</label>
-                              <input
-                                type="number"
-                                step="0.5"
+                              <NumericCellInput
                                 className="form-control form-control-sm text-end"
-                                value={unit === 'KG' ? d!.issuedKg : d!.issuedLbs}
-                                onChange={(e) => patchDraftVal('issued', e.target.value)}
+                                value={unit === 'KG' ? y.issuedKg : y.issuedLbs}
+                                navRow={rowIdx}
+                                navCol={3}
+                                onValueChange={(v) => patchYarn(y, 'issued', v)}
                               />
                             </div>
                             <div className="flex-fill">
                               <label className="small mb-0">Bal ({unit})</label>
                               <div className="form-control form-control-sm bg-light text-end fw-bold text-primary">
-                                {displayWeight(d!.balanceKg, d!.balanceLbs)}
+                                {displayWeight(y.balanceKg, y.balanceLbs)}
                               </div>
                             </div>
                           </div>
@@ -641,56 +624,40 @@ export function YarnStockTable({
                     </tr>
                   </thead>
                   <tbody>
-                    {yarn.map((y) => {
+                    {yarn.map((y, rowIdx) => {
                       const yarnIss = issuancesByYarn.get(y.id) || []
-                      const isEditing = editingId === y.id && !!draft
-                      const d = isEditing ? draft! : null
 
                       return (
                         <tr
                           key={y.id}
-                          className={isEditing ? 'table-primary' : undefined}
-                          style={
-                            isEditing
-                              ? { backgroundColor: '#eef5ff', boxShadow: 'inset 0 0 0 1px #90b8f8' }
-                              : undefined
-                          }
+                          className={editActive ? 'sara-edit-row' : undefined}
                         >
                           <td className="px-2">
-                            {isEditing ? (
-                              <input
-                                className="form-control form-control-sm fw-medium"
-                                style={{ width: '100%', minWidth: 0 }}
-                                value={d!.yarnType}
-                                autoFocus
-                                onChange={(e) => patchDraftVal('yarnType', e.target.value)}
-                              />
-                            ) : (
-                              <span className="fw-semibold">{y.yarnType}</span>
-                            )}
+                            <span className="fw-semibold">{y.yarnType}</span>
                           </td>
                           <td className="px-1">
-                            {isEditing ? (
-                              <input
-                                type="number"
+                            {opsEdit ? (
+                              <NumericCellInput
                                 className="form-control form-control-sm text-end"
                                 style={{ width: '100%', minWidth: 0 }}
-                                value={d!.bags}
-                                onChange={(e) => patchDraftVal('bags', e.target.value)}
+                                value={y.bags}
+                                navRow={rowIdx}
+                                navCol={1}
+                                onValueChange={(v) => patchYarn(y, 'bags', v)}
                               />
                             ) : (
                               <div className="text-end px-1">{y.bags}</div>
                             )}
                           </td>
                           <td className="px-1">
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                step="0.5"
+                            {opsEdit ? (
+                              <NumericCellInput
                                 className="form-control form-control-sm text-end"
                                 style={{ width: '100%', minWidth: 0 }}
-                                value={unit === 'KG' ? d!.receivedKg : d!.receivedLbs}
-                                onChange={(e) => patchDraftVal('received', e.target.value)}
+                                value={unit === 'KG' ? y.receivedKg : y.receivedLbs}
+                                navRow={rowIdx}
+                                navCol={2}
+                                onValueChange={(v) => patchYarn(y, 'received', v)}
                               />
                             ) : (
                               <div className="text-end px-1 text-success fw-medium">
@@ -699,14 +666,14 @@ export function YarnStockTable({
                             )}
                           </td>
                           <td className="px-1">
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                step="0.5"
+                            {opsEdit ? (
+                              <NumericCellInput
                                 className="form-control form-control-sm text-end"
                                 style={{ width: '100%', minWidth: 0 }}
-                                value={unit === 'KG' ? d!.issuedKg : d!.issuedLbs}
-                                onChange={(e) => patchDraftVal('issued', e.target.value)}
+                                value={unit === 'KG' ? y.issuedKg : y.issuedLbs}
+                                navRow={rowIdx}
+                                navCol={3}
+                                onValueChange={(v) => patchYarn(y, 'issued', v)}
                               />
                             ) : (
                               <div className="text-end px-1 text-danger fw-medium">
@@ -715,10 +682,7 @@ export function YarnStockTable({
                             )}
                           </td>
                           <td className="fw-bold text-end pe-2 text-primary">
-                            {displayWeight(
-                              isEditing ? d!.balanceKg : y.balanceKg,
-                              isEditing ? d!.balanceLbs : y.balanceLbs
-                            )}
+                            {displayWeight(y.balanceKg, y.balanceLbs)}
                           </td>
                           <td className="px-2" style={{ whiteSpace: 'normal', fontSize: '0.78rem' }}>
                             {yarnIss.length > 0 ? (
@@ -748,61 +712,17 @@ export function YarnStockTable({
                             )}
                           </td>
                           <td className="px-1 text-center">
-                            {isEditing ? (
-                              <div className="d-flex align-items-center justify-content-center gap-1">
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-success py-0 px-2 d-inline-flex align-items-center gap-1 shadow-sm"
-                                  style={{ height: 26, fontSize: '0.78rem' }}
-                                  title="Save changes"
-                                  onClick={() => saveEdit(y.id)}
-                                >
-                                  <i className="bi bi-check-lg" />
-                                  <span>Save</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-outline-secondary py-0 px-1"
-                                  style={{ height: 26, width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                                  title="Cancel"
-                                  onClick={cancelEdit}
-                                >
-                                  <i className="bi bi-x-lg" style={{ fontSize: '0.72rem' }} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="d-flex align-items-center justify-content-center gap-1">
-                                {onIssue && !readOnly && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-success py-0 px-1.5"
-                                    style={{ fontSize: '0.75rem', height: 24 }}
-                                    title="Issue yarn to loom"
-                                    disabled={y.balanceKg <= 0}
-                                    onClick={() => setIssuingYarn(y)}
-                                  >
-                                    <i className="bi bi-box-arrow-right me-1" /> Issue
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-outline-secondary p-0"
-                                  style={{
-                                    width: 22,
-                                    height: 22,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    borderRadius: 4,
-                                    opacity: isAdmin && !readOnly ? 0.75 : 0.35,
-                                  }}
-                                  title={isAdmin ? `Edit ${y.yarnType}` : 'Admin privileges required'}
-                                  disabled={!isAdmin || readOnly || (editingId !== null && editingId !== y.id)}
-                                  onClick={() => startEdit(y)}
-                                >
-                                  <i className="bi bi-pencil" style={{ fontSize: '0.68rem' }} />
-                                </button>
-                              </div>
+                            {onIssue && !readOnly && !editActive && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-success py-0 px-1.5"
+                                style={{ fontSize: '0.75rem', height: 24 }}
+                                title="Issue yarn to loom"
+                                disabled={y.balanceKg <= 0}
+                                onClick={() => setIssuingYarn(y)}
+                              >
+                                <i className="bi bi-box-arrow-right me-1" /> Issue
+                              </button>
                             )}
                           </td>
                         </tr>
