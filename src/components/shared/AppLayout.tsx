@@ -27,8 +27,14 @@ function MainContent({ children }: { children: React.ReactNode }) {
   }, [isQualityController, pathname, router])
 
   const isAdminRoute = pathname.startsWith('/admin')
+  const isDashboardRoute = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
   const isPayrollRoute = pathname.startsWith('/payroll')
-  const showExcelTabBar = !isAdminRoute && (!isQualityController || !isPayrollRoute)
+  const isAccountsRoute = pathname.startsWith('/accounts')
+  // Dashboard: no Excel tab strip. QC: never show salary/accounts tabs (those bounce back).
+  const showExcelTabBar =
+    !isAdminRoute &&
+    !isDashboardRoute &&
+    !(isQualityController && (isPayrollRoute || isAccountsRoute))
 
   return (
     <main className="app-main bg-body-tertiary sara-app-main">

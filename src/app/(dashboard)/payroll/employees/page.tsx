@@ -22,6 +22,7 @@ import {
   IdCard,
   ChevronUp,
   ChevronDown,
+  CalendarPlus,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
@@ -56,7 +57,6 @@ const COMMON_GW_DESIGNATIONS = [
   'Time Keeper',
   'Folding',
   'Sweeper',
-  'Contractor',
 ]
 
 export default function GeneralWagesPage() {
@@ -65,6 +65,13 @@ export default function GeneralWagesPage() {
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
+  const [newMonth, setNewMonth] = useState(() => {
+    const months = payrollService.listPayrollMonths()
+    const last = months[months.length - 1] || '2026-08'
+    const [y, m] = last.split('-').map(Number)
+    const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+    return next
+  })
 
   const crossSheetSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const CROSS_SHEET_FIELDS: Array<keyof EmployeeProfile> = ['name', 'designation', 'salary', 'dutyHrs']
@@ -84,6 +91,13 @@ export default function GeneralWagesPage() {
       .filter(isGeneralWagesEmployee)
       .sort((a, b) => a.serialNo - b.serialNo)
     setEmployees(activeGw)
+  }
+
+  const handleGenerateMonth = () => {
+    if (!canEditAccounts) return
+    const result = payrollService.generateSalariedMonth(newMonth)
+    setStatusNotice(result.message)
+    setTimeout(() => setStatusNotice(null), 5000)
   }
 
   // Move employee up/down and permanently persist the new order
@@ -235,6 +249,37 @@ export default function GeneralWagesPage() {
           }
         />
       </div>
+
+      {canEditAccounts && (
+        <div className="print:hidden erp-card p-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+              Naya salary month generate
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              General Wages (Staff + Company Contract) se rows banengi — attendance, OT, advance, cheque zero.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="month"
+              value={newMonth}
+              onChange={(e) => setNewMonth(e.target.value)}
+              className="form-control form-control-sm"
+              style={{ width: 'auto' }}
+              aria-label="New payroll month"
+            />
+            <button
+              type="button"
+              onClick={handleGenerateMonth}
+              className="erp-btn-primary text-xs flex items-center gap-1.5"
+            >
+              <CalendarPlus className="size-3.5" />
+              <span>Generate Month</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (

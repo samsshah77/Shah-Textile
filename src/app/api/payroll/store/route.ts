@@ -5,7 +5,7 @@ import {
   dbPayrollIsEmpty,
   dbPayrollSave,
 } from '@/server/payrollDb'
-import { getPayrollSeedStore, payrollService, STORAGE_KEYS } from '@/services/payrollService'
+import { getPayrollSeedStore, payrollService, projectProfilesOntoSheets, STORAGE_KEYS } from '@/services/payrollService'
 import { currentUser } from '@/server/current-user'
 import { isAccountsController } from '@/lib/accountsAccess'
 
@@ -44,6 +44,12 @@ export async function GET() {
       await dbPayrollSave(STORAGE_KEYS.EMPLOYEES, repaired.list)
       store[STORAGE_KEYS.EMPLOYEES] = repaired.list
     }
+
+    const projected = projectProfilesOntoSheets(store)
+    await Promise.all(
+      Object.entries(projected).map(([key, value]) => dbPayrollSave(key, value))
+    )
+    for (const [key, value] of Object.entries(projected)) store[key] = value
 
     return NextResponse.json({ ok: true, store })
   } catch (err) {

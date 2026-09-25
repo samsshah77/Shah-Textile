@@ -170,7 +170,8 @@ export default function DashboardPage() {
     }
   }
 
-  const sheetHref = '/floor/production'
+  const sheetHref = '/floor/production?tab=sheet'
+  const trackingHref = '/floor/reports/total'
 
   return (
     <>
@@ -251,8 +252,8 @@ export default function DashboardPage() {
             subValue={formatProductionDayLabel(selectedDate)}
             biIcon="bi-speedometer2"
             colorVariant="primary"
-            href={sheetHref}
-            footerLabel="More info"
+            href={trackingHref}
+            footerLabel="Total Tracking"
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -266,8 +267,8 @@ export default function DashboardPage() {
             subValue="Meters"
             biIcon="bi-columns-gap"
             colorVariant="success"
-            href={sheetHref}
-            footerLabel="More info"
+            href={trackingHref}
+            footerLabel="Total Tracking"
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -277,8 +278,8 @@ export default function DashboardPage() {
             subValue="Avg running"
             biIcon="bi-percent"
             colorVariant="warning"
-            href={sheetHref}
-            footerLabel="More info"
+            href={trackingHref}
+            footerLabel="Total Tracking"
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -288,8 +289,8 @@ export default function DashboardPage() {
             subValue="On selected day"
             biIcon="bi-gear-wide-connected"
             colorVariant="info"
-            href={sheetHref}
-            footerLabel="More info"
+            href={trackingHref}
+            footerLabel="Total Tracking"
           />
         </div>
       </div>

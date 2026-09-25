@@ -149,7 +149,7 @@ export interface HelperWageRecord {
   serialNo: number;
   employeeId?: string;
   employeeName: string;
-  designation: 'Helper';
+  designation: 'Helper' | 'Winder';
   wagePerDay: number; // 1050
   attendanceDays: number;
   wagesAmount: number;

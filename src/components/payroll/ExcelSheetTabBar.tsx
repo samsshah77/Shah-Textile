@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useEffect, Suspense } from 'react'
+import { useRef, useEffect, Suspense, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { useAuth } from '@/context/AuthContext'
 
 export interface SheetTabInfo {
   sheetNumber: number
@@ -275,14 +276,25 @@ function ExcelSheetTabBarContent() {
   const searchParams = useSearchParams()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const activeTabRef = useRef<HTMLAnchorElement>(null)
+  const { isQualityController, isAccountant } = useAuth()
 
   const isProduction = pathname.startsWith('/floor') || pathname.startsWith('/production')
   const isAccounts = pathname.startsWith('/accounts')
-  const currentSheets = isProduction
-    ? PRODUCTION_EXCEL_SHEETS
-    : isAccounts
-    ? ACCOUNTS_EXCEL_SHEETS
-    : SALARY_EXCEL_SHEETS
+
+  const currentSheets = useMemo(() => {
+    let sheets: SheetTabInfo[]
+    if (isQualityController || isProduction) {
+      sheets = PRODUCTION_EXCEL_SHEETS
+    } else if (isAccounts) {
+      sheets = ACCOUNTS_EXCEL_SHEETS
+    } else {
+      sheets = SALARY_EXCEL_SHEETS
+    }
+    if (isAccountant && isProduction) {
+      sheets = sheets.filter((s) => s.name === 'Production Sheet')
+    }
+    return sheets
+  }, [isQualityController, isAccountant, isProduction, isAccounts])
 
   // Smooth auto-scroll active tab into view
   useEffect(() => {
@@ -293,7 +305,7 @@ function ExcelSheetTabBarContent() {
         inline: 'center',
       })
     }
-  }, [pathname, searchParams, isProduction, isAccounts])
+  }, [pathname, searchParams, currentSheets])
 
   const scrollLeft = () => {
     if (scrollContainerRef.current) {

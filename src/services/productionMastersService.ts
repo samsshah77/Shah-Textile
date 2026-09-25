@@ -312,6 +312,30 @@ export function getLoomPictures(loom: LoomMaster): string[] {
   return normalizeLoomPictures(loom).pictureDataUrls
 }
 
+/** Mill roster is always Loom 1 … 34, in that order. Missing numbers are filled from the seed. */
+function completeLoomRoster(looms: LoomMaster[]): { list: LoomMaster[]; changed: boolean } {
+  const seed = seedLooms()
+  const byNumber = new Map<number, LoomMaster>()
+  for (const loom of looms) {
+    if (!byNumber.has(loom.loomNumber)) byNumber.set(loom.loomNumber, loom)
+  }
+  let changed = looms.length !== byNumber.size
+  const list = seed.map((fallback) => {
+    const existing = byNumber.get(fallback.loomNumber)
+    if (existing) return existing
+    changed = true
+    return fallback
+  })
+  const extras = [...byNumber.values()]
+    .filter((loom) => loom.loomNumber < 1 || loom.loomNumber > 34)
+    .sort((a, b) => a.loomNumber - b.loomNumber)
+  if (extras.length) list.push(...extras)
+  if (!changed) {
+    changed = looms.some((loom, index) => loom.loomNumber !== list[index]?.loomNumber)
+  }
+  return { list, changed }
+}
+
 function seedLooms(): LoomMaster[] {
   return INITIAL_34_LOOMS_CONFIG.map((l) => {
     const pics = normalizeLoomPictures({
@@ -887,11 +911,16 @@ export async function preloadMonthSheets(monthStr: string = PRODUCTION_TODAY_MON
 
 class ProductionMastersService {
   getLooms(): LoomMaster[] {
-    const looms = loadJson(KEY_LOOMS, seedLooms)
-    return looms.map((l) => ({
+    const stored = loadJson(KEY_LOOMS, seedLooms)
+    const { list, changed } = completeLoomRoster(stored)
+    const looms = list.map((l) => ({
       ...l,
       ...normalizeLoomPictures(l),
     }))
+    if (changed && hydrated && isClient()) {
+      saveJson(KEY_LOOMS, looms)
+    }
+    return looms
   }
 
   saveLooms(looms: LoomMaster[]) {
@@ -1529,7 +1558,7 @@ class ProductionMastersService {
     dateStr: string = PRODUCTION_TODAY,
     opts?: { persist?: boolean }
   ): DailyLoomProductionEntry[] {
-    const looms = this.getLooms().filter((l) => l.isActive)
+    const looms = this.getLooms()
     const beams = this.getBeams()
     const yarns = this.getYarn()
     const qualities = this.getQualities()

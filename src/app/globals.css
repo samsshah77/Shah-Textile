@@ -283,7 +283,7 @@
     color: #0d6efd;
   }
 
-  body.layout-fixed a:not(.nav-link):not(.btn):not(.dropdown-item):not(.small-box-footer):not(.brand-link) {
+  body.layout-fixed a:not(.nav-link):not(.btn):not(.dropdown-item):not(.small-box-footer):not(.small-box):not(.brand-link) {
     color: #0d6efd;
   }
 

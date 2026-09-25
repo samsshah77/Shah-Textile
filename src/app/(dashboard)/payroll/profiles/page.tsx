@@ -9,7 +9,7 @@ import {
   inferEmployeeCategory,
   matchesHrCategoryFilter,
 } from '@/services/payrollService'
-import { EmployeeProfile, EmployeeCategory, EmployeeStatus } from '@/types/payroll'
+import { EmployeeProfile, EmployeeStatus } from '@/types/payroll'
 import { useAuth } from '@/context/AuthContext'
 import { AlertModal } from '@/components/ui/AlertModal'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
@@ -41,70 +41,47 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 
 const HR_TABS = [
-  { id: 'ALL', label: 'All Active' },
-  { id: 'STAFF', label: 'Staff & Admin' },
-  { id: 'WEAVER', label: 'Weavers' },
-  { id: 'HELPER', label: 'Helpers' },
-  { id: 'CONTRACT', label: 'Contract' },
-  { id: 'RESIGNED', label: 'Resigned Staff' },
+  { id: 'ALL', label: 'All' },
+  { id: 'STAFF', label: 'Staff' },
+  { id: 'CONTRACT', label: 'Company Contract' },
+  { id: 'WEAVER', label: 'Weaver' },
+  { id: 'HELPER', label: 'Helper' },
+  { id: 'CONTRACTOR', label: 'Contractor' },
+  { id: 'RESIGNED', label: 'Resigned' },
 ]
 
-const DESIGNATION_PRESETS = [
+const FORM_KINDS = [
   {
-    label: 'Weaver (Rs. 1,450/day)',
-    designation: 'Weaver',
-    department: 'Weaving Floor',
-    dutyHrs: 12,
-    shiftFromTo: '8 to 8',
-    contractStatus: 'Daily Wage',
-    dailyWage: 1450,
+    id: 'salaried' as const,
+    label: 'Staff / Company Contract',
+    hint: 'General Wages — monthly salary',
   },
   {
-    label: 'Spare Weaver (Rs. 1,800/day)',
-    designation: 'Spare Weaver',
-    department: 'Weaving Floor',
-    dutyHrs: 12,
-    shiftFromTo: '8 to 8',
-    contractStatus: 'Daily Wage',
-    dailyWage: 1800,
+    id: 'weaver' as const,
+    label: 'Weaver',
+    hint: 'Daily wage — Weavers sheet',
   },
   {
-    label: 'Helper (Rs. 1,050/day)',
-    designation: 'Helper',
-    department: 'Weaving Floor',
-    dutyHrs: 12,
-    shiftFromTo: '8 to 8',
-    contractStatus: 'Daily Wage',
-    dailyWage: 1050,
+    id: 'helper' as const,
+    label: 'Helper / Winder',
+    hint: 'Daily wage — Helpers sheet',
   },
   {
-    label: 'Winder (Rs. 1,150/day)',
-    designation: 'Winder',
-    department: 'Weaving Floor',
-    dutyHrs: 12,
-    shiftFromTo: '8 to 8',
-    contractStatus: 'Daily Wage',
-    dailyWage: 1150,
-  },
-  {
-    label: 'Supervisor / Staff',
-    designation: 'Supervisor',
-    department: 'Administration',
-    dutyHrs: 9,
-    shiftFromTo: '9 to 6',
-    contractStatus: 'Company Contract',
-    dailyWage: 0,
-  },
-  {
-    label: 'Contract Tech',
-    designation: 'Technician',
-    department: 'Maintenance & Mechanical',
-    dutyHrs: 9,
-    shiftFromTo: '9 to 6',
-    contractStatus: 'Company Contract',
-    dailyWage: 0,
+    id: 'contractor' as const,
+    label: 'Contractor',
+    hint: 'Fortnightly — Contractors sheet',
   },
 ]
+
+type FormKind = (typeof FORM_KINDS)[number]['id']
+
+function formKindFromEmployee(emp: EmployeeProfile): FormKind {
+  const cat = inferEmployeeCategory(emp)
+  if (cat === 'Weaver') return 'weaver'
+  if (cat === 'Helper') return 'helper'
+  if (cat === 'Contractor') return 'contractor'
+  return 'salaried'
+}
 
 function EmployeeProfilesContent() {
   const { canEditAccounts } = useAuth()
@@ -136,6 +113,7 @@ function EmployeeProfilesContent() {
   const [dailyWage, setDailyWage] = useState<number | string>('')
   const [doj, setDoj] = useState('')
   const [contractStatus, setContractStatus] = useState<string>('Company Contract')
+  const [formKind, setFormKind] = useState<FormKind>('salaried')
   const [status, setStatus] = useState<EmployeeStatus>('Active')
   const [resignedAt, setResignedAt] = useState('')
   const [advanceEligible, setAdvanceEligible] = useState(false)
@@ -202,6 +180,7 @@ function EmployeeProfilesContent() {
 
   const openAddModal = () => {
     setEditingEmployee(null)
+    setFormKind('salaried')
     setName('')
     setFatherName('')
     setCnic('')
@@ -222,20 +201,59 @@ function EmployeeProfilesContent() {
     setIsModalOpen(true)
   }
 
-  const applyPreset = (preset: typeof DESIGNATION_PRESETS[0]) => {
-    setDesignation(preset.designation)
-    setDepartment(preset.department)
-    setDutyHrs(preset.dutyHrs)
-    setShiftFromTo(preset.shiftFromTo)
-    setContractStatus(preset.contractStatus)
-    if (preset.dailyWage > 0) {
-      setDailyWage(preset.dailyWage)
-      setSalary(preset.dailyWage * 30)
+  const applyFormKind = (kind: FormKind) => {
+    setFormKind(kind)
+    if (kind === 'salaried') {
+      setDepartment('Administration')
+      setDutyHrs('9')
+      setShiftFromTo('9 to 6')
+      setContractStatus('Company Contract')
+      setDailyWage('')
+      if (!editingEmployee) {
+        setDesignation('')
+        setSalary('')
+      }
+      return
+    }
+    if (kind === 'weaver') {
+      setDepartment('Weaving Floor')
+      setDutyHrs('12')
+      setShiftFromTo('8 to 8')
+      setContractStatus('Daily Wage')
+      if (!editingEmployee) {
+        setDesignation('Weaver')
+        setDailyWage(1450)
+        setSalary(1450 * 30)
+      }
+      return
+    }
+    if (kind === 'helper') {
+      setDepartment('Weaving Floor')
+      setDutyHrs('12')
+      setShiftFromTo('8 to 8')
+      setContractStatus('Daily Wage')
+      if (!editingEmployee) {
+        setDesignation('Helper')
+        setDailyWage(1050)
+        setSalary(1050 * 30)
+      }
+      return
+    }
+    setDepartment('Contract Services')
+    setDutyHrs('12')
+    setShiftFromTo('8 to 8')
+    setContractStatus('Contractor')
+    setDailyWage('')
+    if (!editingEmployee) {
+      setDesignation('Contractor')
+      setSalary('')
     }
   }
 
   const openEditModal = (emp: EmployeeProfile) => {
     setEditingEmployee(emp)
+    const kind = formKindFromEmployee(emp)
+    setFormKind(kind)
     setName(emp.name || '')
     setFatherName(emp.fatherName || '')
     setCnic(emp.cnic || '')
@@ -243,14 +261,21 @@ function EmployeeProfilesContent() {
     setAddress(emp.address || '')
     setDesignation(emp.designation || '')
     setDepartment(emp.department || 'Administration')
-    setDutyHrs(emp.dutyHrs || 9)
-    setShiftFromTo(emp.shiftFromTo || '9 to 6')
+    setDutyHrs(emp.dutyHrs || (kind === 'salaried' ? 9 : 12))
+    setShiftFromTo(emp.shiftFromTo || (kind === 'salaried' ? '9 to 6' : '8 to 8'))
     setSalary(emp.salary || '')
-    const isDaily = emp.contractStatus === 'Daily Wage' || ['Weaver', 'Helper'].includes(emp.employeeCategory || '')
-    const resolvedDaily = emp.ratePerDay30 || emp.ratePerDay31 || (isDaily && emp.salary ? Math.round(emp.salary / 30) : '')
+    const isDaily = kind === 'weaver' || kind === 'helper'
+    const resolvedDaily =
+      emp.ratePerDay30 || emp.ratePerDay31 || (isDaily && emp.salary ? Math.round(emp.salary / 30) : '')
     setDailyWage(resolvedDaily || '')
     setDoj(emp.doj || '')
-    setContractStatus(emp.contractStatus || 'Company Contract')
+    setContractStatus(
+      kind === 'weaver' || kind === 'helper'
+        ? 'Daily Wage'
+        : kind === 'contractor'
+          ? 'Contractor'
+          : emp.contractStatus || 'Company Contract'
+    )
     setStatus(emp.status || 'Active')
     setResignedAt(resolveResignedAt(emp) || '')
     setAdvanceEligible(Boolean(emp.advanceEligible))
@@ -262,62 +287,68 @@ function EmployeeProfilesContent() {
     e.preventDefault()
     if (!name || !designation) return
 
-    const isDaily = contractStatus === 'Daily Wage' || designation.toLowerCase().includes('weaver') || designation.toLowerCase().includes('helper')
+    const isDaily = formKind === 'weaver' || formKind === 'helper'
     const numDailyWage = parseFloat(dailyWage as string) || 0
     let numSalary = parseFloat(salary as string) || 0
-    if (isDaily && numDailyWage > 0 && (!numSalary || numSalary === 0)) {
+    if (isDaily) {
+      if (numDailyWage <= 0) return
       numSalary = numDailyWage * 30
     }
-    const numDuty = parseFloat(dutyHrs as string) || (isDaily ? 12 : 9)
+    if (!isDaily && numSalary <= 0) return
+
+    const numDuty = parseFloat(dutyHrs as string) || (isDaily || formKind === 'contractor' ? 12 : 9)
+    const nextContract =
+      formKind === 'weaver' || formKind === 'helper'
+        ? 'Daily Wage'
+        : formKind === 'contractor'
+          ? 'Contractor'
+          : contractStatus === 'Permanent'
+            ? 'Permanent'
+            : 'Company Contract'
 
     const resolvedCategory = inferEmployeeCategory({
       designation,
-      contractStatus,
-      employeeCategory: editingEmployee?.employeeCategory,
+      contractStatus: nextContract,
+      employeeCategory:
+        formKind === 'weaver'
+          ? 'Weaver'
+          : formKind === 'helper'
+            ? 'Helper'
+            : formKind === 'contractor'
+              ? 'Contractor'
+              : editingEmployee?.employeeCategory,
     })
 
+    const payload = {
+      name,
+      fatherName,
+      cnic,
+      phone,
+      address,
+      designation,
+      department,
+      employeeCategory: resolvedCategory,
+      dutyHrs: numDuty,
+      shiftFromTo,
+      salary: numSalary,
+      ratePerDay30: isDaily ? numDailyWage : undefined,
+      ratePerDay31: isDaily ? numDailyWage : undefined,
+      ratePerDay28: isDaily ? numDailyWage : undefined,
+      doj,
+      contractStatus: nextContract,
+      status,
+      resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
+      advanceEligible,
+      remarks,
+    }
+
     if (editingEmployee) {
-      payrollService.updateEmployee(editingEmployee.id, {
-        name,
-        fatherName,
-        cnic,
-        phone,
-        address,
-        designation,
-        department,
-        employeeCategory: resolvedCategory,
-        dutyHrs: numDuty,
-        shiftFromTo,
-        salary: numSalary,
-        ratePerDay30: isDaily && numDailyWage > 0 ? numDailyWage : undefined,
-        ratePerDay31: isDaily && numDailyWage > 0 ? numDailyWage : undefined,
-        ratePerDay28: isDaily && numDailyWage > 0 ? numDailyWage : undefined,
-        doj,
-        contractStatus,
-        status,
-        resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
-        advanceEligible,
-        remarks,
-      })
+      payrollService.updateEmployee(editingEmployee.id, payload)
       setStatusNotice(`Profile for "${name}" updated successfully.`)
     } else {
       payrollService.addEmployee({
-        name,
-        fatherName,
-        cnic,
-        phone,
-        address,
-        designation,
-        department,
-        employeeCategory: resolvedCategory,
-        dutyHrs: numDuty,
-        shiftFromTo,
-        salary: numSalary,
+        ...payload,
         doj: doj || new Date().toISOString().split('T')[0],
-        contractStatus: isDaily ? 'Daily Wage' : contractStatus,
-        status,
-        resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
-        advanceEligible,
         remarks: remarks || undefined,
       })
       setStatusNotice(`Profile for "${name}" registered successfully.`)
@@ -925,26 +956,32 @@ function EmployeeProfilesContent() {
               </button>
             </div>
 
-            {/* Quick Presets for Weaver / Helper */}
-            {!editingEmployee && (
-              <div className="p-3 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1.5">
-                  Quick Designation Presets (Auto-fills rates & department):
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {DESIGNATION_PRESETS.map((p) => (
-                    <button
-                      key={p.label}
-                      type="button"
-                      onClick={() => applyPreset(p)}
-                      className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 text-slate-700 dark:text-slate-300 rounded-md cursor-pointer transition-all shadow-xs"
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
+            {/* Form type: Staff+Contract vs Weaver / Helper / Contractor */}
+            <div className="p-3 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1.5">
+                {editingEmployee ? 'Form type' : 'Register as'}
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {FORM_KINDS.map((k) => (
+                  <button
+                    key={k.id}
+                    type="button"
+                    onClick={() => applyFormKind(k.id)}
+                    className={cn(
+                      'px-2.5 py-1.5 text-[11px] font-medium rounded-md cursor-pointer transition-all border shadow-xs text-left',
+                      formKind === k.id
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-400'
+                    )}
+                  >
+                    <span className="block font-semibold">{k.label}</span>
+                    <span className={cn('block text-[10px]', formKind === k.id ? 'text-indigo-100' : 'text-slate-500')}>
+                      {k.hint}
+                    </span>
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
             <form onSubmit={handleSaveModal} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1018,59 +1055,80 @@ function EmployeeProfilesContent() {
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Designation *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    list="hr-designation-suggestions"
-                    value={designation}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setDesignation(val)
-                      const low = val.toLowerCase()
-                      if (low.includes('weaver')) {
-                        setDepartment('Weaving Floor')
-                        setContractStatus('Daily Wage')
-                        setDutyHrs('12')
-                        setShiftFromTo('8 to 8')
-                        if (low.includes('spare')) {
+                  {formKind === 'weaver' ? (
+                    <select
+                      required
+                      value={designation}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setDesignation(val)
+                        if (val === 'Spare Weaver') {
                           setDailyWage(1800)
-                          setSalary(54000)
+                          setSalary(1800 * 30)
                         } else {
                           setDailyWage(1450)
-                          setSalary(43500)
+                          setSalary(1450 * 30)
                         }
-                      } else if (low.includes('helper') || low.includes('winder')) {
-                        setDepartment('Weaving Floor')
-                        setContractStatus('Daily Wage')
-                        setDutyHrs('12')
-                        setShiftFromTo('8 to 8')
-                        if (low.includes('winder')) {
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="Weaver">Weaver</option>
+                      <option value="Spare Weaver">Spare Weaver</option>
+                    </select>
+                  ) : formKind === 'helper' ? (
+                    <select
+                      required
+                      value={designation}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setDesignation(val)
+                        if (val === 'Winder') {
                           setDailyWage(1150)
-                          setSalary(34500)
+                          setSalary(1150 * 30)
                         } else {
                           setDailyWage(1050)
-                          setSalary(31500)
+                          setSalary(1050 * 30)
                         }
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="Helper">Helper</option>
+                      <option value="Winder">Winder</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      required
+                      list={formKind === 'salaried' ? 'hr-salaried-designations' : 'hr-contractor-designations'}
+                      value={designation}
+                      onChange={(e) => setDesignation(e.target.value)}
+                      placeholder={
+                        formKind === 'contractor'
+                          ? 'e.g. Knotting / Sarning / Chowkidar'
+                          : 'e.g. Incharge / Technician / Quality Controller'
                       }
-                    }}
-                    placeholder="e.g. Weaver / Spare Weaver / Helper / Incharge"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  />
-                  <datalist id="hr-designation-suggestions">
-                    <option value="Weaver" />
-                    <option value="Spare Weaver" />
-                    <option value="Helper" />
-                    <option value="Winder" />
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  )}
+                  <datalist id="hr-salaried-designations">
                     <option value="Incharge" />
                     <option value="Supervisor" />
                     <option value="Accountant" />
                     <option value="Technician" />
                     <option value="Quality Controller" />
+                    <option value="Electrician" />
+                    <option value="Oil Man" />
+                    <option value="Time Keeper" />
+                    <option value="Folding" />
                     <option value="Sweeper" />
                   </datalist>
-                  <p className="mt-1 text-[10px] text-slate-500">
-                    Weaver / Helper likhne se ye General Wages me nahi aayenge, Weavers/Helpers section me aayenge.
-                  </p>
+                  <datalist id="hr-contractor-designations">
+                    <option value="Contractor" />
+                    <option value="Knotting" />
+                    <option value="Sarning" />
+                    <option value="Chowkidar" />
+                    <option value="Gitta" />
+                  </datalist>
                 </div>
 
                 <div>
@@ -1093,37 +1151,32 @@ function EmployeeProfilesContent() {
                   </select>
                 </div>
 
-                {/* Contract Status */}
-                <div>
-                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Contract / Wage Type
-                  </label>
-                  <select
-                    value={contractStatus}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setContractStatus(val)
-                      if (val === 'Daily Wage' && !dutyHrs) setDutyHrs('12')
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="Company Contract">Company Contract (Monthly)</option>
-                    <option value="Daily Wage">Daily Wage (Weavers & Helpers)</option>
-                    <option value="Permanent">Permanent (Monthly)</option>
-                    <option value="Contractor">Contractor (Fortnightly)</option>
-                  </select>
-                </div>
+                {/* Contract Status — Staff / Company Contract form only */}
+                {formKind === 'salaried' && (
+                  <div>
+                    <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Wage Type
+                    </label>
+                    <select
+                      value={contractStatus === 'Permanent' ? 'Permanent' : 'Company Contract'}
+                      onChange={(e) => setContractStatus(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="Company Contract">Company Contract (Monthly)</option>
+                      <option value="Permanent">Permanent (Monthly)</option>
+                    </select>
+                  </div>
+                )}
 
-                {/* Daily Wage Rate if Daily Wage or Weaver/Helper */}
-                {(contractStatus === 'Daily Wage' ||
-                  designation.toLowerCase().includes('weaver') ||
-                  designation.toLowerCase().includes('helper')) && (
+                {/* Daily wage — Weaver / Helper only (no monthly salary field) */}
+                {(formKind === 'weaver' || formKind === 'helper') && (
                   <div>
                     <label className="block font-medium text-emerald-700 dark:text-emerald-400 mb-1">
-                      Daily Wage Rate (PKR / Day) *
+                      Daily Wage (PKR / Day) *
                     </label>
                     <input
                       type="number"
+                      required
                       value={dailyWage}
                       onChange={(e) => {
                         const val = e.target.value
@@ -1131,28 +1184,33 @@ function EmployeeProfilesContent() {
                         const num = parseFloat(val) || 0
                         setSalary(num * 30)
                       }}
-                      placeholder="e.g. 1450 (Weaver) / 1050 (Helper)"
+                      placeholder={formKind === 'weaver' ? '1450 / 1800' : '1050 / 1150'}
                       className="w-full px-3 py-2 font-mono font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                     <p className="mt-0.5 text-[10px] text-emerald-600">
-                      Standard: Weaver Rs. 1450/day, Spare Weaver Rs. 1800/day, Helper Rs. 1050/day.
+                      {formKind === 'weaver'
+                        ? 'Weaver Rs. 1,450 · Spare Weaver Rs. 1,800'
+                        : 'Helper Rs. 1,050 · Winder Rs. 1,150'}
                     </p>
                   </div>
                 )}
 
-                <div>
-                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Monthly Base Salary (PKR) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={salary}
-                    onChange={(e) => setSalary(e.target.value)}
-                    placeholder="e.g. 50000"
-                    className="w-full px-3 py-2 font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  />
-                </div>
+                {/* Monthly salary — Staff / Contract / Contractor (not Weaver/Helper) */}
+                {(formKind === 'salaried' || formKind === 'contractor') && (
+                  <div>
+                    <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      {formKind === 'contractor' ? 'Contract Amount (PKR) *' : 'Monthly Base Salary (PKR) *'}
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={salary}
+                      onChange={(e) => setSalary(e.target.value)}
+                      placeholder={formKind === 'contractor' ? 'e.g. 30000' : 'e.g. 50000'}
+                      className="w-full px-3 py-2 font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">

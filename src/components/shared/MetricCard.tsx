@@ -64,8 +64,8 @@ export function MetricCard({
   footerLabel = 'More info',
   colorVariant = 'primary',
 }: MetricCardProps) {
-  return (
-    <div className={cn('small-box', VARIANT_CLASS[colorVariant] || 'text-bg-primary')}>
+  const body = (
+    <>
       <div className="inner">
         <h3>{value}</h3>
         <p className="mb-0">{title}</p>
@@ -73,17 +73,35 @@ export function MetricCard({
         {badge && <span className="badge text-bg-light text-dark mt-1">{badge}</span>}
       </div>
       {Icon ? (
-        <Icon className="small-box-icon" aria-hidden />
+        <Icon className="small-box-icon" aria-hidden style={{ pointerEvents: 'none' }} />
       ) : (
-        <i className={cn('small-box-icon bi', biIcon)} aria-hidden />
+        <i
+          className={cn('small-box-icon bi', biIcon)}
+          aria-hidden
+          style={{ pointerEvents: 'none' }}
+        />
       )}
-      {href ? (
-        <Link href={href} className="small-box-footer link-light link-underline-opacity-0">
-          {footerLabel} <i className="bi bi-link-45deg" />
-        </Link>
-      ) : (
-        <span className="small-box-footer">{footerLabel}</span>
-      )}
-    </div>
+      <span className="small-box-footer">
+        {footerLabel} {href ? <i className="bi bi-link-45deg" aria-hidden /> : null}
+      </span>
+    </>
+  )
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={cn(
+          'small-box text-decoration-none d-block link-light',
+          VARIANT_CLASS[colorVariant] || 'text-bg-primary'
+        )}
+      >
+        {body}
+      </Link>
+    )
+  }
+
+  return (
+    <div className={cn('small-box', VARIANT_CLASS[colorVariant] || 'text-bg-primary')}>{body}</div>
   )
 }
