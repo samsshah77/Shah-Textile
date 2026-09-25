@@ -86,6 +86,9 @@ function ProductionWorkspaceContent() {
     startNewDay,
     updateEntry,
     todaySheetReady,
+    submitForApproval,
+    approveSheet,
+    unlockSheet,
   } = useProductionGrid()
 
   const getFormattedDateLabel = (dateStr: string) => {
@@ -212,6 +215,10 @@ function ProductionWorkspaceContent() {
           entries={entries}
           onUpdateEntry={updateEntry}
           canEdit={canEditProduction}
+          selectedDate={selectedDate}
+          onSubmitForApproval={submitForApproval}
+          onApproveSheet={approveSheet}
+          onUnlockSheet={unlockSheet}
         />
       )}
 

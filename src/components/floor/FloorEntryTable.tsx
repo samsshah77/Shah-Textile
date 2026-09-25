@@ -11,8 +11,12 @@ import { loomConditionRowStyle } from '@/constants/loomConditions'
 
 interface FloorEntryTableProps {
   entries: DailyLoomProductionEntry[]
-  onUpdateEntry: (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => void
+  onUpdateEntry: (loomNumber: number, patch: Partial<DailyLoomProductionEntry>, editorName?: string) => void
   canEdit?: boolean
+  selectedDate?: string
+  onSubmitForApproval?: () => Promise<{ success: boolean; error?: string }>
+  onApproveSheet?: () => Promise<{ success: boolean; error?: string }>
+  onUnlockSheet?: () => Promise<{ success: boolean; error?: string }>
 }
 
 const DEFAULT_WIDTHS: Record<string, number> = {
@@ -28,10 +32,18 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 }
 
 /** Daily floor punch — table-level Edit; Enter moves to next field. */
-export function FloorEntryTable({ entries, onUpdateEntry }: FloorEntryTableProps) {
-  const { isAdmin } = useAuth()
+export function FloorEntryTable({
+  entries,
+  onUpdateEntry,
+  onSubmitForApproval,
+  onApproveSheet,
+  onUnlockSheet,
+}: FloorEntryTableProps) {
+  const { user, isAdmin, isQualityController } = useAuth()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEdit, setTableEdit] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'danger'; text: string } | null>(null)
 
   const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
     'sara_prod_entry_col_widths_v3',
@@ -43,28 +55,97 @@ export function FloorEntryTable({ entries, onUpdateEntry }: FloorEntryTableProps
     [widths]
   )
 
-  const canEdit = isAdmin && tableEdit
+  // Status & multi-user checks
+  const isApproved = useMemo(
+    () => entries.length > 0 && entries.some((e) => e.approvalStatus === 'APPROVED'),
+    [entries]
+  )
+  const submittedBy = useMemo(() => entries.find((e) => e.submittedBy)?.submittedBy, [entries])
+  const approvedBy = useMemo(() => entries.find((e) => e.approvedBy)?.approvedBy, [entries])
+  const approvedAt = useMemo(() => entries.find((e) => e.approvedAt)?.approvedAt, [entries])
+  const lastEditedBy = useMemo(() => entries.find((e) => e.lastEditedBy)?.lastEditedBy, [entries])
+
+  // Operator (Ahmer) is locked if sheet is APPROVED by Javed Sir
+  // Admin (Javed Sir) is NEVER locked — he can edit anytime!
+  const isLockedForOperator = isApproved && !isAdmin
+  const canUserEdit = isAdmin ? true : (isQualityController && !isLockedForOperator)
+  const canEdit = canUserEdit && tableEdit
+
+  // Show notice ONLY when Ahmar has edited/submitted and it is not yet finalized
+  const hasPendingAhmarEntry =
+    !isApproved &&
+    Boolean(
+      submittedBy ||
+        (lastEditedBy && lastEditedBy.toLowerCase().includes('ahmer'))
+    )
 
   const patchEntry = (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
     const current = entries.find((e) => e.loomNumber === loomNumber)
     const shiftA = patch.shiftAMeters ?? current?.shiftAMeters ?? 0
     const shiftB = patch.shiftBMeters ?? current?.shiftBMeters ?? 0
-    onUpdateEntry(loomNumber, {
-      ...patch,
-      totalMeters:
-        patch.totalMeters ??
-        (patch.shiftAMeters !== undefined || patch.shiftBMeters !== undefined
-          ? shiftA + shiftB
-          : current?.totalMeters),
-    })
+    const editor = user?.name || (isAdmin ? 'Javed Sir' : 'Ahmer')
+    onUpdateEntry(
+      loomNumber,
+      {
+        ...patch,
+        approvalStatus: isApproved ? 'APPROVED' : 'DRAFT',
+        lastEditedBy: editor,
+        totalMeters:
+          patch.totalMeters ??
+          (patch.shiftAMeters !== undefined || patch.shiftBMeters !== undefined
+            ? shiftA + shiftB
+            : current?.totalMeters),
+      },
+      editor
+    )
+  }
+
+  const handleApprove = async () => {
+    if (!onApproveSheet) return
+    setIsSubmitting(true)
+    setFeedbackMsg(null)
+    try {
+      const res = await onApproveSheet()
+      if (res.success) {
+        setFeedbackMsg({ type: 'success', text: 'Production sheet finalized.' })
+        setTableEdit(false)
+      } else {
+        setFeedbackMsg({ type: 'danger', text: res.error || 'Finalize failed' })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSubmitForApproval = async () => {
+    if (!onSubmitForApproval) return
+    setIsSubmitting(true)
+    setFeedbackMsg(null)
+    try {
+      const res = await onSubmitForApproval()
+      if (res.success) {
+        setFeedbackMsg({ type: 'success', text: 'Entries successfully submitted to Javed Sir.' })
+        setTableEdit(false)
+      } else {
+        setFeedbackMsg({ type: 'danger', text: res.error || 'Submission failed' })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const editToggle = (
     <button
       type="button"
       className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
-      disabled={!isAdmin}
-      title={isAdmin ? (tableEdit ? 'Lock table (view only)' : 'Enable editing') : 'Admin only'}
+      disabled={!canUserEdit}
+      title={
+        isLockedForOperator
+          ? 'Finalized by Javed Sir (Locked)'
+          : tableEdit
+            ? 'Lock table (view only)'
+            : 'Enable editing'
+      }
       onClick={() => setTableEdit((v) => !v)}
     >
       <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
@@ -74,6 +155,32 @@ export function FloorEntryTable({ entries, onUpdateEntry }: FloorEntryTableProps
 
   return (
     <div className="card">
+      {/* Notice ONLY when Ahmar has pending entries waiting for Javed Sir */}
+      {isAdmin && hasPendingAhmarEntry && (
+        <div className="alert alert-info py-2 px-3 mx-3 mt-3 mb-0 d-flex flex-wrap align-items-center justify-content-between gap-2 small">
+          <div>
+            <i className="bi bi-info-circle-fill me-1 text-primary" />
+            <strong>Ahmer ne entries punch ki hain:</strong> Review kar ke Finalize karein.
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-success fw-semibold shadow-xs"
+            disabled={isSubmitting}
+            onClick={handleApprove}
+          >
+            <i className="bi bi-check2-circle me-1" />
+            Finalize Sheet
+          </button>
+        </div>
+      )}
+
+      {feedbackMsg && (
+        <div className={`alert alert-${feedbackMsg.type} alert-dismissible py-2 px-3 mx-3 mt-3 mb-0 small`} role="alert">
+          {feedbackMsg.text}
+          <button type="button" className="btn-close py-2" onClick={() => setFeedbackMsg(null)} aria-label="Close" />
+        </div>
+      )}
+
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
         <div className="min-w-0">
           <h3 className="card-title mb-0">Daily Entry</h3>
@@ -84,6 +191,33 @@ export function FloorEntryTable({ entries, onUpdateEntry }: FloorEntryTableProps
           )}
         </div>
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
+          {/* Javed Sir direct Finalize button if not yet finalized */}
+          {isAdmin && !isApproved && !hasPendingAhmarEntry && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-success fw-semibold"
+              disabled={isSubmitting}
+              onClick={handleApprove}
+              title="Finalize & save production to database"
+            >
+              <i className="bi bi-check2 me-1" />
+              Finalize
+            </button>
+          )}
+
+          {/* Ahmar Submit button if not yet finalized */}
+          {!isAdmin && isQualityController && !isApproved && (
+            <button
+              type="button"
+              className="btn btn-sm btn-primary fw-semibold"
+              disabled={isSubmitting}
+              onClick={handleSubmitForApproval}
+            >
+              <i className="bi bi-send me-1" />
+              Submit to Admin
+            </button>
+          )}
+
           {editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
           {mode === 'table' && (

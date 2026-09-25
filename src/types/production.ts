@@ -30,6 +30,13 @@ export interface DailyLoomProductionEntry {
   status: LoomStatus;
   remarks?: string;
   lot?: string;
+  approvalStatus?: 'DRAFT' | 'APPROVED';
+  submittedBy?: string;
+  submittedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  lastEditedBy?: string;
+  lastEditedAt?: string;
 }
 
 export interface ProductionSummary {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/session'
+import { currentUser } from '@/server/current-user'
 import {
   dbDeleteSheet,
   dbFloorIsEmpty,
@@ -17,6 +18,8 @@ import {
   dbSaveYarn,
   dbSaveYarnIssuances,
   dbSaveYarnMovements,
+  dbUpdateLoomEntry,
+  dbSetSheetApproval,
 } from '@/server/floorDb'
 import { buildFloorSeedPayload } from '@/server/floorSeed'
 
@@ -135,6 +138,95 @@ export async function POST(req: NextRequest) {
       const dateStr = String(body?.date || '')
       await dbDeleteSheet(dateStr)
       return NextResponse.json({ ok: true })
+    }
+
+    if (action === 'updateLoomEntry') {
+      const dateStr = String(body?.date || '')
+      const loomNumber = Number(body?.loomNumber)
+      const entry = body?.entry
+      if (!dateStr || !loomNumber || !entry) {
+        return NextResponse.json({ ok: false, error: 'date, loomNumber, entry required' }, { status: 400 })
+      }
+
+      const user = await currentUser(req)
+      const currentSheet = await dbGetSheet(dateStr)
+      const isAlreadyApproved = currentSheet?.some((e) => e.approvalStatus === 'APPROVED')
+      const isAdmin = (user?.roleKey || '').toLowerCase() === 'admin'
+
+      if (isAlreadyApproved && !isAdmin) {
+        return NextResponse.json(
+          { ok: false, error: 'This production sheet has been finalized & approved by Javed Sir. Changes are locked.' },
+          { status: 403 }
+        )
+      }
+
+      // Track editor
+      const stampedEntry = {
+        ...entry,
+        lastEditedBy: user?.name || entry.lastEditedBy || 'Floor Operator',
+        lastEditedAt: new Date().toISOString(),
+      }
+
+      await dbUpdateLoomEntry(dateStr, loomNumber, stampedEntry)
+      return NextResponse.json({ ok: true, entry: stampedEntry })
+    }
+
+    if (action === 'submitForApproval') {
+      const dateStr = String(body?.date || '')
+      if (!dateStr) {
+        return NextResponse.json({ ok: false, error: 'date required' }, { status: 400 })
+      }
+
+      const user = await currentUser(req)
+      const entries = await dbSetSheetApproval(dateStr, 'DRAFT', {
+        name: user?.name || 'Ahmer',
+        role: user?.roleKey || 'quality_controller',
+      })
+      return NextResponse.json({ ok: true, entries })
+    }
+
+    if (action === 'approveSheet') {
+      const user = await currentUser(req)
+      const isAdmin = (user?.roleKey || '').toLowerCase() === 'admin'
+      if (!isAdmin) {
+        return NextResponse.json(
+          { ok: false, error: 'Only Javed Sir (Main Admin) can approve production sheets.' },
+          { status: 403 }
+        )
+      }
+
+      const dateStr = String(body?.date || '')
+      if (!dateStr) {
+        return NextResponse.json({ ok: false, error: 'date required' }, { status: 400 })
+      }
+
+      const entries = await dbSetSheetApproval(dateStr, 'APPROVED', {
+        name: user?.name || 'Javed Sir',
+        role: 'admin',
+      })
+      return NextResponse.json({ ok: true, entries })
+    }
+
+    if (action === 'unlockSheet') {
+      const user = await currentUser(req)
+      const isAdmin = (user?.roleKey || '').toLowerCase() === 'admin'
+      if (!isAdmin) {
+        return NextResponse.json(
+          { ok: false, error: 'Only Javed Sir (Main Admin) can unlock production sheets.' },
+          { status: 403 }
+        )
+      }
+
+      const dateStr = String(body?.date || '')
+      if (!dateStr) {
+        return NextResponse.json({ ok: false, error: 'date required' }, { status: 400 })
+      }
+
+      const entries = await dbSetSheetApproval(dateStr, 'DRAFT', {
+        name: user?.name || 'Javed Sir',
+        role: 'admin',
+      })
+      return NextResponse.json({ ok: true, entries })
     }
 
     return NextResponse.json({ ok: false, error: 'Unknown action' }, { status: 400 })

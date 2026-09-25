@@ -45,6 +45,8 @@ function longDayLabel(dateStr: string) {
 /** Same height as Yarn / Quality `btn btn-sm` */
 const smBtn = 'btn btn-sm'
 
+const MAX_ALLOWED_DATE = '2026-09-30'
+
 export function ProductionDateFilterBar({
   selectedDate,
   setSelectedDate,
@@ -59,7 +61,10 @@ export function ProductionDateFilterBar({
 
   const handleShiftDay = (delta: number) => {
     try {
-      setSelectedDate(shiftProductionDate(selectedDate, delta))
+      const nextDate = shiftProductionDate(selectedDate, delta)
+      if (nextDate >= PRODUCTION_START && nextDate <= MAX_ALLOWED_DATE) {
+        setSelectedDate(nextDate)
+      }
     } catch {
       setSelectedDate(PRODUCTION_TODAY)
     }
@@ -75,6 +80,7 @@ export function ProductionDateFilterBar({
                 type="button"
                 onClick={() => handleShiftDay(-1)}
                 title="Previous Day"
+                disabled={selectedDate <= PRODUCTION_START}
                 className={`${smBtn} btn-outline-secondary px-2`}
               >
                 <ChevronLeft className="size-3.5" />
@@ -84,7 +90,7 @@ export function ProductionDateFilterBar({
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 min={PRODUCTION_START}
-                max={PRODUCTION_TODAY}
+                max={MAX_ALLOWED_DATE}
                 className="form-control form-control-sm fw-semibold"
                 style={{ width: 'auto', minWidth: 140 }}
               />
@@ -92,7 +98,7 @@ export function ProductionDateFilterBar({
                 type="button"
                 onClick={() => handleShiftDay(1)}
                 title="Next Day"
-                disabled={selectedDate >= PRODUCTION_TODAY}
+                disabled={selectedDate >= MAX_ALLOWED_DATE}
                 className={`${smBtn} btn-outline-secondary px-2`}
               >
                 <ChevronRight className="size-3.5" />

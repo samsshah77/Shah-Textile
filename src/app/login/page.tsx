@@ -38,8 +38,8 @@ export default function LoginPage() {
         setError("Your session could not be verified. Please try again.");
         return;
       }
-      router.replace(safeRedirect(new URLSearchParams(window.location.search).get("redirect"), user.role));
-      router.refresh();
+      const target = safeRedirect(new URLSearchParams(window.location.search).get("redirect"), user.role);
+      window.location.assign(target);
     } catch {
       setError("Unable to reach the server. Please try again.");
     } finally {

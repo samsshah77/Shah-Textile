@@ -266,26 +266,105 @@ export async function dbGetSheet(dateStr: string): Promise<DailyLoomProductionEn
   return rows.map((r) => r.payload as unknown as DailyLoomProductionEntry)
 }
 
+export async function dbUpdateLoomEntry(
+  dateStr: string,
+  loomNumber: number,
+  entry: DailyLoomProductionEntry
+): Promise<void> {
+  await prisma.floorDailySheet.upsert({
+    where: {
+      date_loomNumber: {
+        date: dateStr,
+        loomNumber,
+      },
+    },
+    update: {
+      payload: entry as unknown as Prisma.InputJsonValue,
+    },
+    create: {
+      date: dateStr,
+      loomNumber,
+      payload: entry as unknown as Prisma.InputJsonValue,
+    },
+  })
+}
+
+export async function dbSetSheetApproval(
+  dateStr: string,
+  status: 'DRAFT' | 'APPROVED',
+  user: { name: string; role: string }
+): Promise<DailyLoomProductionEntry[]> {
+  const now = new Date().toISOString()
+  const rows = await prisma.floorDailySheet.findMany({
+    where: { date: dateStr },
+    orderBy: { loomNumber: 'asc' },
+  })
+  if (rows.length === 0) return []
+
+  const updatedEntries: DailyLoomProductionEntry[] = []
+
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      const current = row.payload as unknown as DailyLoomProductionEntry
+      const next: DailyLoomProductionEntry = {
+        ...current,
+        approvalStatus: status,
+      }
+      if (status === 'APPROVED') {
+        next.approvedBy = user.name
+        next.approvedAt = now
+      } else {
+        next.submittedBy = user.name
+        next.submittedAt = now
+      }
+      updatedEntries.push(next)
+
+      await tx.floorDailySheet.update({
+        where: { id: row.id },
+        data: {
+          payload: next as unknown as Prisma.InputJsonValue,
+        },
+      })
+    }
+  })
+
+  return updatedEntries
+}
+
 export async function dbSaveSheet(
   dateStr: string,
   entries: DailyLoomProductionEntry[]
 ): Promise<void> {
+  if (entries.length === 0) {
+    await prisma.floorDailySheet.deleteMany({ where: { date: dateStr } })
+    return
+  }
   await prisma.$transaction(async (tx) => {
-    await tx.floorDailySheet.deleteMany({ where: { date: dateStr } })
-    if (entries.length === 0) return
-    await tx.floorDailySheet.createMany({
-      data: entries.map((e) => ({
-        date: dateStr,
-        loomNumber: e.loomNumber,
-        payload: e as unknown as Prisma.InputJsonValue,
-      })),
-    })
+    for (const e of entries) {
+      await tx.floorDailySheet.upsert({
+        where: {
+          date_loomNumber: {
+            date: dateStr,
+            loomNumber: e.loomNumber,
+          },
+        },
+        update: {
+          payload: e as unknown as Prisma.InputJsonValue,
+        },
+        create: {
+          date: dateStr,
+          loomNumber: e.loomNumber,
+          payload: e as unknown as Prisma.InputJsonValue,
+        },
+      })
+    }
   })
 }
 
 export async function dbDeleteSheet(dateStr: string): Promise<void> {
   await prisma.floorDailySheet.deleteMany({ where: { date: dateStr } })
 }
+
 
 export async function dbFloorIsEmpty(): Promise<boolean> {
   if (!prisma?.floorLoom) {

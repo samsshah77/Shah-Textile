@@ -76,11 +76,78 @@ export function useProductionGrid() {
   }, [])
 
   const updateEntry = useCallback(
-    (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
-      setEntries(productionMastersService.updateSheetEntry(selectedDate, loomNumber, patch))
+    (loomNumber: number, patch: Partial<DailyLoomProductionEntry>, editorName?: string) => {
+      setEntries(productionMastersService.updateSheetEntry(selectedDate, loomNumber, patch, editorName))
     },
     [selectedDate]
   )
+
+  const submitForApproval = useCallback(async () => {
+    try {
+      const updated = await productionMastersService.submitSheetForApproval(selectedDate)
+      setEntries([...updated])
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to submit sheet for approval'
+      showError(msg)
+      return { success: false, error: msg }
+    }
+  }, [selectedDate, showError])
+
+  const approveSheet = useCallback(async () => {
+    try {
+      const updated = await productionMastersService.approveSheet(selectedDate)
+      setEntries([...updated])
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to approve sheet'
+      showError(msg)
+      return { success: false, error: msg }
+    }
+  }, [selectedDate, showError])
+
+  const unlockSheet = useCallback(async () => {
+    try {
+      const updated = await productionMastersService.unlockSheet(selectedDate)
+      setEntries([...updated])
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to unlock sheet'
+      showError(msg)
+      return { success: false, error: msg }
+    }
+  }, [selectedDate, showError])
+
+  // Periodic background sync (every 15s or on window focus) so Ahmer/Javed stay updated without manual reload
+  useEffect(() => {
+    let active = true
+    const syncLatest = async () => {
+      if (typeof window === 'undefined') return
+      try {
+        const res = await fetch('/api/floor/store', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'getSheet', date: selectedDate }),
+        })
+        const data = await res.json()
+        if (active && data.ok && Array.isArray(data.entries) && data.entries.length > 0) {
+          setEntries(data.entries)
+        }
+      } catch {
+        // silent
+      }
+    }
+
+    const interval = setInterval(syncLatest, 15000)
+    const handleFocus = () => { void syncLatest() }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      active = false
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [selectedDate])
 
   const updateLoom = useCallback(
     (loomNumber: number, patch: Partial<LoomMaster>) => {
@@ -292,5 +359,8 @@ export function useProductionGrid() {
     deleteQuality,
     startNewDay,
     todaySheetReady,
+    submitForApproval,
+    approveSheet,
+    unlockSheet,
   }
 }

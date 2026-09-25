@@ -135,7 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Accountant needs Accounts/Payroll edit; production edit stays role-gated
       const role = (data.user.role || '').toLowerCase()
       setIsEditModeEnabled(role === 'accountant' || role === 'admin')
-      router.replace('/dashboard')
+      if (typeof window !== 'undefined') {
+        window.location.assign('/dashboard')
+      } else {
+        router.replace('/dashboard')
+      }
       return { success: true }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Connection to server failed'

@@ -47,6 +47,18 @@ export default function RootLayout({
       className={`${sourceSans.variable} ${jetbrainsMono.variable}`}
       style={{ colorScheme: 'light' }}
     >
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css"
+        />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.11.0/styles/overlayscrollbars.min.css"
+        />
+        <link rel="stylesheet" href="/adminlte/css/adminlte.min.css" />
+        <link rel="stylesheet" href="/adminlte/css/adminlte-colors.min.css" />
+      </head>
       <body className="min-h-screen font-sans antialiased" suppressHydrationWarning>
         <AppLayout>{children}</AppLayout>
       </body>

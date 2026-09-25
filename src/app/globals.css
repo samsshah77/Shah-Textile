@@ -509,6 +509,34 @@
   .sara-sheet-tabs {
     background: #1e293b;
     border-bottom: 1px solid #0f172a;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .sara-sheet-tabs > div {
+    display: flex !important;
+    align-items: stretch !important;
+    width: 100% !important;
+  }
+
+  .sara-sheet-tabs ul,
+  .sara-sheet-tabs .nav-tabs {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+  }
+
+  .sara-sheet-tabs li,
+  .sara-sheet-tabs .nav-item {
+    display: inline-flex !important;
+    flex-shrink: 0 !important;
+    list-style: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .sara-sheet-tabs__scroll {
@@ -534,10 +562,6 @@
   .sara-sheet-tabs__scroll:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.08);
-  }
-
-  .sara-sheet-tabs .nav-tabs {
-    border: 0;
   }
 
   .sara-sheet-tabs__link {

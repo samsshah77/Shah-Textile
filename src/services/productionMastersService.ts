@@ -773,6 +773,23 @@ async function persistKey(key: string, value: unknown): Promise<void> {
   }
 }
 
+async function persistLoomEntry(
+  dateStr: string,
+  loomNumber: number,
+  entry: DailyLoomProductionEntry
+): Promise<void> {
+  if (!isClient()) return
+  try {
+    await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateLoomEntry', date: dateStr, loomNumber, entry }),
+    })
+  } catch (err) {
+    console.error('[floor] persist loom entry failed', loomNumber, err)
+  }
+}
+
 function loadJson<T>(key: string, fallback: () => T): T {
   try {
     const raw = memoryStore.get(key)
@@ -1648,12 +1665,19 @@ class ProductionMastersService {
   updateSheetEntry(
     dateStr: string,
     loomNumber: number,
-    patch: Partial<DailyLoomProductionEntry>
+    patch: Partial<DailyLoomProductionEntry>,
+    editorName?: string
   ): DailyLoomProductionEntry[] {
     const current = this.buildSheetForDate(dateStr, { persist: true })
+    let updatedLoom: DailyLoomProductionEntry | null = null
     const next = current.map((e) => {
       if (e.loomNumber !== loomNumber) return e
-      const merged = { ...e, ...patch }
+      const merged = {
+        ...e,
+        ...patch,
+        lastEditedBy: editorName || e.lastEditedBy || 'Floor Operator',
+        lastEditedAt: new Date().toISOString(),
+      }
       const rollerHours = merged.rollerHours ?? merged.runningHours ?? 0
       const metrics = calculateProductionMetrics({
         rpm: merged.rpm,
@@ -1662,7 +1686,7 @@ class ProductionMastersService {
         shiftAMeters: merged.shiftAMeters || 0,
         shiftBMeters: merged.shiftBMeters || 0,
       })
-      return {
+      const result: DailyLoomProductionEntry = {
         ...merged,
         rollerHours,
         runningHours: rollerHours,
@@ -1674,9 +1698,74 @@ class ProductionMastersService {
         efficiency24h: metrics.efficiency24h,
         loss24h: metrics.loss24h,
       }
+      updatedLoom = result
+      return result
     })
-    saveJson(this.sheetKey(dateStr), next)
+
+    // Update local memory cache immediately
+    try {
+      memoryStore.set(this.sheetKey(dateStr), JSON.stringify(next))
+    } catch {
+      // ignore
+    }
+
+    // Row-level persist to DB (prevents overwriting other looms)
+    if (updatedLoom) {
+      void persistLoomEntry(dateStr, loomNumber, updatedLoom)
+    }
+
     return next
+  }
+
+  async submitSheetForApproval(dateStr: string): Promise<DailyLoomProductionEntry[]> {
+    if (!isClient()) return this.buildSheetForDate(dateStr)
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitForApproval', date: dateStr }),
+    })
+    const data = await res.json()
+    if (data.ok && Array.isArray(data.entries)) {
+      memoryStore.set(this.sheetKey(dateStr), JSON.stringify(data.entries))
+      return data.entries
+    }
+    return this.buildSheetForDate(dateStr)
+  }
+
+  async approveSheet(dateStr: string): Promise<DailyLoomProductionEntry[]> {
+    if (!isClient()) return this.buildSheetForDate(dateStr)
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approveSheet', date: dateStr }),
+    })
+    const data = await res.json()
+    if (data.ok && Array.isArray(data.entries)) {
+      memoryStore.set(this.sheetKey(dateStr), JSON.stringify(data.entries))
+      return data.entries
+    }
+    if (!data.ok) {
+      throw new Error(data.error || 'Approval failed')
+    }
+    return this.buildSheetForDate(dateStr)
+  }
+
+  async unlockSheet(dateStr: string): Promise<DailyLoomProductionEntry[]> {
+    if (!isClient()) return this.buildSheetForDate(dateStr)
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'unlockSheet', date: dateStr }),
+    })
+    const data = await res.json()
+    if (data.ok && Array.isArray(data.entries)) {
+      memoryStore.set(this.sheetKey(dateStr), JSON.stringify(data.entries))
+      return data.entries
+    }
+    if (!data.ok) {
+      throw new Error(data.error || 'Unlock failed')
+    }
+    return this.buildSheetForDate(dateStr)
   }
 
   startNewDay(dateStr: string): DailyLoomProductionEntry[] {
