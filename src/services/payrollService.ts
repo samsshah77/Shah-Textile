@@ -2461,7 +2461,11 @@ function writeStore(key: string, value: unknown): void {
   void persistPayrollKey(key, value)
 }
 
-function readHrMetaRaw(): { categories?: string[]; designations?: string[] } {
+function readHrMetaRaw(): {
+  categories?: string[]
+  designations?: string[]
+  activeSalariedMonth?: string
+} {
   try {
     const raw = memoryStore.get(STORAGE_KEYS.HR_META)
     if (raw) return JSON.parse(raw)
@@ -2484,8 +2488,22 @@ function readHrMetaRaw(): { categories?: string[]; designations?: string[] } {
   return {}
 }
 
-function writeHrMeta(custom: { categories: string[]; designations: string[] }): void {
+function writeHrMeta(custom: {
+  categories: string[]
+  designations: string[]
+  activeSalariedMonth?: string
+}): void {
   writeStore(STORAGE_KEYS.HR_META, custom)
+}
+
+export function formatPayrollMonthLabel(month: string): string {
+  try {
+    const [y, m] = month.split('-').map(Number)
+    if (!y || !m) return month
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  } catch {
+    return month
+  }
 }
 
 /** Load payroll store from DB (seeds DB if empty). Call once when entering Payroll module. */
@@ -3313,10 +3331,11 @@ class PayrollService {
 
     if (newStaff.length) this.saveStaffSalaries([...allStaff, ...newStaff], false)
     if (newContract.length) this.saveContractSalaries([...allContract, ...newContract], false)
+    this.setActiveSalariedMonth(month)
     this.notifyDataChanged(month)
     return {
       ok: true,
-      message: `${month}: ${newStaff.length} Staff + ${newContract.length} Company Contract rows (attendance/OT zero).`,
+      message: `${formatPayrollMonthLabel(month)}: ${newStaff.length} Staff + ${newContract.length} Company Contract (attendance/OT zero). Staff & Contract tabs ab isi month pe khulenge.`,
       staff: newStaff.length,
       contract: newContract.length,
     }
@@ -3331,6 +3350,27 @@ class PayrollService {
       if (row.month) months.add(row.month)
     }
     return [...months].sort()
+  }
+
+  /** Shared month for General Wages → Staff / Company Contract sheets. */
+  getActiveSalariedMonth(): string {
+    const meta = readHrMetaRaw()
+    const saved = (meta.activeSalariedMonth || '').trim()
+    const months = this.listPayrollMonths()
+    if (saved && months.includes(saved)) return saved
+    return months[months.length - 1] || '2026-08'
+  }
+
+  setActiveSalariedMonth(month: string): void {
+    const m = (month || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(m)) return
+    const raw = readHrMetaRaw()
+    writeHrMeta({
+      categories: raw.categories || [],
+      designations: raw.designations || [],
+      activeSalariedMonth: m,
+    })
+    this.notifyDataChanged(m)
   }
 
   /** Working roster only — excludes Resigned (for Profiles / General Wages / new month seed). */
@@ -3587,21 +3627,54 @@ class PayrollService {
     })
   }
 
-  /** Move a profile up/down within optional scope (e.g. current HR filter). */
+  /** Move a profile up/down within optional scope (e.g. General Wages list). */
   moveEmployee(id: string, direction: 'up' | 'down', scopeIds?: string[]): EmployeeProfile[] {
     let list = [...this.getEmployees()].sort((a, b) => a.serialNo - b.serialNo)
-    const scope = scopeIds?.length ? list.filter((e) => scopeIds.includes(e.id)) : list
-    const scopeIdx = scope.findIndex((e) => e.id === id)
-    if (scopeIdx < 0) return list
-    const swapWith = direction === 'up' ? scope[scopeIdx - 1] : scope[scopeIdx + 1]
-    if (!swapWith) return list
-    const i = list.findIndex((e) => e.id === id)
-    const j = list.findIndex((e) => e.id === swapWith.id)
-    if (i < 0 || j < 0) return list
-    ;[list[i], list[j]] = [list[j], list[i]]
+
+    if (scopeIds?.length) {
+      const scopeSet = new Set(scopeIds)
+      const scoped = list.filter((e) => scopeSet.has(e.id))
+      const others = list.filter((e) => !scopeSet.has(e.id))
+      const scopeIdx = scoped.findIndex((e) => e.id === id)
+      const swapIdx = direction === 'up' ? scopeIdx - 1 : scopeIdx + 1
+      if (scopeIdx < 0 || swapIdx < 0 || swapIdx >= scoped.length) return list
+      ;[scoped[scopeIdx], scoped[swapIdx]] = [scoped[swapIdx], scoped[scopeIdx]]
+      const renumberedScope = scoped.map((e, i) => ({ ...e, serialNo: i + 1 }))
+      const startOther = renumberedScope.length + 1
+      const renumberedOthers = others.map((e, i) => ({ ...e, serialNo: startOther + i }))
+      list = [...renumberedScope, ...renumberedOthers]
+      this.saveEmployees(list, false)
+      return list
+    }
+
+    const idx = list.findIndex((e) => e.id === id)
+    if (idx < 0) return list
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= list.length) return list
+    ;[list[idx], list[swapIdx]] = [list[swapIdx], list[idx]]
     list = list.map((e, n) => ({ ...e, serialNo: n + 1 }))
     this.saveEmployees(list, false)
     return list
+  }
+
+  /** Force General Wages rows to continuous 1..n (gaps from resigned/filter). */
+  renumberGeneralWages(): EmployeeProfile[] {
+    const list = [...this.getEmployees()].sort((a, b) => a.serialNo - b.serialNo)
+    const gw = list.filter((e) => isGeneralWagesEmployee(e))
+    const others = list.filter((e) => !isGeneralWagesEmployee(e))
+    const needsFix = gw.some((e, i) => e.serialNo !== i + 1)
+    if (!needsFix && gw.length > 0) {
+      const lastGw = gw[gw.length - 1]?.serialNo || 0
+      const othersOk = others.every((e, i) => e.serialNo === lastGw + 1 + i)
+      if (othersOk) return list
+    }
+    if (!needsFix && gw.length === 0) return list
+    const renumberedGw = gw.map((e, i) => ({ ...e, serialNo: i + 1 }))
+    const startOther = renumberedGw.length + 1
+    const renumberedOthers = others.map((e, i) => ({ ...e, serialNo: startOther + i }))
+    const next = [...renumberedGw, ...renumberedOthers]
+    this.saveEmployees(next, false)
+    return next
   }
 
   deleteEmployee(id: string): void {

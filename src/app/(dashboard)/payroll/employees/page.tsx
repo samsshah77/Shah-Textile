@@ -6,6 +6,7 @@ import {
   payrollService,
   isGeneralWagesEmployee,
   resolveResignedAt,
+  formatPayrollMonthLabel,
 } from '@/services/payrollService'
 import { EmployeeProfile, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
@@ -72,12 +73,19 @@ export default function GeneralWagesPage() {
     const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
     return next
   })
+  const [activeMonth, setActiveMonth] = useState(() => payrollService.getActiveSalariedMonth())
 
   const crossSheetSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const CROSS_SHEET_FIELDS: Array<keyof EmployeeProfile> = ['name', 'designation', 'salary', 'dutyHrs']
 
-  const persistRoster = (list: EmployeeProfile[]) => {
-    payrollService.saveEmployees(list)
+  const persistRoster = (gwList: EmployeeProfile[]) => {
+    const all = payrollService.getEmployees()
+    const gwIds = new Set(gwList.map((e) => e.id))
+    const others = all.filter((e) => !gwIds.has(e.id))
+    const renumberedGw = gwList.map((e, i) => ({ ...e, serialNo: i + 1 }))
+    const startOther = renumberedGw.length + 1
+    const renumberedOthers = others.map((e, i) => ({ ...e, serialNo: startOther + i }))
+    payrollService.saveEmployees([...renumberedGw, ...renumberedOthers])
   }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
@@ -86,17 +94,29 @@ export default function GeneralWagesPage() {
   )
 
   const reload = () => {
+    payrollService.renumberGeneralWages()
     const all = payrollService.getEmployees()
     const activeGw = all
       .filter(isGeneralWagesEmployee)
       .sort((a, b) => a.serialNo - b.serialNo)
+      .map((e, i) => ({ ...e, serialNo: i + 1 }))
     setEmployees(activeGw)
+    setActiveMonth(payrollService.getActiveSalariedMonth())
+  }
+
+  const handleActiveMonthChange = (month: string) => {
+    if (!canEditAccounts) return
+    payrollService.setActiveSalariedMonth(month)
+    setActiveMonth(month)
+    setStatusNotice(`Active month: ${formatPayrollMonthLabel(month)} — Advances / Staff / Contract / Net Payment isi pe khulenge.`)
+    setTimeout(() => setStatusNotice(null), 4000)
   }
 
   const handleGenerateMonth = () => {
     if (!canEditAccounts) return
     const result = payrollService.generateSalariedMonth(newMonth)
     setStatusNotice(result.message)
+    if (result.ok) setActiveMonth(newMonth)
     setTimeout(() => setStatusNotice(null), 5000)
   }
 
@@ -254,13 +274,25 @@ export default function GeneralWagesPage() {
         <div className="print:hidden erp-card p-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-              Naya salary month generate
+              Active salary month
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              General Wages (Staff + Company Contract) se rows banengi — attendance, OT, advance, cheque zero.
+              Yahan se month set karo — Advances, Staff, Contract, Efficiency, Net Payment isi pe khulenge (wahan change nahi).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={activeMonth}
+              onChange={(e) => handleActiveMonthChange(e.target.value)}
+              className="form-select form-select-sm"
+              aria-label="Active payroll month"
+            >
+              {payrollService.listPayrollMonths().map((m) => (
+                <option key={m} value={m}>
+                  {formatPayrollMonthLabel(m)}
+                </option>
+              ))}
+            </select>
             <input
               type="month"
               value={newMonth}
@@ -278,6 +310,15 @@ export default function GeneralWagesPage() {
               <span>Generate Month</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {!canEditAccounts && (
+        <div className="print:hidden erp-card p-3 flex items-center gap-2 text-xs text-slate-600">
+          <CalendarPlus className="size-3.5 text-[#0066cc]" />
+          <span>
+            Active month: <strong>{formatPayrollMonthLabel(activeMonth)}</strong>
+          </span>
         </div>
       )}
 
@@ -535,7 +576,7 @@ export default function GeneralWagesPage() {
                       {/* S.No with hover-only Up/Down arrows */}
                       <td className="border-r border-slate-300 py-1 px-1 text-center font-mono text-slate-800 font-medium select-none">
                         <div className="relative flex items-center justify-center min-h-[28px] min-w-[36px]">
-                          <span className="tabular-nums">{emp.serialNo}</span>
+                          <span className="tabular-nums">{idx + 1}</span>
                           <div className="sara-serial-arrows">
                             <button
                               type="button"

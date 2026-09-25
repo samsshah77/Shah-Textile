@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { AdvanceRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
@@ -42,7 +42,7 @@ export default function SalaryAdvancesPage() {
   const { canEditAccounts } = useAuth()
   const [advances, setAdvances] = useState<AdvanceRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
+  const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   const [search, setSearch] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
 
@@ -69,7 +69,7 @@ export default function SalaryAdvancesPage() {
   const [employeeName, setEmployeeName] = useState('')
   const [designation, setDesignation] = useState('')
   const [amount, setAmount] = useState<number | string>('')
-  const [formDate, setFormDate] = useState('2026-08-05')
+  const [formDate, setFormDate] = useState(() => `${payrollService.getActiveSalariedMonth()}-05`)
   const [formRemarks, setFormRemarks] = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
 
@@ -84,20 +84,24 @@ export default function SalaryAdvancesPage() {
 
   useEffect(() => {
     reload()
-    const handleSync = () => reload()
+    const handleSync = (e: Event) => {
+      const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
+      const next =
+        detailMonth && /^\d{4}-\d{2}$/.test(detailMonth)
+          ? detailMonth
+          : payrollService.getActiveSalariedMonth()
+      if (next !== selectedMonth) {
+        setSelectedMonth(next)
+        setFormDate(`${next}-05`)
+        return
+      }
+      reload()
+    }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
   }, [selectedMonth])
 
-  const formatMonthName = (monthStr: string) => {
-    try {
-      const [y, m] = (monthStr || '2026-08').split('-').map(Number)
-      const dateObj = new Date(y, m - 1, 1)
-      return dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    } catch {
-      return monthStr
-    }
-  }
+  const formatMonthName = (monthStr: string) => formatPayrollMonthLabel(monthStr)
 
   const totalAdvances = advances.reduce((s, a) => s + (Number(a.amount) || 0), 0)
 
@@ -349,16 +353,14 @@ export default function SalaryAdvancesPage() {
       {/* Month & Search Filter Bar */}
       <div className="erp-card p-3 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Month Selector */}
+          {/* Month (locked — set from General Wages) */}
           <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-md border border-slate-200 dark:border-slate-700">
             <Calendar className="size-3.5 text-[#0066cc]" />
             <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Month:</label>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer"
-            />
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+              {formatMonthName(selectedMonth)}
+            </span>
+            <span className="text-[10px] text-slate-400">(General Wages se)</span>
           </div>
         </div>
 

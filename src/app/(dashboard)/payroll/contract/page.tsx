@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { ContractSalaryRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
@@ -86,8 +86,12 @@ function ContractPayrollContent() {
 
   const [contractList, setContractList] = useState<ContractSalaryRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
-  const [daysInMonth, setDaysInMonth] = useState<number>(31)
+  const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
+  const [daysInMonth, setDaysInMonth] = useState<number>(() => {
+    const month = payrollService.getActiveSalariedMonth()
+    const [y, m] = month.split('-').map(Number)
+    return y && m ? new Date(y, m, 0).getDate() : 31
+  })
   const [saveSuccess, setSaveSuccess] = useState(false)
 
   // Resizable column width hooks for all 3 views
@@ -119,7 +123,20 @@ function ContractPayrollContent() {
 
   useEffect(() => {
     reload()
-    const handleSync = () => reload()
+    const handleSync = (e: Event) => {
+      const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
+      const next =
+        detailMonth && /^\d{4}-\d{2}$/.test(detailMonth)
+          ? detailMonth
+          : payrollService.getActiveSalariedMonth()
+      if (next !== selectedMonth) {
+        setSelectedMonth(next)
+        const [y, m] = next.split('-').map(Number)
+        if (y && m) setDaysInMonth(new Date(y, m, 0).getDate())
+        return
+      }
+      reload()
+    }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
   }, [selectedMonth, daysInMonth])
@@ -282,6 +299,12 @@ function ContractPayrollContent() {
           ]}
           actions={
             <>
+              <span
+                className="inline-flex items-center px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700"
+                title="Month General Wages se set hota hai"
+              >
+                {formatPayrollMonthLabel(selectedMonth)}
+              </span>
               <select
                 value={daysInMonth}
                 disabled={!canEditAccounts}
@@ -361,7 +384,7 @@ function ContractPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEES SALARIES (EXCEL SHEET 4)</h2>
-            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026 ({daysInMonth} Days Base)</p>
+            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
@@ -765,7 +788,7 @@ function ContractPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEES OVERTIME (EXCEL SHEET 5)</h2>
-            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026 ({daysInMonth} Days Base)</p>
+            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
@@ -988,7 +1011,7 @@ function ContractPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEE SALARY, OVERTIME & EFFICIENCY (EXCEL SHEET 7)</h2>
-            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026 (1 to {daysInMonth} Full Settlement)</p>
+            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: {formatPayrollMonthLabel(selectedMonth)} (1 to {daysInMonth} Full Settlement)</p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">

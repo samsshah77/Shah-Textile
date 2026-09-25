@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { EfficiencyIncentiveRecord, LoomCategoryFilter, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
@@ -42,7 +42,7 @@ export default function TechnicalEfficiencyPage() {
   const { canEditAccounts } = useAuth()
   const [incentiveList, setIncentiveList] = useState<EfficiencyIncentiveRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
+  const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   const [saveSuccess, setSaveSuccess] = useState(false)
 
   // Resizable columns hook
@@ -59,7 +59,18 @@ export default function TechnicalEfficiencyPage() {
 
   useEffect(() => {
     reload()
-    const handleSync = () => reload()
+    const handleSync = (e: Event) => {
+      const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
+      const next =
+        detailMonth && /^\d{4}-\d{2}$/.test(detailMonth)
+          ? detailMonth
+          : payrollService.getActiveSalariedMonth()
+      if (next !== selectedMonth) {
+        setSelectedMonth(next)
+        return
+      }
+      reload()
+    }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
   }, [selectedMonth])
@@ -254,7 +265,9 @@ export default function TechnicalEfficiencyPage() {
         <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
           <h1 className="text-xl font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
           <h2 className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">TECHNICAL STAFF EFFICIENCY INCENTIVE SHEET</h2>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">Statement for Month: August-2026</p>
+          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+            Statement for Month: {formatPayrollMonthLabel(selectedMonth)}
+          </p>
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
