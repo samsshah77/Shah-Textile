@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { PlusCircle, CheckCircle2, Factory, X } from 'lucide-react'
-import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
+import { getProductionToday } from '@/constants/productionCalendar'
 
 interface NewDayProductionModalProps {
   isOpen: boolean
@@ -16,7 +16,7 @@ export function NewDayProductionModal({
   onClose,
   onStartNewDay,
 }: NewDayProductionModalProps) {
-  const getDefaultTargetDate = () => PRODUCTION_TODAY
+  const getDefaultTargetDate = () => getProductionToday()
 
   const [targetDate, setTargetDate] = useState(getDefaultTargetDate())
   const [carryForwardBeams, setCarryForwardBeams] = useState(true)
@@ -88,8 +88,8 @@ export function NewDayProductionModal({
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                min={PRODUCTION_TODAY}
-                max="2026-10-31"
+                min={getProductionToday()}
+                max={getProductionToday()}
                 required
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none"
               />

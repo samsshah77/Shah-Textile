@@ -11,7 +11,11 @@ import {
   YarnMaster,
   QualityMaster,
 } from '@/services/productionMastersService'
-import { PRODUCTION_TODAY, PRODUCTION_YESTERDAY, PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
+import {
+  getProductionToday,
+  getProductionYesterday,
+  getProductionTodayMonth,
+} from '@/constants/productionCalendar'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 
 export function useProductionGrid() {
@@ -24,8 +28,8 @@ export function useProductionGrid() {
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDateState] = useState<string>(PRODUCTION_YESTERDAY)
-  const [selectedMonth, setSelectedMonth] = useState<string>(PRODUCTION_TODAY_MONTH)
+  const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionYesterday())
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getProductionTodayMonth())
   const [todaySheetReady, setTodaySheetReady] = useState(false)
 
   const refresh = useCallback(
@@ -48,18 +52,19 @@ export function useProductionGrid() {
     let cancelled = false
     setLoading(true)
     ;(async () => {
+      const today = getProductionToday()
       try {
         await hydrateFloorFromDb()
         await preloadFloorSheet(selectedDate)
-        await preloadFloorSheet(PRODUCTION_TODAY)
+        await preloadFloorSheet(today)
         if (cancelled) return
         refresh(selectedDate)
-        setTodaySheetReady(productionMastersService.hasPersistedSheet(PRODUCTION_TODAY))
+        setTodaySheetReady(productionMastersService.hasPersistedSheet(today))
       } catch (err) {
         console.error('[useProductionGrid] hydrate', err)
         if (!cancelled) {
           refresh(selectedDate)
-          setTodaySheetReady(productionMastersService.hasPersistedSheet(PRODUCTION_TODAY))
+          setTodaySheetReady(productionMastersService.hasPersistedSheet(today))
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -72,7 +77,7 @@ export function useProductionGrid() {
 
   const setSelectedDate = useCallback((newDate: string) => {
     setSelectedDateState(newDate)
-    setSelectedMonth('2026-09')
+    setSelectedMonth(newDate.slice(0, 7) || getProductionTodayMonth())
   }, [])
 
   const updateEntry = useCallback(
@@ -315,9 +320,9 @@ export function useProductionGrid() {
       try {
         productionMastersService.startNewDay(targetDate)
         setSelectedDateState(targetDate)
-        setSelectedMonth('2026-09')
+        setSelectedMonth(targetDate.slice(0, 7) || getProductionTodayMonth())
         refresh(targetDate)
-        setTodaySheetReady(productionMastersService.hasPersistedSheet(PRODUCTION_TODAY))
+        setTodaySheetReady(productionMastersService.hasPersistedSheet(getProductionToday()))
       } finally {
         setLoading(false)
       }

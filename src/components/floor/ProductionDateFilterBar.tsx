@@ -4,8 +4,10 @@ import { History, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   PRODUCTION_START,
-  PRODUCTION_TODAY,
-  PRODUCTION_YESTERDAY,
+  getProductionToday,
+  getProductionYesterday,
+  getProductionTodayMonth,
+  formatProductionMonthLabel,
   shiftProductionDate,
 } from '@/constants/productionCalendar'
 
@@ -45,8 +47,6 @@ function longDayLabel(dateStr: string) {
 /** Same height as Yarn / Quality `btn btn-sm` */
 const smBtn = 'btn btn-sm'
 
-const MAX_ALLOWED_DATE = '2026-09-30'
-
 export function ProductionDateFilterBar({
   selectedDate,
   setSelectedDate,
@@ -56,17 +56,22 @@ export function ProductionDateFilterBar({
   canEdit,
   showStartNewDay = true,
 }: ProductionDateFilterBarProps) {
-  const isToday = selectedDate === PRODUCTION_TODAY
-  const isYesterday = selectedDate === PRODUCTION_YESTERDAY
+  const productionToday = getProductionToday()
+  const productionYesterday = getProductionYesterday()
+  const productionMonth = getProductionTodayMonth()
+  const maxAllowedDate = productionToday
+
+  const isToday = selectedDate === productionToday
+  const isYesterday = selectedDate === productionYesterday
 
   const handleShiftDay = (delta: number) => {
     try {
       const nextDate = shiftProductionDate(selectedDate, delta)
-      if (nextDate >= PRODUCTION_START && nextDate <= MAX_ALLOWED_DATE) {
+      if (nextDate >= PRODUCTION_START && nextDate <= maxAllowedDate) {
         setSelectedDate(nextDate)
       }
     } catch {
-      setSelectedDate(PRODUCTION_TODAY)
+      setSelectedDate(productionToday)
     }
   }
 
@@ -90,7 +95,7 @@ export function ProductionDateFilterBar({
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 min={PRODUCTION_START}
-                max={MAX_ALLOWED_DATE}
+                max={maxAllowedDate}
                 className="form-control form-control-sm fw-semibold"
                 style={{ width: 'auto', minWidth: 140 }}
               />
@@ -98,7 +103,7 @@ export function ProductionDateFilterBar({
                 type="button"
                 onClick={() => handleShiftDay(1)}
                 title="Next Day"
-                disabled={selectedDate >= MAX_ALLOWED_DATE}
+                disabled={selectedDate >= maxAllowedDate}
                 className={`${smBtn} btn-outline-secondary px-2`}
               >
                 <ChevronRight className="size-3.5" />
@@ -108,34 +113,34 @@ export function ProductionDateFilterBar({
             <div className="btn-group btn-group-sm" role="group" aria-label="Quick day">
               <button
                 type="button"
-                onClick={() => setSelectedDate(PRODUCTION_YESTERDAY)}
+                onClick={() => setSelectedDate(productionYesterday)}
                 className={cn(smBtn, isYesterday ? 'btn-primary' : 'btn-outline-secondary')}
                 title="Yesterday's complete 24h production (cloth off roller)"
               >
                 Yesterday
-                <span className="d-none d-md-inline"> ({shortDayLabel(PRODUCTION_YESTERDAY)})</span>
+                <span className="d-none d-md-inline"> ({shortDayLabel(productionYesterday)})</span>
               </button>
               <button
                 type="button"
-                onClick={() => setSelectedDate(PRODUCTION_TODAY)}
+                onClick={() => setSelectedDate(productionToday)}
                 className={cn(smBtn, isToday ? 'btn-primary' : 'btn-outline-secondary')}
                 title="Today's live running shift"
               >
                 Today
-                <span className="d-none d-md-inline"> ({shortDayLabel(PRODUCTION_TODAY)})</span>
+                <span className="d-none d-md-inline"> ({shortDayLabel(productionToday)})</span>
               </button>
             </div>
 
             <div className="btn-group btn-group-sm" role="group" aria-label="Month">
               <button
                 type="button"
-                className={cn(smBtn, 'btn-dark')}
+                className={cn(smBtn, selectedMonth === productionMonth ? 'btn-dark' : 'btn-outline-secondary')}
                 onClick={() => {
-                  setSelectedMonth('2026-09')
-                  if (!selectedDate.startsWith('2026-09')) setSelectedDate(PRODUCTION_YESTERDAY)
+                  setSelectedMonth(productionMonth)
+                  if (!selectedDate.startsWith(productionMonth)) setSelectedDate(productionYesterday)
                 }}
               >
-                Sept 2026
+                {formatProductionMonthLabel(productionMonth)}
               </button>
             </div>
           </div>

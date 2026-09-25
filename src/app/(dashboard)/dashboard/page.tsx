@@ -14,8 +14,8 @@ import {
 import { formatNumber, cn } from '@/lib/utils'
 import {
   PRODUCTION_START,
-  PRODUCTION_TODAY,
-  PRODUCTION_YESTERDAY,
+  getProductionToday,
+  getProductionYesterday,
   formatProductionDayLabel,
   shiftProductionDate,
 } from '@/constants/productionCalendar'
@@ -74,7 +74,9 @@ function shortDay(dateStr: string) {
 }
 
 export default function DashboardPage() {
-  const [selectedDate, setSelectedDate] = useState(PRODUCTION_YESTERDAY)
+  const productionToday = getProductionToday()
+  const productionYesterday = getProductionYesterday()
+  const [selectedDate, setSelectedDate] = useState(() => getProductionYesterday())
   const [loading, setLoading] = useState(true)
   const [day, setDay] = useState({
     meters: 0,
@@ -156,14 +158,14 @@ export default function DashboardPage() {
       .sort((a, b) => b.value - a.value)
   }, [day.conditions])
 
-  const isYesterday = selectedDate === PRODUCTION_YESTERDAY
-  const isToday = selectedDate === PRODUCTION_TODAY
+  const isYesterday = selectedDate === productionYesterday
+  const isToday = selectedDate === productionToday
   const hasSheet = availableDates.includes(selectedDate)
 
   const shiftDay = (delta: number) => {
     try {
       const next = shiftProductionDate(selectedDate, delta)
-      if (next < PRODUCTION_START || next > PRODUCTION_TODAY) return
+      if (next < PRODUCTION_START || next > productionToday) return
       setSelectedDate(next)
     } catch {
       // ignore
@@ -196,7 +198,7 @@ export default function DashboardPage() {
               style={{ width: 'auto', minWidth: 140 }}
               value={selectedDate}
               min={PRODUCTION_START}
-              max={PRODUCTION_TODAY}
+              max={productionToday}
               aria-label="Production date"
               onChange={(e) => setSelectedDate(e.target.value)}
             />
@@ -205,7 +207,7 @@ export default function DashboardPage() {
               className="btn btn-sm btn-outline-secondary px-2"
               title="Next day"
               onClick={() => shiftDay(1)}
-              disabled={selectedDate >= PRODUCTION_TODAY}
+              disabled={selectedDate >= productionToday}
             >
               <ChevronRight className="size-3.5" />
             </button>
@@ -215,18 +217,18 @@ export default function DashboardPage() {
             <button
               type="button"
               className={cn('btn btn-sm', isYesterday ? 'btn-primary' : 'btn-outline-secondary')}
-              onClick={() => setSelectedDate(PRODUCTION_YESTERDAY)}
+              onClick={() => setSelectedDate(productionYesterday)}
             >
               Yesterday
-              <span className="d-none d-md-inline"> ({shortDay(PRODUCTION_YESTERDAY)})</span>
+              <span className="d-none d-md-inline"> ({shortDay(productionYesterday)})</span>
             </button>
             <button
               type="button"
               className={cn('btn btn-sm', isToday ? 'btn-primary' : 'btn-outline-secondary')}
-              onClick={() => setSelectedDate(PRODUCTION_TODAY)}
+              onClick={() => setSelectedDate(productionToday)}
             >
               Today
-              <span className="d-none d-md-inline"> ({shortDay(PRODUCTION_TODAY)})</span>
+              <span className="d-none d-md-inline"> ({shortDay(productionToday)})</span>
             </button>
           </div>
 
@@ -355,7 +357,7 @@ export default function DashboardPage() {
           <p className="text-body-secondary mb-0 small">
             Dashboard sirf floor production sheets se data leta hai (dummy history nahi). Date
             calendar se koi bhi entered din dekho — default{' '}
-            <strong>{shortDay(PRODUCTION_YESTERDAY)}</strong> (completed day).
+            <strong>{shortDay(productionYesterday)}</strong> (completed day).
           </p>
         </div>
       </div>
