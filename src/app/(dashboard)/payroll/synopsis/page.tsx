@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { FortnightSynopsis, MonthlyGrandSalarySynopsis } from '@/types/payroll'
 import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
 import {
@@ -25,7 +25,9 @@ function DisbursementSynopsisContent() {
   const [activeTab, setActiveTab] = useState<'grand' | 'f1' | 'f2'>(
     initialFn === '1-15' ? 'f1' : initialFn === '16-31' ? 'f2' : 'grand'
   )
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
+  const [selectedMonth, setSelectedMonth] = useState(
+    () => payrollService.getActiveSalariedMonth()
+  )
   const [f1, setF1] = useState<FortnightSynopsis | null>(null)
   const [f2, setF2] = useState<FortnightSynopsis | null>(null)
   const [grand, setGrand] = useState<MonthlyGrandSalarySynopsis | null>(null)
@@ -45,7 +47,14 @@ function DisbursementSynopsisContent() {
 
   useEffect(() => {
     reloadData()
-    const handleSync = () => reloadData()
+    const handleSync = () => {
+      const month = payrollService.getActiveSalariedMonth()
+      if (month !== selectedMonth) {
+        setSelectedMonth(month)
+        return
+      }
+      reloadData()
+    }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
   }, [selectedMonth])
@@ -90,7 +99,9 @@ function DisbursementSynopsisContent() {
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">
               STAFF, CONTRACT EMPLOYEE, EFFICIENCY, WEAVER WAGES, OVERTIME, HELPER & CONTRACTOR SYNOPSIS
             </h2>
-            <p className="text-[11px] text-slate-500 font-mono">Statement for Month: August-2026</p>
+            <p className="text-[11px] text-slate-500 font-mono">
+              Statement for Month: {formatPayrollMonthLabel(selectedMonth)}
+            </p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">

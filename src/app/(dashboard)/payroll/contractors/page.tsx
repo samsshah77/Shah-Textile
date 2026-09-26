@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { ContractorPaymentRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
@@ -44,9 +44,12 @@ const DEFAULT_CONTRACTOR_WIDTHS = {
 function ContractorsPayrollContent() {
   const { canEditAccounts } = useAuth()
   const searchParams = useSearchParams()
-  const initialFortnight = (searchParams.get('fortnight') as '1-15' | '16-31') || '1-15'
-  const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(initialFortnight)
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
+  const period = payrollService.getActiveFortnightPeriod()
+  const urlFn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+  const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(
+    urlFn === '1-15' || urlFn === '16-31' ? urlFn : period.fortnight
+  )
+  const [selectedMonth, setSelectedMonth] = useState(period.month)
   const [contractorsList, setContractorsList] = useState<ContractorPaymentRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -72,7 +75,15 @@ function ContractorsPayrollContent() {
 
   useEffect(() => {
     reload()
-    const handleSync = () => reload()
+    const handleSync = () => {
+      const p = payrollService.getActiveFortnightPeriod()
+      if (p.month !== selectedMonth || p.fortnight !== activeFortnight) {
+        setSelectedMonth(p.month)
+        setActiveFortnight(p.fortnight)
+        return
+      }
+      reload()
+    }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
   }, [selectedMonth, activeFortnight])
@@ -266,9 +277,13 @@ function ContractorsPayrollContent() {
         <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
           <h1 className="text-xl font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
           <h2 className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
-            CONTRACTORS & OUTSOURCED SERVICES BILL PAYMENT ({activeFortnight === '1-15' ? '01-Aug-2026 to 15-Aug-2026' : '16-Aug-2026 to 31-Aug-2026'})
+            CONTRACTORS & OUTSOURCED SERVICES BILL PAYMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '}
+            {activeFortnight})
           </h2>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">Cycle: {activeFortnight === '1-15' ? '1st Half' : '2nd Half / Month-End'}</p>
+          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+            Cycle: {activeFortnight === '1-15' ? '1st Half' : '2nd Half / Month-End'} (Weavers se
+            generate)
+          </p>
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">

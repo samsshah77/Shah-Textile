@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { PettyCashRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
@@ -40,9 +40,12 @@ const DEFAULT_PETTY_CASH_WIDTHS = {
 function PettyCashContent() {
   const { canEditAccounts } = useAuth()
   const searchParams = useSearchParams()
-  const initialFortnight = (searchParams.get('fortnight') as '1-15' | '16-31') || '1-15'
-  const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(initialFortnight)
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
+  const period = payrollService.getActiveFortnightPeriod()
+  const urlFn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+  const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(
+    urlFn === '1-15' || urlFn === '16-31' ? urlFn : period.fortnight
+  )
+  const [selectedMonth, setSelectedMonth] = useState(period.month)
   const [entries, setEntries] = useState<PettyCashRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -64,6 +67,17 @@ function PettyCashContent() {
 
   useEffect(() => {
     setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
+    const handleSync = () => {
+      const p = payrollService.getActiveFortnightPeriod()
+      if (p.month !== selectedMonth || p.fortnight !== activeFortnight) {
+        setSelectedMonth(p.month)
+        setActiveFortnight(p.fortnight)
+        return
+      }
+      setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
+    }
+    window.addEventListener('payroll_synced', handleSync)
+    return () => window.removeEventListener('payroll_synced', handleSync)
   }, [selectedMonth, activeFortnight])
 
   // Recalculate balances dynamically
@@ -113,7 +127,7 @@ function PettyCashContent() {
     const newRecord: PettyCashRecord = {
       id: `pc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       serialNo: insertIdx !== undefined ? insertIdx + 2 : entries.length + 1,
-      date: activeFortnight === '1-15' ? '2026-08-10' : '2026-08-25',
+      date: `${selectedMonth}-${activeFortnight === '1-15' ? '10' : '25'}`,
       description: 'New Expense Entry',
       drAmount: null,
       crAmount: 1000,
@@ -266,9 +280,11 @@ function PettyCashContent() {
         <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
           <h1 className="text-xl font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
           <h2 className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
-            PETTY CASH STATEMENT ({activeFortnight === '1-15' ? 'Aug 01 to 15, 2026' : 'Aug 16 to 31, 2026'})
+            PETTY CASH STATEMENT ({formatPayrollMonthLabel(selectedMonth)} · {activeFortnight})
           </h2>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">Cycle: {activeFortnight === '1-15' ? '1st Half' : '2nd Half'}</p>
+          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+            Cycle: {activeFortnight === '1-15' ? '1st Half' : '2nd Half'} (Weavers cycle se)
+          </p>
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">

@@ -7,6 +7,7 @@ import {
   isGeneralWagesEmployee,
   resolveResignedAt,
   formatPayrollMonthLabel,
+  hydratePayrollFromDb,
 } from '@/services/payrollService'
 import { EmployeeProfile, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
@@ -104,20 +105,28 @@ export default function GeneralWagesPage() {
     setActiveMonth(payrollService.getActiveSalariedMonth())
   }
 
-  const handleActiveMonthChange = (month: string) => {
+  const handleActiveMonthChange = async (month: string) => {
     if (!canEditAccounts) return
-    payrollService.setActiveSalariedMonth(month)
+    await payrollService.setActiveSalariedMonthAsync(month)
     setActiveMonth(month)
     setStatusNotice(`Active month: ${formatPayrollMonthLabel(month)} — Advances / Staff / Contract / Net Payment isi pe khulenge.`)
     setTimeout(() => setStatusNotice(null), 4000)
   }
 
-  const handleGenerateMonth = () => {
+  const handleGenerateMonth = async () => {
     if (!canEditAccounts) return
-    const result = payrollService.generateSalariedMonth(newMonth)
+    setStatusNotice('Month save ho raha hai…')
+    const result = await payrollService.generateSalariedMonth(newMonth)
     setStatusNotice(result.message)
-    if (result.ok) setActiveMonth(newMonth)
-    setTimeout(() => setStatusNotice(null), 5000)
+    if (result.ok) {
+      setActiveMonth(payrollService.getActiveSalariedMonth())
+      const months = payrollService.listPayrollMonths()
+      const last = months[months.length - 1] || newMonth
+      const [y, m] = last.split('-').map(Number)
+      const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+      setNewMonth(next)
+    }
+    setTimeout(() => setStatusNotice(null), 6000)
   }
 
   // Move employee up/down and permanently persist the new order
@@ -131,10 +140,20 @@ export default function GeneralWagesPage() {
   }
 
   useEffect(() => {
-    reload()
-    const handleSync = () => reload()
+    let cancelled = false
+    const boot = async () => {
+      await hydratePayrollFromDb()
+      if (cancelled) return
+      reload()
+    }
+    void boot()
+    const handleSync = () => {
+      reload()
+      setActiveMonth(payrollService.getActiveSalariedMonth())
+    }
     window.addEventListener('payroll_synced', handleSync)
     return () => {
+      cancelled = true
       window.removeEventListener('payroll_synced', handleSync)
       if (crossSheetSyncTimer.current) clearTimeout(crossSheetSyncTimer.current)
     }

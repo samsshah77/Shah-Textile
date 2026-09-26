@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { payrollService } from '@/services/payrollService'
+import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { WeaverWageRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
@@ -22,7 +22,7 @@ import {
   Banknote,
   Printer,
   Lock,
-  FileSpreadsheet,
+  CalendarPlus,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
@@ -72,15 +72,26 @@ const DEFAULT_WEAVER_NET_WIDTHS = {
 function WeaversPayrollContent() {
   const { canEditAccounts } = useAuth()
   const searchParams = useSearchParams()
-  const initialFortnight = (searchParams.get('fortnight') as '1-15' | '16-31') || '1-15'
   const initialTab = (searchParams.get('tab') as 'wages' | 'overtime' | 'net-payment') || 'wages'
+  const period = payrollService.getActiveFortnightPeriod()
+  const urlFn = searchParams.get('fortnight') as '1-15' | '16-31' | null
 
-  const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(initialFortnight)
+  const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(
+    urlFn === '1-15' || urlFn === '16-31' ? urlFn : period.fortnight
+  )
   const [activeTab, setActiveTab] = useState<'wages' | 'overtime' | 'net-payment'>(initialTab)
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
+  const [selectedMonth, setSelectedMonth] = useState(period.month)
   const [weaversList, setWeaversList] = useState<WeaverWageRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [statusNotice, setStatusNotice] = useState<string | null>(null)
+  const [newMonth, setNewMonth] = useState(() => {
+    const months = payrollService.listFortnightMonths()
+    const last = months[months.length - 1] || '2026-08'
+    const [y, m] = last.split('-').map(Number)
+    return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+  })
+  const [newFortnight, setNewFortnight] = useState<'1-15' | '16-31'>('1-15')
 
   // Resizable column width hooks for all 3 views
   const {
@@ -115,10 +126,45 @@ function WeaversPayrollContent() {
 
   useEffect(() => {
     reload()
-    const handleSync = () => reload()
+    const handleSync = (e: Event) => {
+      const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
+      const periodNow = payrollService.getActiveFortnightPeriod()
+      const nextMonth =
+        detailMonth && /^\d{4}-\d{2}$/.test(detailMonth) ? detailMonth : periodNow.month
+      const nextFn = periodNow.fortnight
+      if (nextMonth !== selectedMonth || nextFn !== activeFortnight) {
+        setSelectedMonth(nextMonth)
+        setActiveFortnight(nextFn)
+        return
+      }
+      reload()
+    }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
   }, [selectedMonth, activeFortnight])
+
+  const handleGenerateFortnight = async () => {
+    if (!canEditAccounts) return
+    setStatusNotice('Fortnight save ho raha hai…')
+    const result = await payrollService.generateFortnightCycle(newMonth, newFortnight)
+    setStatusNotice(result.message)
+    if (result.ok) {
+      setSelectedMonth(newMonth)
+      setActiveFortnight(newFortnight)
+      const months = payrollService.listFortnightMonths()
+      const last = months[months.length - 1] || newMonth
+      const [y, m] = last.split('-').map(Number)
+      const next =
+        newFortnight === '1-15'
+          ? last
+          : m === 12
+            ? `${y + 1}-01`
+            : `${y}-${String(m + 1).padStart(2, '0')}`
+      setNewMonth(newFortnight === '1-15' ? last : next)
+      setNewFortnight(newFortnight === '1-15' ? '16-31' : '1-15')
+    }
+    setTimeout(() => setStatusNotice(null), 6000)
+  }
 
   // Handle cell edit with live formula recalculation
   const handleCellChange = (
@@ -319,6 +365,57 @@ function WeaversPayrollContent() {
         />
       </div>
 
+      {canEditAccounts && (
+        <div className="print:hidden erp-card p-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+              Active fortnight cycle
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Yahan se 15-din generate karo — Helpers, Contractors, Net Payment, Synopsis isi pe khulenge.
+              Active:{' '}
+              <strong>
+                {formatPayrollMonthLabel(selectedMonth)} ({activeFortnight})
+              </strong>
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="month"
+              value={newMonth}
+              onChange={(e) => setNewMonth(e.target.value)}
+              className="form-control form-control-sm"
+              style={{ width: 'auto' }}
+              aria-label="New fortnight month"
+            />
+            <select
+              value={newFortnight}
+              onChange={(e) => setNewFortnight(e.target.value as '1-15' | '16-31')}
+              className="form-select form-select-sm"
+              aria-label="Fortnight half"
+            >
+              <option value="1-15">1–15</option>
+              <option value="16-31">16–31</option>
+            </select>
+            <button
+              type="button"
+              onClick={handleGenerateFortnight}
+              className="erp-btn-primary text-xs flex items-center gap-1.5"
+            >
+              <CalendarPlus className="size-3.5" />
+              <span>Generate Fortnight</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {statusNotice && (
+        <div className="flex items-center gap-2 rounded-md bg-blue-50 border border-blue-200 p-3 text-xs font-semibold text-blue-900 print:hidden animate-in fade-in">
+          <CheckCircle2 className="size-4 text-blue-600" />
+          <span>{statusNotice}</span>
+        </div>
+      )}
+
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
         <div className="flex items-center gap-2.5 p-3 rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 text-xs font-medium print:hidden">
@@ -342,7 +439,8 @@ function WeaversPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">
-              WEAVERS WAGES ({activeFortnight === '1-15' ? 'EXCEL SHEET 8: Aug 1 to 15, 2026' : 'EXCEL SHEET 15: Aug 16 to 31, 2026'})
+              WEAVERS WAGES ({activeFortnight === '1-15' ? '1–15' : '16–31'} ·{' '}
+              {formatPayrollMonthLabel(selectedMonth)})
             </h2>
             <p className="text-[11px] text-slate-500 font-mono">Loom production, extra looms & attendance allowance</p>
           </div>
@@ -686,7 +784,7 @@ function WeaversPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">
-              WEAVER HOLIDAYS & OVERTIME ({activeFortnight === '1-15' ? 'EXCEL SHEET 9: Aug 1-15, 2026' : 'EXCEL SHEET 16: Aug 16-31, 2026'})
+              WEAVER HOLIDAYS & OVERTIME ({activeFortnight} · {formatPayrollMonthLabel(selectedMonth)})
             </h2>
             <p className="text-[11px] text-slate-500 font-mono">Gazetted & weekly holiday shifts worked</p>
           </div>
@@ -911,7 +1009,8 @@ function WeaversPayrollContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">
-              WEAVERS SALARY & OVERTIME PAYMENT ({activeFortnight === '1-15' ? 'EXCEL SHEET 11: Aug 1-15, 2026' : 'EXCEL SHEET 18: Aug 16-31, 2026'})
+              WEAVERS SALARY & OVERTIME PAYMENT ({activeFortnight} ·{' '}
+              {formatPayrollMonthLabel(selectedMonth)})
             </h2>
             <p className="text-[11px] text-slate-500 font-mono">Consolidated net payout rollup</p>
           </div>

@@ -2433,20 +2433,90 @@ let hydrated = false
 let hydratePromise: Promise<void> | null = null
 let allowServerSheetWrite = false
 
+/** Writes that happened before hydrate finished — must not be wiped by DB snapshot. */
+const pendingPersists = new Map<string, unknown>()
+
+const LOCAL_MIRROR_KEYS = new Set<string>([
+  STORAGE_KEYS.STAFF,
+  STORAGE_KEYS.CONTRACT,
+  STORAGE_KEYS.HR_META,
+  STORAGE_KEYS.ADVANCES,
+  STORAGE_KEYS.EFFICIENCY,
+  STORAGE_KEYS.WEAVERS,
+  STORAGE_KEYS.HELPERS,
+  STORAGE_KEYS.CONTRACTORS,
+  STORAGE_KEYS.PETTY_CASH,
+])
+
+const ARRAY_MERGE_KEYS = new Set<string>([
+  STORAGE_KEYS.STAFF,
+  STORAGE_KEYS.CONTRACT,
+  STORAGE_KEYS.ADVANCES,
+  STORAGE_KEYS.EFFICIENCY,
+  STORAGE_KEYS.WEAVERS,
+  STORAGE_KEYS.HELPERS,
+  STORAGE_KEYS.CONTRACTORS,
+  STORAGE_KEYS.PETTY_CASH,
+  STORAGE_KEYS.EMPLOYEES,
+])
+
+export function isPayrollHydrated(): boolean {
+  return hydrated
+}
+
+/** Force next hydratePayrollFromDb() to re-fetch from Postgres. */
+export function resetPayrollHydration(): void {
+  hydrated = false
+  hydratePromise = null
+}
+
+function localMirrorKey(key: string): string {
+  return `sara_payroll_mirror_${key}`
+}
+
+function writeLocalMirror(key: string, value: unknown): void {
+  if (!isPayrollClient() || !LOCAL_MIRROR_KEYS.has(key)) return
+  try {
+    localStorage.setItem(localMirrorKey(key), JSON.stringify(value))
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function readLocalMirror(key: string): unknown | null {
+  if (!isPayrollClient() || !LOCAL_MIRROR_KEYS.has(key)) return null
+  try {
+    const raw = localStorage.getItem(localMirrorKey(key))
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
 function isPayrollClient(): boolean {
   return typeof window !== 'undefined'
 }
 
-async function persistPayrollKey(key: string, value: unknown): Promise<void> {
-  if (!isPayrollClient()) return
+async function persistPayrollKey(key: string, value: unknown): Promise<boolean> {
+  if (!isPayrollClient()) return false
+  writeLocalMirror(key, value)
   try {
-    await fetch('/api/payroll/store', {
+    const res = await fetch('/api/payroll/store', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ key, value }),
     })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      console.error('[payroll] persist rejected', key, res.status, body)
+      return false
+    }
+    return true
   } catch (err) {
     console.error('[payroll] persist failed', key, err)
+    return false
   }
 }
 
@@ -2456,15 +2526,98 @@ function writeStore(key: string, value: unknown): void {
   } catch {
     // ignore
   }
+  writeLocalMirror(key, value)
   // Wait until the DB snapshot is loaded, otherwise a first paint can overwrite Postgres.
-  if (!hydrated) return
+  if (!hydrated) {
+    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
+      const prev = pendingPersists.get(key)
+      if (Array.isArray(prev)) {
+        pendingPersists.set(
+          key,
+          mergeRowsById(prev as { id?: string }[], value as { id?: string }[])
+        )
+      } else {
+        pendingPersists.set(key, value)
+      }
+    } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
+      const prev = pendingPersists.get(key)
+      pendingPersists.set(
+        key,
+        prev && typeof prev === 'object' ? { ...(prev as object), ...(value as object) } : value
+      )
+    } else {
+      pendingPersists.set(key, value)
+    }
+    return
+  }
   void persistPayrollKey(key, value)
+}
+
+async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> {
+  try {
+    memoryStore.set(key, JSON.stringify(value))
+  } catch {
+    // ignore
+  }
+  writeLocalMirror(key, value)
+  if (!hydrated) {
+    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
+      const prev = pendingPersists.get(key)
+      pendingPersists.set(
+        key,
+        Array.isArray(prev)
+          ? mergeRowsById(prev as { id?: string }[], value as { id?: string }[])
+          : value
+      )
+    } else {
+      pendingPersists.set(key, value)
+    }
+    await hydratePayrollFromDb()
+    // After hydrate, memory has DB+mirrors; still force-write our value merged in
+    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
+      let current: { id?: string }[] = []
+      try {
+        current = JSON.parse(memoryStore.get(key) || '[]')
+      } catch {
+        current = []
+      }
+      const merged = mergeRowsById(current, value as { id?: string }[])
+      memoryStore.set(key, JSON.stringify(merged))
+      writeLocalMirror(key, merged)
+      return persistPayrollKey(key, merged)
+    }
+  }
+  return persistPayrollKey(key, value)
+}
+
+/** Union salary-sheet rows by id so a local September isn't lost if DB still has only August. */
+function mergeRowsById<T extends { id?: string }>(dbRows: T[], localRows: T[]): T[] {
+  const map = new Map<string, T>()
+  for (const row of dbRows || []) {
+    if (row?.id) map.set(row.id, row)
+  }
+  for (const row of localRows || []) {
+    if (row?.id) map.set(row.id, row)
+  }
+  return [...map.values()]
+}
+
+function writeHrMeta(custom: {
+  categories: string[]
+  designations: string[]
+  activeSalariedMonth?: string
+  activeFortnightMonth?: string
+  activeFortnight?: '1-15' | '16-31'
+}): void {
+  writeStore(STORAGE_KEYS.HR_META, custom)
 }
 
 function readHrMetaRaw(): {
   categories?: string[]
   designations?: string[]
   activeSalariedMonth?: string
+  activeFortnightMonth?: string
+  activeFortnight?: '1-15' | '16-31'
 } {
   try {
     const raw = memoryStore.get(STORAGE_KEYS.HR_META)
@@ -2484,16 +2637,16 @@ function readHrMetaRaw(): {
     } catch {
       // ignore
     }
+    const mirrored = readLocalMirror(STORAGE_KEYS.HR_META)
+    if (mirrored && typeof mirrored === 'object') {
+      return mirrored as {
+        categories?: string[]
+        designations?: string[]
+        activeSalariedMonth?: string
+      }
+    }
   }
   return {}
-}
-
-function writeHrMeta(custom: {
-  categories: string[]
-  designations: string[]
-  activeSalariedMonth?: string
-}): void {
-  writeStore(STORAGE_KEYS.HR_META, custom)
 }
 
 export function formatPayrollMonthLabel(month: string): string {
@@ -2521,10 +2674,116 @@ export async function hydratePayrollFromDb(): Promise<void> {
           memoryStore.set(key, JSON.stringify(value))
         })
       }
+
+      // Merge local mirrors (e.g. September generated before PUT finished / offline).
+      for (const key of LOCAL_MIRROR_KEYS) {
+        const mirrored = readLocalMirror(key)
+        if (mirrored == null) continue
+        if (key === STORAGE_KEYS.HR_META && typeof mirrored === 'object') {
+          const dbMeta = (() => {
+            try {
+              return JSON.parse(memoryStore.get(key) || '{}')
+            } catch {
+              return {}
+            }
+          })() as {
+            activeSalariedMonth?: string
+            activeFortnightMonth?: string
+            activeFortnight?: '1-15' | '16-31'
+            categories?: string[]
+            designations?: string[]
+          }
+          const localMeta = mirrored as typeof dbMeta
+          const merged = {
+            categories: localMeta.categories?.length ? localMeta.categories : dbMeta.categories || [],
+            designations: localMeta.designations?.length
+              ? localMeta.designations
+              : dbMeta.designations || [],
+            activeSalariedMonth: (() => {
+              const local = localMeta.activeSalariedMonth || ''
+              const db = dbMeta.activeSalariedMonth || ''
+              if (local && db) return local >= db ? local : db
+              return local || db || undefined
+            })(),
+            activeFortnightMonth:
+              localMeta.activeFortnightMonth || dbMeta.activeFortnightMonth || undefined,
+            activeFortnight: localMeta.activeFortnight || dbMeta.activeFortnight || undefined,
+          }
+          memoryStore.set(key, JSON.stringify(merged))
+          pendingPersists.set(key, merged)
+          continue
+        }
+        if (Array.isArray(mirrored)) {
+          let dbRows: { id?: string }[] = []
+          try {
+            dbRows = JSON.parse(memoryStore.get(key) || '[]')
+          } catch {
+            dbRows = []
+          }
+          const merged = mergeRowsById(dbRows, mirrored as { id?: string }[])
+          memoryStore.set(key, JSON.stringify(merged))
+          // Always flush union so DB catches up to browser mirror (September etc.)
+          if (JSON.stringify(merged) !== JSON.stringify(dbRows)) {
+            pendingPersists.set(key, merged)
+          }
+        }
+      }
+
+      // Merge any in-flight pending writes into memory (never let seed wipe newer months).
+      for (const [key, value] of pendingPersists) {
+        if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
+          let current: { id?: string }[] = []
+          try {
+            current = JSON.parse(memoryStore.get(key) || '[]')
+          } catch {
+            current = []
+          }
+          const merged = mergeRowsById(current, value as { id?: string }[])
+          memoryStore.set(key, JSON.stringify(merged))
+          pendingPersists.set(key, merged)
+          writeLocalMirror(key, merged)
+        } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
+          let current: Record<string, unknown> = {}
+          try {
+            current = JSON.parse(memoryStore.get(key) || '{}')
+          } catch {
+            current = {}
+          }
+          const merged = { ...current, ...(value as object) }
+          memoryStore.set(key, JSON.stringify(merged))
+          pendingPersists.set(key, merged)
+          writeLocalMirror(key, merged)
+        }
+      }
+
       hydrated = true
+
+      // Flush anything written during the race / recovered from mirror.
+      const toFlush = [...pendingPersists.entries()]
+      pendingPersists.clear()
+      await Promise.all(
+        toFlush.map(async ([key, value]) => {
+          if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
+            let current: { id?: string }[] = []
+            try {
+              current = JSON.parse(memoryStore.get(key) || '[]')
+            } catch {
+              current = []
+            }
+            const merged = mergeRowsById(current, value as { id?: string }[])
+            memoryStore.set(key, JSON.stringify(merged))
+            writeLocalMirror(key, merged)
+            return persistPayrollKey(key, merged)
+          }
+          return persistPayrollKey(key, value)
+        })
+      )
     } catch (err) {
       console.error('[payroll] hydrate failed — falling back to seed/local', err)
       hydrated = true
+      const toFlush = [...pendingPersists.entries()]
+      pendingPersists.clear()
+      await Promise.all(toFlush.map(([key, value]) => persistPayrollKey(key, value)))
     }
   })()
 
@@ -3246,29 +3505,81 @@ class PayrollService {
 
   /**
    * Seed Staff + Company Contract salary sheets for a new month from General Wages roster.
-   * Attendance / OT / advances / cheque start at zero.
+   * Prefers server API (direct Postgres write) so refresh cannot wipe September back to August.
    */
-  generateSalariedMonth(targetMonth: string): {
+  async generateSalariedMonth(targetMonth: string): Promise<{
     ok: boolean
     message: string
     staff: number
     contract: number
-  } {
+  }> {
+    await hydratePayrollFromDb()
+
     const month = (targetMonth || '').trim()
     if (!/^\d{4}-\d{2}$/.test(month)) {
       return { ok: false, message: 'Month format YYYY-MM chahiye.', staff: 0, contract: 0 }
     }
 
+    // 1) Durable path — server writes Postgres directly
+    try {
+      const res = await fetch('/api/payroll/generate-month', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ month }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data?.ok) {
+        resetPayrollHydration()
+        await hydratePayrollFromDb()
+        this.notifyDataChanged(month)
+        return {
+          ok: true,
+          message:
+            data.message ||
+            `${formatPayrollMonthLabel(month)} Postgres me save — refresh ke baad bhi September rahega.`,
+          staff: Number(data.staff) || 0,
+          contract: Number(data.contract) || 0,
+        }
+      }
+      // Already exists on server — still pin active month
+      if (res.status === 400 && String(data?.message || data?.error || '').includes('maujood')) {
+        await this.setActiveSalariedMonthAsync(month)
+        resetPayrollHydration()
+        await hydratePayrollFromDb()
+        return {
+          ok: true,
+          message: data.message || `${formatPayrollMonthLabel(month)} pehle se maujood — active set.`,
+          staff: Number(data.staff) || 0,
+          contract: Number(data.contract) || 0,
+        }
+      }
+      console.error('[payroll] generate-month API failed', res.status, data)
+    } catch (err) {
+      console.error('[payroll] generate-month API error', err)
+    }
+
+    // 2) Fallback — client seed + PUT (mirrors + merge protect against wipe)
+    return this.generateSalariedMonthClientFallback(month)
+  }
+
+  private async generateSalariedMonthClientFallback(month: string): Promise<{
+    ok: boolean
+    message: string
+    staff: number
+    contract: number
+  }> {
     const allStaff = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
     const allContract = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
     const staffExists = allStaff.some((r) => (r.month || '') === month)
     const contractExists = allContract.some((r) => (r.month || '') === month)
     if (staffExists || contractExists) {
+      await this.setActiveSalariedMonthAsync(month)
       return {
-        ok: false,
-        message: `${month} pe Staff / Company Contract sheet pehle se maujood hai.`,
-        staff: 0,
-        contract: 0,
+        ok: true,
+        message: `${formatPayrollMonthLabel(month)} pehle se maujood hai — active month set kar diya.`,
+        staff: allStaff.filter((r) => r.month === month).length,
+        contract: allContract.filter((r) => r.month === month).length,
       }
     }
 
@@ -3329,13 +3640,62 @@ class PayrollService {
       }
     }
 
-    if (newStaff.length) this.saveStaffSalaries([...allStaff, ...newStaff], false)
-    if (newContract.length) this.saveContractSalaries([...allContract, ...newContract], false)
-    this.setActiveSalariedMonth(month)
+    const nextStaff = newStaff.length ? [...allStaff, ...newStaff] : allStaff
+    const nextContract = newContract.length ? [...allContract, ...newContract] : allContract
+
+    const allEff = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
+    let nextEff = allEff
+    let newEffCount = 0
+    if (!allEff.some((r) => (r.month || '') === month)) {
+      const priorMonths = [
+        ...new Set(allEff.map((r) => r.month).filter(Boolean) as string[]),
+      ].sort()
+      const sourceMonth = priorMonths[priorMonths.length - 1] || '2026-08'
+      const template = allEff.filter((r) => r.month === sourceMonth)
+      const seeded = template.map((r, i) =>
+        this.calculateEfficiencyRow({
+          id: `eff-${month}-${i + 1}`,
+          serialNo: i + 1,
+          employeeId: r.employeeId,
+          loom: r.loom,
+          name: r.name,
+          designation: r.designation,
+          efficiencyPercent: 0,
+          salaryEarned: r.salaryEarned || 0,
+          month,
+        })
+      )
+      nextEff = [...allEff, ...seeded]
+      newEffCount = seeded.length
+    }
+
+    const savedStaff = newStaff.length
+      ? await writeStoreAndWait(STORAGE_KEYS.STAFF, nextStaff)
+      : true
+    const savedContract = newContract.length
+      ? await writeStoreAndWait(STORAGE_KEYS.CONTRACT, nextContract)
+      : true
+    const savedEff =
+      newEffCount > 0 ? await writeStoreAndWait(STORAGE_KEYS.EFFICIENCY, nextEff) : true
+
+    const raw = readHrMetaRaw()
+    const meta = {
+      categories: raw.categories || [],
+      designations: raw.designations || [],
+      activeSalariedMonth: month,
+      activeFortnightMonth: raw.activeFortnightMonth,
+      activeFortnight: raw.activeFortnight,
+    }
+    const savedMeta = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
+
     this.notifyDataChanged(month)
+
+    const persisted = savedStaff && savedContract && savedEff && savedMeta
     return {
       ok: true,
-      message: `${formatPayrollMonthLabel(month)}: ${newStaff.length} Staff + ${newContract.length} Company Contract (attendance/OT zero). Staff & Contract tabs ab isi month pe khulenge.`,
+      message: persisted
+        ? `${formatPayrollMonthLabel(month)}: ${newStaff.length} Staff + ${newContract.length} Contract + ${newEffCount} Efficiency — save ho gaya.`
+        : `${formatPayrollMonthLabel(month)} browser mirror me save — DB PUT fail. Tufail login check karo.`,
       staff: newStaff.length,
       contract: newContract.length,
     }
@@ -3349,6 +3709,17 @@ class PayrollService {
     for (const row of this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)) {
       if (row.month) months.add(row.month)
     }
+    // Also surface months only present in local mirror (pre-hydrate)
+    if (isPayrollClient()) {
+      for (const key of [STORAGE_KEYS.STAFF, STORAGE_KEYS.CONTRACT]) {
+        const mirrored = readLocalMirror(key)
+        if (Array.isArray(mirrored)) {
+          for (const row of mirrored as { month?: string }[]) {
+            if (row.month) months.add(row.month)
+          }
+        }
+      }
+    }
     return [...months].sort()
   }
 
@@ -3357,7 +3728,14 @@ class PayrollService {
     const meta = readHrMetaRaw()
     const saved = (meta.activeSalariedMonth || '').trim()
     const months = this.listPayrollMonths()
-    if (saved && months.includes(saved)) return saved
+    // Trust saved meta even if sheet rows have not hydrated yet (mirror / race).
+    if (saved && /^\d{4}-\d{2}$/.test(saved)) {
+      if (months.includes(saved) || months.length <= 1) return saved
+      // Prefer saved if it is the newest or still listed
+      if (saved >= months[months.length - 1]) return saved
+      if (months.includes(saved)) return saved
+      return saved
+    }
     return months[months.length - 1] || '2026-08'
   }
 
@@ -3369,8 +3747,245 @@ class PayrollService {
       categories: raw.categories || [],
       designations: raw.designations || [],
       activeSalariedMonth: m,
+      activeFortnightMonth: raw.activeFortnightMonth,
+      activeFortnight: raw.activeFortnight,
     })
     this.notifyDataChanged(m)
+  }
+
+  async setActiveSalariedMonthAsync(month: string): Promise<boolean> {
+    const m = (month || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(m)) return false
+    await hydratePayrollFromDb()
+    const raw = readHrMetaRaw()
+    const meta = {
+      categories: raw.categories || [],
+      designations: raw.designations || [],
+      activeSalariedMonth: m,
+      activeFortnightMonth: raw.activeFortnightMonth,
+      activeFortnight: raw.activeFortnight,
+    }
+    const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
+    this.notifyDataChanged(m)
+    return ok
+  }
+
+  /** Shared Weaver/Helper/Contractor fortnight period. */
+  getActiveFortnightPeriod(): { month: string; fortnight: '1-15' | '16-31' } {
+    const meta = readHrMetaRaw()
+    const months = this.listFortnightMonths()
+    const savedMonth = (meta.activeFortnightMonth || '').trim()
+    const month =
+      savedMonth && months.includes(savedMonth) ? savedMonth : months[months.length - 1] || '2026-08'
+    const fortnight: '1-15' | '16-31' =
+      meta.activeFortnight === '16-31' || meta.activeFortnight === '1-15'
+        ? meta.activeFortnight
+        : '1-15'
+    return { month, fortnight }
+  }
+
+  listFortnightMonths(): string[] {
+    const months = new Set<string>(['2026-08'])
+    const fortnightSources: Array<[string, { month?: string }[]]> = [
+      [STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES],
+      [STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES],
+      [STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS],
+    ]
+    for (const [storeKey, fallback] of fortnightSources) {
+      const rows = this.readStore(storeKey, fallback)
+      for (const row of rows) {
+        if (row.month) months.add(row.month)
+      }
+      if (isPayrollClient()) {
+        const mirrored = readLocalMirror(storeKey)
+        if (Array.isArray(mirrored)) {
+          for (const row of mirrored as { month?: string }[]) {
+            if (row.month) months.add(row.month)
+          }
+        }
+      }
+    }
+    return [...months].sort()
+  }
+
+  async setActiveFortnightPeriodAsync(
+    month: string,
+    fortnight: '1-15' | '16-31'
+  ): Promise<boolean> {
+    const m = (month || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(m)) return false
+    if (fortnight !== '1-15' && fortnight !== '16-31') return false
+    await hydratePayrollFromDb()
+    const raw = readHrMetaRaw()
+    const meta = {
+      categories: raw.categories || [],
+      designations: raw.designations || [],
+      activeSalariedMonth: raw.activeSalariedMonth,
+      activeFortnightMonth: m,
+      activeFortnight: fortnight,
+    }
+    const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
+    this.notifyDataChanged(m)
+    return ok
+  }
+
+  /**
+   * Seed Weaver + Helper + Contractor sheets for a fortnight (attendance/amounts zero).
+   * Connects Weavers → Helpers → Contractors → Net Payment / Synopsis for that 15-day cycle.
+   */
+  async generateFortnightCycle(
+    targetMonth: string,
+    fortnight: '1-15' | '16-31'
+  ): Promise<{
+    ok: boolean
+    message: string
+    weavers: number
+    helpers: number
+    contractors: number
+  }> {
+    await hydratePayrollFromDb()
+    const month = (targetMonth || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return { ok: false, message: 'Month format YYYY-MM chahiye.', weavers: 0, helpers: 0, contractors: 0 }
+    }
+    if (fortnight !== '1-15' && fortnight !== '16-31') {
+      return { ok: false, message: 'Fortnight 1-15 ya 16-31 chahiye.', weavers: 0, helpers: 0, contractors: 0 }
+    }
+
+    const allWeavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
+    const allHelpers = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
+    const allContractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
+
+    const weaverExists = allWeavers.some(
+      (r) => (r.month || '') === month && (r.fortnight || '1-15') === fortnight
+    )
+    const helperExists = allHelpers.some(
+      (r) => (r.month || '') === month && (r.fortnight || '1-15') === fortnight
+    )
+    const contractorExists = allContractors.some(
+      (r) => (r.month || '') === month && (r.fortnight || '1-15') === fortnight
+    )
+
+    if (weaverExists || helperExists || contractorExists) {
+      await this.setActiveFortnightPeriodAsync(month, fortnight)
+      return {
+        ok: true,
+        message: `${formatPayrollMonthLabel(month)} (${fortnight}) pehle se maujood — active cycle set.`,
+        weavers: allWeavers.filter((r) => r.month === month && r.fortnight === fortnight).length,
+        helpers: allHelpers.filter((r) => r.month === month && r.fortnight === fortnight).length,
+        contractors: allContractors.filter((r) => r.month === month && r.fortnight === fortnight)
+          .length,
+      }
+    }
+
+    const roster = this.getActiveEmployees()
+    const weaverPeople = roster.filter((e) => inferEmployeeCategory(e) === 'Weaver')
+    const helperPeople = roster.filter((e) => inferEmployeeCategory(e) === 'Helper')
+    const contractorPeople = roster.filter((e) => inferEmployeeCategory(e) === 'Contractor')
+
+    const newWeavers = weaverPeople.map((emp, i) => {
+      const pay = weaverSheetFields(emp)
+      return this.calculateWeaverWageRow({
+        id: `w-${month}-${fortnight}-${emp.id}`,
+        serialNo: i + 1,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        designation: pay.designation,
+        wagePerDay: pay.wagePerDay,
+        attendanceDays: 0,
+        rateLoom: 150,
+        extraLooms: 0,
+        holidayAttendance: 0,
+        holidayRate: pay.holidayRate,
+        efficiencyAmount: 0,
+        fortnight,
+        month,
+      })
+    })
+
+    const newHelpers = helperPeople.map((emp, i) => {
+      const pay = helperSheetFields(emp)
+      return this.calculateHelperWageRow({
+        id: `h-${month}-${fortnight}-${emp.id}`,
+        serialNo: i + 1,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        designation: pay.designation as 'Helper' | 'Winder',
+        wagePerDay: pay.wagePerDay,
+        attendanceDays: 0,
+        holidayAttendance: 0,
+        otRate: 1200,
+        fortnight,
+        month,
+      })
+    })
+
+    const newContractors = contractorPeople.map((emp, i) => {
+      const amount = Number(emp.salary) || 0
+      return this.calculateContractorPaymentRow({
+        id: `c-${month}-${fortnight}-${emp.id}`,
+        serialNo: i + 1,
+        employeeId: emp.id,
+        name: emp.name,
+        contractType: emp.designation || 'Contract',
+        contractualAmount: amount,
+        extraIncentive: 0,
+        lessAdvance: 0,
+        remarks: '',
+        fortnight,
+        month,
+      })
+    })
+
+    if (newWeavers.length === 0 && newHelpers.length === 0 && newContractors.length === 0) {
+      return {
+        ok: false,
+        message: 'HR me koi active Weaver / Helper / Contractor nahi mila.',
+        weavers: 0,
+        helpers: 0,
+        contractors: 0,
+      }
+    }
+
+    const nextWeavers = newWeavers.length ? [...allWeavers, ...newWeavers] : allWeavers
+    const nextHelpers = newHelpers.length ? [...allHelpers, ...newHelpers] : allHelpers
+    const nextContractors = newContractors.length
+      ? [...allContractors, ...newContractors]
+      : allContractors
+
+    const savedW = newWeavers.length
+      ? await writeStoreAndWait(STORAGE_KEYS.WEAVERS, nextWeavers)
+      : true
+    const savedH = newHelpers.length
+      ? await writeStoreAndWait(STORAGE_KEYS.HELPERS, nextHelpers)
+      : true
+    const savedC = newContractors.length
+      ? await writeStoreAndWait(STORAGE_KEYS.CONTRACTORS, nextContractors)
+      : true
+
+    const raw = readHrMetaRaw()
+    const meta = {
+      categories: raw.categories || [],
+      designations: raw.designations || [],
+      activeSalariedMonth: raw.activeSalariedMonth,
+      activeFortnightMonth: month,
+      activeFortnight: fortnight,
+    }
+    const savedMeta = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
+
+    this.notifyDataChanged(month)
+
+    const persisted = savedW && savedH && savedC && savedMeta
+    const label = `${formatPayrollMonthLabel(month)} ${fortnight}`
+    return {
+      ok: true,
+      message: persisted
+        ? `${label}: ${newWeavers.length} Weavers + ${newHelpers.length} Helpers + ${newContractors.length} Contractors (zero attendance). Helper / Contractor / Net Payment / Synopsis isi cycle pe khulenge.`
+        : `${label} browser me save — DB write fail. Refresh se pehle dubara Generate mat dabao.`,
+      weavers: newWeavers.length,
+      helpers: newHelpers.length,
+      contractors: newContractors.length,
+    }
   }
 
   /** Working roster only — excludes Resigned (for Profiles / General Wages / new month seed). */
@@ -3481,10 +4096,10 @@ class PayrollService {
       try {
         const legacy = localStorage.getItem(key)
         if (legacy) {
-          memoryStore.set(key, legacy)
           const parsed = JSON.parse(legacy)
           if (Array.isArray(parsed) && parsed.length > 0) {
-            void persistPayrollKey(key, parsed)
+            // Do not PUT legacy localStorage — it is often August-only and wipes newer months.
+            if (!memoryStore.get(key)) memoryStore.set(key, legacy)
             return parsed as T[]
           }
         }
@@ -3659,6 +4274,10 @@ class PayrollService {
 
   /** Force General Wages rows to continuous 1..n (gaps from resigned/filter). */
   renumberGeneralWages(): EmployeeProfile[] {
+    // Never persist renumber before DB hydrate — that queues seed roster and can wipe months.
+    if (this.isClient() && !hydrated) {
+      return this.getEmployees()
+    }
     const list = [...this.getEmployees()].sort((a, b) => a.serialNo - b.serialNo)
     const gw = list.filter((e) => isGeneralWagesEmployee(e))
     const others = list.filter((e) => !isGeneralWagesEmployee(e))
@@ -3690,6 +4309,10 @@ class PayrollService {
   }
 
   syncMasterRoster(roster?: EmployeeProfile[], month: string = '2026-08'): void {
+    // Client must not sync onto sheets until Postgres snapshot is loaded — otherwise
+    // INITIAL August seed is written and September rows disappear after refresh.
+    if (this.isClient() && !hydrated) return
+
     const employees = roster || this.getEmployees()
     const isLinked = (
       name?: string,
@@ -4214,7 +4837,12 @@ class PayrollService {
 
   saveStaffSalaries(list: StaffSalaryRecord[], broadcast: boolean = true): void {
     if (this.canWrite()) {
-      writeStore(STORAGE_KEYS.STAFF, list)
+      const existing = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
+      const incomingMonths = new Set(list.map((r) => r.month).filter(Boolean))
+      const kept = existing.filter(
+        (r) => !list.some((n) => n.id === r.id) && !(r.month && incomingMonths.has(r.month))
+      )
+      writeStore(STORAGE_KEYS.STAFF, [...kept, ...list])
       if (broadcast) this.notifyDataChanged()
     }
   }
@@ -4236,7 +4864,12 @@ class PayrollService {
     const data = Array.isArray(monthOrList) ? monthOrList : (Array.isArray(listOrBroadcast) ? listOrBroadcast : [])
     const shouldBroadcast = typeof listOrBroadcast === 'boolean' ? listOrBroadcast : broadcast
     if (this.canWrite()) {
-      writeStore(STORAGE_KEYS.CONTRACT, data)
+      const existing = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
+      const incomingMonths = new Set(data.map((r) => r.month).filter(Boolean))
+      const kept = existing.filter(
+        (r) => !data.some((n) => n.id === r.id) && !(r.month && incomingMonths.has(r.month))
+      )
+      writeStore(STORAGE_KEYS.CONTRACT, [...kept, ...data])
       if (shouldBroadcast) {
         this.syncContractBasicsToEfficiency(data)
         this.notifyDataChanged()
@@ -4283,7 +4916,12 @@ class PayrollService {
 
   saveEfficiencyIncentives(list: EfficiencyIncentiveRecord[], triggerCascade: boolean = true): void {
     if (!this.canWrite()) return
-    writeStore(STORAGE_KEYS.EFFICIENCY, list)
+    const existing = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
+    const incomingMonths = new Set(list.map((r) => r.month).filter(Boolean))
+    const kept = existing.filter(
+      (r) => !list.some((n) => n.id === r.id) && !(r.month && incomingMonths.has(r.month))
+    )
+    writeStore(STORAGE_KEYS.EFFICIENCY, [...kept, ...list])
     if (triggerCascade) {
       list.forEach((eff) => {
         this.syncEfficiencyToSalaries(eff.name, eff.month || '2026-08', eff.amount || 0, false)
@@ -4594,9 +5232,14 @@ class PayrollService {
   // Petty Cash Register (Sheets 13 & 20)
   getPettyCashEntries(month: string = '2026-08', fortnight: '1-15' | '16-31'): PettyCashRecord[] {
     const list = this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH)
-    const filtered = list.filter((e) => e.fortnight === fortnight)
+    const filtered = list.filter(
+      (e) => (e.month || '2026-08') === month && e.fortnight === fortnight
+    )
     if (filtered.length > 0) return filtered
-    return INITIAL_PETTY_CASH.filter((e) => e.fortnight === fortnight)
+    if (month === '2026-08') {
+      return INITIAL_PETTY_CASH.filter((e) => e.fortnight === fortnight)
+    }
+    return []
   }
 
   savePettyCashEntries(
@@ -4699,6 +5342,208 @@ export function getPayrollSeedStore(): Record<string, unknown> {
     [STORAGE_KEYS.CONTRACTORS]: INITIAL_CONTRACTORS,
     [STORAGE_KEYS.PETTY_CASH]: INITIAL_PETTY_CASH,
     [STORAGE_KEYS.HR_META]: {},
+  }
+}
+
+/**
+ * Server-safe generate: load store → seed month → return patch keys for Postgres upsert.
+ * Does not touch the browser memoryStore permanently.
+ */
+export function applySalariedMonthGenerateToStore(
+  store: Record<string, unknown>,
+  month: string
+): {
+  ok: boolean
+  message: string
+  staff: number
+  contract: number
+  patch: Record<string, unknown>
+} {
+  const m = (month || '').trim()
+  if (!/^\d{4}-\d{2}$/.test(m)) {
+    return { ok: false, message: 'Month format YYYY-MM chahiye.', staff: 0, contract: 0, patch: {} }
+  }
+
+  const previous = new Map(memoryStore)
+  const prevHydrated = hydrated
+  const prevAllow = allowServerSheetWrite
+
+  memoryStore.clear()
+  const seed = getPayrollSeedStore()
+  for (const [key, value] of Object.entries({ ...seed, ...store })) {
+    memoryStore.set(key, JSON.stringify(value ?? null))
+  }
+  hydrated = true
+  allowServerSheetWrite = true
+
+  try {
+    const allStaff = payrollService['readStore'](STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES) as StaffSalaryRecord[]
+    const allContract = payrollService['readStore'](
+      STORAGE_KEYS.CONTRACT,
+      INITIAL_CONTRACT_SALARIES
+    ) as ContractSalaryRecord[]
+
+    const staffExists = allStaff.some((r) => (r.month || '') === m)
+    const contractExists = allContract.some((r) => (r.month || '') === m)
+
+    const rawMeta = (() => {
+      try {
+        return JSON.parse(memoryStore.get(STORAGE_KEYS.HR_META) || '{}') as {
+          categories?: string[]
+          designations?: string[]
+          activeSalariedMonth?: string
+          activeFortnightMonth?: string
+          activeFortnight?: '1-15' | '16-31'
+        }
+      } catch {
+        return {}
+      }
+    })()
+
+    if (staffExists || contractExists) {
+      const meta = {
+        categories: rawMeta.categories || [],
+        designations: rawMeta.designations || [],
+        activeSalariedMonth: m,
+        activeFortnightMonth: rawMeta.activeFortnightMonth,
+        activeFortnight: rawMeta.activeFortnight,
+      }
+      return {
+        ok: true,
+        message: `${formatPayrollMonthLabel(m)} pehle se maujood hai — active month set.`,
+        staff: allStaff.filter((r) => r.month === m).length,
+        contract: allContract.filter((r) => r.month === m).length,
+        patch: { [STORAGE_KEYS.HR_META]: meta },
+      }
+    }
+
+    const employees = (
+      (() => {
+        try {
+          return JSON.parse(memoryStore.get(STORAGE_KEYS.EMPLOYEES) || '[]') as EmployeeProfile[]
+        } catch {
+          return INITIAL_EMPLOYEES
+        }
+      })() || INITIAL_EMPLOYEES
+    ).filter((e) => isGeneralWagesEmployee(e))
+
+    const days = daysInCalendarMonth(m)
+    const staffPeople = employees.filter((e) => {
+      const cat = inferEmployeeCategory(e)
+      return cat === 'Staff' || cat === 'Admin'
+    })
+    const contractPeople = employees.filter((e) => inferEmployeeCategory(e) === 'Contract')
+
+    const newStaff = staffPeople.map((emp, i) =>
+      payrollService.calculateStaffSalaryRow(
+        {
+          id: `st-${m}-${emp.id}`,
+          serialNo: i + 1,
+          employeeId: emp.id,
+          employeeName: emp.name,
+          designation: emp.designation,
+          salary: emp.salary,
+          attendanceDays: 0,
+          otHours: 0,
+          lessAdvance: 0,
+          chequeAmount: 0,
+          month: m,
+        },
+        days
+      )
+    )
+    const newContract = contractPeople.map((emp, i) =>
+      payrollService.calculateContractSalaryRow(
+        {
+          id: `ct-${m}-${emp.id}`,
+          serialNo: i + 1,
+          employeeId: emp.id,
+          employeeName: emp.name,
+          designation: emp.designation,
+          salary: emp.salary,
+          attendanceDays: 0,
+          otHours: 0,
+          lateHours: 0,
+          lateAmount: 0,
+          efficiencyAmount: 0,
+          advanceDeduction: 0,
+          ticketCharges: 0,
+          month: m,
+        },
+        days
+      )
+    )
+
+    if (newStaff.length === 0 && newContract.length === 0) {
+      return {
+        ok: false,
+        message: 'General Wages me koi Staff / Company Contract person nahi mila.',
+        staff: 0,
+        contract: 0,
+        patch: {},
+      }
+    }
+
+    let allEff: EfficiencyIncentiveRecord[] = []
+    try {
+      allEff = JSON.parse(memoryStore.get(STORAGE_KEYS.EFFICIENCY) || '[]')
+      if (!Array.isArray(allEff) || allEff.length === 0) allEff = INITIAL_EFFICIENCY_INCENTIVES
+    } catch {
+      allEff = INITIAL_EFFICIENCY_INCENTIVES
+    }
+
+    let nextEff = allEff
+    let newEffCount = 0
+    if (!allEff.some((r) => (r.month || '') === m)) {
+      const priorMonths = [
+        ...new Set(allEff.map((r) => r.month).filter(Boolean) as string[]),
+      ].sort()
+      const sourceMonth = priorMonths[priorMonths.length - 1] || '2026-08'
+      const template = allEff.filter((r) => r.month === sourceMonth)
+      const seeded = template.map((r, i) =>
+        payrollService.calculateEfficiencyRow({
+          id: `eff-${m}-${i + 1}`,
+          serialNo: i + 1,
+          employeeId: r.employeeId,
+          loom: r.loom,
+          name: r.name,
+          designation: r.designation,
+          efficiencyPercent: 0,
+          salaryEarned: r.salaryEarned || 0,
+          month: m,
+        })
+      )
+      nextEff = [...allEff, ...seeded]
+      newEffCount = seeded.length
+    }
+
+    const meta = {
+      categories: rawMeta.categories || [],
+      designations: rawMeta.designations || [],
+      activeSalariedMonth: m,
+      activeFortnightMonth: rawMeta.activeFortnightMonth,
+      activeFortnight: rawMeta.activeFortnight,
+    }
+
+    const patch: Record<string, unknown> = {
+      [STORAGE_KEYS.HR_META]: meta,
+    }
+    if (newStaff.length) patch[STORAGE_KEYS.STAFF] = [...allStaff, ...newStaff]
+    if (newContract.length) patch[STORAGE_KEYS.CONTRACT] = [...allContract, ...newContract]
+    if (newEffCount > 0) patch[STORAGE_KEYS.EFFICIENCY] = nextEff
+
+    return {
+      ok: true,
+      message: `${formatPayrollMonthLabel(m)}: ${newStaff.length} Staff + ${newContract.length} Contract + ${newEffCount} Efficiency — Postgres save. Refresh ke baad bhi rahega.`,
+      staff: newStaff.length,
+      contract: newContract.length,
+      patch,
+    }
+  } finally {
+    hydrated = prevHydrated
+    allowServerSheetWrite = prevAllow
+    memoryStore.clear()
+    for (const [k, v] of previous) memoryStore.set(k, v)
   }
 }
 
