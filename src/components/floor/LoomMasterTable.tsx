@@ -8,6 +8,7 @@ import {
   getLoomPictures,
   normalizeLoomPictures,
   orderQualitiesByLoomAllotment,
+  qualityDisplayName,
 } from '@/services/productionMastersService'
 import { LoomCategory } from '@/types/loom'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
@@ -56,10 +57,10 @@ export function LoomMasterTable({
   const [modelFilter, setModelFilter] = useState<'ALL' | LoomCategory>('ALL')
   const [tableEdit, setTableEdit] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const { isAdmin } = useAuth()
+  const { canEditProduction } = useAuth()
   const { showConfirm } = useAlertDialog()
-  const opsEdit = isAdmin && !readOnly && tableEdit && mode === 'table'
-  const masterEdit = isAdmin && !readOnly && tableEdit && mode === 'grid'
+  const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
+  const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
@@ -81,7 +82,7 @@ export function LoomMasterTable({
     [qualities, looms]
   )
 
-  const canManagePics = isAdmin && !readOnly
+  const canManagePics = canEditProduction && !readOnly
 
   const applyLoomPictures = (loom: LoomMaster, urls: string[]) => {
     const pics = normalizeLoomPictures({
@@ -92,7 +93,7 @@ export function LoomMasterTable({
   }
 
   const editToggle =
-    isAdmin && !readOnly ? (
+    canEditProduction && !readOnly ? (
       <button
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
@@ -104,8 +105,10 @@ export function LoomMasterTable({
       </button>
     ) : null
 
-  const qualityName = (qualityId: string | null) =>
-    qualities.find((q) => q.id === qualityId)?.name || '—'
+  const qualityName = (qualityId: string | null) => {
+    const q = qualities.find((item) => item.id === qualityId)
+    return q ? qualityDisplayName(q, qualities) : '—'
+  }
 
   const nextLoomNumber = useMemo(
     () => looms.reduce((m, l) => Math.max(m, l.loomNumber), 0) + 1,
@@ -154,7 +157,7 @@ export function LoomMasterTable({
             ))}
           </select>
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && isAdmin && (
+          {!readOnly && canEditProduction && (
             <button
               type="button"
               className="btn btn-sm btn-primary"
@@ -279,7 +282,7 @@ export function LoomMasterTable({
                     <option value="">—</option>
                     {orderedQualities.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.name}
+                        {qualityDisplayName(q, qualities)}
                       </option>
                     ))}
                   </select>
@@ -418,7 +421,7 @@ export function LoomMasterTable({
                         <option value="">—</option>
                         {orderedQualities.map((q) => (
                           <option key={q.id} value={q.id}>
-                            {q.name}
+                            {qualityDisplayName(q, qualities)}
                           </option>
                         ))}
                       </select>

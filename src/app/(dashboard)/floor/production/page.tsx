@@ -293,6 +293,8 @@ function ProductionWorkspaceContent() {
           readOnly={!canEditProduction}
           entries={entries}
           looms={looms}
+          beams={beams}
+          yarn={yarn}
           statusFilter={qualityStatusFilter}
           onStatusFilterChange={setQualityStatusFilter}
           endDateDefault={selectedDate}

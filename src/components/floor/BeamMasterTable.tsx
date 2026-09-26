@@ -202,7 +202,7 @@ export function BeamMasterTable({
   filter: filterProp,
   onFilterChange,
 }: BeamMasterTableProps) {
-  const { isAdmin } = useAuth()
+  const { canEditProduction } = useAuth()
   const { showError, showConfirm } = useAlertDialog()
   const [filterInternal, setFilterInternal] = useState<BeamFilterType>('ALL')
   const filter = filterProp ?? filterInternal
@@ -234,8 +234,8 @@ export function BeamMasterTable({
     return beams
   }, [beams, filter])
 
-  const opsEdit = isAdmin && !readOnly && tableEdit && mode === 'table'
-  const masterEdit = isAdmin && !readOnly && tableEdit && mode === 'grid'
+  const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
+  const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
 
   const patchBeam = (b: BeamMaster, patch: Partial<BeamMaster>) => {
@@ -249,7 +249,7 @@ export function BeamMasterTable({
   }
 
   const editToggle =
-    isAdmin && !readOnly ? (
+    canEditProduction && !readOnly ? (
       <button
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
@@ -310,7 +310,7 @@ export function BeamMasterTable({
         className="form-select form-select-sm"
         style={{ width: '100%', minWidth: 0 }}
         value={currentValue}
-        disabled={readOnly || !isAdmin || !enabled}
+        disabled={readOnly || !canEditProduction || !enabled}
         onChange={(e) => handleLocationChange(b, e.target.value)}
       >
         <option value="STORE">In Stock (Store)</option>
@@ -340,7 +340,7 @@ export function BeamMasterTable({
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto justify-content-end">
           {editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && isAdmin && (
+          {!readOnly && canEditProduction && (
             <button
               type="button"
               className="btn btn-sm btn-primary"

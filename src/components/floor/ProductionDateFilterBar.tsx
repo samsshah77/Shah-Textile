@@ -137,7 +137,7 @@ export function ProductionDateFilterBar({
                 className={cn(smBtn, selectedMonth === productionMonth ? 'btn-dark' : 'btn-outline-secondary')}
                 onClick={() => {
                   setSelectedMonth(productionMonth)
-                  if (!selectedDate.startsWith(productionMonth)) setSelectedDate(productionYesterday)
+                  if (!selectedDate.startsWith(productionMonth)) setSelectedDate(productionToday)
                 }}
               >
                 {formatProductionMonthLabel(productionMonth)}

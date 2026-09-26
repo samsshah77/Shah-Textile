@@ -5,7 +5,12 @@ import Link from 'next/link'
 import {
   QualityMaster,
   LoomMaster,
+  BeamMaster,
+  YarnMaster,
   orderQualitiesByLoomAllotment,
+  qualityNameKey,
+  qualityDisplayName,
+  loomsAllottedToQuality,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -18,7 +23,8 @@ import { useAlertDialog } from '@/context/AlertDialogContext'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   sr: 46,
-  name: 135,
+  loom: 110,
+  name: 150,
   type: 115,
   warp: 110,
   weft: 110,
@@ -86,6 +92,8 @@ interface QualityMasterTableProps {
   readOnly?: boolean
   entries?: DailyLoomProductionEntry[]
   looms?: LoomMaster[]
+  beams?: BeamMaster[]
+  yarn?: YarnMaster[]
   statusFilter?: QualityStatusFilter
   onStatusFilterChange?: (f: QualityStatusFilter) => void
   endDateDefault?: string
@@ -99,10 +107,12 @@ export function QualityMasterTable({
   readOnly,
   entries = [],
   looms = [],
+  beams = [],
+  yarn = [],
   statusFilter = 'ACTIVE',
   endDateDefault = PRODUCTION_TODAY,
 }: QualityMasterTableProps) {
-  const { isAdmin } = useAuth()
+  const { canEditProduction } = useAuth()
   const { showConfirm } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEdit, setTableEdit] = useState(false)
@@ -112,8 +122,8 @@ export function QualityMasterTable({
   const [addForm, setAddForm] = useState({
     name: '',
     fabricType: 'Suiting',
-    warpYarn: '20/1-Pv-China',
-    weftYarn: '20/1-Pv-China',
+    warpYarn: '',
+    weftYarn: '',
     reed: 120,
     pick: 60,
     widthInch: 66,
@@ -139,18 +149,52 @@ export function QualityMasterTable({
   }, [qualities, looms, entries, isEndedView])
 
   // Calculate production meters for each quality from production sheet entries
+  const warpOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const b of beams) {
+      const warp = (b.warp || '').trim()
+      if (warp) set.add(warp)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [beams])
+
+  const weftOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const y of yarn) {
+      const name = (y.yarnType || '').trim()
+      if (name) set.add(name)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [yarn])
+
+  const loomLabels = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const q of qualities) {
+      const nums = loomsAllottedToQuality(q, looms, qualities, entries)
+      map[q.id] = nums.length ? nums.map((n) => `L#${n}`).join(', ') : '—'
+    }
+    return map
+  }, [qualities, looms, entries])
+
   const productionByQuality = useMemo(() => {
     const stats: Record<string, number> = {}
-    const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const nameCounts = new Map<string, number>()
+    for (const q of qualities) {
+      const key = qualityNameKey(q.name)
+      nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
+    }
 
     for (const q of qualities) {
-      const qClean = clean(q.name)
+      const qClean = qualityNameKey(q.name)
+      const sharedName = (nameCounts.get(qClean) || 0) > 1
       const matching = (entries || []).filter((e) => {
-        const eClean = clean(e.qualityName)
-        return (
+        const eClean = qualityNameKey(e.qualityName)
+        const nameHit =
           eClean === qClean ||
           (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
-        )
+        if (!nameHit) return false
+        if (sharedName) return Number(e.pick) === Number(q.pick)
+        return true
       })
       const total = matching.reduce(
         (s, e) => s + (e.totalMeters ?? (e.shiftAMeters || 0) + (e.shiftBMeters || 0)),
@@ -166,8 +210,8 @@ export function QualityMasterTable({
     [widths]
   )
 
-  const opsEdit = isAdmin && !readOnly && !isEndedView && tableEdit && mode === 'table'
-  const masterEdit = isAdmin && !readOnly && !isEndedView && tableEdit && mode === 'grid'
+  const opsEdit = canEditProduction && !readOnly && !isEndedView && tableEdit && mode === 'table'
+  const masterEdit = canEditProduction && !readOnly && !isEndedView && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
 
   const cardTitle =
@@ -202,7 +246,7 @@ export function QualityMasterTable({
   }
 
   const editToggle =
-    isAdmin && !readOnly && !isEndedView ? (
+    canEditProduction && !readOnly && !isEndedView ? (
       <button
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
@@ -234,8 +278,8 @@ export function QualityMasterTable({
     onAdd({
       name: addForm.name.trim(),
       fabricType: addForm.fabricType.trim() || 'Suiting',
-      warpYarn: addForm.warpYarn.trim() || '20/1',
-      weftYarn: addForm.weftYarn.trim() || '20/1',
+      warpYarn: addForm.warpYarn.trim(),
+      weftYarn: addForm.weftYarn.trim(),
       reed: Number(addForm.reed) || 0,
       pick: Number(addForm.pick) || 0,
       widthInch: Number(addForm.widthInch) || 0,
@@ -245,8 +289,8 @@ export function QualityMasterTable({
     setAddForm({
       name: '',
       fabricType: 'Suiting',
-      warpYarn: '20/1-Pv-China',
-      weftYarn: '20/1-Pv-China',
+      warpYarn: '',
+      weftYarn: '',
       reed: 120,
       pick: 60,
       widthInch: 66,
@@ -273,7 +317,7 @@ export function QualityMasterTable({
               Reset columns
             </button>
           )}
-          {!readOnly && isAdmin && !isEndedView && (
+          {!readOnly && canEditProduction && !isEndedView && (
             <button
               type="button"
               className="btn btn-sm btn-primary"
@@ -289,7 +333,7 @@ export function QualityMasterTable({
         <div className="master-grid">
           {displayedQualities.map((q, rowIdx) => {
             const prod = productionByQuality[q.id] || 0
-            const showEndBtn = isAdmin && !readOnly && !isEndedView
+            const showEndBtn = canEditProduction && !readOnly && !isEndedView
 
             return (
               <div
@@ -301,7 +345,10 @@ export function QualityMasterTable({
                     <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: '0.74rem' }}>
                       #{rowIdx + 1}
                     </span>
-                    {!masterEdit && <span>{q.name}</span>}
+                    <span className="badge bg-primary-subtle text-primary" style={{ fontSize: '0.74rem' }}>
+                      {loomLabels[q.id]}
+                    </span>
+                    {!masterEdit && <span>{qualityDisplayName(q, qualities)}</span>}
                   </div>
                   {masterEdit && (
                     <button
@@ -355,6 +402,7 @@ export function QualityMasterTable({
                     {masterEdit ? (
                       <TextCellInput
                         className="form-control form-control-sm"
+                        list="quality-warp-stock"
                         value={q.warpYarn || ''}
                         navRow={rowIdx}
                         navCol={2}
@@ -369,6 +417,7 @@ export function QualityMasterTable({
                     {masterEdit ? (
                       <TextCellInput
                         className="form-control form-control-sm"
+                        list="quality-weft-stock"
                         value={q.weftYarn || ''}
                         navRow={rowIdx}
                         navCol={3}
@@ -467,7 +516,7 @@ export function QualityMasterTable({
 
                 {isEndedView && (
                   <div className="d-flex flex-column gap-2 mt-2">
-                    {!readOnly && isAdmin && (
+                    {!readOnly && canEditProduction && (
                       <button
                         type="button"
                         className="btn btn-sm btn-success"
@@ -510,6 +559,9 @@ export function QualityMasterTable({
               <tr>
                 <ResizableTh columnKey="sr" width={widths.sr} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center">
                   #
+                </ResizableTh>
+                <ResizableTh columnKey="loom" width={widths.loom} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  L#
                 </ResizableTh>
                 <ResizableTh columnKey="name" width={widths.name} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Quality Name
@@ -561,17 +613,48 @@ export function QualityMasterTable({
                     <td className="px-1 text-center text-muted fw-semibold font-monospace" style={{ fontSize: '0.8rem' }}>
                       {rowIdx + 1}
                     </td>
+                    <td className="px-2 small fw-semibold text-truncate" title={loomLabels[q.id]}>
+                      {loomLabels[q.id]}
+                    </td>
                     <td className="px-2">
-                      <span className="fw-semibold">{q.name}</span>
+                      <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>
                     </td>
                     <td className="px-2 text-truncate">
                       <span className="text-secondary">{q.fabricType || '—'}</span>
                     </td>
-                    <td className="px-2 text-truncate">
-                      <span className="text-secondary">{q.warpYarn || '—'}</span>
+                    <td className="px-1">
+                      {opsEdit ? (
+                        <TextCellInput
+                          className="form-control form-control-sm"
+                          style={{ width: '100%', minWidth: 0 }}
+                          list="quality-warp-stock"
+                          value={q.warpYarn || ''}
+                          navRow={rowIdx}
+                          navCol={2}
+                          onValueChange={(v) => onUpdate(q.id, { warpYarn: v })}
+                        />
+                      ) : (
+                        <span className="text-secondary text-truncate d-inline-block" style={{ maxWidth: '100%' }}>
+                          {q.warpYarn || '—'}
+                        </span>
+                      )}
                     </td>
-                    <td className="px-2 text-truncate">
-                      <span className="text-secondary">{q.weftYarn || '—'}</span>
+                    <td className="px-1">
+                      {opsEdit ? (
+                        <TextCellInput
+                          className="form-control form-control-sm"
+                          style={{ width: '100%', minWidth: 0 }}
+                          list="quality-weft-stock"
+                          value={q.weftYarn || ''}
+                          navRow={rowIdx}
+                          navCol={3}
+                          onValueChange={(v) => onUpdate(q.id, { weftYarn: v })}
+                        />
+                      ) : (
+                        <span className="text-secondary text-truncate d-inline-block" style={{ maxWidth: '100%' }}>
+                          {q.weftYarn || '—'}
+                        </span>
+                      )}
                     </td>
                     <td className="px-1">
                       {opsEdit ? (
@@ -640,7 +723,7 @@ export function QualityMasterTable({
                       <td className="px-2 small">{formatShortDate(q.endedOn)}</td>
                     )}
                     <td className="px-1 text-center">
-                      {isAdmin && !readOnly && !isEndedView && (
+                      {canEditProduction && !readOnly && !isEndedView && (
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-danger py-0 px-1"
@@ -653,7 +736,7 @@ export function QualityMasterTable({
                       )}
                       {isEndedView && (
                         <div className="d-flex flex-column gap-1 align-items-stretch">
-                          {!readOnly && isAdmin && (
+                          {!readOnly && canEditProduction && (
                             <button
                               type="button"
                               className="btn btn-sm btn-success py-0"
@@ -672,7 +755,7 @@ export function QualityMasterTable({
                           </Link>
                         </div>
                       )}
-                      {!isEndedView && (readOnly || !isAdmin) && (
+                      {!isEndedView && (readOnly || !canEditProduction) && (
                         <span className="text-muted small">—</span>
                       )}
                     </td>
@@ -749,8 +832,9 @@ export function QualityMasterTable({
                       <label className="form-label small fw-semibold mb-1">Warp Yarn</label>
                       <input
                         type="text"
+                        list="quality-warp-stock"
                         className="form-control form-control-sm"
-                        placeholder="e.g. 20/1-Pv-China"
+                        placeholder="Beam stock se warp likho"
                         value={addForm.warpYarn}
                         onChange={(e) => setAddForm({ ...addForm, warpYarn: e.target.value })}
                       />
@@ -760,8 +844,9 @@ export function QualityMasterTable({
                       <label className="form-label small fw-semibold mb-1">Weft Yarn</label>
                       <input
                         type="text"
+                        list="quality-weft-stock"
                         className="form-control form-control-sm"
-                        placeholder="e.g. 20/1-Pv-China"
+                        placeholder="Yarn stock se weft likho"
                         value={addForm.weftYarn}
                         onChange={(e) => setAddForm({ ...addForm, weftYarn: e.target.value })}
                       />
@@ -820,6 +905,16 @@ export function QualityMasterTable({
           </div>
         </div>
       )}
+      <datalist id="quality-warp-stock">
+        {warpOptions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <datalist id="quality-weft-stock">
+        {weftOptions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
     </div>
   )
 }

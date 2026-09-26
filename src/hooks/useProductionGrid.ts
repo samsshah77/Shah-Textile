@@ -13,7 +13,6 @@ import {
 } from '@/services/productionMastersService'
 import {
   getProductionToday,
-  getProductionYesterday,
   getProductionTodayMonth,
 } from '@/constants/productionCalendar'
 import { useAlertDialog } from '@/context/AlertDialogContext'
@@ -28,7 +27,7 @@ export function useProductionGrid() {
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionYesterday())
+  const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionToday())
   const [selectedMonth, setSelectedMonth] = useState<string>(() => getProductionTodayMonth())
   const [todaySheetReady, setTodaySheetReady] = useState(false)
 
@@ -300,7 +299,7 @@ export function useProductionGrid() {
 
   const updateQuality = useCallback(
     (id: string, patch: Partial<QualityMaster>) => {
-      setQualities(productionMastersService.updateQuality(id, patch))
+      setQualities(productionMastersService.updateQuality(id, patch, selectedDate))
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
     [selectedDate]

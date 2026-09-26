@@ -6,7 +6,13 @@ import {
 } from '@/types/production'
 import { INITIAL_34_LOOMS_CONFIG } from '@/constants/looms-init'
 import { getExcelBeamStock, getExcelWeftStock, getExcelDailyLoomsForDate } from '@/data/productionData'
-import { PRODUCTION_TODAY, PRODUCTION_TODAY_MONTH, PRODUCTION_YESTERDAY } from '@/constants/productionCalendar'
+import {
+  PRODUCTION_START,
+  PRODUCTION_TODAY,
+  PRODUCTION_TODAY_MONTH,
+  PRODUCTION_YESTERDAY,
+  getProductionToday,
+} from '@/constants/productionCalendar'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 
 /** 1 kg = 2.2046 lbs → kg = lbs / 2.2046 */
@@ -99,6 +105,13 @@ export interface YarnMaster {
   balanceLbs: number
 }
 
+/** Warp/weft recipe from this date onward. Earlier days keep the previous recipe. */
+export interface QualityYarnChange {
+  from: string
+  warpYarn: string
+  weftYarn: string
+}
+
 export interface QualityMaster {
   id: string
   name: string
@@ -112,34 +125,157 @@ export interface QualityMaster {
   status?: 'ACTIVE' | 'ENDED'
   /** YYYY-MM-DD when quality was ended */
   endedOn?: string | null
+  /** Mid-run warp/weft changes. Each row applies from `from` until the next one. */
+  yarnHistory?: QualityYarnChange[]
 }
 
 function normalizeQuality(q: QualityMaster): QualityMaster {
   const status = q.status === 'ENDED' ? 'ENDED' : 'ACTIVE'
+  const yarnHistory = Array.isArray(q.yarnHistory)
+    ? q.yarnHistory
+        .filter((h) => h && h.from)
+        .map((h) => ({
+          from: h.from,
+          warpYarn: h.warpYarn || '',
+          weftYarn: h.weftYarn || '',
+        }))
+        .sort((a, b) => a.from.localeCompare(b.from))
+    : undefined
   return {
     ...q,
     status,
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
+    yarnHistory,
   }
 }
 
-/** Order quality master rows to match loom allotment (Loom 1 → N first appearance). */
+/** Recipe in force on a production day. History wins; otherwise the current quality yarn. */
+export function yarnRecipeForDate(
+  quality: QualityMaster | null | undefined,
+  dateStr: string
+): { warpYarn: string; weftYarn: string } | null {
+  if (!quality) return null
+  let hit: QualityYarnChange | null = null
+  for (const h of quality.yarnHistory || []) {
+    if (h.from <= dateStr && (!hit || h.from >= hit.from)) hit = h
+  }
+  if (hit) return { warpYarn: hit.warpYarn, weftYarn: hit.weftYarn }
+  return { warpYarn: quality.warpYarn || '', weftYarn: quality.weftYarn || '' }
+}
+
+/** Keep the old warp/weft for days before `fromDate`, and the new pair from that day on. */
+function applyMidRunYarnChange(
+  q: QualityMaster,
+  patch: Partial<QualityMaster>,
+  fromDate: string
+): QualityMaster {
+  const nextWarp = patch.warpYarn !== undefined ? patch.warpYarn : q.warpYarn
+  const nextWeft = patch.weftYarn !== undefined ? patch.weftYarn : q.weftYarn
+  const yarnTouched = patch.warpYarn !== undefined || patch.weftYarn !== undefined
+  const yarnChanged =
+    yarnTouched && ((nextWarp || '') !== (q.warpYarn || '') || (nextWeft || '') !== (q.weftYarn || ''))
+  let yarnHistory = q.yarnHistory
+  if (yarnChanged) {
+    const prior = [...(q.yarnHistory || [])]
+    if (prior.length === 0) {
+      prior.push({
+        from: PRODUCTION_START,
+        warpYarn: q.warpYarn || '',
+        weftYarn: q.weftYarn || '',
+      })
+    }
+    const kept = prior.filter((h) => h.from < fromDate)
+    kept.push({ from: fromDate, warpYarn: nextWarp || '', weftYarn: nextWeft || '' })
+    kept.sort((a, b) => a.from.localeCompare(b.from))
+    yarnHistory = kept
+  }
+  return {
+    ...q,
+    ...patch,
+    warpYarn: nextWarp,
+    weftYarn: nextWeft,
+    yarnHistory,
+    gsm: patch.gsm !== undefined ? Number(Number(patch.gsm).toFixed(2)) : q.gsm,
+  }
+}
+
+/** Same group order as the Production Sheet: G6200, then PU, then G6300, then loom number. */
+const SHEET_MODEL_RANK: Record<string, number> = { G6200: 0, PU: 1, G6300: 2 }
+
+export function compareLoomsLikeProductionSheet(
+  a: { loomNumber: number; category?: string; model?: string },
+  b: { loomNumber: number; category?: string; model?: string }
+) {
+  const ra = SHEET_MODEL_RANK[a.category || a.model || 'G6200'] ?? 0
+  const rb = SHEET_MODEL_RANK[b.category || b.model || 'G6200'] ?? 0
+  if (ra !== rb) return ra - rb
+  return a.loomNumber - b.loomNumber
+}
+
+export function qualityNameKey(name: string) {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** Same quality name is allowed when pick differs. */
+export function qualityHasDuplicateName(q: QualityMaster, qualities: QualityMaster[]) {
+  const key = qualityNameKey(q.name)
+  if (!key) return false
+  return qualities.filter((item) => qualityNameKey(item.name) === key).length > 1
+}
+
+export function qualityDisplayName(q: QualityMaster, qualities: QualityMaster[]) {
+  return qualityHasDuplicateName(q, qualities) ? `${q.name} (Pick ${q.pick})` : q.name
+}
+
+function matchQualityByNameAndPick(
+  qualities: QualityMaster[],
+  name: string,
+  pick?: number
+): QualityMaster | undefined {
+  const named = qualities.filter((item) => qualityNameKey(item.name) === qualityNameKey(name))
+  if (named.length === 0) return undefined
+  if (named.length === 1) return named[0]
+  if (pick != null) return named.find((item) => Number(item.pick) === Number(pick))
+  return undefined
+}
+
+/** Loom numbers running this quality, in production-sheet order. Same name + different pick stay separate. */
+export function loomsAllottedToQuality(
+  q: QualityMaster,
+  looms: LoomMaster[],
+  qualities: QualityMaster[],
+  entries?: { loomNumber: number; qualityName: string; pick?: number }[]
+): number[] {
+  const byId = looms.filter((l) => l.qualityId === q.id)
+  const fromMaster = byId.length
+    ? byId
+    : (entries || [])
+        .filter((e) => matchQualityByNameAndPick(qualities, e.qualityName, e.pick)?.id === q.id)
+        .map((e) => looms.find((l) => l.loomNumber === e.loomNumber))
+        .filter((l): l is LoomMaster => Boolean(l))
+  const unique = new Map<number, LoomMaster>()
+  for (const loom of fromMaster) unique.set(loom.loomNumber, loom)
+  return [...unique.values()]
+    .sort(compareLoomsLikeProductionSheet)
+    .map((l) => l.loomNumber)
+}
+
+/** Order quality master rows to match the Production Sheet (model groups, then loom number). */
 export function orderQualitiesByLoomAllotment(
   qualities: QualityMaster[],
   looms: LoomMaster[],
-  entries?: { loomNumber: number; qualityName: string }[]
+  entries?: { loomNumber: number; qualityName: string; pick?: number }[]
 ): QualityMaster[] {
-  const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
   const ordered: QualityMaster[] = []
   const seen = new Set<string>()
-  const sortedLooms = [...looms].sort((a, b) => a.loomNumber - b.loomNumber)
+  const sortedLooms = [...looms].sort(compareLoomsLikeProductionSheet)
 
   for (const l of sortedLooms) {
     let q = l.qualityId ? qualities.find((item) => item.id === l.qualityId) : undefined
     if (!q && entries?.length) {
       const entry = entries.find((e) => e.loomNumber === l.loomNumber)
       if (entry?.qualityName) {
-        q = qualities.find((item) => clean(item.name) === clean(entry.qualityName))
+        q = matchQualityByNameAndPick(qualities, entry.qualityName, entry.pick)
       }
     }
     if (q && !seen.has(q.id)) {
@@ -149,8 +285,14 @@ export function orderQualitiesByLoomAllotment(
   }
 
   if (entries?.length) {
-    for (const e of [...entries].sort((a, b) => a.loomNumber - b.loomNumber)) {
-      const q = qualities.find((item) => clean(item.name) === clean(e.qualityName))
+    const entryLooms = [...entries].sort((a, b) => {
+      const la = looms.find((l) => l.loomNumber === a.loomNumber)
+      const lb = looms.find((l) => l.loomNumber === b.loomNumber)
+      if (la && lb) return compareLoomsLikeProductionSheet(la, lb)
+      return a.loomNumber - b.loomNumber
+    })
+    for (const e of entryLooms) {
+      const q = matchQualityByNameAndPick(qualities, e.qualityName, e.pick)
       if (q && !seen.has(q.id)) {
         seen.add(q.id)
         ordered.push(q)
@@ -997,7 +1139,7 @@ class ProductionMastersService {
       this.saveQualities(orderQualitiesByLoomAllotment(this.getQualities(), looms))
     }
 
-    // Loom condition → today's Production Sheet (row color via status + remarks)
+    // Loom condition → Daily Entry from this date forward (each saved day, and any later day opened)
     if (patch.status) {
       const label = LOOM_STATUS_LABEL[patch.status] || patch.status
       const sheetPatch: Partial<DailyLoomProductionEntry> = {
@@ -1011,7 +1153,16 @@ class ProductionMastersService {
         this.flagBeamEndFromLoom(loomNumber, dateStr)
         this.reconcileBeamEndsWithLooms(dateStr)
       }
-      this.updateSheetEntry(dateStr, loomNumber, sheetPatch)
+      const today = getProductionToday()
+      const dates = new Set<string>([dateStr])
+      for (const d of listPersistedSheetDates()) {
+        if (d >= dateStr && d <= today) dates.add(d)
+      }
+      for (const d of [...dates].sort()) {
+        const dayPatch =
+          d === dateStr ? sheetPatch : { status: sheetPatch.status, remarks: sheetPatch.remarks }
+        this.updateSheetEntry(d, loomNumber, dayPatch)
+      }
     }
 
     return looms
@@ -1475,14 +1626,14 @@ class ProductionMastersService {
     saveJson(KEY_QUALITY, qualities)
   }
 
-  updateQuality(id: string, patch: Partial<QualityMaster>): QualityMaster[] {
+  updateQuality(
+    id: string,
+    patch: Partial<QualityMaster>,
+    fromDate: string = getProductionToday()
+  ): QualityMaster[] {
     const qualities = this.getQualities().map((q) => {
       if (q.id !== id) return q
-      return normalizeQuality({
-        ...q,
-        ...patch,
-        gsm: patch.gsm !== undefined ? Number(Number(patch.gsm).toFixed(2)) : q.gsm,
-      })
+      return normalizeQuality(applyMidRunYarnChange(q, patch, fromDate))
     })
     this.saveQualities(qualities)
     return qualities
@@ -1495,8 +1646,8 @@ class ProductionMastersService {
         id: `q-${Date.now()}`,
         name: partial?.name || 'New Quality',
         fabricType: partial?.fabricType || 'Suiting',
-        warpYarn: partial?.warpYarn || '20/1',
-        weftYarn: partial?.weftYarn || '20/1',
+        warpYarn: partial?.warpYarn != null ? partial.warpYarn : '20/1',
+        weftYarn: partial?.weftYarn != null ? partial.weftYarn : '20/1',
         reed: partial?.reed ?? 120,
         pick: partial?.pick ?? 60,
         widthInch: partial?.widthInch ?? 66,
@@ -1601,11 +1752,26 @@ class ProductionMastersService {
       const pick = quality?.pick || loomIss?.pick || 60
       const reed = quality?.reed || beam?.reed || 60
       const rpm = loom.defaultRpm
-      const remarks =
-        prev?.remarks ||
-        (loom.status && loom.status !== 'RUNNING' ? LOOM_STATUS_LABEL[loom.status] || '' : '')
-      // Prefer sheet remarks for the day's condition (historical sheets stay accurate)
-      const status = resolveLoomCondition(loom.status, remarks)
+      const masterStatus = (loom.status || 'RUNNING') as LoomStatus
+      const since = loom.statusSince || null
+      const masterApplies = since ? dateStr >= since : masterStatus !== 'RUNNING'
+      const masterLabel =
+        masterStatus === 'RUNNING' ? '' : LOOM_STATUS_LABEL[masterStatus] || masterStatus
+      const prevRemarks = prev?.remarks || ''
+      const prevIsStatusLabel =
+        !prevRemarks.trim() ||
+        (Object.values(LOOM_STATUS_LABEL) as string[]).some(
+          (label) => label.toLowerCase() === prevRemarks.trim().toLowerCase()
+        )
+      // From statusSince onward the Looms table is the source; earlier days keep their own remarks
+      const remarks = masterApplies
+        ? prevIsStatusLabel
+          ? masterLabel
+          : prevRemarks
+        : prevRemarks
+      const status = masterApplies
+        ? masterStatus
+        : resolveLoomCondition(prev?.status, prevRemarks)
 
       const rollerHours =
         prev?.rollerHours != null
@@ -1623,6 +1789,7 @@ class ProductionMastersService {
         shiftAMeters: shiftA,
         shiftBMeters: shiftB,
       })
+      const yarnRecipe = yarnRecipeForDate(quality, dateStr)
 
       return {
         id: `PROD-${dateStr}-${loom.loomNumber}`,
@@ -1632,8 +1799,8 @@ class ProductionMastersService {
         model: loom.model,
         qualityName: quality?.name || '—',
         fabricType: quality?.fabricType || '',
-        warpYarn: quality?.warpYarn || beam?.warp || '',
-        weftYarn: quality?.weftYarn || weft?.yarnType || '',
+        warpYarn: (yarnRecipe?.warpYarn || beam?.warp || ''),
+        weftYarn: (yarnRecipe?.weftYarn || weft?.yarnType || ''),
         rpm,
         reed,
         pick,
@@ -1656,6 +1823,7 @@ class ProductionMastersService {
       } satisfies DailyLoomProductionEntry
     })
 
+    entries.sort((a, b) => a.loomNumber - b.loomNumber)
     if (opts?.persist || hadPersisted) {
       saveJson(this.sheetKey(dateStr), entries)
     }

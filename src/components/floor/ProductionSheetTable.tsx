@@ -34,7 +34,8 @@ function formatSheetDate(dateStr: string) {
 }
 
 /** Excel Production sheet order: G6200 (1–20) → G6300 (27–34) → PU (21–26) */
-const MODEL_ORDER: LoomCategory[] = ['G6200', 'G6300', 'PU']
+/** Groups follow loom numbers: 1–20 G6200, 21–26 PU, 27–34 G6300. */
+const MODEL_ORDER: LoomCategory[] = ['G6200', 'PU', 'G6300']
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   loom: 72,

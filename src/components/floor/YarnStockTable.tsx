@@ -101,7 +101,7 @@ export function YarnStockTable({
   setDateFilterMode,
   onDelete,
 }: YarnStockTableProps) {
-  const { isAdmin } = useAuth()
+  const { canEditProduction } = useAuth()
   const { showConfirm } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [activeView, setActiveView] = useState<YarnViewMode>('STOCK')
@@ -208,8 +208,8 @@ export function YarnStockTable({
     })
   }, [allMovements, movementTypeFilter, ledgerLoomFilter, dateRange])
 
-  const opsEdit = isAdmin && !readOnly && tableEdit && mode === 'table'
-  const masterEdit = isAdmin && !readOnly && tableEdit && mode === 'grid'
+  const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
+  const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
 
   const handleDeleteYarn = (y: YarnMaster) => {
@@ -267,7 +267,7 @@ export function YarnStockTable({
   }
 
   const stockEditToggle =
-    activeView === 'STOCK' && isAdmin && !readOnly ? (
+    activeView === 'STOCK' && canEditProduction && !readOnly ? (
       <button
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
@@ -436,7 +436,7 @@ export function YarnStockTable({
             {stockEditToggle}
             {activeView === 'STOCK' && <ViewModeToggle mode={mode} onChange={setMode} />}
 
-            {!readOnly && isAdmin && (
+            {!readOnly && canEditProduction && (
               <button
                 type="button"
                 className="btn btn-sm btn-primary"
