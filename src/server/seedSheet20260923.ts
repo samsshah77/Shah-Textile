@@ -244,6 +244,7 @@ export async function seedSheet20260923(): Promise<SeedSheetResult> {
       pick: r.pick,
       shiftAMeters: r.shiftA,
       shiftBMeters: r.shiftB,
+      loomNumber: r.loomNumber,
     })
     return {
       id: `PROD-${DATE}-${r.loomNumber}`,
@@ -287,6 +288,7 @@ export async function seedSheet20260923(): Promise<SeedSheetResult> {
       runningHours: 0,
       pick: e.pick,
       shiftAMeters: 0,
+      loomNumber: e.loomNumber,
       shiftBMeters: 0,
     })
     return {

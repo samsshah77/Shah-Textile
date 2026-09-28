@@ -18,11 +18,22 @@ import type { MonthlyMatrixDay } from '@/types/production'
 
 const MONTH_OPTIONS = [{ value: '2026-09', label: 'September 2026' }]
 
+type TrackView = 'meters' | 'shifts' | 'efficiency' | 'active'
+
+function readTrackView(raw: string | null): TrackView {
+  if (raw === 'shifts' || raw === 'efficiency' || raw === 'active') return raw
+  return 'meters'
+}
+
 type MatrixState = {
   days: MonthlyMatrixDay[]
   loomTotals: Record<number, number>
   grandTotalMeters: number
   avgPerDay: number
+  loomActual: Record<number, number>
+  loomTarget: Record<number, number>
+  dayActual: number[]
+  dayTarget: number[]
 }
 
 const EMPTY_MATRIX: MatrixState = {
@@ -30,6 +41,10 @@ const EMPTY_MATRIX: MatrixState = {
   loomTotals: {},
   grandTotalMeters: 0,
   avgPerDay: 0,
+  loomActual: {},
+  loomTarget: {},
+  dayActual: [],
+  dayTarget: [],
 }
 
 function cleanQualityName(s: string) {
@@ -66,9 +81,11 @@ function ProductionTotalTrackingContent() {
   const searchParams = useSearchParams()
   const qualityId = searchParams.get('quality')
   const qualityNameParam = searchParams.get('name')
+  const view = readTrackView(searchParams.get('view'))
 
   const [month, setMonth] = useState(PRODUCTION_TODAY_MONTH)
   const [matrix, setMatrix] = useState<MatrixState>(EMPTY_MATRIX)
+  const [shiftBMatrix, setShiftBMatrix] = useState<MatrixState>(EMPTY_MATRIX)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -77,12 +94,16 @@ function ProductionTotalTrackingContent() {
       setLoading(true)
       try {
         await hydrateFloorFromDb()
+        const primary =
+          view === 'shifts' ? 'shiftA' : view === 'efficiency' ? 'efficiency' : view === 'active' ? 'active' : 'meters'
         if (!cancelled) {
-          setMatrix(productionMastersService.buildMonthlyMatrix(month))
+          setMatrix(productionMastersService.buildMonthlyMatrix(month, primary))
+          if (view === 'shifts') setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB'))
         }
         await preloadMonthSheets(month)
         if (!cancelled) {
-          setMatrix(productionMastersService.buildMonthlyMatrix(month))
+          setMatrix(productionMastersService.buildMonthlyMatrix(month, primary))
+          if (view === 'shifts') setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB'))
         }
       } catch (err) {
         console.error('[total tracking] load failed', err)
@@ -94,7 +115,7 @@ function ProductionTotalTrackingContent() {
     return () => {
       cancelled = true
     }
-  }, [month])
+  }, [month, view])
 
   const qualityFocus = useMemo(() => {
     if (!qualityId && !qualityNameParam) return null
@@ -174,11 +195,27 @@ function ProductionTotalTrackingContent() {
   }, [matrix, qualityLoomSet])
 
   const mid = Math.ceil(matrix.days.length / 2) || 1
-  const fortnight1 = matrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
-  const fortnight2 = matrix.days.slice(mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
+  const weightedSlice = (from: number, to: number, source: MatrixState = matrix) => {
+    const actual = source.dayActual.slice(from, to).reduce((s, n) => s + n, 0)
+    const target = source.dayTarget.slice(from, to).reduce((s, n) => s + n, 0)
+    return target > 0 ? Math.round((actual / target) * 100) : 0
+  }
+  const fortnight1 =
+    view === 'efficiency'
+      ? weightedSlice(0, mid)
+      : matrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
+  const fortnight2 =
+    view === 'efficiency'
+      ? weightedSlice(mid, matrix.days.length)
+      : matrix.days.slice(mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
 
-  const loomFortnight = (loom: number, half: 1 | 2) => {
-    const slice = half === 1 ? matrix.days.slice(0, mid) : matrix.days.slice(mid)
+  const loomFortnight = (loom: number, half: 1 | 2, source: MatrixState = matrix) => {
+    const slice = half === 1 ? source.days.slice(0, mid) : source.days.slice(mid)
+    if (view === 'efficiency') {
+      const actual = slice.reduce((s, d) => s + (Number(d.loomActual?.[loom]) || 0), 0)
+      const target = slice.reduce((s, d) => s + (Number(d.loomTarget?.[loom]) || 0), 0)
+      return target > 0 ? Math.round((actual / target) * 100) : 0
+    }
     return slice.reduce((s, d) => s + (Number(d.loomMeters?.[loom]) || 0), 0)
   }
 
@@ -194,8 +231,22 @@ function ProductionTotalTrackingContent() {
   const cellText = (d: MonthlyMatrixDay, loom: number) => {
     if (!d.hasSheet) return '—'
     const v = Number(d.loomMeters?.[loom]) || 0
+    if (view === 'efficiency') return `${Math.round(v)}%`
+    if (view === 'active') return v > 0 ? '1' : '0'
     return formatNumber(v, 0)
   }
+
+  const pageTitle =
+    view === 'shifts'
+      ? 'Shift A / B Monthly Tracking'
+      : view === 'efficiency'
+        ? 'Efficiency Monthly Tracking'
+        : view === 'active'
+          ? 'Active Looms Monthly Tracking'
+          : 'Production Total Tracking'
+
+  const formatTotal = (n: number) =>
+    view === 'efficiency' ? `${Math.round(n)}%` : view === 'active' ? formatNumber(n, 0) : `${formatNumber(n, 0)} m`
 
   const qualityMonthTotal = useMemo(
     () => (qualityDaySeries ? qualityDaySeries.reduce((s, p) => s + p.value, 0) : null),
@@ -205,7 +256,7 @@ function ProductionTotalTrackingContent() {
   return (
     <div className="pb-4">
       <PageHeader
-        title="Production Total Tracking"
+        title={pageTitle}
         showBreadcrumbs={false}
         actions={
           <>
@@ -250,8 +301,8 @@ function ProductionTotalTrackingContent() {
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <MetricCard
-            title="Month total"
-            value={`${formatNumber(qualityMonthTotal ?? matrix.grandTotalMeters, 0)} m`}
+            title={view === 'shifts' ? 'Shift A month' : 'Month total'}
+            value={formatTotal(qualityMonthTotal ?? matrix.grandTotalMeters)}
             subValue={qualityFocus ? `${qualityFocus.name} · ${monthLabel}` : monthLabel}
             biIcon="bi-calendar3"
             colorVariant="primary"
@@ -259,9 +310,9 @@ function ProductionTotalTrackingContent() {
         </div>
         <div className="col-6 col-lg-3">
           <MetricCard
-            title="Avg / day"
-            value={`${formatNumber(matrix.avgPerDay, 0)} m`}
-            subValue={loading ? 'Loading…' : 'Sheet days only'}
+            title={view === 'shifts' ? 'Shift B month' : 'Avg / day'}
+            value={view === 'shifts' ? formatTotal(shiftBMatrix.grandTotalMeters) : formatTotal(matrix.avgPerDay)}
+            subValue={loading ? 'Loading…' : view === 'shifts' ? monthLabel : 'Sheet days only'}
             biIcon="bi-graph-up"
             colorVariant="success"
           />
@@ -269,7 +320,7 @@ function ProductionTotalTrackingContent() {
         <div className="col-6 col-lg-3">
           <MetricCard
             title="1st Fortnight"
-            value={`${formatNumber(fortnight1, 0)} m`}
+            value={formatTotal(fortnight1)}
             subValue={`Days 1–${mid}`}
             biIcon="bi-1-circle"
             colorVariant="info"
@@ -278,7 +329,7 @@ function ProductionTotalTrackingContent() {
         <div className="col-6 col-lg-3">
           <MetricCard
             title="2nd Fortnight"
-            value={`${formatNumber(fortnight2, 0)} m`}
+            value={formatTotal(fortnight2)}
             subValue={`Days ${mid + 1}+`}
             biIcon="bi-2-circle"
             colorVariant="warning"
@@ -291,9 +342,15 @@ function ProductionTotalTrackingContent() {
           <div className="card h-100">
             <div className="card-header">
               <h3 className="card-title mb-0">
-                {qualityFocus
-                  ? `Daily output — ${qualityFocus.name} (m)`
-                  : 'Daily mill output (m)'}
+                {view === 'shifts'
+                  ? 'Shift A daily meters'
+                  : view === 'efficiency'
+                    ? 'Daily efficiency (%)'
+                    : view === 'active'
+                      ? 'Looms running each day'
+                      : qualityFocus
+                        ? `Daily output — ${qualityFocus.name} (m)`
+                        : 'Daily mill output (m)'}
               </h3>
             </div>
             <div className="card-body">
@@ -320,7 +377,15 @@ function ProductionTotalTrackingContent() {
 
       <div className="card">
         <div className="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-          <h3 className="card-title mb-0">Total matrix — Loom × Day (meters)</h3>
+          <h3 className="card-title mb-0">
+            {view === 'shifts'
+              ? 'Shift A — Loom × Day (meters)'
+              : view === 'efficiency'
+                ? 'Efficiency — Loom × Day (%)'
+                : view === 'active'
+                  ? 'Active looms — Loom × Day'
+                  : 'Total matrix — Loom × Day (meters)'}
+          </h3>
           <Link href="/floor/production" className="btn btn-sm btn-outline-primary">
             Open Production Sheet
           </Link>
@@ -347,7 +412,17 @@ function ProductionTotalTrackingContent() {
                 const daysWith = matrix.days.filter(
                   (d) => d.hasSheet && (Number(d.loomMeters?.[loom]) || 0) > 0
                 ).length
-                const avg = daysWith > 0 ? monthly / daysWith : 0
+                const sheetDays = matrix.days.filter((d) => d.hasSheet).length
+                const avg =
+                  view === 'efficiency'
+                    ? monthly
+                    : view === 'active'
+                      ? sheetDays > 0
+                        ? monthly / sheetDays
+                        : 0
+                      : daysWith > 0
+                        ? monthly / daysWith
+                        : 0
                 return (
                   <tr key={loom}>
                     <td className="fw-semibold px-2">{loom}</td>
@@ -368,13 +443,21 @@ function ProductionTotalTrackingContent() {
                       )
                     })}
                     <td className="text-end px-2 fw-semibold">
-                      {formatNumber(loomFortnight(loom, 1), 0)}
+                      {view === 'efficiency'
+                        ? `${loomFortnight(loom, 1)}%`
+                        : formatNumber(loomFortnight(loom, 1), 0)}
                     </td>
                     <td className="text-end px-2 fw-semibold">
-                      {formatNumber(loomFortnight(loom, 2), 0)}
+                      {view === 'efficiency'
+                        ? `${loomFortnight(loom, 2)}%`
+                        : formatNumber(loomFortnight(loom, 2), 0)}
                     </td>
-                    <td className="text-end px-2 fw-bold">{formatNumber(monthly, 0)}</td>
-                    <td className="text-end px-2 text-secondary">{formatNumber(avg, 1)}</td>
+                    <td className="text-end px-2 fw-bold">
+                      {view === 'efficiency' ? `${Math.round(monthly)}%` : formatNumber(monthly, 0)}
+                    </td>
+                    <td className="text-end px-2 text-secondary">
+                      {view === 'efficiency' ? `${Math.round(avg)}%` : formatNumber(avg, view === 'active' ? 1 : 1)}
+                    </td>
                   </tr>
                 )
               })}
@@ -385,26 +468,125 @@ function ProductionTotalTrackingContent() {
                 {matrix.days.map((d) => (
                   <td key={`t-${d.date || d.day}`} className="text-end px-1" style={{ fontSize: 11 }}>
                     {d.hasSheet
-                      ? formatNumber(
-                          qualityDaySeries
-                            ? qualityDaySeries.find((p) => p.label === String(d.day))?.value ?? 0
-                            : d.totalMeters || 0,
-                          0
-                        )
+                      ? view === 'efficiency'
+                        ? `${Math.round(d.totalMeters || 0)}%`
+                        : formatNumber(
+                            view === 'meters' && qualityDaySeries
+                              ? qualityDaySeries.find((p) => p.label === String(d.day))?.value ?? 0
+                              : d.totalMeters || 0,
+                            0
+                          )
                       : '—'}
                   </td>
                 ))}
-                <td className="text-end px-2">{formatNumber(fortnight1, 0)}</td>
-                <td className="text-end px-2">{formatNumber(fortnight2, 0)}</td>
                 <td className="text-end px-2">
-                  {formatNumber(qualityMonthTotal ?? matrix.grandTotalMeters, 0)}
+                  {view === 'efficiency' ? `${fortnight1}%` : formatNumber(fortnight1, 0)}
                 </td>
-                <td className="text-end px-2">{formatNumber(matrix.avgPerDay, 0)}</td>
+                <td className="text-end px-2">
+                  {view === 'efficiency' ? `${fortnight2}%` : formatNumber(fortnight2, 0)}
+                </td>
+                <td className="text-end px-2">
+                  {view === 'efficiency'
+                    ? `${Math.round(qualityMonthTotal ?? matrix.grandTotalMeters)}%`
+                    : formatNumber(qualityMonthTotal ?? matrix.grandTotalMeters, 0)}
+                </td>
+                <td className="text-end px-2">
+                  {view === 'efficiency'
+                    ? `${Math.round(matrix.avgPerDay)}%`
+                    : formatNumber(matrix.avgPerDay, 0)}
+                </td>
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
+
+      {view === 'shifts' && (
+        <div className="card mt-3">
+          <div className="card-header">
+            <h3 className="card-title mb-0">Shift B — Loom × Day (meters)</h3>
+          </div>
+          <div className="card-body p-0" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <table className="table table-sm table-bordered mb-0 align-middle text-nowrap">
+              <thead className="table-light">
+                <tr>
+                  <th className="px-2">L/#</th>
+                  {shiftBMatrix.days.map((d) => (
+                    <th key={d.date || d.day} className="px-1 text-center" style={{ fontSize: 11 }}>
+                      {d.day}
+                    </th>
+                  ))}
+                  <th className="px-2 text-end">1st FN</th>
+                  <th className="px-2 text-end">2nd FN</th>
+                  <th className="px-2 text-end">Monthly</th>
+                  <th className="px-2 text-end">Avg/Day</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loomNumbers.map((loom) => {
+                  const monthly = Number(shiftBMatrix.loomTotals?.[loom]) || 0
+                  const daysWith = shiftBMatrix.days.filter(
+                    (d) => d.hasSheet && (Number(d.loomMeters?.[loom]) || 0) > 0
+                  ).length
+                  const avg = daysWith > 0 ? monthly / daysWith : 0
+                  return (
+                    <tr key={loom}>
+                      <td className="fw-semibold px-2">{loom}</td>
+                      {shiftBMatrix.days.map((d) => {
+                        const v = Number(d.loomMeters?.[loom]) || 0
+                        return (
+                          <td
+                            key={`b-${loom}-${d.date || d.day}`}
+                            className="text-end px-1"
+                            style={{
+                              fontSize: 11,
+                              backgroundColor: !d.hasSheet || v === 0 ? '#f8f9fa' : undefined,
+                            }}
+                          >
+                            {d.hasSheet ? formatNumber(v, 0) : '—'}
+                          </td>
+                        )
+                      })}
+                      <td className="text-end px-2 fw-semibold">
+                        {formatNumber(loomFortnight(loom, 1, shiftBMatrix), 0)}
+                      </td>
+                      <td className="text-end px-2 fw-semibold">
+                        {formatNumber(loomFortnight(loom, 2, shiftBMatrix), 0)}
+                      </td>
+                      <td className="text-end px-2 fw-bold">{formatNumber(monthly, 0)}</td>
+                      <td className="text-end px-2 text-secondary">{formatNumber(avg, 1)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot className="table-light fw-semibold">
+                <tr>
+                  <td className="px-2">Day Total</td>
+                  {shiftBMatrix.days.map((d) => (
+                    <td key={`bt-${d.date || d.day}`} className="text-end px-1" style={{ fontSize: 11 }}>
+                      {d.hasSheet ? formatNumber(d.totalMeters || 0, 0) : '—'}
+                    </td>
+                  ))}
+                  <td className="text-end px-2">
+                    {formatNumber(
+                      shiftBMatrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0),
+                      0
+                    )}
+                  </td>
+                  <td className="text-end px-2">
+                    {formatNumber(
+                      shiftBMatrix.days.slice(mid).reduce((s, d) => s + (d.totalMeters || 0), 0),
+                      0
+                    )}
+                  </td>
+                  <td className="text-end px-2">{formatNumber(shiftBMatrix.grandTotalMeters, 0)}</td>
+                  <td className="text-end px-2">{formatNumber(shiftBMatrix.avgPerDay, 0)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

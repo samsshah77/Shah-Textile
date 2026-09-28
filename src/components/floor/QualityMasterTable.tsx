@@ -10,6 +10,7 @@ import {
   orderQualitiesByLoomAllotment,
   qualityNameKey,
   qualityDisplayName,
+  compareLoomsLikeProductionSheet,
   listPersistedSheetEntries,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
@@ -24,7 +25,7 @@ import { useAlertDialog } from '@/context/AlertDialogContext'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   sr: 46,
-  loom: 110,
+  loom: 168,
   name: 150,
   type: 115,
   warp: 110,
@@ -88,6 +89,104 @@ function formatDayHeading(dateStr?: string | null) {
   }
 }
 
+function loomChoiceLabel(loom: LoomMaster) {
+  return `L#${loom.loomNumber}(${loom.defaultRpm || 0})`
+}
+
+function QualityLoomAssign({
+  qualityId,
+  qualityName,
+  looms,
+  canAssign,
+  onAssign,
+}: {
+  qualityId: string
+  qualityName: string
+  looms: LoomMaster[]
+  canAssign: boolean
+  onAssign?: (loomNumber: number, qualityId: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const assigned = looms
+    .filter((l) => l.qualityId === qualityId)
+    .sort(compareLoomsLikeProductionSheet)
+  const choices = [...looms].sort(compareLoomsLikeProductionSheet)
+  const label = assigned.length ? assigned.map((l) => `L#${l.loomNumber}`).join(', ') : '—'
+
+  if (!canAssign || !onAssign) {
+    return (
+      <span className="small fw-semibold text-truncate d-inline-block" style={{ maxWidth: '100%' }} title={label}>
+        {label}
+      </span>
+    )
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-sm btn-outline-secondary py-0 text-start text-truncate"
+        style={{ maxWidth: '100%' }}
+        title={label}
+        onClick={() => setOpen(true)}
+      >
+        {label === '—' ? 'Select looms' : label}
+      </button>
+      {open && (
+        <div
+          className="modal fade show d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 1055 }}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered modal-dialog-scrollable"
+            role="document"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-content shadow-lg border-0">
+              <div className="modal-header py-2.5 px-3">
+                <h5 className="modal-title fs-6 fw-semibold mb-0">Select looms — {qualityName}</h5>
+                <button type="button" className="btn-close" aria-label="Close" onClick={() => setOpen(false)} />
+              </div>
+              <div className="modal-body p-3">
+                <div className="d-flex flex-column gap-1">
+                  {choices.map((l) => {
+                    const checked = l.qualityId === qualityId
+                    return (
+                      <label
+                        key={l.loomNumber}
+                        className="d-flex align-items-center gap-2 mb-0 px-2 py-1 border-bottom rounded-1"
+                        style={checked ? { background: 'rgba(13, 110, 253, 0.15)' } : undefined}
+                      >
+                        <input
+                          type="checkbox"
+                          className="form-check-input m-0"
+                          checked={checked}
+                          onChange={() => onAssign(l.loomNumber, checked ? null : qualityId)}
+                        />
+                        <span className={checked ? 'fw-semibold text-primary' : 'fw-semibold'}>
+                          {loomChoiceLabel(l)}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="modal-footer py-2 px-3">
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen(false)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function formatShortDate(dateStr?: string | null) {
   if (!dateStr) return '—'
   try {
@@ -106,6 +205,7 @@ interface QualityMasterTableProps {
   readOnly?: boolean
   entries?: DailyLoomProductionEntry[]
   looms?: LoomMaster[]
+  onAssignLoom?: (loomNumber: number, qualityId: string | null) => void
   beams?: BeamMaster[]
   yarn?: YarnMaster[]
   statusFilter?: QualityStatusFilter
@@ -123,6 +223,7 @@ export function QualityMasterTable({
   readOnly,
   entries = [],
   looms = [],
+  onAssignLoom,
   beams = [],
   yarn = [],
   statusFilter = 'ACTIVE',
@@ -148,7 +249,7 @@ export function QualityMasterTable({
   })
 
   const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
-    'sara_quality_col_widths_v6',
+    'sara_quality_col_widths_v7',
     DEFAULT_WIDTHS
   )
 
@@ -196,34 +297,6 @@ export function QualityMasterTable({
     if (excel.some((e) => meterOf(e) > 0)) return excel
     return (entries || []).filter((e) => !e.date || e.date === sheetDate)
   }, [entries, sheetDate])
-
-  const loomLabels = useMemo(() => {
-    const map: Record<string, string> = {}
-    const nameCounts = new Map<string, number>()
-    for (const q of qualities) {
-      const key = qualityNameKey(q.name)
-      nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
-    }
-    for (const q of qualities) {
-      const qClean = qualityNameKey(q.name)
-      const sharedName = (nameCounts.get(qClean) || 0) > 1
-      const nums = dayRows
-        .filter((e) => {
-          const eClean = qualityNameKey(e.qualityName)
-          const nameHit =
-            eClean === qClean ||
-            (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
-          if (!nameHit) return false
-          if (sharedName) return Number(e.pick) === Number(q.pick)
-          return true
-        })
-        .map((e) => e.loomNumber)
-        .filter((n, i, arr) => arr.indexOf(n) === i)
-        .sort((a, b) => a - b)
-      map[q.id] = nums.length ? nums.map((n) => `L#${n}`).join(', ') : '—'
-    }
-    return map
-  }, [qualities, dayRows])
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, { day: number; overall: number }> = {}
@@ -285,25 +358,12 @@ export function QualityMasterTable({
   const handleEndQuality = (q: QualityMaster) => {
     showConfirm({
       title: 'End this quality?',
-      message: `"${q.name}" Quality Ends list me chali jayegi. Dobara Start se active kar sakte ho.`,
+      message: `"${q.name}" Quality Ends list me chali jayegi. Wapas start nahi hogi — sirf tracking rahegi.`,
       type: 'confirm',
       confirmText: 'Yes, end it',
       cancelText: 'Cancel',
       onConfirm: () => {
         onUpdate(q.id, { status: 'ENDED', endedOn: endDateDefault })
-      },
-    })
-  }
-
-  const handleRestartQuality = (q: QualityMaster) => {
-    showConfirm({
-      title: 'Quality dubara start?',
-      message: `Kya aap "${q.name}" ko active list me wapas lana chahte hain?`,
-      type: 'confirm',
-      confirmText: 'Start again',
-      cancelText: 'Cancel',
-      onConfirm: () => {
-        onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
       },
     })
   }
@@ -408,9 +468,6 @@ export function QualityMasterTable({
                     <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: '0.74rem' }}>
                       #{rowIdx + 1}
                     </span>
-                    <span className="badge bg-primary-subtle text-primary" style={{ fontSize: '0.74rem' }}>
-                      {loomLabels[q.id]}
-                    </span>
                     {!masterEdit && <span>{qualityDisplayName(q, qualities)}</span>}
                   </div>
                   {masterEdit && (
@@ -432,6 +489,15 @@ export function QualityMasterTable({
                     </button>
                   )}
                 </div>
+
+                <label className="small mb-0">Looms</label>
+                <QualityLoomAssign
+                  qualityId={q.id}
+                  qualityName={qualityDisplayName(q, qualities)}
+                  looms={looms}
+                  canAssign={masterEdit}
+                  onAssign={onAssignLoom}
+                />
 
                 <label className="small mb-0">Quality Name</label>
                 {masterEdit ? (
@@ -584,25 +650,13 @@ export function QualityMasterTable({
                 )}
 
                 {isEndedView && (
-                  <div className="d-flex flex-column gap-2 mt-2">
-                    {!readOnly && canEditProduction && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-success"
-                        onClick={() => handleRestartQuality(q)}
-                      >
-                        <i className="bi bi-play-circle me-1" />
-                        Start again
-                      </button>
-                    )}
-                    <Link
-                      href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
-                      className="btn btn-sm btn-outline-primary"
-                    >
-                      <i className="bi bi-graph-up me-1" />
-                      Open Tracking
-                    </Link>
-                  </div>
+                  <Link
+                    href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                    className="btn btn-sm btn-outline-primary mt-2"
+                  >
+                    <i className="bi bi-graph-up me-1" />
+                    Open Tracking
+                  </Link>
                 )}
               </div>
             )
@@ -685,8 +739,14 @@ export function QualityMasterTable({
                     <td className="px-1 text-center text-muted fw-semibold font-monospace" style={{ fontSize: '0.8rem' }}>
                       {rowIdx + 1}
                     </td>
-                    <td className="px-2 small fw-semibold text-truncate" title={loomLabels[q.id]}>
-                      {loomLabels[q.id]}
+                    <td className="px-1">
+                      <QualityLoomAssign
+                        qualityId={q.id}
+                        qualityName={qualityDisplayName(q, qualities)}
+                        looms={looms}
+                        canAssign={opsEdit}
+                        onAssign={onAssignLoom}
+                      />
                     </td>
                     <td className="px-2">
                       <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>
@@ -812,25 +872,13 @@ export function QualityMasterTable({
                         </button>
                       )}
                       {isEndedView && (
-                        <div className="d-flex flex-column gap-1 align-items-stretch">
-                          {!readOnly && canEditProduction && (
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-success py-0"
-                              style={{ fontSize: '0.72rem' }}
-                              onClick={() => handleRestartQuality(q)}
-                            >
-                              Start
-                            </button>
-                          )}
-                          <Link
-                            href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
-                            className="btn btn-sm btn-outline-primary py-0"
-                            style={{ fontSize: '0.72rem' }}
-                          >
-                            Track
-                          </Link>
-                        </div>
+                        <Link
+                          href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                          className="btn btn-sm btn-outline-primary py-0"
+                          style={{ fontSize: '0.72rem' }}
+                        >
+                          Track
+                        </Link>
                       )}
                       {!isEndedView && (readOnly || !canEditProduction) && (
                         <span className="text-muted small">—</span>

@@ -214,6 +214,7 @@ class ProductionService {
       shiftAMeters: updatedRaw.shiftAMeters,
       shiftBMeters: updatedRaw.shiftBMeters,
       ratePerPick: 0.95,
+      loomNumber: updatedRaw.loomNumber,
     })
 
     const finalEntry: DailyLoomProductionEntry = {

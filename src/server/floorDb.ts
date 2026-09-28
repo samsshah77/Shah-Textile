@@ -234,7 +234,20 @@ export async function dbSaveYarnIssuances(list: YarnLoomIssuance[]): Promise<voi
 }
 
 export async function dbGetQualities(): Promise<QualityMaster[]> {
-  return prisma.floorQuality.findMany({ orderBy: { name: 'asc' } })
+  const rows = await prisma.floorQuality.findMany({ orderBy: { name: 'asc' } })
+  return rows.map((q) => ({
+    id: q.id,
+    name: q.name,
+    fabricType: q.fabricType,
+    warpYarn: q.warpYarn,
+    weftYarn: q.weftYarn,
+    reed: q.reed,
+    pick: q.pick,
+    widthInch: q.widthInch,
+    gsm: q.gsm,
+    status: q.status === 'ENDED' ? 'ENDED' : 'ACTIVE',
+    endedOn: q.status === 'ENDED' ? q.endedOn : null,
+  }))
 }
 
 export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void> {
@@ -252,6 +265,8 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
         pick: q.pick,
         widthInch: q.widthInch,
         gsm: q.gsm,
+        status: q.status === 'ENDED' ? 'ENDED' : 'ACTIVE',
+        endedOn: q.status === 'ENDED' ? q.endedOn ?? null : null,
       })),
     })
   })

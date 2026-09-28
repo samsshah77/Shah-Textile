@@ -302,6 +302,7 @@ export function useProductionGrid() {
   const updateQuality = useCallback(
     (id: string, patch: Partial<QualityMaster>) => {
       setQualities(productionMastersService.updateQuality(id, patch, selectedDate))
+      setLooms(productionMastersService.getLooms())
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
     [selectedDate]

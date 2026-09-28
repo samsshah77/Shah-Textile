@@ -229,7 +229,6 @@ function ProductionWorkspaceContent() {
       {currentTab === 'looms' && (
         <LoomMasterTable
           looms={looms}
-          qualities={qualities}
           yarn={yarn}
           onUpdate={updateLoom}
           onAdd={addLoom}
@@ -293,6 +292,7 @@ function ProductionWorkspaceContent() {
           readOnly={!canEditProduction}
           entries={entries}
           looms={looms}
+          onAssignLoom={(loomNumber, qualityId) => updateLoom(loomNumber, { qualityId })}
           beams={beams}
           yarn={yarn}
           statusFilter={qualityStatusFilter}

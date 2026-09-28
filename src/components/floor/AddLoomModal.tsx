@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { LoomMaster, QualityMaster } from '@/services/productionMastersService'
+import { LoomMaster } from '@/services/productionMastersService'
 import { LoomCategory, LoomStatus } from '@/types/loom'
 import { LoomStatusSelect } from '@/components/floor/LoomStatusSelect'
 
@@ -11,7 +11,6 @@ interface AddLoomModalProps {
   isOpen: boolean
   onClose: () => void
   onAdd: (partial: Partial<LoomMaster>) => void
-  qualities?: QualityMaster[]
   suggestedLoomNumber?: number
 }
 
@@ -19,7 +18,6 @@ export function AddLoomModal({
   isOpen,
   onClose,
   onAdd,
-  qualities = [],
   suggestedLoomNumber,
 }: AddLoomModalProps) {
   const [name, setName] = useState('')
@@ -28,7 +26,6 @@ export function AddLoomModal({
   const [shed, setShed] = useState('Main Floor')
   const [defaultRpm, setDefaultRpm] = useState<number>(340)
   const [status, setStatus] = useState<LoomStatus>('RUNNING')
-  const [qualityId, setQualityId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
@@ -40,7 +37,6 @@ export function AddLoomModal({
     setShed('Main Floor')
     setDefaultRpm(340)
     setStatus('RUNNING')
-    setQualityId('')
     setError(null)
   }
 
@@ -59,7 +55,6 @@ export function AddLoomModal({
       shed: shed.trim() || 'Main Floor',
       defaultRpm: Number(defaultRpm) || 340,
       status,
-      qualityId: qualityId || null,
     })
     resetForm()
     onClose()
@@ -170,24 +165,6 @@ export function AddLoomModal({
                     value={defaultRpm}
                     onChange={(e) => setDefaultRpm(Number(e.target.value) || 0)}
                   />
-                </div>
-
-                <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
-                    Quality
-                  </label>
-                  <select
-                    className="form-select"
-                    value={qualityId}
-                    onChange={(e) => setQualityId(e.target.value)}
-                  >
-                    <option value="">—</option>
-                    {qualities.map((q) => (
-                      <option key={q.id} value={q.id}>
-                        {q.name}
-                      </option>
-                    ))}
-                  </select>
                 </div>
 
                 <div className="col-12">

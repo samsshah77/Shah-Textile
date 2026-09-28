@@ -1090,15 +1090,20 @@ export function listPersistedSheetEntries(): DailyLoomProductionEntry[] {
   return rows
 }
 
+function monthLastEnteredDay(monthStr: string) {
+  const [y, m] = monthStr.split('-').map(Number)
+  const daysInMonth = y && m ? new Date(y, m, 0).getDate() : 30
+  const cal = getCalendarToday()
+  const cap = monthStr === cal.slice(0, 7) ? Number(cal.slice(-2)) : daysInMonth
+  return Math.min(daysInMonth, Math.max(cap || 1, 1))
+}
+
 /** Prefetch every day of a month into memory (DB getSheet per date). */
 export async function preloadMonthSheets(monthStr: string = PRODUCTION_TODAY_MONTH): Promise<void> {
   if (!isClient()) return
   const [y, m] = monthStr.split('-').map(Number)
   if (!y || !m) return
-  const daysInMonth = new Date(y, m, 0).getDate()
-  const todayDay =
-    monthStr === PRODUCTION_TODAY_MONTH ? Number(PRODUCTION_TODAY.slice(-2)) : daysInMonth
-  const lastDay = Math.min(daysInMonth, Math.max(todayDay, 1))
+  const lastDay = monthLastEnteredDay(monthStr)
   await Promise.all(
     Array.from({ length: lastDay }, (_, i) => {
       const day = String(i + 1).padStart(2, '0')
@@ -1678,20 +1683,32 @@ class ProductionMastersService {
     patch: Partial<QualityMaster>,
     fromDate: string = getProductionToday()
   ): QualityMaster[] {
+    const current = this.getQualities().find((q) => q.id === id)
+    const nextPatch = { ...patch }
+    if (current?.status === 'ENDED') {
+      delete nextPatch.status
+      delete nextPatch.endedOn
+    }
     const qualities = this.getQualities().map((q) => {
       if (q.id !== id) return q
-      return normalizeQuality(applyMidRunYarnChange(q, patch, fromDate))
+      return normalizeQuality(applyMidRunYarnChange(q, nextPatch, fromDate))
     })
+    if (nextPatch.status === 'ENDED') {
+      const looms = this.getLooms()
+      if (looms.some((l) => l.qualityId === id)) {
+        this.saveLooms(looms.map((l) => (l.qualityId === id ? { ...l, qualityId: null } : l)))
+      }
+    }
     this.saveQualities(qualities)
     const recipeTouched =
-      patch.name !== undefined ||
-      patch.fabricType !== undefined ||
-      patch.warpYarn !== undefined ||
-      patch.weftYarn !== undefined ||
-      patch.reed !== undefined ||
-      patch.pick !== undefined ||
-      patch.widthInch !== undefined ||
-      patch.gsm !== undefined
+      nextPatch.name !== undefined ||
+      nextPatch.fabricType !== undefined ||
+      nextPatch.warpYarn !== undefined ||
+      nextPatch.weftYarn !== undefined ||
+      nextPatch.reed !== undefined ||
+      nextPatch.pick !== undefined ||
+      nextPatch.widthInch !== undefined ||
+      nextPatch.gsm !== undefined
     if (recipeTouched && this.peekSheetDay(fromDate)) {
       for (const loom of this.getLooms()) {
         if (loom.qualityId !== id) continue
@@ -1724,10 +1741,6 @@ class ProductionMastersService {
 
   endQuality(id: string, endedOn: string): QualityMaster[] {
     return this.updateQuality(id, { status: 'ENDED', endedOn })
-  }
-
-  restartQuality(id: string): QualityMaster[] {
-    return this.updateQuality(id, { status: 'ACTIVE', endedOn: null })
   }
 
   deleteQuality(id: string): QualityMaster[] {
@@ -1873,6 +1886,7 @@ class ProductionMastersService {
         pick,
         shiftAMeters: shiftA,
         shiftBMeters: shiftB,
+        loomNumber: loom.loomNumber,
       })
       const carriedLot = this.carriedLot(dateStr, loom.loomNumber)
 
@@ -1938,6 +1952,7 @@ class ProductionMastersService {
         pick: merged.pick || 60,
         shiftAMeters: merged.shiftAMeters || 0,
         shiftBMeters: merged.shiftBMeters || 0,
+        loomNumber,
       })
       const result: DailyLoomProductionEntry = {
         ...merged,
@@ -2031,20 +2046,24 @@ class ProductionMastersService {
   }
 
   /**
-   * Loom × day meters for Total tracking — only real floor sheets (seeded / started days).
-   * Days without a persisted sheet stay empty (UI shows —).
+   * Loom × day matrix. meters / shiftA / shiftB sum. efficiency is actual ÷ target.
+   * active is 1 when the loom was running that day. Empty days stay —.
    */
-  buildMonthlyMatrix(monthStr: string = PRODUCTION_TODAY_MONTH): {
+  buildMonthlyMatrix(
+    monthStr: string = PRODUCTION_TODAY_MONTH,
+    metric: 'meters' | 'shiftA' | 'shiftB' | 'efficiency' | 'active' = 'meters'
+  ): {
     days: MonthlyMatrixDay[]
     loomTotals: Record<number, number>
     grandTotalMeters: number
     avgPerDay: number
+    /** Sum of actual meters and running target, used to weight efficiency. */
+    loomActual: Record<number, number>
+    loomTarget: Record<number, number>
+    dayActual: number[]
+    dayTarget: number[]
   } {
-    const [y, m] = monthStr.split('-').map(Number)
-    const daysInMonth = y && m ? new Date(y, m, 0).getDate() : 30
-    const todayDay =
-      monthStr === PRODUCTION_TODAY_MONTH ? Number(PRODUCTION_TODAY.slice(-2)) : daysInMonth
-    const lastDay = Math.min(daysInMonth, Math.max(todayDay || 1, 1))
+    const lastDay = monthLastEnteredDay(monthStr)
 
     const loomNumbers = this.getLooms()
       .filter((l) => l.isActive)
@@ -2052,19 +2071,29 @@ class ProductionMastersService {
       .sort((a, b) => a - b)
 
     const loomTotals: Record<number, number> = {}
+    const loomActual: Record<number, number> = {}
+    const loomTarget: Record<number, number> = {}
     loomNumbers.forEach((n) => {
       loomTotals[n] = 0
+      loomActual[n] = 0
+      loomTarget[n] = 0
     })
 
     const days: MonthlyMatrixDay[] = []
+    const dayActual: number[] = []
+    const dayTarget: number[] = []
     for (let day = 1; day <= lastDay; day++) {
       const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`
       const peeked = this.peekSheetDay(dateStr)
       const loomMeters: Record<number, number> = {}
+      const dayLoomActual: Record<number, number> = {}
+      const dayLoomTarget: Record<number, number> = {}
       loomNumbers.forEach((n) => {
         loomMeters[n] = 0
       })
       let totalMeters = 0
+      let actualSum = 0
+      let targetSum = 0
       let entries = peeked
       let hasSheet = peeked != null && peeked.length > 0
 
@@ -2088,22 +2117,78 @@ class ProductionMastersService {
             e.totalMeters != null
               ? Number(e.totalMeters) || 0
               : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
-          loomMeters[e.loomNumber] = meters
-          loomTotals[e.loomNumber] = (loomTotals[e.loomNumber] || 0) + meters
-          totalMeters += meters
+          const target = Number(e.runningTheoretical) || 0
+          actualSum += meters
+          targetSum += target
+          loomActual[e.loomNumber] = (loomActual[e.loomNumber] || 0) + meters
+          loomTarget[e.loomNumber] = (loomTarget[e.loomNumber] || 0) + target
+          dayLoomActual[e.loomNumber] = meters
+          dayLoomTarget[e.loomNumber] = target
+
+          let value = meters
+          if (metric === 'shiftA') value = Number(e.shiftAMeters) || 0
+          else if (metric === 'shiftB') value = Number(e.shiftBMeters) || 0
+          else if (metric === 'active') {
+            value = resolveLoomCondition(e.status, e.remarks) === 'RUNNING' ? 1 : 0
+          } else if (metric === 'efficiency') {
+            value = target > 0 ? Math.round((meters / target) * 100) : Number(e.efficiencyPercentage) || 0
+          }
+          loomMeters[e.loomNumber] = value
+          if (metric !== 'efficiency') {
+            loomTotals[e.loomNumber] = (loomTotals[e.loomNumber] || 0) + value
+          }
+          totalMeters += metric === 'efficiency' ? 0 : value
         }
       }
 
-      days.push({ day, date: dateStr, totalMeters, loomMeters, hasSheet })
+      if (metric === 'efficiency') {
+        totalMeters = targetSum > 0 ? Math.round((actualSum / targetSum) * 100) : 0
+      }
+
+      dayActual.push(actualSum)
+      dayTarget.push(targetSum)
+      days.push({
+        day,
+        date: dateStr,
+        totalMeters,
+        loomMeters,
+        hasSheet,
+        loomActual: metric === 'efficiency' ? dayLoomActual : undefined,
+        loomTarget: metric === 'efficiency' ? dayLoomTarget : undefined,
+      })
+    }
+
+    if (metric === 'efficiency') {
+      for (const n of loomNumbers) {
+        const target = loomTarget[n] || 0
+        loomTotals[n] = target > 0 ? Math.round(((loomActual[n] || 0) / target) * 100) : 0
+      }
     }
 
     const daysWithSheet = days.filter((d) => d.hasSheet).length
-    const grandTotalMeters = days.reduce((s, d) => s + (d.totalMeters || 0), 0)
+    const grandTotalMeters =
+      metric === 'efficiency'
+        ? (() => {
+            const actual = dayActual.reduce((s, n) => s + n, 0)
+            const target = dayTarget.reduce((s, n) => s + n, 0)
+            return target > 0 ? Math.round((actual / target) * 100) : 0
+          })()
+        : days.reduce((s, d) => s + (d.totalMeters || 0), 0)
+    const avgPerDay =
+      metric === 'efficiency'
+        ? grandTotalMeters
+        : daysWithSheet > 0
+          ? grandTotalMeters / daysWithSheet
+          : 0
     return {
       days,
       loomTotals,
       grandTotalMeters,
-      avgPerDay: daysWithSheet > 0 ? grandTotalMeters / daysWithSheet : 0,
+      avgPerDay,
+      loomActual,
+      loomTarget,
+      dayActual,
+      dayTarget,
     }
   }
 }

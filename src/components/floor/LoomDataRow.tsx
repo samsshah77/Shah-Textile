@@ -50,6 +50,7 @@ export function LoomDataRow({
     rpm: numRpm,
     pick: numPick,
     runningHours: numHours,
+    loomNumber: entry.loomNumber,
   })
 
   const handleBlurCommit = () => {

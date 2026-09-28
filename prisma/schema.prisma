@@ -293,6 +293,8 @@ model FloorQuality {
   pick       Int      @default(60)
   widthInch  Float    @default(66)
   gsm        Float    @default(0)
+  status     String   @default("ACTIVE")
+  endedOn    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

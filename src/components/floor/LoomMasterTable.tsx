@@ -3,12 +3,9 @@
 import { useMemo, useState } from 'react'
 import {
   LoomMaster,
-  QualityMaster,
   YarnMaster,
   getLoomPictures,
   normalizeLoomPictures,
-  orderQualitiesByLoomAllotment,
-  qualityDisplayName,
 } from '@/services/productionMastersService'
 import { LoomCategory } from '@/types/loom'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
@@ -30,14 +27,12 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   model: 95,
   year: 70,
   rpm: 95,
-  quality: 150,
   shed: 110,
   status: 130,
 }
 
 interface LoomMasterTableProps {
   looms: LoomMaster[]
-  qualities?: QualityMaster[]
   yarn?: YarnMaster[]
   onUpdate: (loomNumber: number, patch: Partial<LoomMaster>) => void
   onAdd: (partial?: Partial<LoomMaster>) => void
@@ -47,7 +42,6 @@ interface LoomMasterTableProps {
 
 export function LoomMasterTable({
   looms,
-  qualities = [],
   onUpdate,
   onAdd,
   onDelete,
@@ -64,7 +58,7 @@ export function LoomMasterTable({
   const editActive = opsEdit || masterEdit
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_loom_col_widths_v4',
+    'sara_loom_col_widths_v5',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -76,11 +70,6 @@ export function LoomMasterTable({
     if (modelFilter === 'ALL') return looms
     return looms.filter((l) => (l.model || l.category) === modelFilter)
   }, [looms, modelFilter])
-
-  const orderedQualities = useMemo(
-    () => orderQualitiesByLoomAllotment(qualities, looms),
-    [qualities, looms]
-  )
 
   const canManagePics = canEditProduction && !readOnly
 
@@ -104,11 +93,6 @@ export function LoomMasterTable({
         {tableEdit ? 'Done' : 'Edit'}
       </button>
     ) : null
-
-  const qualityName = (qualityId: string | null) => {
-    const q = qualities.find((item) => item.id === qualityId)
-    return q ? qualityDisplayName(q, qualities) : '—'
-  }
 
   const nextLoomNumber = useMemo(
     () => looms.reduce((m, l) => Math.max(m, l.loomNumber), 0) + 1,
@@ -272,23 +256,6 @@ export function LoomMasterTable({
                 </div>
 
                 <div>
-                  <label className="form-label small mb-1 fw-semibold">Quality</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={l.qualityId || ''}
-                    disabled={!masterEdit}
-                    onChange={(e) => onUpdate(l.loomNumber, { qualityId: e.target.value || null })}
-                  >
-                    <option value="">—</option>
-                    {orderedQualities.map((q) => (
-                      <option key={q.id} value={q.id}>
-                        {qualityDisplayName(q, qualities)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
                   <label className="form-label small mb-1 fw-semibold">RPM</label>
                   {masterEdit ? (
                     <NumericCellInput
@@ -356,9 +323,6 @@ export function LoomMasterTable({
                 <ResizableTh columnKey="rpm" width={widths.rpm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center">
                   RPM
                 </ResizableTh>
-                <ResizableTh columnKey="quality" width={widths.quality} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Quality Name
-                </ResizableTh>
                 <ResizableTh columnKey="shed" width={widths.shed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Shed
                 </ResizableTh>
@@ -409,23 +373,6 @@ export function LoomMasterTable({
                         <div className="text-end px-1">{l.defaultRpm}</div>
                       )}
                     </td>
-                    <td className="px-1">
-                      <select
-                        className="form-select form-select-sm"
-                        style={{ width: '100%', minWidth: 0 }}
-                        value={l.qualityId || ''}
-                        disabled={!opsEdit}
-                        title={qualityName(l.qualityId)}
-                        onChange={(e) => onUpdate(l.loomNumber, { qualityId: e.target.value || null })}
-                      >
-                        <option value="">—</option>
-                        {orderedQualities.map((q) => (
-                          <option key={q.id} value={q.id}>
-                            {qualityDisplayName(q, qualities)}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
                     <td className="px-2">
                       <span className="text-secondary">{l.shed || 'Main Floor'}</span>
                     </td>
@@ -457,7 +404,6 @@ export function LoomMasterTable({
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={onAdd}
-        qualities={qualities}
         suggestedLoomNumber={nextLoomNumber}
       />
     </div>

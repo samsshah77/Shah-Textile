@@ -108,7 +108,8 @@ export function getExcelDailyLoomsForDate(dateStr: string): DailyLoomProductionE
     const totalMeters = shiftA + shiftB
     const rpm = l.rpm || 350
     const pick = l.pick || 60
-    const runningTheo = (rpm / pick) * (60 / 39.38) * rollerHours
+    const beamDivisor = [21, 23, 24, 25, 26].includes(l.loomNumber) ? 2 : 1
+    const runningTheo = ((rpm / pick) * (60 / 39.38) * rollerHours) / beamDivisor
     const theo24h = (rpm / pick) * (60 / 39.38) * 24
     const efficiencyRunning = runningTheo > 0 ? Math.round((totalMeters / runningTheo) * 100) : 0
     const efficiency24h = theo24h > 0 ? Math.round((totalMeters / theo24h) * 100) : 0

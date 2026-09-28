@@ -174,6 +174,9 @@ export default function DashboardPage() {
 
   const sheetHref = '/floor/production?tab=sheet'
   const trackingHref = '/floor/reports/total'
+  const shiftTrackingHref = '/floor/reports/total?view=shifts'
+  const efficiencyTrackingHref = '/floor/reports/total?view=efficiency'
+  const activeTrackingHref = '/floor/reports/total?view=active'
 
   return (
     <>
@@ -269,7 +272,7 @@ export default function DashboardPage() {
             subValue="Meters"
             biIcon="bi-columns-gap"
             colorVariant="success"
-            href={trackingHref}
+            href={shiftTrackingHref}
             footerLabel="Total Tracking"
           />
         </div>
@@ -280,7 +283,7 @@ export default function DashboardPage() {
             subValue="Avg running"
             biIcon="bi-percent"
             colorVariant="warning"
-            href={trackingHref}
+            href={efficiencyTrackingHref}
             footerLabel="Total Tracking"
           />
         </div>
@@ -291,7 +294,7 @@ export default function DashboardPage() {
             subValue="On selected day"
             biIcon="bi-gear-wide-connected"
             colorVariant="info"
-            href={trackingHref}
+            href={activeTrackingHref}
             footerLabel="Total Tracking"
           />
         </div>

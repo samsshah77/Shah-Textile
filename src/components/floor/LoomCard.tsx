@@ -48,6 +48,7 @@ export function LoomCard({
     rpm: numRpm,
     pick: numPick,
     runningHours: entry.runningHours || 24,
+    loomNumber: entry.loomNumber,
   })
 
   const handleBlurCommit = () => {

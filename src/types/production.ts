@@ -87,6 +87,9 @@ export interface MonthlyMatrixDay {
   loomMeters: Record<number, number>;
   /** True when a floor production sheet exists for this date (show 0; else —). */
   hasSheet?: boolean;
+  /** Filled for efficiency so a fortnight is actual ÷ target, not a sum of percents. */
+  loomActual?: Record<number, number>;
+  loomTarget?: Record<number, number>;
 }
 
 export interface BeamStockItem {
@@ -127,6 +130,15 @@ export interface CalculationInput {
   shiftAMeters: number;
   shiftBMeters: number;
   ratePerPick?: number;
+  /** Looms 21, 23, 24, 25, 26 carry two beams, so Running 100% is halved. */
+  loomNumber?: number;
+}
+
+/** PU looms that weave on two beams — Running target is RPM formula ÷ 2. */
+const DOUBLE_BEAM_LOOMS = new Set([21, 23, 24, 25, 26]);
+
+export function runningBeamDivisor(loomNumber?: number) {
+  return loomNumber != null && DOUBLE_BEAM_LOOMS.has(loomNumber) ? 2 : 1;
 }
 
 /** Excel Production sheet: 100% = RPM/Pick * 60 / 39.38 * Hours */
@@ -140,7 +152,7 @@ export function theoreticalMeters(rpm: number, pick: number, hours: number) {
 export function calculateProductionMetrics(input: CalculationInput) {
   const { rpm, runningHours, pick, shiftAMeters, shiftBMeters, ratePerPick = 0.95 } = input;
 
-  const runningTheo = theoreticalMeters(rpm, pick, runningHours);
+  const runningTheo = theoreticalMeters(rpm, pick, runningHours) / runningBeamDivisor(input.loomNumber);
   const theo24h = theoreticalMeters(rpm, pick, 24);
   const totalMeters = (shiftAMeters || 0) + (shiftBMeters || 0);
 
