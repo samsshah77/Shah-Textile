@@ -10,7 +10,7 @@ import {
   orderQualitiesByLoomAllotment,
   qualityNameKey,
   qualityDisplayName,
-  loomsAllottedToQuality,
+  listPersistedSheetEntries,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -19,6 +19,7 @@ import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCell
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { DailyLoomProductionEntry } from '@/types/production'
+import { getExcelHistoryEntries } from '@/data/productionData'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
@@ -32,6 +33,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   pick: 65,
   width: 65,
   gsm: 80,
+  day: 88,
   production: 105,
   actions: 120,
   endedOn: 95,
@@ -74,6 +76,18 @@ export function QualityStatusFilterBar({
   )
 }
 
+function formatDayHeading(dateStr?: string | null) {
+  if (!dateStr) return 'Day'
+  try {
+    return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+    })
+  } catch {
+    return 'Day'
+  }
+}
+
 function formatShortDate(dateStr?: string | null) {
   if (!dateStr) return '—'
   try {
@@ -97,6 +111,8 @@ interface QualityMasterTableProps {
   statusFilter?: QualityStatusFilter
   onStatusFilterChange?: (f: QualityStatusFilter) => void
   endDateDefault?: string
+  /** Production day whose looms and meters this table is showing. */
+  sheetDate?: string
 }
 
 export function QualityMasterTable({
@@ -111,6 +127,7 @@ export function QualityMasterTable({
   yarn = [],
   statusFilter = 'ACTIVE',
   endDateDefault = PRODUCTION_TODAY,
+  sheetDate = PRODUCTION_TODAY,
 }: QualityMasterTableProps) {
   const { canEditProduction } = useAuth()
   const { showConfirm } = useAlertDialog()
@@ -167,43 +184,89 @@ export function QualityMasterTable({
     return [...set].sort((a, b) => a.localeCompare(b))
   }, [yarn])
 
+  const meterOf = (e: DailyLoomProductionEntry) =>
+    e.totalMeters != null
+      ? Number(e.totalMeters) || 0
+      : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
+
+  const dayRows = useMemo(() => {
+    const saved = listPersistedSheetEntries().filter((e) => e.date === sheetDate)
+    if (saved.some((e) => meterOf(e) > 0)) return saved
+    const excel = getExcelHistoryEntries().filter((e) => e.date === sheetDate)
+    if (excel.some((e) => meterOf(e) > 0)) return excel
+    return (entries || []).filter((e) => !e.date || e.date === sheetDate)
+  }, [entries, sheetDate])
+
   const loomLabels = useMemo(() => {
     const map: Record<string, string> = {}
+    const nameCounts = new Map<string, number>()
     for (const q of qualities) {
-      const nums = loomsAllottedToQuality(q, looms, qualities, entries)
+      const key = qualityNameKey(q.name)
+      nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
+    }
+    for (const q of qualities) {
+      const qClean = qualityNameKey(q.name)
+      const sharedName = (nameCounts.get(qClean) || 0) > 1
+      const nums = dayRows
+        .filter((e) => {
+          const eClean = qualityNameKey(e.qualityName)
+          const nameHit =
+            eClean === qClean ||
+            (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
+          if (!nameHit) return false
+          if (sharedName) return Number(e.pick) === Number(q.pick)
+          return true
+        })
+        .map((e) => e.loomNumber)
+        .filter((n, i, arr) => arr.indexOf(n) === i)
+        .sort((a, b) => a - b)
       map[q.id] = nums.length ? nums.map((n) => `L#${n}`).join(', ') : '—'
     }
     return map
-  }, [qualities, looms, entries])
+  }, [qualities, dayRows])
 
   const productionByQuality = useMemo(() => {
-    const stats: Record<string, number> = {}
+    const stats: Record<string, { day: number; overall: number }> = {}
     const nameCounts = new Map<string, number>()
     for (const q of qualities) {
       const key = qualityNameKey(q.name)
       nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
     }
 
-    for (const q of qualities) {
+    const saved = listPersistedSheetEntries()
+    const datesWithMeters = new Set(saved.filter((e) => meterOf(e) > 0).map((e) => e.date))
+    const excel = getExcelHistoryEntries().filter((e) => e.date && !datesWithMeters.has(e.date))
+    const covered = new Set([...datesWithMeters, ...excel.map((e) => e.date)])
+    const allDays = [
+      ...saved.filter((e) => datesWithMeters.has(e.date)),
+      ...excel,
+      ...(entries || []).filter((e) => e.date && !covered.has(e.date)),
+    ]
+
+    const sumMatching = (rows: DailyLoomProductionEntry[], q: QualityMaster) => {
       const qClean = qualityNameKey(q.name)
       const sharedName = (nameCounts.get(qClean) || 0) > 1
-      const matching = (entries || []).filter((e) => {
-        const eClean = qualityNameKey(e.qualityName)
-        const nameHit =
-          eClean === qClean ||
-          (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
-        if (!nameHit) return false
-        if (sharedName) return Number(e.pick) === Number(q.pick)
-        return true
-      })
-      const total = matching.reduce(
-        (s, e) => s + (e.totalMeters ?? (e.shiftAMeters || 0) + (e.shiftBMeters || 0)),
-        0
-      )
-      stats[q.id] = total
+      return rows
+        .filter((e) => {
+          const eClean = qualityNameKey(e.qualityName)
+          const nameHit =
+            eClean === qClean ||
+            (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
+          if (!nameHit) return false
+          if (sharedName) return Number(e.pick) === Number(q.pick)
+          return true
+        })
+        .reduce((s, e) => s + meterOf(e), 0)
+    }
+
+    for (const q of qualities) {
+      stats[q.id] = {
+        day: sumMatching(dayRows, q),
+        overall: sumMatching(allDays, q),
+      }
     }
     return stats
-  }, [qualities, entries])
+  }, [qualities, entries, dayRows])
 
   const tableMinWidth = useMemo(
     () => Object.values(widths).reduce((sum, w) => sum + w, 0),
@@ -332,7 +395,7 @@ export function QualityMasterTable({
       {mode === 'grid' ? (
         <div className="master-grid">
           {displayedQualities.map((q, rowIdx) => {
-            const prod = productionByQuality[q.id] || 0
+            const totals = productionByQuality[q.id] || { day: 0, overall: 0 }
             const showEndBtn = canEditProduction && !readOnly && !isEndedView
 
             return (
@@ -497,9 +560,15 @@ export function QualityMasterTable({
                 )}
 
                 <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
-                  <span className="small text-muted">Production:</span>
+                  <span className="small text-muted">{formatDayHeading(sheetDate)}:</span>
+                  <span className="small fw-bold font-monospace">
+                    {totals.day > 0 ? `${totals.day.toLocaleString()} m` : '0 m'}
+                  </span>
+                </div>
+                <div className="d-flex justify-content-between align-items-center">
+                  <span className="small text-muted">Overall:</span>
                   <span className="small fw-bold text-success font-monospace">
-                    {prod > 0 ? `${prod.toLocaleString()} m` : '0 m'}
+                    {totals.overall > 0 ? `${totals.overall.toLocaleString()} m` : '0 m'}
                   </span>
                 </div>
 
@@ -587,8 +656,11 @@ export function QualityMasterTable({
                 <ResizableTh columnKey="gsm" width={widths.gsm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   GSM
                 </ResizableTh>
+                <ResizableTh columnKey="day" width={widths.day} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end" title={sheetDate}>
+                  {formatDayHeading(sheetDate)}
+                </ResizableTh>
                 <ResizableTh columnKey="production" width={widths.production} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
-                  Production
+                  Overall
                 </ResizableTh>
                 {isEndedView && (
                   <ResizableTh columnKey="endedOn" width={widths.endedOn} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
@@ -603,7 +675,7 @@ export function QualityMasterTable({
             </thead>
             <tbody>
               {displayedQualities.map((q, rowIdx) => {
-                const prod = productionByQuality[q.id] || 0
+                const totals = productionByQuality[q.id] || { day: 0, overall: 0 }
 
                 return (
                   <tr
@@ -715,8 +787,13 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-2 text-end">
+                      <span className="fw-semibold font-monospace">
+                        {totals.day > 0 ? `${totals.day.toLocaleString()} m` : '0 m'}
+                      </span>
+                    </td>
+                    <td className="px-2 text-end">
                       <span className="fw-bold text-success font-monospace">
-                        {prod > 0 ? `${prod.toLocaleString()} m` : '0 m'}
+                        {totals.overall > 0 ? `${totals.overall.toLocaleString()} m` : '0 m'}
                       </span>
                     </td>
                     {isEndedView && (

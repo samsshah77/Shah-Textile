@@ -1031,6 +1031,27 @@ async function loadSheetFromDb(dateStr: string): Promise<DailyLoomProductionEntr
   return null
 }
 
+/** Load every saved production day into memory so Quality overall is not stuck on the open day. */
+export async function preloadAllFloorSheets(): Promise<void> {
+  if (!isClient()) return
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getAllSheets' }),
+    })
+    const data = await res.json()
+    if (!data?.ok || !Array.isArray(data.sheets)) return
+    for (const sheet of data.sheets as { date?: string; entries?: DailyLoomProductionEntry[] }[]) {
+      if (!sheet?.date || !Array.isArray(sheet.entries) || sheet.entries.length === 0) continue
+      const key = `${KEY_SHEET}_${sheet.date}`
+      if (!memoryStore.has(key)) memoryStore.set(key, JSON.stringify(sheet.entries))
+    }
+  } catch (err) {
+    console.error('[floor] preload all sheets failed', err)
+  }
+}
+
 /** Prefetch one day's sheet into memory from DB (call after hydrate). */
 export async function preloadFloorSheet(dateStr: string): Promise<void> {
   if (!isClient()) return
@@ -1050,6 +1071,22 @@ export function listPersistedSheetDates(): string[] {
     }
   }
   return dates.sort()
+}
+
+/** Every saved loom-day row, across all production dates. */
+export function listPersistedSheetEntries(): DailyLoomProductionEntry[] {
+  const rows: DailyLoomProductionEntry[] = []
+  const prefix = `${KEY_SHEET}_`
+  for (const key of memoryStore.keys()) {
+    if (!key.startsWith(prefix)) continue
+    try {
+      const parsed = JSON.parse(memoryStore.get(key) || '[]') as DailyLoomProductionEntry[]
+      if (Array.isArray(parsed)) rows.push(...parsed)
+    } catch {
+      // ignore a bad sheet
+    }
+  }
+  return rows
 }
 
 /** Prefetch every day of a month into memory (DB getSheet per date). */

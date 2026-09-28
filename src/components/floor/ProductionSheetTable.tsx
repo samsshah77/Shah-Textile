@@ -221,7 +221,7 @@ function ModelSectionTotal({ totals }: { totals: SectionTotals }) {
 
 /** Read-only Excel Production sheet — all values auto from masters + Daily Entry. */
 export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTableProps) {
-  const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
+  const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_prod_sheet_col_widths_v1',
     DEFAULT_WIDTHS
   )
@@ -289,11 +289,6 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
           {activeDate ? (
             <div className="small text-secondary">{formatProductionDayLabel(activeDate)}</div>
           ) : null}
-        </div>
-        <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
-            Reset columns
-          </button>
         </div>
       </div>
       <div

@@ -257,6 +257,19 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
   })
 }
 
+export async function dbListAllSheets(): Promise<{ date: string; entries: DailyLoomProductionEntry[] }[]> {
+  const rows = await prisma.floorDailySheet.findMany({
+    orderBy: [{ date: 'asc' }, { loomNumber: 'asc' }],
+  })
+  const byDate = new Map<string, DailyLoomProductionEntry[]>()
+  for (const row of rows) {
+    const list = byDate.get(row.date) || []
+    list.push(row.payload as unknown as DailyLoomProductionEntry)
+    byDate.set(row.date, list)
+  }
+  return [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
+}
+
 export async function dbGetSheet(dateStr: string): Promise<DailyLoomProductionEntry[] | null> {
   const rows = await prisma.floorDailySheet.findMany({
     where: { date: dateStr },

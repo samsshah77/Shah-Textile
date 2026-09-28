@@ -8,6 +8,7 @@ import {
   dbGetLooms,
   dbGetQualities,
   dbGetSheet,
+  dbListAllSheets,
   dbGetYarn,
   dbGetYarnIssuances,
   dbGetYarnMovements,
@@ -132,6 +133,11 @@ export async function POST(req: NextRequest) {
       const dateStr = String(body?.date || '')
       const entries = await dbGetSheet(dateStr)
       return NextResponse.json({ ok: true, entries })
+    }
+
+    if (action === 'getAllSheets') {
+      const sheets = await dbListAllSheets()
+      return NextResponse.json({ ok: true, sheets })
     }
 
     if (action === 'deleteSheet') {

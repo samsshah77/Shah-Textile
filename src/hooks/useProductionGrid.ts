@@ -6,6 +6,7 @@ import {
   productionMastersService,
   hydrateFloorFromDb,
   preloadFloorSheet,
+  preloadAllFloorSheets,
   LoomMaster,
   BeamMaster,
   YarnMaster,
@@ -54,6 +55,7 @@ export function useProductionGrid() {
       const today = getProductionToday()
       try {
         await hydrateFloorFromDb()
+        await preloadAllFloorSheets()
         await preloadFloorSheet(selectedDate)
         await preloadFloorSheet(today)
         if (cancelled) return

@@ -113,7 +113,7 @@ function ProductionWorkspaceContent() {
     quality: 'Quality',
   }
 
-  const showDateBar = currentTab === 'sheet' || currentTab === 'entry'
+  const showDateBar = currentTab === 'sheet' || currentTab === 'entry' || currentTab === 'quality'
   const isYarnTab = currentTab === 'yarn'
   const isBeamsTab = currentTab === 'beams'
   const isQualityTab = currentTab === 'quality'
@@ -199,7 +199,7 @@ function ProductionWorkspaceContent() {
           setSelectedMonth={setSelectedMonth}
           onOpenNewDayModal={() => setIsNewDayModalOpen(true)}
           canEdit={canEditProduction}
-          showStartNewDay={!todaySheetReady}
+          showStartNewDay={currentTab !== 'quality' && !todaySheetReady}
         />
       )}
 
@@ -298,6 +298,7 @@ function ProductionWorkspaceContent() {
           statusFilter={qualityStatusFilter}
           onStatusFilterChange={setQualityStatusFilter}
           endDateDefault={selectedDate}
+          sheetDate={selectedDate}
         />
       )}
 

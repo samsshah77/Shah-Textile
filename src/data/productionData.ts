@@ -59,6 +59,17 @@ export function getExcelDailyLoomEntries(): DailyLoomProductionEntry[] {
   });
 }
 
+/** Every dated Excel production day (the 23 Sep sheet lives here when it is not in the DB yet). */
+export function getExcelHistoryEntries(): DailyLoomProductionEntry[] {
+  const history = (productionRawData as { dailyHistory?: Record<string, unknown> }).dailyHistory || {}
+  const rows: DailyLoomProductionEntry[] = []
+  for (const dateStr of Object.keys(history)) {
+    if (dateStr.startsWith('2026-08') || dateStr >= PRODUCTION_TODAY) continue
+    rows.push(...getExcelDailyLoomsForDate(dateStr))
+  }
+  return rows
+}
+
 export function getExcelDailyLoomsForDate(dateStr: string): DailyLoomProductionEntry[] {
   // No August (or other) fabricated history — only real entered days / blank template
   if (dateStr.startsWith('2026-08')) {
