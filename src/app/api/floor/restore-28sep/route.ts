@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { dbSaveQualities, dbSaveSheet } from '@/server/floorDb'
+import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
 import type { DailyLoomProductionEntry } from '@/types/production'
 import type { QualityMaster } from '@/services/productionMastersService'
 import payload from '@/server/data/restore28Sep2026.json'
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    await ensureFloorPayrollTables()
+
     const data = payload as RestorePayload
     const qualities = data.qualities
     const sheet = (data.sheet || [])
