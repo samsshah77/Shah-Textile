@@ -287,6 +287,14 @@
     color: #0d6efd;
   }
 
+  /* KPI cards are one link; keep the numbers and labels without an underline. */
+  a.small-box,
+  a.small-box:hover,
+  a.small-box:focus,
+  a.small-box:active {
+    text-decoration: none !important;
+  }
+
   body.layout-fixed .text-muted,
   body.layout-fixed .text-body-secondary,
   body.layout-fixed .text-secondary {
