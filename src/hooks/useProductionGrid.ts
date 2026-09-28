@@ -13,7 +13,7 @@ import {
   QualityMaster,
 } from '@/services/productionMastersService'
 import {
-  getProductionToday,
+  getCalendarToday,
   getProductionTodayMonth,
 } from '@/constants/productionCalendar'
 import { useAlertDialog } from '@/context/AlertDialogContext'
@@ -28,8 +28,8 @@ export function useProductionGrid() {
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionToday())
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => getProductionTodayMonth())
+  const [selectedDate, setSelectedDateState] = useState<string>(() => getCalendarToday())
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getCalendarToday().slice(0, 7))
   const [todaySheetReady, setTodaySheetReady] = useState(false)
 
   const refresh = useCallback(
@@ -52,7 +52,7 @@ export function useProductionGrid() {
     let cancelled = false
     setLoading(true)
     ;(async () => {
-      const today = getProductionToday()
+      const today = getCalendarToday()
       try {
         await hydrateFloorFromDb()
         await preloadAllFloorSheets()
@@ -323,7 +323,7 @@ export function useProductionGrid() {
         setSelectedDateState(targetDate)
         setSelectedMonth(targetDate.slice(0, 7) || getProductionTodayMonth())
         refresh(targetDate)
-        setTodaySheetReady(productionMastersService.hasPersistedSheet(getProductionToday()))
+        setTodaySheetReady(productionMastersService.hasPersistedSheet(getCalendarToday()))
       } finally {
         setLoading(false)
       }

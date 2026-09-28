@@ -11,6 +11,7 @@ import {
   PRODUCTION_TODAY,
   PRODUCTION_TODAY_MONTH,
   PRODUCTION_YESTERDAY,
+  getCalendarToday,
   getProductionToday,
   shiftProductionDate,
 } from '@/constants/productionCalendar'
@@ -1199,7 +1200,7 @@ class ProductionMastersService {
         this.flagBeamEndFromLoom(loomNumber, dateStr)
         this.reconcileBeamEndsWithLooms(dateStr)
       }
-      const today = getProductionToday()
+      const today = getCalendarToday()
       const dates = new Set<string>([dateStr])
       for (const d of listPersistedSheetDates()) {
         if (d >= dateStr && d <= today) dates.add(d)

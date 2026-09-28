@@ -76,7 +76,7 @@ function shortDay(dateStr: string) {
 export default function DashboardPage() {
   const productionToday = getProductionToday()
   const productionYesterday = getProductionYesterday()
-  const [selectedDate, setSelectedDate] = useState(() => getProductionYesterday())
+  const [selectedDate, setSelectedDate] = useState(() => getProductionToday())
   const [loading, setLoading] = useState(true)
   const [day, setDay] = useState({
     meters: 0,

@@ -4,9 +4,7 @@ import { History, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   PRODUCTION_START,
-  getProductionToday,
-  getProductionYesterday,
-  getProductionTodayMonth,
+  getCalendarToday,
   formatProductionMonthLabel,
   shiftProductionDate,
 } from '@/constants/productionCalendar'
@@ -56,9 +54,9 @@ export function ProductionDateFilterBar({
   canEdit,
   showStartNewDay = true,
 }: ProductionDateFilterBarProps) {
-  const productionToday = getProductionToday()
-  const productionYesterday = getProductionYesterday()
-  const productionMonth = getProductionTodayMonth()
+  const productionToday = getCalendarToday()
+  const productionYesterday = shiftProductionDate(productionToday, -1)
+  const productionMonth = productionToday.slice(0, 7)
   const maxAllowedDate = productionToday
 
   const isToday = selectedDate === productionToday

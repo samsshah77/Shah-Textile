@@ -1,6 +1,7 @@
 /** Production floor calendar — Asia/Karachi.
- * Sheet is always for the previous calendar day (lag = 1):
- * wall-clock 26 → production Today = 25, Yesterday = 24.
+ * Daily Entry and Production Sheet are dated the wall-clock day (28 banegi 28 ki).
+ * Dashboard shows the previous calendar day, because that cloth is already off the roller.
+ * wall-clock 28 → sheet Today = 28, dashboard = 27.
  */
 
 const MILL_TZ = 'Asia/Karachi'

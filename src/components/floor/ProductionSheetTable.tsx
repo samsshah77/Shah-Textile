@@ -102,9 +102,13 @@ type SectionTotals = {
   lossRun: number
   theo24: number
   loss24: number
-  effRun: number
-  eff24: number
   count: number
+}
+
+/** Sheet total efficiency is actual cloth ÷ target cloth, not an average of the column. */
+function efficiencyFromMeters(actual: number, target: number) {
+  if (!target) return 0
+  return Math.round((actual / target) * 100)
 }
 
 function sumSection(rows: DailyLoomProductionEntry[]): SectionTotals {
@@ -120,8 +124,6 @@ function sumSection(rows: DailyLoomProductionEntry[]): SectionTotals {
       acc.lossRun += e.stopLossMeters || 0
       acc.theo24 += e.theoretical24h || 0
       acc.loss24 += e.loss24h || 0
-      acc.effRun += e.efficiencyPercentage || 0
-      acc.eff24 += e.efficiency24h || 0
       acc.count += 1
       return acc
     },
@@ -136,8 +138,6 @@ function sumSection(rows: DailyLoomProductionEntry[]): SectionTotals {
       lossRun: 0,
       theo24: 0,
       loss24: 0,
-      effRun: 0,
-      eff24: 0,
       count: 0,
     }
   )
@@ -190,7 +190,6 @@ function ModelSectionHeader({ model }: { model: LoomCategory }) {
 
 /** Excel section total row at end of each model block */
 function ModelSectionTotal({ totals }: { totals: SectionTotals }) {
-  const n = totals.count || 1
   return (
     <tr className="prod-sheet-section-total" style={{ fontWeight: 600 }}>
       <td colSpan={5} className="px-2 small text-secondary">
@@ -207,10 +206,10 @@ function ModelSectionTotal({ totals }: { totals: SectionTotals }) {
       <td className="text-end px-1">{num(totals.a)}</td>
       <td className="text-end px-1">{num(totals.b)}</td>
       <td className="text-end px-1">{num(totals.ab)}</td>
-      <td className="text-end px-1">{Math.round(totals.effRun / n)}</td>
+      <td className="text-end px-1">{efficiencyFromMeters(totals.ab, totals.runningTheo)}</td>
       <td className="text-end px-1">{num(totals.lossRun)}</td>
       <td className="text-end px-1">{num(totals.theo24)}</td>
-      <td className="text-end px-1">{Math.round(totals.eff24 / n)}</td>
+      <td className="text-end px-1">{efficiencyFromMeters(totals.ab, totals.theo24)}</td>
       <td className="text-end px-1">{num(totals.loss24)}</td>
       <td className="px-1" />
       <td className="text-center px-1" style={lSepStyle} />
@@ -260,8 +259,6 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
       acc.lossRun += e.stopLossMeters || 0
       acc.theo24 += e.theoretical24h || 0
       acc.loss24 += e.loss24h || 0
-      acc.effRun += e.efficiencyPercentage || 0
-      acc.eff24 += e.efficiency24h || 0
       return acc
     },
     {
@@ -275,11 +272,8 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
       lossRun: 0,
       theo24: 0,
       loss24: 0,
-      effRun: 0,
-      eff24: 0,
     }
   )
-  const n = entries.length || 1
 
   return (
     <div className="card sara-prod-sheet-print">
@@ -677,10 +671,10 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
               <td className="text-end px-1">{num(totals.a)}</td>
               <td className="text-end px-1">{num(totals.b)}</td>
               <td className="text-end px-1">{num(totals.ab)}</td>
-              <td className="text-end px-1">{(totals.effRun / n).toFixed(0)}</td>
+              <td className="text-end px-1">{efficiencyFromMeters(totals.ab, totals.runningTheo)}</td>
               <td className="text-end px-1">{num(totals.lossRun)}</td>
               <td className="text-end px-1">{num(totals.theo24)}</td>
-              <td className="text-end px-1">{(totals.eff24 / n).toFixed(0)}</td>
+              <td className="text-end px-1">{efficiencyFromMeters(totals.ab, totals.theo24)}</td>
               <td className="text-end px-1">{num(totals.loss24)}</td>
               <td className="px-1" />
               <td className="text-center px-1" style={lSepStyle} />
