@@ -547,38 +547,214 @@ function seedYarn(): YarnMaster[] {
 function seedQualities(): QualityMaster[] {
   return [
     {
-      id: 'q-everest',
-      name: 'Everest',
-      fabricType: 'Suiting',
-      warpYarn: '20/1 Pv China',
-      weftYarn: '20/1 Pv China',
+      id: "q-parcopv-p60",
+      name: "PARCOPV",
+      fabricType: "Suiting",
+      warpYarn: "20/1-Pv-China",
+      weftYarn: "20/1-Pv-China",
       reed: 120,
       pick: 60,
       widthInch: 66,
-      gsm: 1.77,
+      gsm: 1.6,
     },
     {
-      id: 'q-parcopv',
-      name: 'PARCOPV',
-      fabricType: 'Suiting',
-      warpYarn: '20/1-Pv-China',
-      weftYarn: '20/1-Pv-China',
-      reed: 120,
-      pick: 60,
+      id: "q-design-2x1-p53",
+      name: "DESIGN-2x1",
+      fabricType: "Ripstop",
+      warpYarn: "20/1-Pv-China",
+      weftYarn: "20/1-Pv-China",
+      reed: 66,
+      pick: 53,
       widthInch: 66,
-      gsm: 1.77,
+      gsm: 2.04,
     },
     {
-      id: 'q-silver',
-      name: 'SILVER-SHINE',
-      fabricType: 'Gabardine',
-      warpYarn: '45/1-Pv-China',
-      weftYarn: '45/1-Pv-China',
+      id: "q-harnai-p39",
+      name: "HARNAI",
+      fabricType: "Worsted Wool",
+      warpYarn: "20/2-Pvt-Kohat",
+      weftYarn: "300/2-Twisted",
+      reed: 68,
+      pick: 39,
+      widthInch: 66,
+      gsm: 2.03,
+    },
+    {
+      id: "q-gul-ahmed-1x1-p92",
+      name: "Gul-Ahmed-(1x1)",
+      fabricType: "Fabrics",
+      warpYarn: "45/1-Pv-White+46/1-Pv-Silver",
+      weftYarn: "45/1-Pv-White+75/144-Twisted",
+      reed: 82,
+      pick: 92,
+      widthInch: 66,
+      gsm: 0.96,
+    },
+    {
+      id: "q-silver-shine-p95",
+      name: "SILVER-SHINE",
+      fabricType: "Gabardine Suiting",
+      warpYarn: "45/1-Pv-China",
+      weftYarn: "45/1-Pv-China",
       reed: 120,
       pick: 95,
       widthInch: 66,
       gsm: 1.26,
     },
+    {
+      id: "q-gul-ahmed-2x2-p84",
+      name: "Gul-Ahmed-(2x2)",
+      fabricType: "Fabrics",
+      warpYarn: "46/1-Pv-White+60/1-Pv-Silver",
+      weftYarn: "45/1-Pv-White+60/1-Pv-Silver",
+      reed: 84,
+      pick: 84,
+      widthInch: 66,
+      gsm: 0.88,
+    },
+    {
+      id: "q-dumdum-p36",
+      name: "DUMDUM",
+      fabricType: "Worsted Suiting",
+      warpYarn: "20/2-Pvt-Ash",
+      weftYarn: "20/3-Pvt-St-Ash",
+      reed: 68,
+      pick: 36,
+      widthInch: 66,
+      gsm: 2.36,
+    },
+    {
+      id: "q-seven-eleven-p82",
+      name: "SEVEN-ELEVEN",
+      fabricType: "Suiting",
+      warpYarn: "20/1-Pv-80/20-China",
+      weftYarn: "40/1-Pv-65/35",
+      reed: 82,
+      pick: 82,
+      widthInch: 66,
+      gsm: 1.63,
+    },
+    {
+      id: "q-decatize-p290",
+      name: "DECATIZE",
+      fabricType: "Suiting",
+      warpYarn: "40/3-Cvc",
+      weftYarn: "30/1-Cvc",
+      reed: 37,
+      pick: 290,
+      widthInch: 76,
+      gsm: 3.93,
+    },
+    {
+      id: "q-herringbone-p60",
+      name: "HERRINGBONE",
+      fabricType: "NoName",
+      warpYarn: "20/1-Pv-China",
+      weftYarn: "30/1-PP",
+      reed: 74,
+      pick: 60,
+      widthInch: 66,
+      gsm: 1.51,
+    },
+    {
+      id: "q-kaavish-p73",
+      name: "KAAVISH",
+      fabricType: "Shirting",
+      warpYarn: "40/1-PP-China",
+      weftYarn: "40/1-Pv-Grace+Fr-75/2",
+      reed: 82,
+      pick: 73,
+      widthInch: 66,
+      gsm: 1.11,
+    },
+    {
+      id: "q-pakeeza-p95",
+      name: "PAKEEZA",
+      fabricType: "Shirting",
+      warpYarn: "Fr-75 T",
+      weftYarn: "45/1-Pv-China",
+      reed: 100,
+      pick: 95,
+      widthInch: 66,
+      gsm: 0.89,
+    },
+    {
+      id: "q-burma-p63",
+      name: "BURMA",
+      fabricType: "Suiting",
+      warpYarn: "Fr-157",
+      weftYarn: "Fr-150-Twisted",
+      reed: 120,
+      pick: 63,
+      widthInch: 66,
+      gsm: 1.63,
+    },
+    {
+      id: "q-ujala-p93",
+      name: "UJALA",
+      fabricType: "Shirting",
+      warpYarn: "Fr-100",
+      weftYarn: "45/1-Pv-China",
+      reed: 100,
+      pick: 93,
+      widthInch: 66,
+      gsm: 1.04,
+    },
+    {
+      id: "q-nuvex-p82",
+      name: "NUVEX",
+      fabricType: "By-Gul-Ahmed",
+      warpYarn: "30/1-Pv-65/35-Grace",
+      weftYarn: "30/1-Pv-65/35-China",
+      reed: 112,
+      pick: 82,
+      widthInch: 66,
+      gsm: 1.74,
+    },
+    {
+      id: "q-tibet-p58",
+      name: "TIBET",
+      fabricType: "Worsted Suiting",
+      warpYarn: "Fr-150/2-Twisted",
+      weftYarn: "20/1-Pv-China",
+      reed: 68,
+      pick: 58,
+      widthInch: 66,
+      gsm: 1.8,
+    },
+    {
+      id: "q-vision-silvra-p76",
+      name: "VISION-SILVRA",
+      fabricType: "By-Gul-Ahmed",
+      warpYarn: "36/1-Pv-AA",
+      weftYarn: "36/1-Pv-Ash",
+      reed: 88,
+      pick: 76,
+      widthInch: 66,
+      gsm: 1.24,
+    },
+    {
+      id: "q-vision-silvra-p82",
+      name: "VISION-SILVRA",
+      fabricType: "By-Gul-Ahmed",
+      warpYarn: "36/1-Pv-AA",
+      weftYarn: "36/1-Pv-Ash",
+      reed: 82,
+      pick: 82,
+      widthInch: 66,
+      gsm: 1.26,
+    },
+    {
+      id: "q-golden-eye-p82",
+      name: "GOLDEN-EYE",
+      fabricType: "Shirting",
+      warpYarn: "Fr-150-Twisted",
+      weftYarn: "36/1-Pv-AA",
+      reed: 82,
+      pick: 82,
+      widthInch: 66,
+      gsm: 1.21,
+    }
   ]
 }
 
@@ -934,6 +1110,30 @@ async function persistLoomEntry(
   }
 }
 
+function clearLegacyFloorLocalStorage() {
+  if (!isClient()) return
+  const keys = [
+    KEY_LOOMS,
+    KEY_BEAMS,
+    KEY_YARN,
+    KEY_YARN_ISSUANCE,
+    KEY_YARN_MOVEMENTS,
+    KEY_QUALITY,
+  ]
+  try {
+    for (const key of keys) localStorage.removeItem(key)
+    // Old sheet snapshots in localStorage must not fight the DB.
+    const toRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(KEY_SHEET)) toRemove.push(k)
+    }
+    for (const k of toRemove) localStorage.removeItem(k)
+  } catch {
+    // ignore
+  }
+}
+
 function loadJson<T>(key: string, fallback: () => T): T {
   try {
     const raw = memoryStore.get(key)
@@ -941,16 +1141,20 @@ function loadJson<T>(key: string, fallback: () => T): T {
   } catch {
     // ignore
   }
-  // Legacy localStorage one-time read (migrate into memory if present)
+  // Legacy localStorage: read once into memory only. Never push to DB from here —
+  // that was wiping live qualities/sheets with stale browser seed data.
   if (isClient()) {
     try {
       const legacy = localStorage.getItem(key)
       if (legacy) {
         memoryStore.set(key, legacy)
         try {
-          const parsed = JSON.parse(legacy) as T
-          void persistKey(key, parsed)
-          return parsed
+          localStorage.removeItem(key)
+        } catch {
+          // ignore
+        }
+        try {
+          return JSON.parse(legacy) as T
         } catch {
           // ignore
         }
@@ -1004,6 +1208,7 @@ export async function hydrateFloorFromDb(): Promise<void> {
         Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
           memoryStore.set(key, JSON.stringify(value))
         })
+        clearLegacyFloorLocalStorage()
       }
       hydrated = true
     } catch (err) {
@@ -1782,14 +1987,19 @@ class ProductionMastersService {
     return []
   }
 
-  /** Latest saved lot for this loom before `dateStr`. Empty string is kept; missing day returns null. */
-  private carriedLot(dateStr: string, loomNumber: number): string | null {
+  /** Latest saved row for this loom before `dateStr`. */
+  private priorSheetRow(dateStr: string, loomNumber: number): DailyLoomProductionEntry | null {
     const priorDates = listPersistedSheetDates().filter((d) => d < dateStr)
     const priorDate = priorDates.length ? priorDates[priorDates.length - 1] : shiftProductionDate(dateStr, -1)
     const rows =
       this.peekSheetDay(priorDate) ??
       (priorDate < getProductionToday() ? getExcelDailyLoomsForDate(priorDate) : null)
-    const row = rows?.find((e) => e.loomNumber === loomNumber)
+    return rows?.find((e) => e.loomNumber === loomNumber) ?? null
+  }
+
+  /** Latest saved lot for this loom before `dateStr`. Empty string is kept; missing day returns null. */
+  private carriedLot(dateStr: string, loomNumber: number): string | null {
+    const row = this.priorSheetRow(dateStr, loomNumber)
     if (!row) return null
     return row.lot || ''
   }
@@ -1846,10 +2056,19 @@ class ProductionMastersService {
       const prev = prevByLoom.get(loom.loomNumber)
       const beam = beams.find((b) => beamOnLoom(b, loom.loomNumber))
       const live = this.recipeForLoom(loom, dateStr)
-      // A saved day keeps its own quality and lot. A new day copies yesterday's lot and uses today's quality.
-      const pick = prev ? prev.pick || live.pick || 60 : live.pick || 60
-      const reed = prev ? prev.reed || live.reed || 60 : live.reed || 60
-      const rpm = prev ? prev.rpm || live.rpm || loom.defaultRpm : live.rpm || loom.defaultRpm
+      const prior = this.priorSheetRow(dateStr, loom.loomNumber)
+      const named = (name?: string | null) => {
+        const n = (name || '').trim()
+        return n !== '' && n !== '—' && n !== '-'
+      }
+      // Saved day keeps its own quality. A blank new day copies yesterday's quality, same as the lot.
+      const identity =
+        (prev && named(prev.qualityName) ? prev : null) ||
+        (named(live.qualityName) ? live : null) ||
+        (prior && named(prior.qualityName) ? prior : null)
+      const pick = identity?.pick || live.pick || 60
+      const reed = identity?.reed || live.reed || 60
+      const rpm = identity?.rpm || live.rpm || loom.defaultRpm
       const masterStatus = (loom.status || 'RUNNING') as LoomStatus
       const since = loom.statusSince || null
       const masterApplies = since ? dateStr >= since : masterStatus !== 'RUNNING'
@@ -1896,15 +2115,15 @@ class ProductionMastersService {
         loomNumber: loom.loomNumber,
         category: prev?.category || loom.category,
         model: prev?.model || loom.model,
-        qualityName: prev ? prev.qualityName || '—' : live.qualityName || '—',
-        fabricType: prev ? prev.fabricType || '' : live.fabricType || '',
-        warpYarn: prev ? prev.warpYarn || '' : live.warpYarn || '',
-        weftYarn: prev ? prev.weftYarn || '' : live.weftYarn || '',
+        qualityName: identity?.qualityName || '—',
+        fabricType: identity?.fabricType || '',
+        warpYarn: identity?.warpYarn || '',
+        weftYarn: identity?.weftYarn || '',
         rpm,
         reed,
         pick,
-        widthInch: prev ? prev.widthInch || live.widthInch || 66 : live.widthInch || 66,
-        gsm: prev ? (prev.gsm ?? 0) : (live.gsm ?? 0),
+        widthInch: identity?.widthInch || live.widthInch || 66,
+        gsm: identity?.gsm ?? live.gsm ?? 0,
         rollerHours,
         runningHours: rollerHours,
         runningTheoretical: metrics.theoreticalMeters,

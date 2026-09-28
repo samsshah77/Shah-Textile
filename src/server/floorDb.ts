@@ -92,11 +92,30 @@ export async function dbGetLooms(): Promise<LoomMaster[]> {
 }
 
 export async function dbSaveLooms(looms: LoomMaster[]): Promise<void> {
+  const list = Array.isArray(looms) ? looms : []
+  const existingCount = await prisma.floorLoom.count()
+  const existingAssigned = await prisma.floorLoom.count({
+    where: { qualityId: { not: null } },
+  })
+  const incomingAssigned = list.filter((l) => l.qualityId).length
+  if (existingCount > 0 && list.length === 0) {
+    throw new Error('Refusing to wipe floor_looms with an empty payload.')
+  }
+  if (existingCount >= 20 && list.length > 0 && list.length < existingCount * 0.5) {
+    throw new Error(
+      `Refusing loom overwrite: DB has ${existingCount} looms, payload has ${list.length}.`
+    )
+  }
+  if (existingAssigned >= 10 && incomingAssigned === 0 && list.length > 0) {
+    throw new Error(
+      'Refusing loom overwrite that would clear all quality assignments.'
+    )
+  }
   await prisma.$transaction(async (tx) => {
     await tx.floorLoom.deleteMany()
-    if (looms.length === 0) return
+    if (list.length === 0) return
     await tx.floorLoom.createMany({
-      data: looms.map((l) => ({
+      data: list.map((l) => ({
         loomNumber: l.loomNumber,
         name: l.name,
         model: l.model,
@@ -251,11 +270,22 @@ export async function dbGetQualities(): Promise<QualityMaster[]> {
 }
 
 export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void> {
+  const list = Array.isArray(qualities) ? qualities : []
+  const existingCount = await prisma.floorQuality.count()
+  if (existingCount > 0 && list.length === 0) {
+    throw new Error('Refusing to wipe floor_qualities with an empty payload.')
+  }
+  // Stale browser seed (3 rows) used to wipe the live Excel import (19+).
+  if (existingCount >= 8 && list.length > 0 && list.length < Math.max(5, Math.floor(existingCount * 0.5))) {
+    throw new Error(
+      `Refusing quality overwrite: DB has ${existingCount} qualities, payload has ${list.length}.`
+    )
+  }
   await prisma.$transaction(async (tx) => {
     await tx.floorQuality.deleteMany()
-    if (qualities.length === 0) return
+    if (list.length === 0) return
     await tx.floorQuality.createMany({
-      data: qualities.map((q) => ({
+      data: list.map((q) => ({
         id: q.id,
         name: q.name,
         fabricType: q.fabricType,
@@ -363,12 +393,21 @@ export async function dbSaveSheet(
   dateStr: string,
   entries: DailyLoomProductionEntry[]
 ): Promise<void> {
-  if (entries.length === 0) {
-    await prisma.floorDailySheet.deleteMany({ where: { date: dateStr } })
+  const list = Array.isArray(entries) ? entries : []
+  const existing = await prisma.floorDailySheet.count({ where: { date: dateStr } })
+  if (existing > 0 && list.length === 0) {
+    throw new Error(`Refusing to wipe sheet ${dateStr} with an empty payload.`)
+  }
+  if (existing >= 20 && list.length > 0 && list.length < existing * 0.5) {
+    throw new Error(
+      `Refusing sheet overwrite for ${dateStr}: DB has ${existing} rows, payload has ${list.length}.`
+    )
+  }
+  if (list.length === 0) {
     return
   }
   await prisma.$transaction(async (tx) => {
-    for (const e of entries) {
+    for (const e of list) {
       await tx.floorDailySheet.upsert({
         where: {
           date_loomNumber: {
@@ -400,6 +439,11 @@ export async function dbFloorIsEmpty(): Promise<boolean> {
       'Prisma floorLoom model missing — restart `npm run dev` after `npx prisma generate` / `db push`.'
     )
   }
-  const count = await prisma.floorLoom.count()
-  return count === 0
+  const [looms, qualities, sheets] = await Promise.all([
+    prisma.floorLoom.count(),
+    prisma.floorQuality.count(),
+    prisma.floorDailySheet.count(),
+  ])
+  // Seed only on a truly blank floor. Any live sheet/quality means do not reseed.
+  return looms === 0 && qualities === 0 && sheets === 0
 }

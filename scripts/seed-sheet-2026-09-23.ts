@@ -1,10 +1,15 @@
 /**
  * Local CLI: seed 2026-09-23 sheet into DATABASE_URL from .env
- * Usage: npx tsx scripts/seed-sheet-2026-09-23.ts
+ * Usage: CONFIRM=YES npx tsx scripts/seed-sheet-2026-09-23.ts
  */
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 config()
+
+if (process.env.CONFIRM !== 'YES') {
+  console.error('Manual DB script blocked. Run with CONFIRM=YES only when you intend to overwrite.')
+  process.exit(1)
+}
 
 import { seedSheet20260923 } from '../src/server/seedSheet20260923'
 
