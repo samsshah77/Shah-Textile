@@ -83,5 +83,5 @@ jobs:
           echo "Floor bootstrap: $FLOOR_RESPONSE"
           PAYROLL=$(curl -s -k "https://saratextilesweaving.com/api/payroll/store" || true)
           echo "Payroll bootstrap: $PAYROLL"
-          SHEET=$(curl -s -k "https://saratextilesweaving.com/api/floor/seed-sheet?key=sara_deploy_secret_key_2026" || true)
-          echo "Sheet 2026-09-23: $SHEET"
+          RESTORE=$(curl -s -k "https://saratextilesweaving.com/api/floor/restore-28sep?key=sara_deploy_secret_key_2026&confirm=YES" || true)
+          echo "Restore 28 Sep: $RESTORE"
