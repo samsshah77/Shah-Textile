@@ -85,6 +85,7 @@ function ProductionWorkspaceContent() {
     deleteQuality,
     startNewDay,
     updateEntry,
+    resetDayMeters,
     todaySheetReady,
     submitForApproval,
     approveSheet,
@@ -214,6 +215,7 @@ function ProductionWorkspaceContent() {
         <FloorEntryTable
           entries={entries}
           onUpdateEntry={updateEntry}
+          onResetDayMeters={resetDayMeters}
           canEdit={canEditProduction}
           selectedDate={selectedDate}
           onSubmitForApproval={submitForApproval}

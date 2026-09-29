@@ -12,6 +12,7 @@ import {
   qualityDisplayName,
   compareLoomsLikeProductionSheet,
   listPersistedSheetEntries,
+  sheetRowShowsQuality,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -97,20 +98,29 @@ function QualityLoomAssign({
   qualityId,
   qualityName,
   looms,
+  assignedLoomNumbers,
+  busyLoomNumbers,
   canAssign,
   onAssign,
 }: {
   qualityId: string
   qualityName: string
   looms: LoomMaster[]
+  assignedLoomNumbers: number[]
+  /** Already on another quality this day — not offered here. */
+  busyLoomNumbers: number[]
   canAssign: boolean
   onAssign?: (loomNumber: number, qualityId: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
+  const assignedSet = new Set(assignedLoomNumbers)
+  const busySet = new Set(busyLoomNumbers)
   const assigned = looms
-    .filter((l) => l.qualityId === qualityId)
+    .filter((l) => assignedSet.has(l.loomNumber))
     .sort(compareLoomsLikeProductionSheet)
-  const choices = [...looms].sort(compareLoomsLikeProductionSheet)
+  const choices = looms
+    .filter((l) => assignedSet.has(l.loomNumber) || !busySet.has(l.loomNumber))
+    .sort(compareLoomsLikeProductionSheet)
   const label = assigned.length ? assigned.map((l) => `L#${l.loomNumber}`).join(', ') : '—'
 
   if (!canAssign || !onAssign) {
@@ -153,7 +163,7 @@ function QualityLoomAssign({
               <div className="modal-body p-3">
                 <div className="d-flex flex-column gap-1">
                   {choices.map((l) => {
-                    const checked = l.qualityId === qualityId
+                    const checked = assignedSet.has(l.loomNumber)
                     return (
                       <label
                         key={l.loomNumber}
@@ -164,7 +174,10 @@ function QualityLoomAssign({
                           type="checkbox"
                           className="form-check-input m-0"
                           checked={checked}
-                          onChange={() => onAssign(l.loomNumber, checked ? null : qualityId)}
+                          onChange={() => {
+                            if (!checked && busySet.has(l.loomNumber)) return
+                            onAssign(l.loomNumber, checked ? null : qualityId)
+                          }}
                         />
                         <span className={checked ? 'fw-semibold text-primary' : 'fw-semibold'}>
                           {loomChoiceLabel(l)}
@@ -237,6 +250,7 @@ export function QualityMasterTable({
 
   // Add Quality Modal Dialog State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [endPick, setEndPick] = useState<{ quality: QualityMaster; selected: number[] } | null>(null)
   const [addForm, setAddForm] = useState({
     name: '',
     fabricType: 'Suiting',
@@ -248,7 +262,7 @@ export function QualityMasterTable({
     gsm: 1.77,
   })
 
-  const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
+  const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_quality_col_widths_v7',
     DEFAULT_WIDTHS
   )
@@ -297,6 +311,27 @@ export function QualityMasterTable({
     if (excel.some((e) => meterOf(e) > 0)) return excel
     return (entries || []).filter((e) => !e.date || e.date === sheetDate)
   }, [entries, sheetDate])
+
+  const assignedByQuality = useMemo(() => {
+    const map = new Map<string, number[]>()
+    const day = (entries || []).filter((e) => !e.date || !sheetDate || e.date === sheetDate)
+    for (const q of qualities) {
+      map.set(
+        q.id,
+        day.filter((e) => sheetRowShowsQuality(e, q, qualities)).map((e) => e.loomNumber)
+      )
+    }
+    return map
+  }, [entries, qualities, sheetDate])
+
+  const busyExcept = (qualityId: string) => {
+    const taken: number[] = []
+    for (const [id, nums] of assignedByQuality) {
+      if (id === qualityId) continue
+      taken.push(...nums)
+    }
+    return taken
+  }
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, { day: number; overall: number }> = {}
@@ -356,16 +391,46 @@ export function QualityMasterTable({
       : `Quality — Active (${counts.active})`
 
   const handleEndQuality = (q: QualityMaster) => {
-    showConfirm({
-      title: 'End this quality?',
-      message: `"${q.name}" Quality Ends list me chali jayegi. Wapas start nahi hogi — sirf tracking rahegi.`,
-      type: 'confirm',
-      confirmText: 'Yes, end it',
-      cancelText: 'Cancel',
-      onConfirm: () => {
-        onUpdate(q.id, { status: 'ENDED', endedOn: endDateDefault })
-      },
+    const running = assignedByQuality.get(q.id) || []
+    if (running.length === 0) {
+      showConfirm({
+        title: 'End this quality?',
+        message: `"${q.name}" kisi loom pe nahi chal rahi. Quality Ends list me chali jayegi.`,
+        type: 'confirm',
+        confirmText: 'Yes, end it',
+        cancelText: 'Cancel',
+        onConfirm: () => {
+          onUpdate(q.id, { status: 'ENDED', endedOn: endDateDefault })
+        },
+      })
+      return
+    }
+    setEndPick({ quality: q, selected: [] })
+  }
+
+  const toggleEndLoom = (loomNumber: number) => {
+    setEndPick((cur) => {
+      if (!cur) return cur
+      const selected = cur.selected.includes(loomNumber)
+        ? cur.selected.filter((n) => n !== loomNumber)
+        : [...cur.selected, loomNumber]
+      return { ...cur, selected }
     })
+  }
+
+  const confirmEndLooms = () => {
+    if (!endPick) return
+    const running = assignedByQuality.get(endPick.quality.id) || []
+    const chosen = endPick.selected.filter((n) => running.includes(n))
+    if (chosen.length === 0) return
+    for (const loomNumber of chosen) {
+      onAssignLoom?.(loomNumber, null)
+    }
+    const left = running.filter((n) => !chosen.includes(n))
+    if (left.length === 0) {
+      onUpdate(endPick.quality.id, { status: 'ENDED', endedOn: endDateDefault })
+    }
+    setEndPick(null)
   }
 
   const editToggle =
@@ -435,11 +500,6 @@ export function QualityMasterTable({
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           {editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {mode === 'table' && (
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
-              Reset columns
-            </button>
-          )}
           {!readOnly && canEditProduction && !isEndedView && (
             <button
               type="button"
@@ -495,6 +555,8 @@ export function QualityMasterTable({
                   qualityId={q.id}
                   qualityName={qualityDisplayName(q, qualities)}
                   looms={looms}
+                  assignedLoomNumbers={assignedByQuality.get(q.id) || []}
+                  busyLoomNumbers={busyExcept(q.id)}
                   canAssign={masterEdit}
                   onAssign={onAssignLoom}
                 />
@@ -744,6 +806,8 @@ export function QualityMasterTable({
                         qualityId={q.id}
                         qualityName={qualityDisplayName(q, qualities)}
                         looms={looms}
+                        assignedLoomNumbers={assignedByQuality.get(q.id) || []}
+                        busyLoomNumbers={busyExcept(q.id)}
                         canAssign={opsEdit}
                         onAssign={onAssignLoom}
                       />
@@ -1040,6 +1104,71 @@ export function QualityMasterTable({
           <option key={name} value={name} />
         ))}
       </datalist>
+      {endPick && (
+        <div
+          className="modal fade show d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 1055 }}
+          onClick={() => setEndPick(null)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered modal-dialog-scrollable"
+            role="document"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-content shadow-lg border-0">
+              <div className="modal-header py-2.5 px-3">
+                <h5 className="modal-title fs-6 fw-semibold mb-0">
+                  End {qualityDisplayName(endPick.quality, qualities)} — kon si loom?
+                </h5>
+                <button type="button" className="btn-close" aria-label="Close" onClick={() => setEndPick(null)} />
+              </div>
+              <div className="modal-body p-3">
+                <p className="small text-secondary mb-2">
+                  Sirf choose ki hui looms se yeh quality is date pe hat jayegi. Baqi looms pe chalti rahegi.
+                </p>
+                <div className="d-flex flex-column gap-1">
+                  {(assignedByQuality.get(endPick.quality.id) || []).map((loomNumber) => {
+                    const loom = looms.find((l) => l.loomNumber === loomNumber)
+                    const checked = endPick.selected.includes(loomNumber)
+                    return (
+                      <label
+                        key={loomNumber}
+                        className="d-flex align-items-center gap-2 mb-0 px-2 py-1 border-bottom rounded-1"
+                        style={checked ? { background: 'rgba(220, 53, 69, 0.12)' } : undefined}
+                      >
+                        <input
+                          type="checkbox"
+                          className="form-check-input m-0"
+                          checked={checked}
+                          onChange={() => toggleEndLoom(loomNumber)}
+                        />
+                        <span className={checked ? 'fw-semibold text-danger' : 'fw-semibold'}>
+                          {loom ? loomChoiceLabel(loom) : `L#${loomNumber}`}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="modal-footer py-2 px-3">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setEndPick(null)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  disabled={endPick.selected.length === 0}
+                  onClick={confirmEndLooms}
+                >
+                  End selected ({endPick.selected.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

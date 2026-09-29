@@ -7,7 +7,6 @@ import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { AlertDialogProvider } from '@/context/AlertDialogContext'
 import { Sidebar } from '@/components/shared/Sidebar'
 import { Header } from '@/components/shared/Header'
-import { ExcelSheetTabBar } from '@/components/payroll/ExcelSheetTabBar'
 import { AdminLteAssets } from '@/components/shared/AdminLteAssets'
 import { NavigationProgress } from '@/components/shared/NavigationProgress'
 
@@ -26,21 +25,10 @@ function MainContent({ children }: { children: React.ReactNode }) {
     }
   }, [isQualityController, pathname, router])
 
-  const isAdminRoute = pathname.startsWith('/admin')
-  const isDashboardRoute = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
-  const isPayrollRoute = pathname.startsWith('/payroll')
-  const isAccountsRoute = pathname.startsWith('/accounts')
-  // Dashboard: no Excel tab strip. QC: never show salary/accounts tabs (those bounce back).
-  const showExcelTabBar =
-    !isAdminRoute &&
-    !isDashboardRoute &&
-    !(isQualityController && (isPayrollRoute || isAccountsRoute))
-
   return (
     <main className="app-main bg-body-tertiary sara-app-main">
       <div className="sara-erp-topbar">
         <Header />
-        {showExcelTabBar && <ExcelSheetTabBar />}
       </div>
       <div className="app-content sara-app-content">
         <div className="container-fluid">{children}</div>

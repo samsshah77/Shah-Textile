@@ -15,8 +15,25 @@ import {
 import {
   getCalendarToday,
   getProductionTodayMonth,
+  PRODUCTION_START,
 } from '@/constants/productionCalendar'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+
+const FLOOR_DATE_KEY = 'sara_floor_selected_date'
+
+function readStoredFloorDate(): string {
+  const today = getCalendarToday()
+  if (typeof window === 'undefined') return today
+  try {
+    const raw = sessionStorage.getItem(FLOOR_DATE_KEY)
+    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && raw >= PRODUCTION_START && raw <= today) {
+      return raw
+    }
+  } catch {
+    // ignore
+  }
+  return today
+}
 
 export function useProductionGrid() {
   const { showError } = useAlertDialog()
@@ -31,6 +48,14 @@ export function useProductionGrid() {
   const [selectedDate, setSelectedDateState] = useState<string>(() => getCalendarToday())
   const [selectedMonth, setSelectedMonth] = useState<string>(() => getCalendarToday().slice(0, 7))
   const [todaySheetReady, setTodaySheetReady] = useState(false)
+  const [dateReady, setDateReady] = useState(false)
+
+  useEffect(() => {
+    const stored = readStoredFloorDate()
+    setSelectedDateState(stored)
+    setSelectedMonth(stored.slice(0, 7) || getProductionTodayMonth())
+    setDateReady(true)
+  }, [])
 
   const refresh = useCallback(
     (dateStr?: string) => {
@@ -49,6 +74,7 @@ export function useProductionGrid() {
   )
 
   useEffect(() => {
+    if (!dateReady) return
     let cancelled = false
     setLoading(true)
     ;(async () => {
@@ -74,16 +100,28 @@ export function useProductionGrid() {
     return () => {
       cancelled = true
     }
-  }, [refresh, selectedDate])
+  }, [refresh, selectedDate, dateReady])
 
   const setSelectedDate = useCallback((newDate: string) => {
     setSelectedDateState(newDate)
     setSelectedMonth(newDate.slice(0, 7) || getProductionTodayMonth())
+    try {
+      sessionStorage.setItem(FLOOR_DATE_KEY, newDate)
+    } catch {
+      // ignore
+    }
   }, [])
 
   const updateEntry = useCallback(
     (loomNumber: number, patch: Partial<DailyLoomProductionEntry>, editorName?: string) => {
       setEntries(productionMastersService.updateSheetEntry(selectedDate, loomNumber, patch, editorName))
+    },
+    [selectedDate]
+  )
+
+  const resetDayMeters = useCallback(
+    (editorName?: string) => {
+      setEntries(productionMastersService.resetDayMeters(selectedDate, editorName))
     },
     [selectedDate]
   )
@@ -346,6 +384,7 @@ export function useProductionGrid() {
     selectedMonth,
     setSelectedMonth,
     updateEntry,
+    resetDayMeters,
     updateLoom,
     addLoom,
     deleteLoom,

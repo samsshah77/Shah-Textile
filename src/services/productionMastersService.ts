@@ -241,6 +241,24 @@ function matchQualityByNameAndPick(
   return undefined
 }
 
+/** True when this sheet row is showing `quality` (name, and pick when the name is shared). */
+export function sheetRowShowsQuality(
+  row: DailyLoomProductionEntry,
+  quality: QualityMaster,
+  catalog: QualityMaster[]
+): boolean {
+  const qClean = qualityNameKey(quality.name)
+  const eClean = qualityNameKey(row.qualityName || '')
+  if (!qClean || !eClean) return false
+  const nameHit =
+    eClean === qClean ||
+    (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
+  if (!nameHit) return false
+  const shared = catalog.filter((item) => qualityNameKey(item.name) === qClean).length > 1
+  if (shared) return Number(row.pick) === Number(quality.pick)
+  return true
+}
+
 /** Loom numbers running this quality, in production-sheet order. Same name + different pick stay separate. */
 export function loomsAllottedToQuality(
   q: QualityMaster,
@@ -1381,6 +1399,32 @@ class ProductionMastersService {
       }
       return merged
     })
+    const qualityChangeOnThisDayOnly =
+      patch.qualityId !== undefined && dateStr !== getCalendarToday()
+    if (qualityChangeOnThisDayOnly) {
+      const current = this.getLooms().find((l) => l.loomNumber === loomNumber)
+      if (current) {
+        if (patch.qualityId) {
+          this.updateSheetEntry(
+            dateStr,
+            loomNumber,
+            this.recipeForLoom({ ...current, qualityId: patch.qualityId }, dateStr)
+          )
+        } else {
+          this.updateSheetEntry(dateStr, loomNumber, {
+            qualityName: '—',
+            fabricType: '',
+            warpYarn: '',
+            weftYarn: '',
+          })
+        }
+      }
+      const rest = { ...patch }
+      delete rest.qualityId
+      if (Object.keys(rest).length === 0) return this.getLooms()
+      patch = rest
+    }
+
     this.saveLooms(looms)
 
     // Keep Quality Master list order = loom allotment order (same as production sheet)
@@ -1388,11 +1432,23 @@ class ProductionMastersService {
       this.saveQualities(orderQualitiesByLoomAllotment(this.getQualities(), looms))
     }
 
-    // Quality / RPM change applies only to the day being edited. Older sheets stay as saved.
+    // Today’s assignment updates the loom master and this day’s sheet only.
+    // A past day never rewrites the master, so other dates stay as they were saved.
     if (patch.qualityId !== undefined || patch.defaultRpm !== undefined) {
       const loom = looms.find((l) => l.loomNumber === loomNumber)
-      if (loom && this.peekSheetDay(dateStr)) {
-        this.updateSheetEntry(dateStr, loomNumber, this.recipeForLoom(loom, dateStr))
+      if (loom) {
+        if (patch.qualityId) {
+          this.updateSheetEntry(dateStr, loomNumber, this.recipeForLoom(loom, dateStr))
+        } else if (patch.qualityId === null) {
+          this.updateSheetEntry(dateStr, loomNumber, {
+            qualityName: '—',
+            fabricType: '',
+            warpYarn: '',
+            weftYarn: '',
+          })
+        } else if (this.peekSheetDay(dateStr)) {
+          this.updateSheetEntry(dateStr, loomNumber, this.recipeForLoom(loom, dateStr))
+        }
       }
     }
 
@@ -1889,6 +1945,7 @@ class ProductionMastersService {
     fromDate: string = getProductionToday()
   ): QualityMaster[] {
     const current = this.getQualities().find((q) => q.id === id)
+    const catalogBefore = this.getQualities()
     const nextPatch = { ...patch }
     if (current?.status === 'ENDED') {
       delete nextPatch.status
@@ -1914,10 +1971,17 @@ class ProductionMastersService {
       nextPatch.pick !== undefined ||
       nextPatch.widthInch !== undefined ||
       nextPatch.gsm !== undefined
-    if (recipeTouched && this.peekSheetDay(fromDate)) {
-      for (const loom of this.getLooms()) {
-        if (loom.qualityId !== id) continue
-        this.updateSheetEntry(fromDate, loom.loomNumber, this.recipeForLoom(loom, fromDate))
+    if (recipeTouched && current && this.peekSheetDay(fromDate)) {
+      const day = this.peekSheetDay(fromDate) || []
+      for (const row of day) {
+        if (!sheetRowShowsQuality(row, current, catalogBefore)) continue
+        const loom = this.getLooms().find((l) => l.loomNumber === row.loomNumber)
+        if (!loom) continue
+        this.updateSheetEntry(
+          fromDate,
+          row.loomNumber,
+          this.recipeForLoom({ ...loom, qualityId: id }, fromDate)
+        )
       }
     }
     return qualities
@@ -2061,11 +2125,15 @@ class ProductionMastersService {
         const n = (name || '').trim()
         return n !== '' && n !== '—' && n !== '-'
       }
-      // Saved day keeps its own quality. A blank new day copies yesterday's quality, same as the lot.
-      const identity =
-        (prev && named(prev.qualityName) ? prev : null) ||
-        (named(live.qualityName) ? live : null) ||
-        (prior && named(prior.qualityName) ? prior : null)
+      // A saved row keeps the quality stored on that date, including a deliberate clear.
+      // Do not copy yesterday or the live loom back onto a day that was emptied.
+      const cleared = prev ? !named(prev.qualityName) : false
+      const identity = cleared
+        ? null
+        : prev
+          ? prev
+          : (prior && named(prior.qualityName) ? prior : null) ||
+            (named(live.qualityName) ? live : null)
       const pick = identity?.pick || live.pick || 60
       const reed = identity?.reed || live.reed || 60
       const rpm = identity?.rpm || live.rpm || loom.defaultRpm
@@ -2197,6 +2265,44 @@ class ProductionMastersService {
       void persistLoomEntry(dateStr, loomNumber, updatedLoom)
     }
 
+    return next
+  }
+
+  /** Zero roller hours + Actual A/B for every loom on this day (after UI confirm). */
+  resetDayMeters(dateStr: string, editorName?: string): DailyLoomProductionEntry[] {
+    const current = this.buildSheetForDate(dateStr, { skipPersist: true })
+    const editor = editorName || 'Floor Operator'
+    const now = new Date().toISOString()
+    const next = current.map((e) => {
+      const metrics = calculateProductionMetrics({
+        rpm: e.rpm,
+        runningHours: 0,
+        pick: e.pick || 60,
+        shiftAMeters: 0,
+        shiftBMeters: 0,
+        loomNumber: e.loomNumber,
+      })
+      return {
+        ...e,
+        rollerHours: 0,
+        runningHours: 0,
+        shiftAMeters: 0,
+        shiftBMeters: 0,
+        runningTheoretical: metrics.theoreticalMeters,
+        totalMeters: metrics.totalMeters,
+        efficiencyPercentage: metrics.efficiencyPercentage,
+        stopLossMeters: metrics.stopLossMeters,
+        theoretical24h: metrics.theoretical24h,
+        efficiency24h: metrics.efficiency24h,
+        loss24h: metrics.loss24h,
+        lastEditedBy: editor,
+        lastEditedAt: now,
+      } satisfies DailyLoomProductionEntry
+    })
+    saveJson(this.sheetKey(dateStr), next)
+    for (const row of next) {
+      void persistLoomEntry(dateStr, row.loomNumber, row)
+    }
     return next
   }
 

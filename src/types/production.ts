@@ -130,14 +130,14 @@ export interface CalculationInput {
   shiftAMeters: number;
   shiftBMeters: number;
   ratePerPick?: number;
-  /** Looms 21, 23, 24, 25, 26 carry two beams, so Running 100% is halved. */
+  /** Looms 21, 23, 24, 25, 26 use Excel formula × 2 (two beams). Loom 22 does not. */
   loomNumber?: number;
 }
 
-/** PU looms that weave on two beams — Running target is RPM formula ÷ 2. */
+/** Excel Production: looms 21, 23, 24, 25, 26 → 100% Running and 100% 24h are × 2. */
 const DOUBLE_BEAM_LOOMS = new Set([21, 23, 24, 25, 26]);
 
-export function runningBeamDivisor(loomNumber?: number) {
+export function runningBeamFactor(loomNumber?: number) {
   return loomNumber != null && DOUBLE_BEAM_LOOMS.has(loomNumber) ? 2 : 1;
 }
 
@@ -152,8 +152,9 @@ export function theoreticalMeters(rpm: number, pick: number, hours: number) {
 export function calculateProductionMetrics(input: CalculationInput) {
   const { rpm, runningHours, pick, shiftAMeters, shiftBMeters, ratePerPick = 0.95 } = input;
 
-  const runningTheo = theoreticalMeters(rpm, pick, runningHours) / runningBeamDivisor(input.loomNumber);
-  const theo24h = theoreticalMeters(rpm, pick, 24);
+  const beam = runningBeamFactor(input.loomNumber);
+  const runningTheo = theoreticalMeters(rpm, pick, runningHours) * beam;
+  const theo24h = theoreticalMeters(rpm, pick, 24) * beam;
   const totalMeters = (shiftAMeters || 0) + (shiftBMeters || 0);
 
   const efficiencyRunning = runningTheo > 0 ? (totalMeters / runningTheo) * 100 : 0

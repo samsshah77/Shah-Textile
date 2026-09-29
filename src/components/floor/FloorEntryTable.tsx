@@ -1,17 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 import { loomConditionRowStyle } from '@/constants/loomConditions'
 
 interface FloorEntryTableProps {
   entries: DailyLoomProductionEntry[]
   onUpdateEntry: (loomNumber: number, patch: Partial<DailyLoomProductionEntry>, editorName?: string) => void
+  onResetDayMeters?: (editorName?: string) => void
   canEdit?: boolean
   selectedDate?: string
   onSubmitForApproval?: () => Promise<{ success: boolean; error?: string }>
@@ -35,17 +37,22 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 export function FloorEntryTable({
   entries,
   onUpdateEntry,
+  onResetDayMeters,
+  selectedDate,
   onSubmitForApproval,
   onApproveSheet,
   onUnlockSheet,
 }: FloorEntryTableProps) {
   const { user, isAdmin, isQualityController } = useAuth()
+  const { showConfirm } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEdit, setTableEdit] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'danger'; text: string } | null>(null)
+  /** After Finalize, Reset stays off until someone edits Daily Entry again. */
+  const [editedSinceFinalize, setEditedSinceFinalize] = useState(false)
 
-  const { widths, setColumnWidth, resetAllWidths, resetColumnWidth } = useResizableColumns(
+  const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_prod_entry_col_widths_v3',
     DEFAULT_WIDTHS
   )
@@ -65,11 +72,16 @@ export function FloorEntryTable({
   const approvedAt = useMemo(() => entries.find((e) => e.approvedAt)?.approvedAt, [entries])
   const lastEditedBy = useMemo(() => entries.find((e) => e.lastEditedBy)?.lastEditedBy, [entries])
 
+  useEffect(() => {
+    setEditedSinceFinalize(false)
+  }, [selectedDate, isApproved])
+
   // Operator (Ahmer) is locked if sheet is APPROVED by Javed Sir
   // Admin (Javed Sir) is NEVER locked — he can edit anytime!
   const isLockedForOperator = isApproved && !isAdmin
   const canUserEdit = isAdmin ? true : (isQualityController && !isLockedForOperator)
   const canEdit = canUserEdit && tableEdit
+  const resetDisabled = !canUserEdit || (isApproved && !editedSinceFinalize)
 
   // Show notice ONLY when Ahmar has edited/submitted and it is not yet finalized
   const hasPendingAhmarEntry =
@@ -84,6 +96,7 @@ export function FloorEntryTable({
     const shiftA = patch.shiftAMeters ?? current?.shiftAMeters ?? 0
     const shiftB = patch.shiftBMeters ?? current?.shiftBMeters ?? 0
     const editor = user?.name || (isAdmin ? 'Javed Sir' : 'Ahmer')
+    if (isApproved) setEditedSinceFinalize(true)
     onUpdateEntry(
       loomNumber,
       {
@@ -100,6 +113,23 @@ export function FloorEntryTable({
     )
   }
 
+  const handleResetDay = () => {
+    if (resetDisabled || !onResetDayMeters) return
+    showConfirm({
+      title: 'Reset Daily Entry?',
+      message:
+        'Is date ke saare Roller Hours, Shift A aur Shift B zero ho jayenge. Quality / Lot same rahenge.',
+      type: 'confirm',
+      confirmText: 'Haan, zero karo',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        const editor = user?.name || (isAdmin ? 'Javed Sir' : 'Ahmer')
+        onResetDayMeters(editor)
+        setFeedbackMsg({ type: 'success', text: 'Daily Entry meters zero ho gaye.' })
+      },
+    })
+  }
+
   const handleApprove = async () => {
     if (!onApproveSheet) return
     setIsSubmitting(true)
@@ -109,6 +139,7 @@ export function FloorEntryTable({
       if (res.success) {
         setFeedbackMsg({ type: 'success', text: 'Production sheet finalized.' })
         setTableEdit(false)
+        setEditedSinceFinalize(false)
       } else {
         setFeedbackMsg({ type: 'danger', text: res.error || 'Finalize failed' })
       }
@@ -220,11 +251,22 @@ export function FloorEntryTable({
 
           {editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {mode === 'table' && (
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={resetAllWidths}>
-              Reset columns
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            disabled={resetDisabled || isSubmitting}
+            title={
+              resetDisabled
+                ? isApproved
+                  ? 'Finalized — pehle Edit karke change karo, phir Reset chalega'
+                  : 'Reset locked'
+                : 'Zero Roller Hours + Shift A/B (confirmation ke baad)'
+            }
+            onClick={handleResetDay}
+          >
+            <i className="bi bi-arrow-counterclockwise me-1" />
+            Reset
+          </button>
         </div>
       </div>
 
