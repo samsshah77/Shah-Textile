@@ -1007,6 +1007,7 @@ tr:hover .sara-serial-arrows {
     height: 36px;
     object-fit: contain;
     flex-shrink: 0;
+    border-radius: 6px;
   }
 
   .sara-print-doc-header__company {

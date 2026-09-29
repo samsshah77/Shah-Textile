@@ -195,12 +195,25 @@ export function useProductionGrid() {
 
   const updateLoom = useCallback(
     (loomNumber: number, patch: Partial<LoomMaster>) => {
+      const prevQualityId =
+        productionMastersService.getLooms().find((l) => l.loomNumber === loomNumber)?.qualityId ??
+        null
       const nextLooms = productionMastersService.updateLoom(loomNumber, patch, selectedDate)
       setLooms(nextLooms)
       // Always re-read beams so Loom Status → Beam End appears without page refresh
       setBeams(productionMastersService.getBeams().map((b) => ({ ...b })))
       if (patch.qualityId !== undefined) {
         setQualities(productionMastersService.getQualities())
+        // Auto-end (last loom cleared) or revive — persist status to DB.
+        if (prevQualityId && prevQualityId !== patch.qualityId) {
+          const prevQ = productionMastersService.getQualities().find((q) => q.id === prevQualityId)
+          if (prevQ?.status === 'ENDED') {
+            void productionMastersService.flushQualityStatus(prevQualityId)
+          }
+        }
+        if (patch.qualityId) {
+          void productionMastersService.flushQualityStatus(patch.qualityId)
+        }
       }
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
@@ -343,35 +356,24 @@ export function useProductionGrid() {
       setQualities(next)
       setLooms(productionMastersService.getLooms())
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
-      if (patch.status === 'ENDED' || patch.endedOn !== undefined) {
+      if (patch.status === 'ENDED' || patch.endedOn !== undefined || patch.status === 'ACTIVE') {
         void productionMastersService.flushQualityStatus(id)
       }
     },
     [selectedDate]
   )
 
-  const endQualityOnLooms = useCallback(
-    async (qualityId: string, loomNumbers: number[]) => {
-      const result = productionMastersService.endQualityOnLooms(qualityId, loomNumbers, selectedDate)
-      setQualities(productionMastersService.getQualities())
-      setLooms(productionMastersService.getLooms())
-      setEntries(result.entries)
-      const saved = await productionMastersService.flushQualityStatus(qualityId)
-      if (!saved) {
-        console.warn(
-          '[floor] Quality end saved in browser; DB sync failed — refresh will still keep it via local backup.'
-        )
-      }
-      // Re-read after flush so UI matches merged local+memory state.
-      setQualities(productionMastersService.getQualities())
-      return result.fullyEnded
+  const addQuality = useCallback(
+    (partial?: Partial<QualityMaster>) => {
+      setQualities(
+        productionMastersService.addQuality({
+          ...partial,
+          createdOn: partial?.createdOn || selectedDate,
+        })
+      )
     },
     [selectedDate]
   )
-
-  const addQuality = useCallback((partial?: Partial<QualityMaster>) => {
-    setQualities(productionMastersService.addQuality(partial))
-  }, [])
 
   const deleteQuality = useCallback((id: string) => {
     setQualities(productionMastersService.deleteQuality(id))
@@ -424,7 +426,6 @@ export function useProductionGrid() {
     addYarnInward,
     issueYarnToLoom,
     updateQuality,
-    endQualityOnLooms,
     addQuality,
     deleteQuality,
     startNewDay,

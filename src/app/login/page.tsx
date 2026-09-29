@@ -54,12 +54,12 @@ export default function LoginPage() {
         <div className="card-header">
           <a href="/" className="link-dark text-center d-flex flex-column align-items-center text-decoration-none">
             <Image
-              src="/saralogo.webp"
-              width={48}
-              height={48}
+              src="/saratextile.png"
+              width={72}
+              height={72}
               alt="Sara Textile"
               priority
-              className="mb-2 d-block mx-auto"
+              className="mb-2 d-block mx-auto rounded-3"
             />
             <h1 className="mb-0 fs-3">
               <b>Sara</b> Textile

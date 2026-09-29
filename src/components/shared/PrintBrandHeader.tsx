@@ -45,7 +45,7 @@ export function PrintBrandHeader({ sheetTitle }: PrintBrandHeaderProps) {
       <div className="sara-print-doc-header__left">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/saralogo.webp"
+          src="/saratextile.png"
           alt=""
           className="sara-print-doc-header__logo"
           width={40}

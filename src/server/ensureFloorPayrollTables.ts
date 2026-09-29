@@ -119,6 +119,7 @@ const STATEMENTS = [
   // Existing live tables may predate these columns — ADD IF NOT EXISTS (Postgres 9.1+ via DO block).
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'ACTIVE'`,
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "endedOn" TEXT`,
+  `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "createdOn" TEXT`,
   `ALTER TABLE "floor_looms" ADD COLUMN IF NOT EXISTS "statusSince" TEXT`,
 ]
 

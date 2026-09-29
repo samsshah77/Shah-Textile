@@ -23,15 +23,43 @@ import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditi
 import type { LoomStatus } from '@/types/loom'
 import type { LoomCategory } from '@/types/loom'
 import type { DailyLoomProductionEntry } from '@/types/production'
+import { calculateProductionMetrics } from '@/types/production'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+
+/** Same as Production sheet footer / Excel: Σ(A+B) ÷ Σ(100% Running) × 100 — not avg of %. */
+function dayRunningEfficiency(live: DailyLoomProductionEntry[]) {
+  let actual = 0
+  let target = 0
+  for (const e of live) {
+    const meters =
+      e.totalMeters != null
+        ? Number(e.totalMeters) || 0
+        : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
+    actual += meters
+    let theo = Number(e.runningTheoretical) || 0
+    if (theo <= 0) {
+      theo =
+        calculateProductionMetrics({
+          rpm: e.rpm || 0,
+          runningHours: e.rollerHours ?? e.runningHours ?? 0,
+          pick: e.pick || 0,
+          shiftAMeters: e.shiftAMeters || 0,
+          shiftBMeters: e.shiftBMeters || 0,
+          loomNumber: e.loomNumber,
+        }).theoreticalMeters || 0
+    }
+    target += theo
+  }
+  if (target <= 0) return 0
+  return (actual / target) * 100
+}
 
 function summarizeDay(live: DailyLoomProductionEntry[]) {
   const totalLooms = live.length || 0
   const shiftA = live.reduce((s, e) => s + (e.shiftAMeters || 0), 0)
   const shiftB = live.reduce((s, e) => s + (e.shiftBMeters || 0), 0)
   const meters = live.reduce((s, e) => s + (e.totalMeters || 0), 0)
-  const effSum = live.reduce((s, e) => s + (e.efficiencyPercentage || 0), 0)
-  const efficiency = live.length ? effSum / live.length : 0
+  const efficiency = dayRunningEfficiency(live)
   const running = live.filter((e) => resolveLoomCondition(e.status, e.remarks) === 'RUNNING').length
 
   const conditions: Partial<Record<LoomStatus, number>> = {}
@@ -280,7 +308,7 @@ export default function DashboardPage() {
           <MetricCard
             title="Efficiency"
             value={day.efficiency ? `${Math.round(day.efficiency)}%` : '—'}
-            subValue="Avg running"
+            subValue="Running H (sheet)"
             biIcon="bi-percent"
             colorVariant="warning"
             href={efficiencyTrackingHref}

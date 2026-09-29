@@ -28,9 +28,9 @@ export const metadata: Metadata = {
   title: 'Sara Textile ERP • Weaving Mill Floor Management',
   description: 'Enterprise 34-Loom Weaving Production, Efficiency & Dispatch ERP System',
   icons: {
-    icon: '/saralogo.webp',
-    shortcut: '/saralogo.webp',
-    apple: '/saralogo.webp',
+    icon: [{ url: '/saratextile.png', type: 'image/png' }, { url: '/favicon.ico' }],
+    shortcut: '/favicon.ico',
+    apple: '/saratextile.png',
   },
 }
 

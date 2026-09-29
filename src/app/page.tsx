@@ -269,8 +269,18 @@ export default function HomePage() {
           line-height: 0.94;
           letter-spacing: -0.04em;
           margin: 0 0 1.1rem;
-          max-width: 12ch;
+          max-width: 18ch;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
           animation: rise 0.9s var(--ease) both;
+        }
+        .brand img {
+          width: clamp(52px, 9vw, 96px);
+          height: auto;
+          border-radius: 14px;
+          flex-shrink: 0;
+          box-shadow: 0 0 28px rgba(255, 179, 0, 0.35);
         }
         .hero__headline {
           font-family: "Space Grotesk", sans-serif;
@@ -760,7 +770,14 @@ export default function HomePage() {
       <nav className="top-nav">
         <div className="top-nav__inner">
           <Link href="/" className="nav-brand">
-            <span className="nav-dot"></span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/saratextile.png"
+              alt=""
+              width={36}
+              height={36}
+              style={{ borderRadius: 8, objectFit: 'contain' }}
+            />
             Sara Textiles Weaving
           </Link>
           <ul className="nav-links">
@@ -821,7 +838,11 @@ export default function HomePage() {
         </div>
         <div className="hero__scan" aria-hidden="true"></div>
         <div className="hero__inner">
-          <p className="brand">Sara Textiles Weaving</p>
+          <p className="brand">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/saratextile.png" alt="Sara Textiles" />
+            <span>Sara Textiles Weaving</span>
+          </p>
           <h1 className="hero__headline">Modern weaving machinery. Greige fabric out.</h1>
           <p className="hero__lede">High-speed looms convert yarn into clean, dye-ready cloth—controlled, inspected, and released for the dye house.</p>
           <div className="cta-row">
@@ -1011,7 +1032,11 @@ export default function HomePage() {
       {/* Footer */}
       <footer>
         <div className="wrap">
-          <span><strong>Sara Textiles Weaving</strong> — greige, electronics, spares &amp; used looms</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.55rem' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/saratextile.png" alt="" width={22} height={22} style={{ borderRadius: 4 }} />
+            <strong>Sara Textiles Weaving</strong> — greige, electronics, spares &amp; used looms
+          </span>
           {isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <Link className="footer-portal-link" href="/dashboard">

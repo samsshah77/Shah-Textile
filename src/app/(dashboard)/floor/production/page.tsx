@@ -80,7 +80,6 @@ function ProductionWorkspaceContent() {
     issueYarnToLoom,
     yarnIssuances,
     yarnMovements,
-    endQualityOnLooms,
     updateQuality,
     addQuality,
     deleteQuality,
@@ -115,7 +114,11 @@ function ProductionWorkspaceContent() {
     quality: 'Quality',
   }
 
-  const showDateBar = currentTab === 'sheet' || currentTab === 'entry' || currentTab === 'quality'
+  const showDateBar =
+    currentTab === 'sheet' ||
+    currentTab === 'entry' ||
+    currentTab === 'quality' ||
+    currentTab === 'looms'
   const isYarnTab = currentTab === 'yarn'
   const isBeamsTab = currentTab === 'beams'
   const isQualityTab = currentTab === 'quality'
@@ -236,6 +239,9 @@ function ProductionWorkspaceContent() {
         <LoomMasterTable
           looms={looms}
           yarn={yarn}
+          qualities={qualities}
+          entries={entries}
+          sheetDate={selectedDate}
           onUpdate={updateLoom}
           onAdd={addLoom}
           onDelete={deleteLoom}
@@ -298,13 +304,9 @@ function ProductionWorkspaceContent() {
           readOnly={!canEditProduction}
           entries={entries}
           looms={looms}
-          onAssignLoom={(loomNumber, qualityId) => updateLoom(loomNumber, { qualityId })}
-          onEndOnLooms={endQualityOnLooms}
           beams={beams}
           yarn={yarn}
           statusFilter={qualityStatusFilter}
-          onStatusFilterChange={setQualityStatusFilter}
-          endDateDefault={selectedDate}
           sheetDate={selectedDate}
         />
       )}

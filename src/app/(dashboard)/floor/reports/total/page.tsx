@@ -181,6 +181,62 @@ function ProductionTotalTrackingContent() {
     return filtered.map(({ label, value }) => ({ label, value }))
   }, [matrix.loomTotals, qualityLoomSet])
 
+  /** By model: meters on Production tracking, sheet-weighted efficiency on Efficiency tracking. */
+  const modelBars = useMemo(() => {
+    const looms = productionMastersService.getLooms()
+    const catOf = (n: number) => {
+      const l = looms.find((x) => x.loomNumber === n)
+      const c = (l?.category || l?.model || 'G6200') as string
+      return c === 'G6300' || c === 'PU' ? c : 'G6200'
+    }
+    const colors: Record<string, string> = {
+      G6200: '#0d6efd',
+      G6300: '#198754',
+      PU: '#fd7e14',
+    }
+
+    if (view === 'efficiency') {
+      const source =
+        matrix.loomActual && Object.keys(matrix.loomActual).length > 0
+          ? matrix
+          : productionMastersService.buildMonthlyMatrix(month, 'efficiency')
+      const actual: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+      const target: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+      for (const [loomStr, meters] of Object.entries(source.loomActual || {})) {
+        const loom = Number(loomStr)
+        if (qualityLoomSet && !qualityLoomSet.has(loom)) continue
+        const cat = catOf(loom)
+        actual[cat] += Number(meters) || 0
+        target[cat] += Number(source.loomTarget?.[loom] || 0)
+      }
+      return (['G6200', 'G6300', 'PU'] as const).map((label) => ({
+        label,
+        value: target[label] > 0 ? Math.round((actual[label] / target[label]) * 100) : 0,
+        color: colors[label],
+      }))
+    }
+
+    const metersMatrix =
+      view === 'meters'
+        ? matrix
+        : productionMastersService.buildMonthlyMatrix(month, 'meters')
+    const totals: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+    for (const [loomStr, meters] of Object.entries(metersMatrix.loomTotals || {})) {
+      const loom = Number(loomStr)
+      if (qualityLoomSet && !qualityLoomSet.has(loom)) continue
+      const cat = catOf(loom)
+      totals[cat] = (totals[cat] || 0) + (Number(meters) || 0)
+    }
+    return (['G6200', 'G6300', 'PU'] as const).map((label) => ({
+      label,
+      value: totals[label] || 0,
+      color: colors[label],
+    }))
+  }, [matrix, month, view, qualityLoomSet, loading])
+
+  const modelBarSuffix = view === 'efficiency' ? '%' : ' m'
+  const modelBarTitle = view === 'efficiency' ? 'By model — Efficiency' : 'By model — Production'
+
   const loomNumbers = useMemo(() => {
     const set = new Set<number>()
     matrix.days.forEach((d) => {
@@ -362,14 +418,26 @@ function ProductionTotalTrackingContent() {
           </div>
         </div>
         <div className="col-lg-5">
-          <div className="card h-100">
+          <div className="card mb-3">
+            <div className="card-header">
+              <h3 className="card-title mb-0">{modelBarTitle}</h3>
+            </div>
+            <div className="card-body">
+              <SimpleHBarList data={modelBars} maxBars={3} valueSuffix={modelBarSuffix} />
+            </div>
+          </div>
+          <div className="card">
             <div className="card-header">
               <h3 className="card-title mb-0">
                 {qualityFocus ? 'Looms — this quality' : 'Top looms this month'}
               </h3>
             </div>
             <div className="card-body">
-              <SimpleHBarList data={loomSeries} maxBars={12} />
+              <SimpleHBarList
+                data={loomSeries}
+                maxBars={12}
+                valueSuffix={view === 'efficiency' ? '%' : view === 'active' ? '' : ' m'}
+              />
             </div>
           </div>
         </div>

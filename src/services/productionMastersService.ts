@@ -132,6 +132,8 @@ export interface QualityMaster {
   widthInch: number
   gsm: number
   status?: 'ACTIVE' | 'ENDED'
+  /** YYYY-MM-DD when quality was first added — hidden on earlier dates. */
+  createdOn?: string | null
   /** YYYY-MM-DD when quality was ended (latest stamp) */
   endedOn?: string | null
   /** Per-loom end history (which loom ended on which date). */
@@ -163,6 +165,7 @@ function normalizeQuality(q: QualityMaster): QualityMaster {
   return {
     ...q,
     status,
+    createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
     loomEnds: normalizeLoomEnds(q.loomEnds),
     yarnHistory,
@@ -226,6 +229,11 @@ function rememberLocalQualityEnd(
     name,
     loomEnds: mergeLoomEndLists(existing?.loomEnds, newLoomEnds),
   })
+  writeLocalQualityEnds(next)
+}
+
+function forgetLocalQualityEnd(id: string) {
+  const next = readLocalQualityEnds().filter((e) => e.id !== id)
   writeLocalQualityEnds(next)
 }
 
@@ -343,7 +351,7 @@ export function qualityDisplayName(q: QualityMaster, qualities: QualityMaster[])
   return qualityHasDuplicateName(q, qualities) ? `${q.name} (Pick ${q.pick})` : q.name
 }
 
-function matchQualityByNameAndPick(
+export function matchQualityByNameAndPick(
   qualities: QualityMaster[],
   name: string,
   pick?: number
@@ -362,6 +370,13 @@ export function qualityActiveOnSheetDate(
   dayRows: DailyLoomProductionEntry[],
   catalog: QualityMaster[]
 ): boolean {
+  const day = String(sheetDate || '').slice(0, 10)
+  const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
+  // New qualities do not appear on dates before they were created.
+  if (createdOn && day && day < createdOn) {
+    // Exception: already on that day's sheet (legacy / imported allotment).
+    if (!dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))) return false
+  }
   if ((q.status ?? 'ACTIVE') !== 'ENDED') return true
   const endedOn = q.endedOn
   if (!endedOn) return false
@@ -370,6 +385,52 @@ export function qualityActiveOnSheetDate(
     return dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))
   }
   return false
+}
+
+/** True when this quality is on at least one loom master row or today's sheet. */
+export function qualityAssignedOnDay(
+  q: QualityMaster,
+  looms: LoomMaster[],
+  dayRows: DailyLoomProductionEntry[],
+  catalog: QualityMaster[]
+): boolean {
+  if (looms.some((l) => l.qualityId === q.id)) return true
+  return dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))
+}
+
+/** Day-wise quality on a loom: sheet row for that date, else master allotment. */
+export function qualityIdOnLoomForDate(
+  loom: LoomMaster,
+  qualities: QualityMaster[],
+  dayRows: DailyLoomProductionEntry[]
+): string | null {
+  const row = dayRows.find((e) => e.loomNumber === loom.loomNumber)
+  if (row) {
+    const name = (row.qualityName || '').trim()
+    if (!name || name === '—') return null
+    return matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ?? null
+  }
+  return loom.qualityId ?? null
+}
+
+/** Day-wise RPM on a loom: sheet row for that date, else master default. */
+export function rpmOnLoomForDate(
+  loom: LoomMaster,
+  dayRows: DailyLoomProductionEntry[]
+): number {
+  const row = dayRows.find((e) => e.loomNumber === loom.loomNumber)
+  if (row && row.rpm != null && Number(row.rpm) > 0) return Number(row.rpm)
+  return loom.defaultRpm || 0
+}
+
+/** Day-wise loom status: sheet row for that date, else master. */
+export function statusOnLoomForDate(
+  loom: LoomMaster,
+  dayRows: DailyLoomProductionEntry[]
+): LoomStatus {
+  const row = dayRows.find((e) => e.loomNumber === loom.loomNumber)
+  if (row) return resolveLoomCondition(row.status, row.remarks)
+  return (loom.status || 'RUNNING') as LoomStatus
 }
 
 export function sheetRowShowsQuality(
@@ -1567,121 +1628,185 @@ class ProductionMastersService {
     patch: Partial<LoomMaster>,
     dateStr: string = PRODUCTION_TODAY
   ): LoomMaster[] {
-    const looms = this.getLooms().map((l) => {
-      if (l.loomNumber !== loomNumber) return l
-      const statusChanged = patch.status && patch.status !== l.status
-      const nextStatusSince = statusChanged
-        ? patch.status === 'RUNNING'
-          ? null
-          : dateStr
-        : patch.statusSince !== undefined
-          ? patch.statusSince
-          : l.statusSince
+    const previousLoom = this.getLooms().find((l) => l.loomNumber === loomNumber)
+    const previousQualityId = previousLoom?.qualityId ?? null
+    const isPastProductionDay = dateStr !== getProductionToday()
+    const dayOnlyQuality = isPastProductionDay && patch.qualityId !== undefined
+    const dayOnlyRpm = isPastProductionDay && patch.defaultRpm !== undefined
+    const dayOnlyStatus = isPastProductionDay && patch.status !== undefined
 
-      const merged = {
-        ...l,
-        ...patch,
-        statusSince: nextStatusSince,
-        category: (patch.model || patch.category || l.category) as LoomCategory,
-        model: (patch.model || patch.category || l.model) as LoomCategory,
-      }
-      // Keep pictureDataUrl in sync when pictureDataUrls is patched
-      if (patch.pictureDataUrls) {
-        Object.assign(merged, normalizeLoomPictures({ ...merged, pictureDataUrls: patch.pictureDataUrls }))
-      } else if (patch.pictureDataUrl !== undefined && !patch.pictureDataUrls) {
-        const rest = getLoomPictures(l).filter((u) => u !== patch.pictureDataUrl)
-        Object.assign(
-          merged,
-          normalizeLoomPictures({
-            ...merged,
-            pictureDataUrls: [patch.pictureDataUrl, ...rest].filter(Boolean) as string[],
-          })
-        )
-      } else {
-        Object.assign(merged, normalizeLoomPictures(merged))
-      }
-      return merged
-    })
-    const qualityChangeOnThisDayOnly =
-      patch.qualityId !== undefined && dateStr !== getCalendarToday()
-    if (qualityChangeOnThisDayOnly) {
-      const current = this.getLooms().find((l) => l.loomNumber === loomNumber)
+    // Past days: quality / RPM / status stay on that day's sheet only — master + other dates untouched.
+    if (dayOnlyQuality || dayOnlyRpm || dayOnlyStatus) {
+      const current = previousLoom
       if (current) {
-        if (patch.qualityId) {
-          this.updateSheetEntry(
-            dateStr,
-            loomNumber,
-            this.recipeForLoom({ ...current, qualityId: patch.qualityId }, dateStr)
-          )
-        } else {
-          this.updateSheetEntry(dateStr, loomNumber, {
-            qualityName: '—',
-            fabricType: '',
-            warpYarn: '',
-            weftYarn: '',
-          })
+        const sheetPatch: Partial<DailyLoomProductionEntry> = {}
+        if (dayOnlyQuality) {
+          if (patch.qualityId) {
+            Object.assign(
+              sheetPatch,
+              this.recipeForLoom({ ...current, qualityId: patch.qualityId }, dateStr)
+            )
+          } else {
+            Object.assign(sheetPatch, {
+              qualityName: '—',
+              fabricType: '',
+              warpYarn: '',
+              weftYarn: '',
+            })
+          }
+        }
+        if (dayOnlyRpm) {
+          sheetPatch.rpm = patch.defaultRpm
+        }
+        if (dayOnlyStatus && patch.status) {
+          const label = LOOM_STATUS_LABEL[patch.status] || patch.status
+          sheetPatch.status = patch.status
+          sheetPatch.remarks = patch.status === 'RUNNING' ? '' : label
+          if (
+            patch.status === 'BEAM_END' ||
+            patch.status === 'STOPPED' ||
+            patch.status === 'BEAM_CUT'
+          ) {
+            sheetPatch.rollerHours = 0
+          }
+          if (patch.status === 'BEAM_END' || patch.status === 'BEAM_CUT') {
+            this.flagBeamEndFromLoom(loomNumber, dateStr)
+            this.reconcileBeamEndsWithLooms(dateStr)
+          }
+        }
+        if (Object.keys(sheetPatch).length > 0) {
+          this.updateSheetEntry(dateStr, loomNumber, sheetPatch)
         }
       }
-      const rest = { ...patch }
-      delete rest.qualityId
-      if (Object.keys(rest).length === 0) return this.getLooms()
-      patch = rest
     }
 
-    this.saveLooms(looms)
+    const masterPatch: Partial<LoomMaster> = { ...patch }
+    if (dayOnlyQuality) delete masterPatch.qualityId
+    if (dayOnlyRpm) delete masterPatch.defaultRpm
+    if (dayOnlyStatus) delete masterPatch.status
+
+    const hasMasterChange = Object.keys(masterPatch).length > 0
+    const looms = hasMasterChange
+      ? this.getLooms().map((l) => {
+          if (l.loomNumber !== loomNumber) return l
+          const statusChanged = masterPatch.status && masterPatch.status !== l.status
+          const nextStatusSince = statusChanged
+            ? masterPatch.status === 'RUNNING'
+              ? null
+              : dateStr
+            : masterPatch.statusSince !== undefined
+              ? masterPatch.statusSince
+              : l.statusSince
+
+          const merged = {
+            ...l,
+            ...masterPatch,
+            statusSince: nextStatusSince,
+            category: (masterPatch.model || masterPatch.category || l.category) as LoomCategory,
+            model: (masterPatch.model || masterPatch.category || l.model) as LoomCategory,
+          }
+          if (masterPatch.pictureDataUrls) {
+            Object.assign(
+              merged,
+              normalizeLoomPictures({ ...merged, pictureDataUrls: masterPatch.pictureDataUrls })
+            )
+          } else if (masterPatch.pictureDataUrl !== undefined && !masterPatch.pictureDataUrls) {
+            const rest = getLoomPictures(l).filter((u) => u !== masterPatch.pictureDataUrl)
+            Object.assign(
+              merged,
+              normalizeLoomPictures({
+                ...merged,
+                pictureDataUrls: [masterPatch.pictureDataUrl, ...rest].filter(Boolean) as string[],
+              })
+            )
+          } else {
+            Object.assign(merged, normalizeLoomPictures(merged))
+          }
+          return merged
+        })
+      : this.getLooms()
+
+    if (hasMasterChange) {
+      this.saveLooms(looms)
+    }
 
     // Keep Quality Master list order = loom allotment order (same as production sheet)
-    if (patch.qualityId !== undefined) {
+    if (masterPatch.qualityId !== undefined) {
       this.saveQualities(orderQualitiesByLoomAllotment(this.getQualities(), looms))
     }
 
-    // Today’s assignment updates the loom master and this day’s sheet only.
-    // A past day never rewrites the master, so other dates stay as they were saved.
-    if (patch.qualityId !== undefined || patch.defaultRpm !== undefined) {
+    // Production-today assignment updates the loom master and this day’s sheet.
+    if (masterPatch.qualityId !== undefined || masterPatch.defaultRpm !== undefined) {
       const loom = looms.find((l) => l.loomNumber === loomNumber)
       if (loom) {
-        if (patch.qualityId) {
+        if (masterPatch.qualityId) {
           this.updateSheetEntry(dateStr, loomNumber, this.recipeForLoom(loom, dateStr))
-        } else if (patch.qualityId === null) {
+        } else if (masterPatch.qualityId === null) {
           this.updateSheetEntry(dateStr, loomNumber, {
             qualityName: '—',
             fabricType: '',
             warpYarn: '',
             weftYarn: '',
           })
+        } else if (masterPatch.defaultRpm !== undefined) {
+          this.updateSheetEntry(dateStr, loomNumber, { rpm: masterPatch.defaultRpm })
         } else if (this.peekSheetDay(dateStr)) {
           this.updateSheetEntry(dateStr, loomNumber, this.recipeForLoom(loom, dateStr))
         }
       }
     }
 
-    // Loom condition → Daily Entry from this date forward (each saved day, and any later day opened)
-    if (patch.status) {
-      const label = LOOM_STATUS_LABEL[patch.status] || patch.status
-      const sheetPatch: Partial<DailyLoomProductionEntry> = {
-        status: patch.status,
-        remarks: patch.status === 'RUNNING' ? '' : label,
+    // Clear quality from loom → if no looms left on that quality, mark ENDED.
+    // Assigning a quality → revive if it was ENDED.
+    // Only when master allotment actually changed (production today).
+    if (masterPatch.qualityId !== undefined) {
+      if (previousQualityId && previousQualityId !== masterPatch.qualityId) {
+        const stillOn = looms.some((l) => l.qualityId === previousQualityId)
+        if (!stillOn) {
+          const prevQ = this.getQualities().find((q) => q.id === previousQualityId)
+          if (prevQ && (prevQ.status ?? 'ACTIVE') !== 'ENDED') {
+            this.updateQuality(
+              previousQualityId,
+              {
+                status: 'ENDED',
+                endedOn: dateStr,
+              },
+              dateStr
+            )
+          }
+        }
       }
-      if (patch.status === 'BEAM_END' || patch.status === 'STOPPED' || patch.status === 'BEAM_CUT') {
-        sheetPatch.rollerHours = 0
-      }
-      if (patch.status === 'BEAM_END' || patch.status === 'BEAM_CUT') {
-        this.flagBeamEndFromLoom(loomNumber, dateStr)
-        this.reconcileBeamEndsWithLooms(dateStr)
-      }
-      const today = getCalendarToday()
-      const dates = new Set<string>([dateStr])
-      for (const d of listPersistedSheetDates()) {
-        if (d >= dateStr && d <= today) dates.add(d)
-      }
-      for (const d of [...dates].sort()) {
-        const dayPatch =
-          d === dateStr ? sheetPatch : { status: sheetPatch.status, remarks: sheetPatch.remarks }
-        this.updateSheetEntry(d, loomNumber, dayPatch)
+      if (masterPatch.qualityId) {
+        const nextQ = this.getQualities().find((q) => q.id === masterPatch.qualityId)
+        if (nextQ?.status === 'ENDED') {
+          this.updateQuality(masterPatch.qualityId, { status: 'ACTIVE', endedOn: null }, dateStr)
+        }
       }
     }
 
-    return looms
+    // Loom condition — only this production day (and master when editing today).
+    // Do not rewrite past or other future days; next day inherits via sheet carry-forward.
+    if (masterPatch.status) {
+      const label = LOOM_STATUS_LABEL[masterPatch.status] || masterPatch.status
+      const sheetPatch: Partial<DailyLoomProductionEntry> = {
+        status: masterPatch.status,
+        remarks: masterPatch.status === 'RUNNING' ? '' : label,
+      }
+      if (
+        masterPatch.status === 'BEAM_END' ||
+        masterPatch.status === 'STOPPED' ||
+        masterPatch.status === 'BEAM_CUT'
+      ) {
+        sheetPatch.rollerHours = 0
+      }
+      if (masterPatch.status === 'BEAM_END' || masterPatch.status === 'BEAM_CUT') {
+        this.flagBeamEndFromLoom(loomNumber, dateStr)
+        this.reconcileBeamEndsWithLooms(dateStr)
+      }
+      this.updateSheetEntry(dateStr, loomNumber, sheetPatch)
+    }
+
+    return this.getLooms()
   }
 
   /** Unmount beam on this loom → send to Sizing (empty) for rework. */
@@ -2190,6 +2315,8 @@ class ProductionMastersService {
     const saved = qualities.find((q) => q.id === id)
     if (saved?.status === 'ENDED' && saved.endedOn) {
       rememberLocalQualityEnd(id, saved.endedOn, saved.name, saved.loomEnds)
+    } else if (nextPatch.status === 'ACTIVE') {
+      forgetLocalQualityEnd(id)
     }
     const recipeTouched =
       nextPatch.name !== undefined ||
@@ -2216,7 +2343,7 @@ class ProductionMastersService {
     return qualities
   }
 
-  addQuality(partial?: Partial<QualityMaster>): QualityMaster[] {
+  addQuality(partial?: Partial<QualityMaster>, createdOn: string = getProductionToday()): QualityMaster[] {
     const qualities = this.getQualities()
     qualities.push(
       normalizeQuality({
@@ -2230,6 +2357,7 @@ class ProductionMastersService {
         widthInch: partial?.widthInch ?? 66,
         gsm: partial?.gsm !== undefined ? Number(Number(partial.gsm).toFixed(2)) : 0,
         status: partial?.status ?? 'ACTIVE',
+        createdOn: partial?.createdOn || createdOn,
         endedOn: partial?.endedOn ?? null,
       })
     )
@@ -2462,25 +2590,24 @@ class ProductionMastersService {
       const reed = identity?.reed || live.reed || 60
       const rpm = identity?.rpm || live.rpm || loom.defaultRpm
       const masterStatus = (loom.status || 'RUNNING') as LoomStatus
-      const since = loom.statusSince || null
-      const masterApplies = since ? dateStr >= since : masterStatus !== 'RUNNING'
-      const masterLabel =
-        masterStatus === 'RUNNING' ? '' : LOOM_STATUS_LABEL[masterStatus] || masterStatus
-      const prevRemarks = prev?.remarks || ''
+      // Day-wise status: saved row for this date → else prior day (auto carry) → else master.
+      const statusSource = prev || prior
+      const status = statusSource
+        ? resolveLoomCondition(statusSource.status, statusSource.remarks)
+        : masterStatus
+      const statusLabel =
+        status === 'RUNNING' ? '' : LOOM_STATUS_LABEL[status] || status
+      const prevRemarks = (statusSource?.remarks || '').trim()
       const prevIsStatusLabel =
-        !prevRemarks.trim() ||
+        !prevRemarks ||
         (Object.values(LOOM_STATUS_LABEL) as string[]).some(
-          (label) => label.toLowerCase() === prevRemarks.trim().toLowerCase()
+          (label) => label.toLowerCase() === prevRemarks.toLowerCase()
         )
-      // From statusSince onward the Looms table is the source; earlier days keep their own remarks
-      const remarks = masterApplies
+      const remarks = statusSource
         ? prevIsStatusLabel
-          ? masterLabel
-          : prevRemarks
-        : prevRemarks
-      const status = masterApplies
-        ? masterStatus
-        : resolveLoomCondition(prev?.status, prevRemarks)
+          ? statusLabel
+          : statusSource.remarks || ''
+        : statusLabel
 
       const rollerHours =
         prev?.rollerHours != null

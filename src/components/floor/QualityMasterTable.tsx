@@ -10,13 +10,10 @@ import {
   orderQualitiesByLoomAllotment,
   qualityNameKey,
   qualityDisplayName,
-  compareLoomsLikeProductionSheet,
   mergeSheetEntriesForDate,
   mergedSheetEntriesForTotals,
   qualityActiveOnSheetDate,
   sheetRowShowsQuality,
-  qualityLoomEndsOnDate,
-  qualityLoomAlreadyEnded,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -38,7 +35,6 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   pick: 65,
   width: 65,
   gsm: 80,
-  day: 88,
   production: 105,
   actions: 120,
   endedOn: 95,
@@ -50,7 +46,6 @@ export function qualityStatusCounts(qualities: QualityMaster[], sheetDate?: stri
   const active = qualities.filter((q) => (q.status ?? 'ACTIVE') !== 'ENDED').length
   const day = String(sheetDate || '').slice(0, 10)
   const ended = qualities.filter((q) => {
-    if (day && qualityLoomEndsOnDate(q, day).length > 0) return true
     if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
     if (!day) return true
     return String(q.endedOn || '').slice(0, 10) === day
@@ -87,134 +82,22 @@ export function QualityStatusFilterBar({
   )
 }
 
-function formatDayHeading(dateStr?: string | null) {
-  if (!dateStr) return 'Day'
-  try {
-    return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-    })
-  } catch {
-    return 'Day'
-  }
-}
-
-function loomModelOf(loom?: LoomMaster | null) {
-  return (loom?.category || loom?.model || 'G6200').toUpperCase()
-}
-
-function loomChoiceLabel(loom: LoomMaster) {
-  return `L#${loom.loomNumber}(${loom.defaultRpm || 0})  ${loomModelOf(loom)}`
-}
-
 function formatLoomList(nums: number[]) {
-  if (!nums.length) return '—'
+  if (!nums.length) return 'not assigned'
   return nums.map((n) => `L#${n}`).join(', ')
 }
 
-function QualityLoomAssign({
-  qualityId,
-  qualityName,
-  looms,
-  assignedLoomNumbers,
-  busyLoomNumbers,
-  canAssign,
-  onAssign,
-}: {
-  qualityId: string
-  qualityName: string
-  looms: LoomMaster[]
-  assignedLoomNumbers: number[]
-  /** Already on another quality this day — not offered here. */
-  busyLoomNumbers: number[]
-  canAssign: boolean
-  onAssign?: (loomNumber: number, qualityId: string | null) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const assignedSet = new Set(assignedLoomNumbers)
-  const busySet = new Set(busyLoomNumbers)
-  const assigned = looms
-    .filter((l) => assignedSet.has(l.loomNumber))
-    .sort(compareLoomsLikeProductionSheet)
-  const choices = looms
-    .filter((l) => assignedSet.has(l.loomNumber) || !busySet.has(l.loomNumber))
-    .sort(compareLoomsLikeProductionSheet)
-  const label = assigned.length ? assigned.map((l) => `L#${l.loomNumber}`).join(', ') : '—'
-
-  if (!canAssign || !onAssign) {
-    return (
-      <span className="small fw-semibold text-truncate d-inline-block" style={{ maxWidth: '100%' }} title={label}>
-        {label}
-      </span>
-    )
-  }
-
+function LoomListCell({ nums }: { nums: number[] }) {
+  const label = formatLoomList(nums)
+  const empty = nums.length === 0
   return (
-    <>
-      <button
-        type="button"
-        className="btn btn-sm btn-outline-secondary py-0 text-start text-truncate"
-        style={{ maxWidth: '100%' }}
-        title={label}
-        onClick={() => setOpen(true)}
-      >
-        {label === '—' ? 'Select looms' : label}
-      </button>
-      {open && (
-        <div
-          className="modal fade show d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 1055 }}
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="modal-dialog modal-dialog-centered modal-dialog-scrollable"
-            role="document"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-content shadow-lg border-0">
-              <div className="modal-header py-2.5 px-3">
-                <h5 className="modal-title fs-6 fw-semibold mb-0">Select looms — {qualityName}</h5>
-                <button type="button" className="btn-close" aria-label="Close" onClick={() => setOpen(false)} />
-              </div>
-              <div className="modal-body p-3">
-                <div className="d-flex flex-column gap-1">
-                  {choices.map((l) => {
-                    const checked = assignedSet.has(l.loomNumber)
-                    return (
-                      <label
-                        key={l.loomNumber}
-                        className="d-flex align-items-center gap-2 mb-0 px-2 py-1 border-bottom rounded-1"
-                        style={checked ? { background: 'rgba(13, 110, 253, 0.15)' } : undefined}
-                      >
-                        <input
-                          type="checkbox"
-                          className="form-check-input m-0"
-                          checked={checked}
-                          onChange={() => {
-                            if (!checked && busySet.has(l.loomNumber)) return
-                            onAssign(l.loomNumber, checked ? null : qualityId)
-                          }}
-                        />
-                        <span className={checked ? 'fw-semibold text-primary' : 'fw-semibold'}>
-                          {loomChoiceLabel(l)}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="modal-footer py-2 px-3">
-                <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen(false)}>
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <span
+      className={`small text-truncate d-inline-block ${empty ? 'text-muted fst-italic' : 'fw-semibold'}`}
+      style={{ maxWidth: '100%' }}
+      title={label}
+    >
+      {label}
+    </span>
   )
 }
 
@@ -236,14 +119,9 @@ interface QualityMasterTableProps {
   readOnly?: boolean
   entries?: DailyLoomProductionEntry[]
   looms?: LoomMaster[]
-  onAssignLoom?: (loomNumber: number, qualityId: string | null) => void
-  /** End quality on selected looms; returns true if quality fully ended. */
-  onEndOnLooms?: (qualityId: string, loomNumbers: number[]) => boolean | Promise<boolean>
   beams?: BeamMaster[]
   yarn?: YarnMaster[]
   statusFilter?: QualityStatusFilter
-  onStatusFilterChange?: (f: QualityStatusFilter) => void
-  endDateDefault?: string
   /** Production day whose looms and meters this table is showing. */
   sheetDate?: string
 }
@@ -256,13 +134,9 @@ export function QualityMasterTable({
   readOnly,
   entries = [],
   looms = [],
-  onAssignLoom,
-  onEndOnLooms,
   beams = [],
   yarn = [],
   statusFilter = 'ACTIVE',
-  onStatusFilterChange,
-  endDateDefault = PRODUCTION_TODAY,
   sheetDate = PRODUCTION_TODAY,
 }: QualityMasterTableProps) {
   const { canEditProduction } = useAuth()
@@ -272,7 +146,6 @@ export function QualityMasterTable({
 
   // Add Quality Modal Dialog State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [endPick, setEndPick] = useState<{ quality: QualityMaster; selected: number[] } | null>(null)
   const [addForm, setAddForm] = useState({
     name: '',
     fabricType: 'Suiting',
@@ -285,11 +158,10 @@ export function QualityMasterTable({
   })
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_quality_col_widths_v7',
+    'sara_quality_col_widths_v10',
     DEFAULT_WIDTHS
   )
 
-  const counts = useMemo(() => qualityStatusCounts(qualities, sheetDate), [qualities, sheetDate])
   const isEndedView = statusFilter === 'ENDED'
 
   const dayRows = useMemo(
@@ -297,13 +169,15 @@ export function QualityMasterTable({
     [entries, sheetDate]
   )
 
+  const counts = useMemo(() => qualityStatusCounts(qualities, sheetDate), [qualities, sheetDate])
+
   const displayedQualities = useMemo(() => {
     if (isEndedView) {
       const day = String(sheetDate || '').slice(0, 10)
       return qualities
         .filter((q) => {
-          if (qualityLoomEndsOnDate(q, day).length > 0) return true
           if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
+          if (!day) return true
           return String(q.endedOn || '').slice(0, 10) === day
         })
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
@@ -340,30 +214,28 @@ export function QualityMasterTable({
 
   const assignedByQuality = useMemo(() => {
     const map = new Map<string, number[]>()
-    // Only this date's sheet — master allotment from other days must not block End.
     const day = (entries || []).filter((e) => !e.date || !sheetDate || e.date === sheetDate)
+    const sheetBuilt = day.length > 0
     for (const q of qualities) {
-      const nums = [
+      const fromSheet = [
         ...new Set(
           day.filter((e) => sheetRowShowsQuality(e, q, qualities)).map((e) => e.loomNumber)
         ),
       ].sort((a, b) => a - b)
-      map.set(q.id, nums)
+      if (sheetBuilt) {
+        map.set(q.id, fromSheet)
+        continue
+      }
+      const fromLooms = looms
+        .filter((l) => l.qualityId === q.id)
+        .map((l) => l.loomNumber)
+      map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
     }
     return map
-  }, [entries, qualities, sheetDate])
-
-  const busyExcept = (qualityId: string) => {
-    const taken: number[] = []
-    for (const [id, nums] of assignedByQuality) {
-      if (id === qualityId) continue
-      taken.push(...nums)
-    }
-    return taken
-  }
+  }, [entries, qualities, sheetDate, looms])
 
   const productionByQuality = useMemo(() => {
-    const stats: Record<string, { day: number; overall: number }> = {}
+    const stats: Record<string, number> = {}
     const nameCounts = new Map<string, number>()
     for (const q of qualities) {
       const key = qualityNameKey(q.name)
@@ -389,112 +261,26 @@ export function QualityMasterTable({
     }
 
     for (const q of qualities) {
-      stats[q.id] = {
-        day: sumMatching(dayRows, q),
-        overall: sumMatching(allDays, q),
-      }
+      stats[q.id] = sumMatching(allDays, q)
     }
     return stats
-  }, [qualities, entries, dayRows, sheetDate])
+  }, [qualities, entries, sheetDate])
 
   const tableMinWidth = useMemo(
     () => Object.values(widths).reduce((sum, w) => sum + w, 0),
     [widths]
   )
 
-  /** Field edits + End + loom assign — only while Edit is on. */
+  /** Field edits — only while Edit is on. Loom assign is on Looms table. */
   const canOps = canEditProduction && !readOnly && !isEndedView
   const opsEdit = canOps && tableEdit && mode === 'table'
   const masterEdit = canOps && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
-  const canEndOrAssign = canOps && tableEdit
 
   const cardTitle =
     statusFilter === 'ENDED'
       ? `Quality — Ended (${counts.ended})`
       : `Quality — Active (${counts.active})`
-
-  const handleEndQuality = (q: QualityMaster) => {
-    if (!canEndOrAssign) return
-    const running = assignedByQuality.get(q.id) || []
-    const already = new Set(
-      (q.loomEnds || []).map((e) => e.loomNumber)
-    )
-    // Show sheet looms + previously ended looms for this quality.
-    const dialogLooms = [...new Set([...running, ...already])].sort((a, b) => a - b)
-    if (dialogLooms.length === 0) {
-      showConfirm({
-        title: 'End this quality?',
-        message: `"${q.name}" kisi loom pe nahi chal rahi. Quality Ends list me chali jayegi.`,
-        type: 'confirm',
-        confirmText: 'Yes, end it',
-        cancelText: 'Cancel',
-        onConfirm: () => {
-          onUpdate(q.id, { status: 'ENDED', endedOn: endDateDefault })
-          onStatusFilterChange?.('ENDED')
-        },
-      })
-      return
-    }
-    const available = dialogLooms.filter((n) => !qualityLoomAlreadyEnded(q, n))
-    setEndPick({
-      quality: q,
-      selected: available.length === 1 ? [...available] : [],
-    })
-  }
-
-  const toggleEndLoom = (loomNumber: number) => {
-    setEndPick((cur) => {
-      if (!cur) return cur
-      if (qualityLoomAlreadyEnded(cur.quality, loomNumber)) return cur
-      const selected = cur.selected.includes(loomNumber)
-        ? cur.selected.filter((n) => n !== loomNumber)
-        : [...cur.selected, loomNumber]
-      return { ...cur, selected }
-    })
-  }
-
-  const selectAllEndLooms = () => {
-    setEndPick((cur) => {
-      if (!cur) return cur
-      const running = assignedByQuality.get(cur.quality.id) || []
-      const available = running.filter((n) => !qualityLoomAlreadyEnded(cur.quality, n))
-      return { ...cur, selected: [...available] }
-    })
-  }
-
-  const confirmEndLooms = async () => {
-    if (!endPick) return
-    const running = assignedByQuality.get(endPick.quality.id) || []
-    const chosen = endPick.selected.filter(
-      (n) => running.includes(n) && !qualityLoomAlreadyEnded(endPick.quality, n)
-    )
-    if (chosen.length === 0) return
-    const qualityId = endPick.quality.id
-
-    if (onEndOnLooms) {
-      await onEndOnLooms(qualityId, chosen)
-    } else {
-      for (const loomNumber of chosen) onAssignLoom?.(loomNumber, null)
-      onUpdate(qualityId, {
-        status: 'ENDED',
-        endedOn: sheetDate || endDateDefault,
-        loomEnds: chosen.map((loomNumber) => ({
-          date: sheetDate || endDateDefault,
-          loomNumber,
-        })),
-      })
-    }
-    setEndPick(null)
-    onStatusFilterChange?.('ENDED')
-  }
-
-  const endDialogLooms = useMemo(() => {
-    if (!endPick) return [] as number[]
-    const running = assignedByQuality.get(endPick.quality.id) || []
-    const already = (endPick.quality.loomEnds || []).map((e) => e.loomNumber)
-    return [...new Set([...running, ...already])].sort((a, b) => a - b)
-  }, [endPick, assignedByQuality])
 
   const editToggle =
     canEditProduction && !readOnly && !isEndedView ? (
@@ -521,6 +307,52 @@ export function QualityMasterTable({
         onDelete(q.id)
       },
     })
+  }
+
+  const handleEnd = (q: QualityMaster) => {
+    if (!canOps) return
+    if ((q.status ?? 'ACTIVE') === 'ENDED') return
+    const endDate = String(sheetDate || '').slice(0, 10)
+    showConfirm({
+      title: 'Quality End Karein?',
+      message: `"${qualityDisplayName(q, qualities)}" ko ${formatShortDate(endDate)} pe end kar dein?`,
+      type: 'confirm',
+      confirmText: 'End',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        onUpdate(q.id, { status: 'ENDED', endedOn: endDate })
+      },
+    })
+  }
+
+  const canEndQuality = (q: QualityMaster) =>
+    canOps && (q.status ?? 'ACTIVE') !== 'ENDED'
+
+  const endAction = (q: QualityMaster, compact?: boolean) => {
+    if (canEndQuality(q)) {
+      return (
+        <button
+          type="button"
+          className={`btn btn-sm btn-outline-danger ${compact ? 'py-0' : ''}`}
+          style={compact ? { fontSize: '0.72rem' } : undefined}
+          onClick={() => handleEnd(q)}
+        >
+          End
+        </button>
+      )
+    }
+    if ((q.status ?? 'ACTIVE') === 'ENDED') {
+      return (
+        <span
+          className={`badge text-bg-secondary ${compact ? '' : 'align-self-center'}`}
+          style={compact ? { fontSize: '0.72rem' } : undefined}
+          title={q.endedOn ? `Ended ${formatShortDate(q.endedOn)}` : 'Ended'}
+        >
+          Ended
+        </span>
+      )
+    }
+    return null
   }
 
   const handleCreateQuality = (e: React.FormEvent) => {
@@ -585,33 +417,35 @@ export function QualityMasterTable({
             ) : (
               <ul className="list-group list-group-flush">
                 {displayedQualities.map((q, rowIdx) => {
-                  const endedLooms = qualityLoomEndsOnDate(q, sheetDate)
+                  const overall = productionByQuality[q.id] || 0
                   return (
                   <li
                     key={q.id}
-                    className="list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2 px-0"
+                    className="list-group-item d-flex flex-column gap-2 px-0"
                   >
-                    <div className="d-flex flex-column gap-1 min-w-0">
+                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                       <div className="d-flex align-items-center gap-2 min-w-0">
                         <span className="badge bg-secondary-subtle text-secondary font-monospace">
                           #{rowIdx + 1}
                         </span>
                         <span className="fw-semibold text-truncate">{qualityDisplayName(q, qualities)}</span>
                       </div>
-                      <div className="small text-muted ps-4">
-                        Loom: <span className="fw-semibold text-body">{formatLoomList(endedLooms)}</span>
-                      </div>
+                      <span className="small fw-bold text-success font-monospace">
+                        {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
+                      </span>
                     </div>
-                    <div className="d-flex align-items-center gap-2">
-                      <span className="small text-muted">Ended:</span>
-                      <span className="small fw-semibold font-monospace">{formatShortDate(q.endedOn || sheetDate)}</span>
-                      <Link
-                        href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
-                        className="btn btn-sm btn-outline-primary py-0"
-                        style={{ fontSize: '0.72rem' }}
-                      >
-                        Track
-                      </Link>
+                    <div className="small text-muted ps-4 d-flex flex-wrap gap-x-3 gap-y-1">
+                      <span>{q.fabricType || '—'}</span>
+                      <span>Warp: {q.warpYarn || '—'}</span>
+                      <span>Weft: {q.weftYarn || '—'}</span>
+                      <span>Reed: {q.reed || '—'}</span>
+                      <span>Pick: {q.pick || '—'}</span>
+                      <span>Width: {q.widthInch ? `${q.widthInch}"` : '—'}</span>
+                      <span>
+                        GSM:{' '}
+                        {q.gsm != null && q.gsm !== 0 ? Number(q.gsm).toFixed(2) : '—'}
+                      </span>
+                      <span>Ended: {formatShortDate(q.endedOn || sheetDate)}</span>
                     </div>
                   </li>
                   )
@@ -622,8 +456,7 @@ export function QualityMasterTable({
         ) : (
         <div className="master-grid">
           {displayedQualities.map((q, rowIdx) => {
-            const totals = productionByQuality[q.id] || { day: 0, overall: 0 }
-            const showEndBtn = canEndOrAssign
+            const overall = productionByQuality[q.id] || 0
 
             return (
               <div
@@ -658,15 +491,7 @@ export function QualityMasterTable({
                 </div>
 
                 <label className="small mb-0">Looms</label>
-                <QualityLoomAssign
-                  qualityId={q.id}
-                  qualityName={qualityDisplayName(q, qualities)}
-                  looms={looms}
-                  assignedLoomNumbers={assignedByQuality.get(q.id) || []}
-                  busyLoomNumbers={busyExcept(q.id)}
-                  canAssign={canEndOrAssign}
-                  onAssign={onAssignLoom}
-                />
+                <LoomListCell nums={assignedByQuality.get(q.id) || []} />
 
                 <label className="small mb-0">Quality Name</label>
                 {masterEdit ? (
@@ -788,28 +613,21 @@ export function QualityMasterTable({
                 )}
 
                 <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
-                  <span className="small text-muted">{formatDayHeading(sheetDate)}:</span>
-                  <span className="small fw-bold font-monospace">
-                    {totals.day > 0 ? `${totals.day.toLocaleString()} m` : '0 m'}
-                  </span>
-                </div>
-                <div className="d-flex justify-content-between align-items-center">
                   <span className="small text-muted">Overall:</span>
                   <span className="small fw-bold text-success font-monospace">
-                    {totals.overall > 0 ? `${totals.overall.toLocaleString()} m` : '0 m'}
+                    {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
                   </span>
                 </div>
 
-                {showEndBtn && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-danger mt-2 w-100"
-                    onClick={() => handleEndQuality(q)}
+                <div className="d-flex gap-1 mt-2">
+                  <Link
+                    href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                    className="btn btn-sm btn-outline-primary flex-fill"
                   >
-                    <i className="bi bi-stop-circle me-1" />
-                    End Quality
-                  </button>
-                )}
+                    Track
+                  </Link>
+                  {endAction(q)}
+                </div>
 
               </div>
             )
@@ -821,48 +639,55 @@ export function QualityMasterTable({
           <table className="table table-sm table-hover mb-0 align-middle">
             <thead className="table-light">
               <tr>
-                <th className="px-3 text-center" style={{ width: 56 }}>
+                <th className="px-2 text-center" style={{ width: 46 }}>
                   #
                 </th>
-                <th className="px-3">Quality Name</th>
-                <th className="px-3" style={{ width: 160 }}>
-                  Loom
-                </th>
-                <th className="px-3" style={{ width: 140 }}>
+                <th className="px-2">Quality Name</th>
+                <th className="px-2">Type</th>
+                <th className="px-2">Warp Yarn</th>
+                <th className="px-2">Weft Yarn</th>
+                <th className="px-2 text-end">Reed</th>
+                <th className="px-2 text-end">Pick</th>
+                <th className="px-2 text-end">Width</th>
+                <th className="px-2 text-end">GSM</th>
+                <th className="px-2 text-end">Overall</th>
+                <th className="px-2" style={{ width: 110 }}>
                   Ended On
-                </th>
-                <th className="px-3 text-center" style={{ width: 90 }}>
-                  Action
                 </th>
               </tr>
             </thead>
             <tbody>
               {displayedQualities.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-muted small text-center">
+                  <td colSpan={11} className="px-3 py-4 text-muted small text-center">
                     Is date ({formatShortDate(sheetDate)}) pe koi quality end nahi hui.
                   </td>
                 </tr>
               ) : (
-                displayedQualities.map((q, rowIdx) => (
+                displayedQualities.map((q, rowIdx) => {
+                  const overall = productionByQuality[q.id] || 0
+                  return (
                   <tr key={q.id}>
-                    <td className="px-3 text-center text-muted fw-semibold font-monospace">{rowIdx + 1}</td>
-                    <td className="px-3 fw-semibold">{qualityDisplayName(q, qualities)}</td>
-                    <td className="px-3 small fw-semibold font-monospace">
-                      {formatLoomList(qualityLoomEndsOnDate(q, sheetDate))}
+                    <td className="px-2 text-center text-muted fw-semibold font-monospace">{rowIdx + 1}</td>
+                    <td className="px-2 fw-semibold">{qualityDisplayName(q, qualities)}</td>
+                    <td className="px-2 text-secondary">{q.fabricType || '—'}</td>
+                    <td className="px-2 small">{q.warpYarn || '—'}</td>
+                    <td className="px-2 small">{q.weftYarn || '—'}</td>
+                    <td className="px-2 text-end font-monospace">{q.reed || '—'}</td>
+                    <td className="px-2 text-end font-monospace">{q.pick || '—'}</td>
+                    <td className="px-2 text-end font-monospace">{q.widthInch ? `${q.widthInch}"` : '—'}</td>
+                    <td className="px-2 text-end font-monospace">
+                      {q.gsm != null && q.gsm !== 0 ? Number(q.gsm).toFixed(2) : '—'}
                     </td>
-                    <td className="px-3 font-monospace small">{formatShortDate(q.endedOn || sheetDate)}</td>
-                    <td className="px-3 text-center">
-                      <Link
-                        href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
-                        className="btn btn-sm btn-outline-primary py-0"
-                        style={{ fontSize: '0.72rem' }}
-                      >
-                        Track
-                      </Link>
+                    <td className="px-2 text-end">
+                      <span className="fw-bold text-success font-monospace">
+                        {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
+                      </span>
                     </td>
+                    <td className="px-2 font-monospace small">{formatShortDate(q.endedOn || sheetDate)}</td>
                   </tr>
-                ))
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -915,9 +740,6 @@ export function QualityMasterTable({
                 <ResizableTh columnKey="gsm" width={widths.gsm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   GSM
                 </ResizableTh>
-                <ResizableTh columnKey="day" width={widths.day} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end" title={sheetDate}>
-                  {formatDayHeading(sheetDate)}
-                </ResizableTh>
                 <ResizableTh columnKey="production" width={widths.production} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   Overall
                 </ResizableTh>
@@ -929,7 +751,7 @@ export function QualityMasterTable({
             </thead>
             <tbody>
               {displayedQualities.map((q, rowIdx) => {
-                const totals = productionByQuality[q.id] || { day: 0, overall: 0 }
+                const overall = productionByQuality[q.id] || 0
 
                 return (
                   <tr
@@ -940,15 +762,7 @@ export function QualityMasterTable({
                       {rowIdx + 1}
                     </td>
                     <td className="px-1">
-                      <QualityLoomAssign
-                        qualityId={q.id}
-                        qualityName={qualityDisplayName(q, qualities)}
-                        looms={looms}
-                        assignedLoomNumbers={assignedByQuality.get(q.id) || []}
-                        busyLoomNumbers={busyExcept(q.id)}
-                        canAssign={canEndOrAssign}
-                        onAssign={onAssignLoom}
-                      />
+                      <LoomListCell nums={assignedByQuality.get(q.id) || []} />
                     </td>
                     <td className="px-2">
                       <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>
@@ -1049,29 +863,21 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-2 text-end">
-                      <span className="fw-semibold font-monospace">
-                        {totals.day > 0 ? `${totals.day.toLocaleString()} m` : '0 m'}
-                      </span>
-                    </td>
-                    <td className="px-2 text-end">
                       <span className="fw-bold text-success font-monospace">
-                        {totals.overall > 0 ? `${totals.overall.toLocaleString()} m` : '0 m'}
+                        {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
                       </span>
                     </td>
                     <td className="px-1 text-center">
-                      {canEndOrAssign ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-danger py-0 px-1"
+                      <div className="d-inline-flex align-items-center gap-1">
+                        <Link
+                          href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                          className="btn btn-sm btn-outline-primary py-0"
                           style={{ fontSize: '0.72rem' }}
-                          title="End Quality"
-                          onClick={() => handleEndQuality(q)}
                         >
-                          End
-                        </button>
-                      ) : (
-                        <span className="text-muted small">—</span>
-                      )}
+                          Track
+                        </Link>
+                        {endAction(q, true)}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -1229,91 +1035,6 @@ export function QualityMasterTable({
           <option key={name} value={name} />
         ))}
       </datalist>
-      {endPick && (
-        <div
-          className="modal fade show d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 1055 }}
-          onClick={() => setEndPick(null)}
-        >
-          <div
-            className="modal-dialog modal-dialog-centered modal-dialog-scrollable"
-            role="document"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-content shadow-lg border-0">
-              <div className="modal-header py-2.5 px-3">
-                <h5 className="modal-title fs-6 fw-semibold mb-0">
-                  End {qualityDisplayName(endPick.quality, qualities)} — kon si loom?
-                </h5>
-                <button type="button" className="btn-close" aria-label="Close" onClick={() => setEndPick(null)} />
-              </div>
-              <div className="modal-body p-3">
-                <p className="small text-secondary mb-2">
-                  Selected loom se quality is date pe end hogi. Pehle end ho chuki loom{' '}
-                  <strong>Already ended</strong> dikhegi.
-                </p>
-                <div className="d-flex justify-content-end mb-2">
-                  <button type="button" className="btn btn-sm btn-outline-secondary py-0" onClick={selectAllEndLooms}>
-                    Select all available
-                  </button>
-                </div>
-                <div className="d-flex flex-column gap-1">
-                  {endDialogLooms.map((loomNumber) => {
-                    const loom = looms.find((l) => l.loomNumber === loomNumber)
-                    const already = qualityLoomAlreadyEnded(endPick.quality, loomNumber)
-                    const checked = endPick.selected.includes(loomNumber)
-                    return (
-                      <label
-                        key={loomNumber}
-                        className={`d-flex align-items-center gap-2 mb-0 px-2 py-1 border-bottom rounded-1 ${already ? 'opacity-75' : ''}`}
-                        style={
-                          already
-                            ? { background: 'rgba(108, 117, 125, 0.12)' }
-                            : checked
-                              ? { background: 'rgba(220, 53, 69, 0.12)' }
-                              : undefined
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          className="form-check-input m-0"
-                          checked={already ? true : checked}
-                          disabled={already}
-                          onChange={() => toggleEndLoom(loomNumber)}
-                        />
-                        <span className={`flex-grow-1 ${already ? 'text-muted' : checked ? 'fw-semibold text-danger' : 'fw-semibold'}`}>
-                          {loom ? loomChoiceLabel(loom) : `L#${loomNumber}`}
-                        </span>
-                        {already && (
-                          <span className="badge text-bg-secondary" style={{ fontSize: '0.65rem' }}>
-                            Already ended
-                          </span>
-                        )}
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="modal-footer py-2 px-3">
-                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setEndPick(null)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-danger"
-                  disabled={endPick.selected.length === 0}
-                  onClick={() => void confirmEndLooms()}
-                >
-                  End on {endPick.selected.length || 0} loom
-                  {endPick.selected.length === 1 ? '' : 's'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

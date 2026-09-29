@@ -3,11 +3,19 @@
 import { useMemo, useState } from 'react'
 import {
   LoomMaster,
+  QualityMaster,
   YarnMaster,
   getLoomPictures,
   normalizeLoomPictures,
+  qualityDisplayName,
+  qualityIdOnLoomForDate,
+  rpmOnLoomForDate,
+  statusOnLoomForDate,
+  mergeSheetEntriesForDate,
 } from '@/services/productionMastersService'
+import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { LoomCategory } from '@/types/loom'
+import { DailyLoomProductionEntry } from '@/types/production'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -27,6 +35,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   model: 95,
   year: 70,
   rpm: 95,
+  quality: 150,
   shed: 110,
   status: 130,
 }
@@ -34,6 +43,9 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 interface LoomMasterTableProps {
   looms: LoomMaster[]
   yarn?: YarnMaster[]
+  qualities?: QualityMaster[]
+  entries?: DailyLoomProductionEntry[]
+  sheetDate?: string
   onUpdate: (loomNumber: number, patch: Partial<LoomMaster>) => void
   onAdd: (partial?: Partial<LoomMaster>) => void
   onDelete?: (loomNumber: number) => void
@@ -42,6 +54,9 @@ interface LoomMasterTableProps {
 
 export function LoomMasterTable({
   looms,
+  qualities = [],
+  entries = [],
+  sheetDate = PRODUCTION_TODAY,
   onUpdate,
   onAdd,
   onDelete,
@@ -58,7 +73,7 @@ export function LoomMasterTable({
   const editActive = opsEdit || masterEdit
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_loom_col_widths_v5',
+    'sara_loom_col_widths_v6',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -66,10 +81,40 @@ export function LoomMasterTable({
     [widths]
   )
 
+  const dayRows = useMemo(
+    () => mergeSheetEntriesForDate(sheetDate, entries || []),
+    [entries, sheetDate]
+  )
+
   const filteredLooms = useMemo(() => {
     if (modelFilter === 'ALL') return looms
     return looms.filter((l) => (l.model || l.category) === modelFilter)
   }, [looms, modelFilter])
+
+  const dayQualityId = (loom: LoomMaster) =>
+    qualityIdOnLoomForDate(loom, qualities, dayRows)
+
+  const dayRpm = (loom: LoomMaster) => rpmOnLoomForDate(loom, dayRows)
+
+  const dayStatus = (loom: LoomMaster) => statusOnLoomForDate(loom, dayRows)
+
+  const qualityOptionsFor = (loom: LoomMaster) => {
+    const currentId = dayQualityId(loom)
+    const day = String(sheetDate || '').slice(0, 10)
+    return qualities.filter((q) => {
+      if ((q.status ?? 'ACTIVE') === 'ENDED' && q.id !== currentId) return false
+      const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
+      if (createdOn && day && day < createdOn && q.id !== currentId) return false
+      return true
+    })
+  }
+
+  const qualityLabel = (loom: LoomMaster) => {
+    const id = dayQualityId(loom)
+    if (!id) return '—'
+    const q = qualities.find((item) => item.id === id)
+    return q ? qualityDisplayName(q, qualities) : '—'
+  }
 
   const canManagePics = canEditProduction && !readOnly
 
@@ -260,27 +305,51 @@ export function LoomMasterTable({
                   {masterEdit ? (
                     <NumericCellInput
                       className="form-control form-control-sm text-end"
-                      value={l.defaultRpm || 0}
+                      value={dayRpm(l)}
                       navRow={rowIdx}
                       navCol={2}
                       onValueChange={(v) => onUpdate(l.loomNumber, { defaultRpm: v })}
                     />
                   ) : (
-                    <div className="form-control form-control-sm bg-light text-end">{l.defaultRpm}</div>
+                    <div className="form-control form-control-sm bg-light text-end">{dayRpm(l)}</div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="form-label small mb-1 fw-semibold">Quality</label>
+                  {masterEdit ? (
+                    <select
+                      className="form-select form-select-sm"
+                      value={dayQualityId(l) || ''}
+                      onChange={(e) =>
+                        onUpdate(l.loomNumber, { qualityId: e.target.value || null })
+                      }
+                    >
+                      <option value="">—</option>
+                      {qualityOptionsFor(l).map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {qualityDisplayName(q, qualities)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="small fw-semibold text-truncate" title={qualityLabel(l)}>
+                      {qualityLabel(l)}
+                    </div>
                   )}
                 </div>
 
                 <div>
                   <div className="d-flex justify-content-between align-items-center mb-1">
                     <label className="form-label small mb-0 fw-semibold">Status</label>
-                    {!masterEdit && l.status !== 'RUNNING' && l.statusSince && (
+                    {!masterEdit && dayStatus(l) !== 'RUNNING' && sheetDate && (
                       <span className="text-muted small" style={{ fontSize: '0.70rem' }}>
-                        Since {l.statusSince}
+                        {sheetDate}
                       </span>
                     )}
                   </div>
                   <LoomStatusSelect
-                    value={l.status}
+                    value={dayStatus(l)}
                     disabled={!masterEdit}
                     onChange={(status) => onUpdate(l.loomNumber, { status })}
                   />
@@ -320,8 +389,11 @@ export function LoomMasterTable({
                 <ResizableTh columnKey="year" width={widths.year} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Year
                 </ResizableTh>
-                <ResizableTh columnKey="rpm" width={widths.rpm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center">
+                <ResizableTh columnKey="rpm" width={widths.rpm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
                   RPM
+                </ResizableTh>
+                <ResizableTh columnKey="quality" width={widths.quality} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-start">
+                  Quality
                 </ResizableTh>
                 <ResizableTh columnKey="shed" width={widths.shed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Shed
@@ -359,18 +431,45 @@ export function LoomMasterTable({
                     <td className="px-2">
                       <span className="text-secondary">{l.year}</span>
                     </td>
-                    <td className="px-1">
+                    <td className="px-2 text-center">
                       {opsEdit ? (
                         <NumericCellInput
-                          className="form-control form-control-sm text-end"
+                          className="form-control form-control-sm text-center"
                           style={{ width: '100%', minWidth: 0 }}
-                          value={l.defaultRpm || 0}
+                          value={dayRpm(l)}
                           navRow={rowIdx}
                           navCol={2}
                           onValueChange={(v) => onUpdate(l.loomNumber, { defaultRpm: v })}
                         />
                       ) : (
-                        <div className="text-end px-1">{l.defaultRpm}</div>
+                        <div className="text-center">{dayRpm(l)}</div>
+                      )}
+                    </td>
+                    <td className="px-2 text-start">
+                      {opsEdit ? (
+                        <select
+                          className="form-select form-select-sm"
+                          style={{ width: '100%', minWidth: 0 }}
+                          value={dayQualityId(l) || ''}
+                          onChange={(e) =>
+                            onUpdate(l.loomNumber, { qualityId: e.target.value || null })
+                          }
+                        >
+                          <option value="">—</option>
+                          {qualityOptionsFor(l).map((q) => (
+                            <option key={q.id} value={q.id}>
+                              {qualityDisplayName(q, qualities)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span
+                          className="fw-semibold text-truncate d-block text-start"
+                          style={{ maxWidth: '100%' }}
+                          title={qualityLabel(l)}
+                        >
+                          {qualityLabel(l)}
+                        </span>
                       )}
                     </td>
                     <td className="px-2">
@@ -379,15 +478,15 @@ export function LoomMasterTable({
                     <td className="px-1">
                       <div className="d-flex flex-column">
                         <LoomStatusSelect
-                          value={l.status}
+                          value={dayStatus(l)}
                           disabled={!opsEdit}
                           style={{ width: '100%', minWidth: 0 }}
                           onChange={(status) => onUpdate(l.loomNumber, { status })}
                         />
-                        {!opsEdit && l.status !== 'RUNNING' && l.statusSince && (
+                        {!opsEdit && dayStatus(l) !== 'RUNNING' && sheetDate && (
                           <span className="text-muted text-nowrap mt-0.5" style={{ fontSize: '0.68rem' }}>
                             <i className="bi bi-clock-history me-1" />
-                            Since {l.statusSince}
+                            {sheetDate}
                           </span>
                         )}
                       </div>

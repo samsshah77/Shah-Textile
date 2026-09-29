@@ -361,10 +361,10 @@ function SidebarContent() {
       <div className="sidebar-brand d-flex align-items-center justify-content-between pe-2">
         <Link href="/dashboard" className="brand-link flex-grow-1">
           <img
-            src="/saralogo.webp"
+            src="/saratextile.png"
             alt="Sara Textile"
-            className="brand-image opacity-75 shadow"
-            style={{ maxHeight: 33, objectFit: 'contain' }}
+            className="brand-image shadow"
+            style={{ maxHeight: 36, width: 36, objectFit: 'contain', borderRadius: 6 }}
           />
           <span className="brand-text fw-light">Sara Textile</span>
         </Link>

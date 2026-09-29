@@ -57,6 +57,15 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
     onChange([picked, ...next])
   }
 
+  const moveImage = (from: number, to: number) => {
+    if (uploading) return
+    if (to < 0 || to >= images.length || from === to) return
+    const next = [...images]
+    const [picked] = next.splice(from, 1)
+    next.splice(to, 0, picked)
+    onChange(next)
+  }
+
   return (
     <div>
       <div className="d-flex align-items-center justify-content-between mb-2">
@@ -127,45 +136,69 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
           {images.map((src, i) => (
             <div
               key={`${i}-${src.slice(0, 32)}`}
-              className="loom-gallery-thumb position-relative border rounded overflow-hidden bg-light"
-              style={{ width: 88, height: 88 }}
+              className="position-relative border rounded overflow-hidden bg-light d-flex flex-column"
+              style={{ width: 88 }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
-              />
-              {i === 0 && (
-                <span
-                  className="position-absolute top-0 start-0 badge bg-primary rounded-0"
-                  style={{ fontSize: 9 }}
-                >
-                  Cover
-                </span>
-              )}
-              {i > 0 && (
+              <div style={{ width: 88, height: 72, position: 'relative' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt=""
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
+                />
+                {i === 0 && (
+                  <span
+                    className="position-absolute top-0 start-0 badge bg-primary rounded-0"
+                    style={{ fontSize: 9 }}
+                  >
+                    Cover
+                  </span>
+                )}
+              </div>
+              <div className="d-flex border-top">
                 <button
                   type="button"
-                  className="btn btn-sm btn-dark position-absolute bottom-0 start-0 end-0 rounded-0 py-0"
-                  style={{ fontSize: 10, zIndex: 1 }}
-                  title="Set as cover"
-                  disabled={uploading}
-                  onClick={() => setCover(i)}
+                  className="btn btn-sm btn-light flex-fill rounded-0 py-0 border-0 border-end"
+                  style={{ fontSize: 11 }}
+                  title="Move left"
+                  disabled={uploading || i === 0}
+                  onClick={() => moveImage(i, i - 1)}
                 >
-                  Cover
+                  <i className="bi bi-chevron-left" />
                 </button>
-              )}
-              <button
-                type="button"
-                className="loom-gallery-thumb__del btn btn-danger btn-sm position-absolute top-50 start-50 translate-middle p-0 d-flex align-items-center justify-content-center"
-                style={{ width: 28, height: 28, borderRadius: '50%', zIndex: 2 }}
-                title="Remove"
-                disabled={uploading}
-                onClick={() => removeAt(i)}
-              >
-                <i className="bi bi-trash" style={{ fontSize: 12 }} />
-              </button>
+                {i > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-light flex-fill rounded-0 py-0 border-0 border-end"
+                    style={{ fontSize: 10 }}
+                    title="Set as cover"
+                    disabled={uploading}
+                    onClick={() => setCover(i)}
+                  >
+                    Cover
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-light flex-fill rounded-0 py-0 border-0 border-end"
+                  style={{ fontSize: 11 }}
+                  title="Move right"
+                  disabled={uploading || i === images.length - 1}
+                  onClick={() => moveImage(i, i + 1)}
+                >
+                  <i className="bi bi-chevron-right" />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-danger flex-fill rounded-0 py-0 border-0"
+                  style={{ fontSize: 11 }}
+                  title="Remove"
+                  disabled={uploading}
+                  onClick={() => removeAt(i)}
+                >
+                  <i className="bi bi-trash" />
+                </button>
+              </div>
             </div>
           ))}
           {canAdd && (

@@ -265,6 +265,7 @@ export async function dbGetQualities(): Promise<QualityMaster[]> {
     widthInch: q.widthInch,
     gsm: q.gsm,
     status: q.status === 'ENDED' ? 'ENDED' : 'ACTIVE',
+    createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
     endedOn: q.status === 'ENDED' ? q.endedOn : null,
   }))
 }
@@ -296,6 +297,7 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
         widthInch: q.widthInch,
         gsm: q.gsm,
         status: q.status === 'ENDED' ? 'ENDED' : 'ACTIVE',
+        createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
         endedOn: q.status === 'ENDED' ? q.endedOn ?? null : null,
       })),
     })

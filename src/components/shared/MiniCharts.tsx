@@ -122,9 +122,12 @@ export function SimpleLineChart({
 export function SimpleHBarList({
   data,
   maxBars = 10,
+  valueSuffix = ' m',
 }: {
   data: SeriesPoint[]
   maxBars?: number
+  /** Shown after the number, e.g. ` m` or `%`. */
+  valueSuffix?: string
 }) {
   const slice = data.slice(0, maxBars)
   const max = Math.max(...slice.map((d) => d.value), 1)
@@ -134,7 +137,10 @@ export function SimpleHBarList({
         <div key={d.label}>
           <div className="d-flex justify-content-between small mb-1">
             <span className="fw-semibold text-truncate">{d.label}</span>
-            <span className="font-monospace text-secondary">{formatNumber(d.value, 0)} m</span>
+            <span className="font-monospace text-secondary">
+              {formatNumber(d.value, 0)}
+              {valueSuffix}
+            </span>
           </div>
           <div className="progress" style={{ height: 8 }}>
             <div

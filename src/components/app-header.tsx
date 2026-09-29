@@ -11,7 +11,7 @@ export function AppHeader() {
   return (
     <header className="app-header">
       <Link href="/floor/production" className="app-brand">
-        <Image src="/saralogo.webp" width={40} height={40} alt="" />
+        <Image src="/saratextile.png" width={40} height={40} alt="Sara Textile" />
         <span>Sara Textiles</span>
       </Link>
       <div className="account-menu">

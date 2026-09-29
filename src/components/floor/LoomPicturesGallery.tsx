@@ -124,6 +124,16 @@ export function LoomPicturesGallery({
     confirmRemoveAt(index)
   }
 
+  const moveImage = (from: number, to: number) => {
+    if (!onImagesChange || uploading) return
+    if (to < 0 || to >= list.length || from === to) return
+    const next = [...list]
+    const [picked] = next.splice(from, 1)
+    next.splice(to, 0, picked)
+    onImagesChange(next)
+    setIndex(to)
+  }
+
   return (
     <div
       className="modal fade show d-block"
@@ -233,13 +243,13 @@ export function LoomPicturesGallery({
               {list.map((src, i) => (
                 <div
                   key={`${i}-${src.slice(0, 24)}`}
-                  className="loom-gallery-thumb position-relative flex-shrink-0"
-                  style={{ width: 56, height: 56 }}
+                  className="position-relative flex-shrink-0 d-flex flex-column align-items-center gap-1"
+                  style={{ width: 56 }}
                 >
                   <button
                     type="button"
-                    className={`btn p-0 border w-100 h-100 ${i === index ? 'border-primary border-2' : 'border-secondary-subtle'}`}
-                    style={{ overflow: 'hidden', borderRadius: 8 }}
+                    className={`btn p-0 border ${i === index ? 'border-primary border-2' : 'border-secondary-subtle'}`}
+                    style={{ width: 56, height: 56, overflow: 'hidden', borderRadius: 8 }}
                     onClick={() => setIndex(i)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -249,25 +259,35 @@ export function LoomPicturesGallery({
                       style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
                     />
                   </button>
-                  {editable && onImagesChange && (
-                    <button
-                      type="button"
-                      className="loom-gallery-thumb__del btn btn-danger btn-sm position-absolute top-50 start-50 translate-middle p-0 d-flex align-items-center justify-content-center"
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: '50%',
-                        zIndex: 2,
-                      }}
-                      title="Delete photo"
-                      disabled={uploading}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        confirmRemoveAt(i)
-                      }}
-                    >
-                      <i className="bi bi-trash" style={{ fontSize: 12 }} />
-                    </button>
+                  {editable && onImagesChange && hasMany && (
+                    <div className="d-flex gap-1">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary p-0 d-flex align-items-center justify-content-center"
+                        style={{ width: 24, height: 20, fontSize: 10 }}
+                        title="Move left"
+                        disabled={uploading || i === 0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          moveImage(i, i - 1)
+                        }}
+                      >
+                        <i className="bi bi-chevron-left" />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary p-0 d-flex align-items-center justify-content-center"
+                        style={{ width: 24, height: 20, fontSize: 10 }}
+                        title="Move right"
+                        disabled={uploading || i === list.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          moveImage(i, i + 1)
+                        }}
+                      >
+                        <i className="bi bi-chevron-right" />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
