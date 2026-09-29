@@ -15,6 +15,7 @@ import {
   dbSaveBeams,
   dbSaveLooms,
   dbSaveQualities,
+  dbPatchQualityStatus,
   dbSaveSheet,
   dbSaveYarn,
   dbSaveYarnIssuances,
@@ -175,6 +176,17 @@ export async function POST(req: NextRequest) {
 
       await dbUpdateLoomEntry(dateStr, loomNumber, stampedEntry)
       return NextResponse.json({ ok: true, entry: stampedEntry })
+    }
+
+    if (action === 'patchQualityStatus') {
+      const id = String(body?.id || '')
+      const status = body?.status === 'ENDED' ? 'ENDED' : 'ACTIVE'
+      const endedOn = body?.endedOn != null ? String(body.endedOn) : null
+      if (!id) {
+        return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 })
+      }
+      await dbPatchQualityStatus(id, status, status === 'ENDED' ? endedOn : null)
+      return NextResponse.json({ ok: true })
     }
 
     if (action === 'submitForApproval') {

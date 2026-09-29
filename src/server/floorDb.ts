@@ -302,6 +302,24 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
   })
 }
 
+/** Patch one quality status/endedOn — survives refresh without rewriting the whole table. */
+export async function dbPatchQualityStatus(
+  id: string,
+  status: 'ACTIVE' | 'ENDED',
+  endedOn: string | null
+): Promise<void> {
+  const data = {
+    status: status === 'ENDED' ? 'ENDED' : 'ACTIVE',
+    endedOn: status === 'ENDED' ? endedOn : null,
+  }
+  try {
+    await prisma.floorQuality.update({ where: { id }, data })
+  } catch {
+    // Row missing (rare) — skip rather than failing the whole end action.
+    console.error('[floorDb] patchQualityStatus: quality not found', id)
+  }
+}
+
 export async function dbListAllSheets(): Promise<{ date: string; entries: DailyLoomProductionEntry[] }[]> {
   const rows = await prisma.floorDailySheet.findMany({
     orderBy: [{ date: 'asc' }, { loomNumber: 'asc' }],

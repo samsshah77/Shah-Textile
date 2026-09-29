@@ -27,6 +27,8 @@ const KEY_YARN_ISSUANCE = 'sara_textile_yarn_issuance_v8'
 const KEY_QUALITY = 'sara_textile_quality_master_v8'
 const KEY_SHEET = 'sara_textile_production_sheet_v8'
 const KEY_YARN_MOVEMENTS = 'sara_textile_yarn_movements_v8'
+/** Browser backup so Quality Ends survive refresh if DB PUT is slow/fails. */
+const KEY_QUALITY_ENDS_LOCAL = 'sara_textile_quality_ends_v1'
 
 export interface LoomMaster {
   loomNumber: number
@@ -114,6 +116,11 @@ export interface QualityYarnChange {
   weftYarn: string
 }
 
+export interface QualityLoomEnd {
+  date: string
+  loomNumber: number
+}
+
 export interface QualityMaster {
   id: string
   name: string
@@ -125,10 +132,20 @@ export interface QualityMaster {
   widthInch: number
   gsm: number
   status?: 'ACTIVE' | 'ENDED'
-  /** YYYY-MM-DD when quality was ended */
+  /** YYYY-MM-DD when quality was ended (latest stamp) */
   endedOn?: string | null
+  /** Per-loom end history (which loom ended on which date). */
+  loomEnds?: QualityLoomEnd[]
   /** Mid-run warp/weft changes. Each row applies from `from` until the next one. */
   yarnHistory?: QualityYarnChange[]
+}
+
+function normalizeLoomEnds(raw: unknown): QualityLoomEnd[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const rows = raw
+    .filter((e): e is QualityLoomEnd => Boolean(e && e.date && Number.isFinite(Number(e.loomNumber))))
+    .map((e) => ({ date: String(e.date).slice(0, 10), loomNumber: Number(e.loomNumber) }))
+  return rows.length ? rows : undefined
 }
 
 function normalizeQuality(q: QualityMaster): QualityMaster {
@@ -147,8 +164,105 @@ function normalizeQuality(q: QualityMaster): QualityMaster {
     ...q,
     status,
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
+    loomEnds: normalizeLoomEnds(q.loomEnds),
     yarnHistory,
   }
+}
+
+type LocalQualityEnd = {
+  id: string
+  endedOn: string
+  name?: string
+  loomEnds?: QualityLoomEnd[]
+}
+
+function readLocalQualityEnds(): LocalQualityEnd[] {
+  if (!isClient()) return []
+  try {
+    const raw = localStorage.getItem(KEY_QUALITY_ENDS_LOCAL)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as LocalQualityEnd[]
+    return Array.isArray(parsed)
+      ? parsed.filter((e) => e && e.id && e.endedOn)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function writeLocalQualityEnds(rows: LocalQualityEnd[]) {
+  if (!isClient()) return
+  try {
+    localStorage.setItem(KEY_QUALITY_ENDS_LOCAL, JSON.stringify(rows))
+  } catch {
+    // ignore quota
+  }
+}
+
+function mergeLoomEndLists(
+  a: QualityLoomEnd[] | undefined,
+  b: QualityLoomEnd[] | undefined
+): QualityLoomEnd[] {
+  const map = new Map<string, QualityLoomEnd>()
+  for (const e of [...(a || []), ...(b || [])]) {
+    map.set(`${e.date}:${e.loomNumber}`, e)
+  }
+  return [...map.values()].sort((x, y) =>
+    x.date === y.date ? x.loomNumber - y.loomNumber : x.date.localeCompare(y.date)
+  )
+}
+
+function rememberLocalQualityEnd(
+  id: string,
+  endedOn: string,
+  name?: string,
+  newLoomEnds?: QualityLoomEnd[]
+) {
+  const existing = readLocalQualityEnds().find((e) => e.id === id)
+  const next = readLocalQualityEnds().filter((e) => e.id !== id)
+  next.push({
+    id,
+    endedOn,
+    name,
+    loomEnds: mergeLoomEndLists(existing?.loomEnds, newLoomEnds),
+  })
+  writeLocalQualityEnds(next)
+}
+
+/** Merge browser-backed ends onto DB qualities (refresh-safe). */
+function applyLocalQualityEnds(qualities: QualityMaster[]): QualityMaster[] {
+  const ends = readLocalQualityEnds()
+  if (ends.length === 0) return qualities
+  const byId = new Map(ends.map((e) => [e.id, e]))
+  return qualities.map((q) => {
+    const local = byId.get(q.id)
+    if (!local) return q
+    const loomEnds = mergeLoomEndLists(q.loomEnds, local.loomEnds)
+    if (q.status === 'ENDED' && q.endedOn) {
+      return normalizeQuality({ ...q, loomEnds })
+    }
+    return normalizeQuality({
+      ...q,
+      status: 'ENDED',
+      endedOn: local.endedOn,
+      loomEnds,
+    })
+  })
+}
+
+/** Loom numbers ended for this quality on a given date (or any date if date omitted). */
+export function qualityLoomEndsOnDate(q: QualityMaster, dateStr?: string): number[] {
+  const day = dateStr ? String(dateStr).slice(0, 10) : ''
+  const rows = q.loomEnds || []
+  const nums = rows
+    .filter((e) => !day || e.date === day)
+    .map((e) => e.loomNumber)
+  return [...new Set(nums)].sort((a, b) => a - b)
+}
+
+/** True if this loom already has an end recorded for the quality (any date). */
+export function qualityLoomAlreadyEnded(q: QualityMaster, loomNumber: number): boolean {
+  return (q.loomEnds || []).some((e) => e.loomNumber === loomNumber)
 }
 
 /** Recipe in force on a production day. History wins; otherwise the current quality yarn. */
@@ -241,7 +355,23 @@ function matchQualityByNameAndPick(
   return undefined
 }
 
-/** True when this sheet row is showing `quality` (name, and pick when the name is shared). */
+/** Active tab on `sheetDate`: running qualities + ended ones still visible on/before their end day. */
+export function qualityActiveOnSheetDate(
+  q: QualityMaster,
+  sheetDate: string,
+  dayRows: DailyLoomProductionEntry[],
+  catalog: QualityMaster[]
+): boolean {
+  if ((q.status ?? 'ACTIVE') !== 'ENDED') return true
+  const endedOn = q.endedOn
+  if (!endedOn) return false
+  if (sheetDate < endedOn) return true
+  if (sheetDate === endedOn) {
+    return dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))
+  }
+  return false
+}
+
 export function sheetRowShowsQuality(
   row: DailyLoomProductionEntry,
   quality: QualityMaster,
@@ -1098,16 +1228,48 @@ const memoryStore = new Map<string, string>()
 let hydratePromise: Promise<void> | null = null
 let hydrated = false
 
-async function persistKey(key: string, value: unknown): Promise<void> {
-  if (!isClient()) return
+async function persistKey(key: string, value: unknown): Promise<boolean> {
+  if (!isClient()) return false
   try {
-    await fetch('/api/floor/store', {
+    const res = await fetch('/api/floor/store', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value }),
     })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      console.error('[floor] persist failed', key, res.status, data)
+      return false
+    }
+    return true
   } catch (err) {
     console.error('[floor] persist failed', key, err)
+    return false
+  }
+}
+
+/** Patch one quality ENDED/ACTIVE in DB so refresh keeps the record. */
+async function persistQualityStatus(
+  id: string,
+  status: 'ACTIVE' | 'ENDED',
+  endedOn: string | null
+): Promise<boolean> {
+  if (!isClient()) return false
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'patchQualityStatus', id, status, endedOn }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      console.error('[floor] patchQualityStatus failed', id, res.status, data)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[floor] patchQualityStatus failed', id, err)
+    return false
   }
 }
 
@@ -1226,6 +1388,22 @@ export async function hydrateFloorFromDb(): Promise<void> {
         Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
           memoryStore.set(key, JSON.stringify(value))
         })
+        // Re-apply browser-backed Quality Ends so refresh does not wipe them if DB lagged.
+        try {
+          const raw = memoryStore.get(KEY_QUALITY)
+          if (raw) {
+            const fromDb = (JSON.parse(raw) as QualityMaster[]).map(normalizeQuality)
+            const merged = applyLocalQualityEnds(fromDb)
+            memoryStore.set(KEY_QUALITY, JSON.stringify(merged))
+            for (const q of merged) {
+              if (q.status === 'ENDED' && q.endedOn) {
+                void persistQualityStatus(q.id, 'ENDED', q.endedOn)
+              }
+            }
+          }
+        } catch {
+          // ignore merge errors
+        }
         clearLegacyFloorLocalStorage()
       }
       hydrated = true
@@ -1311,6 +1489,31 @@ export function listPersistedSheetEntries(): DailyLoomProductionEntry[] {
     }
   }
   return rows
+}
+
+/** Saved sheet rows for one date with live editor rows overlaid by loom number. */
+export function mergeSheetEntriesForDate(
+  dateStr: string,
+  live: DailyLoomProductionEntry[] = []
+): DailyLoomProductionEntry[] {
+  const saved = listPersistedSheetEntries().filter((e) => e.date === dateStr)
+  const liveForDate = live.filter((e) => !e.date || e.date === dateStr)
+  if (liveForDate.length === 0) return saved
+  const byLoom = new Map<number, DailyLoomProductionEntry>()
+  for (const e of saved) byLoom.set(e.loomNumber, e)
+  for (const e of liveForDate) {
+    byLoom.set(e.loomNumber, { ...e, date: dateStr })
+  }
+  return [...byLoom.values()]
+}
+
+/** All persisted production days, with the selected day replaced by saved + live merge. */
+export function mergedSheetEntriesForTotals(
+  sheetDate: string,
+  live: DailyLoomProductionEntry[] = []
+): DailyLoomProductionEntry[] {
+  const otherDays = listPersistedSheetEntries().filter((e) => e.date !== sheetDate)
+  return [...otherDays, ...mergeSheetEntriesForDate(sheetDate, live)]
 }
 
 function monthLastEnteredDay(monthStr: string) {
@@ -1927,7 +2130,7 @@ class ProductionMastersService {
   }
 
   getQualities(): QualityMaster[] {
-    return loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality)
+    return applyLocalQualityEnds(loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality))
   }
 
   /** Qualities ordered by loom allotment (Loom 1 → N). */
@@ -1947,21 +2150,47 @@ class ProductionMastersService {
     const current = this.getQualities().find((q) => q.id === id)
     const catalogBefore = this.getQualities()
     const nextPatch = { ...patch }
+    // Already ended: still allow re-stamping endedOn (another loom ended later / same day).
     if (current?.status === 'ENDED') {
-      delete nextPatch.status
-      delete nextPatch.endedOn
+      if (nextPatch.status === 'ACTIVE') {
+        // explicit revive only
+      } else {
+        delete nextPatch.status
+      }
     }
     const qualities = this.getQualities().map((q) => {
       if (q.id !== id) return q
-      return normalizeQuality(applyMidRunYarnChange(q, nextPatch, fromDate))
+      const merged = applyMidRunYarnChange(q, nextPatch, fromDate)
+      if (nextPatch.loomEnds) {
+        merged.loomEnds = mergeLoomEndLists(q.loomEnds, nextPatch.loomEnds)
+      }
+      return normalizeQuality(merged)
     })
+    // Ending: do not wipe remaining looms on this day — caller clears selected looms.
+    // Drop master allotment only where this day's sheet no longer shows the quality.
     if (nextPatch.status === 'ENDED') {
+      const day = this.peekSheetDay(fromDate) || []
+      const stillOn = new Set(
+        current
+          ? day
+              .filter((e) => sheetRowShowsQuality(e, current, catalogBefore))
+              .map((e) => e.loomNumber)
+          : []
+      )
       const looms = this.getLooms()
-      if (looms.some((l) => l.qualityId === id)) {
-        this.saveLooms(looms.map((l) => (l.qualityId === id ? { ...l, qualityId: null } : l)))
+      if (looms.some((l) => l.qualityId === id && !stillOn.has(l.loomNumber))) {
+        this.saveLooms(
+          looms.map((l) =>
+            l.qualityId === id && !stillOn.has(l.loomNumber) ? { ...l, qualityId: null } : l
+          )
+        )
       }
     }
     this.saveQualities(qualities)
+    const saved = qualities.find((q) => q.id === id)
+    if (saved?.status === 'ENDED' && saved.endedOn) {
+      rememberLocalQualityEnd(id, saved.endedOn, saved.name, saved.loomEnds)
+    }
     const recipeTouched =
       nextPatch.name !== undefined ||
       nextPatch.fabricType !== undefined ||
@@ -2008,8 +2237,103 @@ class ProductionMastersService {
     return qualities
   }
 
+  /** Push one quality's status/endedOn to DB (await before refresh-safe UI). */
+  async flushQualityStatus(id: string): Promise<boolean> {
+    const q = this.getQualities().find((item) => item.id === id)
+    if (!q) return false
+    if (q.status === 'ENDED' && q.endedOn) {
+      rememberLocalQualityEnd(id, q.endedOn, q.name, q.loomEnds)
+    }
+    const status = q.status === 'ENDED' ? 'ENDED' : 'ACTIVE'
+    const endedOn = q.status === 'ENDED' ? q.endedOn ?? null : null
+    const okPatch = await persistQualityStatus(id, status, endedOn)
+    // Full list save as backup (may fail wipe-guard; patch is enough).
+    const okFull = await persistKey(KEY_QUALITY, this.getQualities())
+    return okPatch || okFull
+  }
+
+  /** Push full qualities list + status patch for ended rows. */
+  async flushQualitiesToDb(): Promise<boolean> {
+    const list = this.getQualities()
+    const ok = await persistKey(KEY_QUALITY, list)
+    for (const q of list) {
+      if (q.status === 'ENDED') {
+        await persistQualityStatus(q.id, 'ENDED', q.endedOn ?? null)
+      }
+    }
+    return ok
+  }
+
   endQuality(id: string, endedOn: string): QualityMaster[] {
     return this.updateQuality(id, { status: 'ENDED', endedOn })
+  }
+
+  /**
+   * End quality on selected looms for `dateStr`.
+   * Always records ENDED + endedOn for that date (so Quality Ends tab shows it),
+   * while only clearing the chosen looms — other looms can keep running that day.
+   * Call `flushQualityStatus` after this so refresh keeps the record.
+   */
+  endQualityOnLooms(
+    qualityId: string,
+    loomNumbers: number[],
+    dateStr: string
+  ): { qualities: QualityMaster[]; looms: LoomMaster[]; entries: DailyLoomProductionEntry[]; fullyEnded: boolean } {
+    const catalog = this.getQualities()
+    const quality = catalog.find((q) => q.id === qualityId)
+    if (!quality) {
+      return {
+        qualities: catalog,
+        looms: this.getLooms(),
+        entries: this.buildSheetForDate(dateStr, { skipPersist: true }),
+        fullyEnded: false,
+      }
+    }
+
+    const chosen = [...new Set(loomNumbers.filter((n) => Number.isFinite(n)))]
+    if (chosen.length === 0) {
+      return {
+        qualities: catalog,
+        looms: this.getLooms(),
+        entries: this.buildSheetForDate(dateStr, { skipPersist: true }),
+        fullyEnded: false,
+      }
+    }
+
+    for (const loomNumber of chosen) {
+      this.updateSheetEntry(dateStr, loomNumber, {
+        qualityName: '—',
+        fabricType: '',
+        warpYarn: '',
+        weftYarn: '',
+      })
+      const loom = this.getLooms().find((l) => l.loomNumber === loomNumber)
+      if (loom?.qualityId === qualityId) {
+        this.saveLooms(
+          this.getLooms().map((l) =>
+            l.loomNumber === loomNumber ? { ...l, qualityId: null } : l
+          )
+        )
+      }
+    }
+
+    const newLoomEnds = chosen.map((loomNumber) => ({ date: dateStr, loomNumber }))
+    const qualities = this.updateQuality(
+      qualityId,
+      {
+        status: 'ENDED',
+        endedOn: dateStr,
+        loomEnds: mergeLoomEndLists(quality.loomEnds, newLoomEnds),
+      },
+      dateStr
+    )
+
+    return {
+      qualities,
+      looms: this.getLooms(),
+      entries: this.peekSheetDay(dateStr) || this.buildSheetForDate(dateStr, { skipPersist: true }),
+      fullyEnded: true,
+    }
   }
 
   deleteQuality(id: string): QualityMaster[] {

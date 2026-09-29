@@ -11,8 +11,12 @@ import {
   qualityNameKey,
   qualityDisplayName,
   compareLoomsLikeProductionSheet,
-  listPersistedSheetEntries,
+  mergeSheetEntriesForDate,
+  mergedSheetEntriesForTotals,
+  qualityActiveOnSheetDate,
   sheetRowShowsQuality,
+  qualityLoomEndsOnDate,
+  qualityLoomAlreadyEnded,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -21,7 +25,6 @@ import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCell
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { DailyLoomProductionEntry } from '@/types/production'
-import { getExcelHistoryEntries } from '@/data/productionData'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
@@ -43,9 +46,15 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 
 export type QualityStatusFilter = 'ACTIVE' | 'ENDED'
 
-export function qualityStatusCounts(qualities: QualityMaster[]) {
+export function qualityStatusCounts(qualities: QualityMaster[], sheetDate?: string) {
   const active = qualities.filter((q) => (q.status ?? 'ACTIVE') !== 'ENDED').length
-  const ended = qualities.filter((q) => q.status === 'ENDED').length
+  const day = String(sheetDate || '').slice(0, 10)
+  const ended = qualities.filter((q) => {
+    if (day && qualityLoomEndsOnDate(q, day).length > 0) return true
+    if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
+    if (!day) return true
+    return String(q.endedOn || '').slice(0, 10) === day
+  }).length
   return { active, ended }
 }
 
@@ -90,8 +99,17 @@ function formatDayHeading(dateStr?: string | null) {
   }
 }
 
+function loomModelOf(loom?: LoomMaster | null) {
+  return (loom?.category || loom?.model || 'G6200').toUpperCase()
+}
+
 function loomChoiceLabel(loom: LoomMaster) {
-  return `L#${loom.loomNumber}(${loom.defaultRpm || 0})`
+  return `L#${loom.loomNumber}(${loom.defaultRpm || 0})  ${loomModelOf(loom)}`
+}
+
+function formatLoomList(nums: number[]) {
+  if (!nums.length) return '—'
+  return nums.map((n) => `L#${n}`).join(', ')
 }
 
 function QualityLoomAssign({
@@ -219,6 +237,8 @@ interface QualityMasterTableProps {
   entries?: DailyLoomProductionEntry[]
   looms?: LoomMaster[]
   onAssignLoom?: (loomNumber: number, qualityId: string | null) => void
+  /** End quality on selected looms; returns true if quality fully ended. */
+  onEndOnLooms?: (qualityId: string, loomNumbers: number[]) => boolean | Promise<boolean>
   beams?: BeamMaster[]
   yarn?: YarnMaster[]
   statusFilter?: QualityStatusFilter
@@ -237,9 +257,11 @@ export function QualityMasterTable({
   entries = [],
   looms = [],
   onAssignLoom,
+  onEndOnLooms,
   beams = [],
   yarn = [],
   statusFilter = 'ACTIVE',
+  onStatusFilterChange,
   endDateDefault = PRODUCTION_TODAY,
   sheetDate = PRODUCTION_TODAY,
 }: QualityMasterTableProps) {
@@ -267,18 +289,30 @@ export function QualityMasterTable({
     DEFAULT_WIDTHS
   )
 
-  const counts = useMemo(() => qualityStatusCounts(qualities), [qualities])
+  const counts = useMemo(() => qualityStatusCounts(qualities, sheetDate), [qualities, sheetDate])
   const isEndedView = statusFilter === 'ENDED'
+
+  const dayRows = useMemo(
+    () => mergeSheetEntriesForDate(sheetDate, entries || []),
+    [entries, sheetDate]
+  )
 
   const displayedQualities = useMemo(() => {
     if (isEndedView) {
+      const day = String(sheetDate || '').slice(0, 10)
       return qualities
-        .filter((q) => q.status === 'ENDED')
-        .sort((a, b) => (b.endedOn || '').localeCompare(a.endedOn || ''))
+        .filter((q) => {
+          if (qualityLoomEndsOnDate(q, day).length > 0) return true
+          if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
+          return String(q.endedOn || '').slice(0, 10) === day
+        })
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     }
-    const active = qualities.filter((q) => (q.status ?? 'ACTIVE') !== 'ENDED')
-    return orderQualitiesByLoomAllotment(active, looms, entries)
-  }, [qualities, looms, entries, isEndedView])
+    const activeOnDay = qualities.filter((q) =>
+      qualityActiveOnSheetDate(q, sheetDate, dayRows, qualities)
+    )
+    return orderQualitiesByLoomAllotment(activeOnDay, looms, dayRows)
+  }, [qualities, looms, dayRows, sheetDate, isEndedView])
 
   // Calculate production meters for each quality from production sheet entries
   const warpOptions = useMemo(() => {
@@ -304,22 +338,17 @@ export function QualityMasterTable({
       ? Number(e.totalMeters) || 0
       : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
 
-  const dayRows = useMemo(() => {
-    const saved = listPersistedSheetEntries().filter((e) => e.date === sheetDate)
-    if (saved.some((e) => meterOf(e) > 0)) return saved
-    const excel = getExcelHistoryEntries().filter((e) => e.date === sheetDate)
-    if (excel.some((e) => meterOf(e) > 0)) return excel
-    return (entries || []).filter((e) => !e.date || e.date === sheetDate)
-  }, [entries, sheetDate])
-
   const assignedByQuality = useMemo(() => {
     const map = new Map<string, number[]>()
+    // Only this date's sheet — master allotment from other days must not block End.
     const day = (entries || []).filter((e) => !e.date || !sheetDate || e.date === sheetDate)
     for (const q of qualities) {
-      map.set(
-        q.id,
-        day.filter((e) => sheetRowShowsQuality(e, q, qualities)).map((e) => e.loomNumber)
-      )
+      const nums = [
+        ...new Set(
+          day.filter((e) => sheetRowShowsQuality(e, q, qualities)).map((e) => e.loomNumber)
+        ),
+      ].sort((a, b) => a - b)
+      map.set(q.id, nums)
     }
     return map
   }, [entries, qualities, sheetDate])
@@ -341,15 +370,7 @@ export function QualityMasterTable({
       nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
     }
 
-    const saved = listPersistedSheetEntries()
-    const datesWithMeters = new Set(saved.filter((e) => meterOf(e) > 0).map((e) => e.date))
-    const excel = getExcelHistoryEntries().filter((e) => e.date && !datesWithMeters.has(e.date))
-    const covered = new Set([...datesWithMeters, ...excel.map((e) => e.date)])
-    const allDays = [
-      ...saved.filter((e) => datesWithMeters.has(e.date)),
-      ...excel,
-      ...(entries || []).filter((e) => e.date && !covered.has(e.date)),
-    ]
+    const allDays = mergedSheetEntriesForTotals(sheetDate, entries || [])
 
     const sumMatching = (rows: DailyLoomProductionEntry[], q: QualityMaster) => {
       const qClean = qualityNameKey(q.name)
@@ -374,16 +395,19 @@ export function QualityMasterTable({
       }
     }
     return stats
-  }, [qualities, entries, dayRows])
+  }, [qualities, entries, dayRows, sheetDate])
 
   const tableMinWidth = useMemo(
     () => Object.values(widths).reduce((sum, w) => sum + w, 0),
     [widths]
   )
 
-  const opsEdit = canEditProduction && !readOnly && !isEndedView && tableEdit && mode === 'table'
-  const masterEdit = canEditProduction && !readOnly && !isEndedView && tableEdit && mode === 'grid'
+  /** Field edits + End + loom assign — only while Edit is on. */
+  const canOps = canEditProduction && !readOnly && !isEndedView
+  const opsEdit = canOps && tableEdit && mode === 'table'
+  const masterEdit = canOps && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
+  const canEndOrAssign = canOps && tableEdit
 
   const cardTitle =
     statusFilter === 'ENDED'
@@ -391,8 +415,14 @@ export function QualityMasterTable({
       : `Quality — Active (${counts.active})`
 
   const handleEndQuality = (q: QualityMaster) => {
+    if (!canEndOrAssign) return
     const running = assignedByQuality.get(q.id) || []
-    if (running.length === 0) {
+    const already = new Set(
+      (q.loomEnds || []).map((e) => e.loomNumber)
+    )
+    // Show sheet looms + previously ended looms for this quality.
+    const dialogLooms = [...new Set([...running, ...already])].sort((a, b) => a - b)
+    if (dialogLooms.length === 0) {
       showConfirm({
         title: 'End this quality?',
         message: `"${q.name}" kisi loom pe nahi chal rahi. Quality Ends list me chali jayegi.`,
@@ -401,16 +431,22 @@ export function QualityMasterTable({
         cancelText: 'Cancel',
         onConfirm: () => {
           onUpdate(q.id, { status: 'ENDED', endedOn: endDateDefault })
+          onStatusFilterChange?.('ENDED')
         },
       })
       return
     }
-    setEndPick({ quality: q, selected: [] })
+    const available = dialogLooms.filter((n) => !qualityLoomAlreadyEnded(q, n))
+    setEndPick({
+      quality: q,
+      selected: available.length === 1 ? [...available] : [],
+    })
   }
 
   const toggleEndLoom = (loomNumber: number) => {
     setEndPick((cur) => {
       if (!cur) return cur
+      if (qualityLoomAlreadyEnded(cur.quality, loomNumber)) return cur
       const selected = cur.selected.includes(loomNumber)
         ? cur.selected.filter((n) => n !== loomNumber)
         : [...cur.selected, loomNumber]
@@ -418,20 +454,47 @@ export function QualityMasterTable({
     })
   }
 
-  const confirmEndLooms = () => {
+  const selectAllEndLooms = () => {
+    setEndPick((cur) => {
+      if (!cur) return cur
+      const running = assignedByQuality.get(cur.quality.id) || []
+      const available = running.filter((n) => !qualityLoomAlreadyEnded(cur.quality, n))
+      return { ...cur, selected: [...available] }
+    })
+  }
+
+  const confirmEndLooms = async () => {
     if (!endPick) return
     const running = assignedByQuality.get(endPick.quality.id) || []
-    const chosen = endPick.selected.filter((n) => running.includes(n))
+    const chosen = endPick.selected.filter(
+      (n) => running.includes(n) && !qualityLoomAlreadyEnded(endPick.quality, n)
+    )
     if (chosen.length === 0) return
-    for (const loomNumber of chosen) {
-      onAssignLoom?.(loomNumber, null)
-    }
-    const left = running.filter((n) => !chosen.includes(n))
-    if (left.length === 0) {
-      onUpdate(endPick.quality.id, { status: 'ENDED', endedOn: endDateDefault })
+    const qualityId = endPick.quality.id
+
+    if (onEndOnLooms) {
+      await onEndOnLooms(qualityId, chosen)
+    } else {
+      for (const loomNumber of chosen) onAssignLoom?.(loomNumber, null)
+      onUpdate(qualityId, {
+        status: 'ENDED',
+        endedOn: sheetDate || endDateDefault,
+        loomEnds: chosen.map((loomNumber) => ({
+          date: sheetDate || endDateDefault,
+          loomNumber,
+        })),
+      })
     }
     setEndPick(null)
+    onStatusFilterChange?.('ENDED')
   }
+
+  const endDialogLooms = useMemo(() => {
+    if (!endPick) return [] as number[]
+    const running = assignedByQuality.get(endPick.quality.id) || []
+    const already = (endPick.quality.loomEnds || []).map((e) => e.loomNumber)
+    return [...new Set([...running, ...already])].sort((a, b) => a - b)
+  }, [endPick, assignedByQuality])
 
   const editToggle =
     canEditProduction && !readOnly && !isEndedView ? (
@@ -513,10 +576,54 @@ export function QualityMasterTable({
       </div>
 
       {mode === 'grid' ? (
+        isEndedView ? (
+          <div className="card-body p-3">
+            {displayedQualities.length === 0 ? (
+              <p className="text-muted small mb-0">
+                Is date ({formatShortDate(sheetDate)}) pe koi quality end nahi hui.
+              </p>
+            ) : (
+              <ul className="list-group list-group-flush">
+                {displayedQualities.map((q, rowIdx) => {
+                  const endedLooms = qualityLoomEndsOnDate(q, sheetDate)
+                  return (
+                  <li
+                    key={q.id}
+                    className="list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2 px-0"
+                  >
+                    <div className="d-flex flex-column gap-1 min-w-0">
+                      <div className="d-flex align-items-center gap-2 min-w-0">
+                        <span className="badge bg-secondary-subtle text-secondary font-monospace">
+                          #{rowIdx + 1}
+                        </span>
+                        <span className="fw-semibold text-truncate">{qualityDisplayName(q, qualities)}</span>
+                      </div>
+                      <div className="small text-muted ps-4">
+                        Loom: <span className="fw-semibold text-body">{formatLoomList(endedLooms)}</span>
+                      </div>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="small text-muted">Ended:</span>
+                      <span className="small fw-semibold font-monospace">{formatShortDate(q.endedOn || sheetDate)}</span>
+                      <Link
+                        href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                        className="btn btn-sm btn-outline-primary py-0"
+                        style={{ fontSize: '0.72rem' }}
+                      >
+                        Track
+                      </Link>
+                    </div>
+                  </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        ) : (
         <div className="master-grid">
           {displayedQualities.map((q, rowIdx) => {
             const totals = productionByQuality[q.id] || { day: 0, overall: 0 }
-            const showEndBtn = canEditProduction && !readOnly && !isEndedView
+            const showEndBtn = canEndOrAssign
 
             return (
               <div
@@ -557,7 +664,7 @@ export function QualityMasterTable({
                   looms={looms}
                   assignedLoomNumbers={assignedByQuality.get(q.id) || []}
                   busyLoomNumbers={busyExcept(q.id)}
-                  canAssign={masterEdit}
+                  canAssign={canEndOrAssign}
                   onAssign={onAssignLoom}
                 />
 
@@ -680,13 +787,6 @@ export function QualityMasterTable({
                   </div>
                 )}
 
-                {isEndedView && (
-                  <>
-                    <label className="small mb-0 mt-1">Ended On</label>
-                    <div className="small fw-semibold">{formatShortDate(q.endedOn)}</div>
-                  </>
-                )}
-
                 <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
                   <span className="small text-muted">{formatDayHeading(sheetDate)}:</span>
                   <span className="small fw-bold font-monospace">
@@ -711,18 +811,61 @@ export function QualityMasterTable({
                   </button>
                 )}
 
-                {isEndedView && (
-                  <Link
-                    href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
-                    className="btn btn-sm btn-outline-primary mt-2"
-                  >
-                    <i className="bi bi-graph-up me-1" />
-                    Open Tracking
-                  </Link>
-                )}
               </div>
             )
           })}
+        </div>
+        )
+      ) : isEndedView ? (
+        <div className="card-body p-0">
+          <table className="table table-sm table-hover mb-0 align-middle">
+            <thead className="table-light">
+              <tr>
+                <th className="px-3 text-center" style={{ width: 56 }}>
+                  #
+                </th>
+                <th className="px-3">Quality Name</th>
+                <th className="px-3" style={{ width: 160 }}>
+                  Loom
+                </th>
+                <th className="px-3" style={{ width: 140 }}>
+                  Ended On
+                </th>
+                <th className="px-3 text-center" style={{ width: 90 }}>
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedQualities.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-4 text-muted small text-center">
+                    Is date ({formatShortDate(sheetDate)}) pe koi quality end nahi hui.
+                  </td>
+                </tr>
+              ) : (
+                displayedQualities.map((q, rowIdx) => (
+                  <tr key={q.id}>
+                    <td className="px-3 text-center text-muted fw-semibold font-monospace">{rowIdx + 1}</td>
+                    <td className="px-3 fw-semibold">{qualityDisplayName(q, qualities)}</td>
+                    <td className="px-3 small fw-semibold font-monospace">
+                      {formatLoomList(qualityLoomEndsOnDate(q, sheetDate))}
+                    </td>
+                    <td className="px-3 font-monospace small">{formatShortDate(q.endedOn || sheetDate)}</td>
+                    <td className="px-3 text-center">
+                      <Link
+                        href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                        className="btn btn-sm btn-outline-primary py-0"
+                        style={{ fontSize: '0.72rem' }}
+                      >
+                        Track
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div
@@ -735,7 +878,7 @@ export function QualityMasterTable({
           >
             <colgroup>
               {Object.keys(DEFAULT_WIDTHS)
-                .filter((key) => (isEndedView ? true : key !== 'endedOn'))
+                .filter((key) => key !== 'endedOn')
                 .map((key) => (
                   <col key={key} style={{ width: widths[key] }} />
                 ))}
@@ -778,11 +921,6 @@ export function QualityMasterTable({
                 <ResizableTh columnKey="production" width={widths.production} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   Overall
                 </ResizableTh>
-                {isEndedView && (
-                  <ResizableTh columnKey="endedOn" width={widths.endedOn} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                    Ended On
-                  </ResizableTh>
-                )}
                 <ResizableTh columnKey="actions" width={widths.actions} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center"
                   style={{ fontSize: '0.75rem' }}>
                   Action
@@ -808,7 +946,7 @@ export function QualityMasterTable({
                         looms={looms}
                         assignedLoomNumbers={assignedByQuality.get(q.id) || []}
                         busyLoomNumbers={busyExcept(q.id)}
-                        canAssign={opsEdit}
+                        canAssign={canEndOrAssign}
                         onAssign={onAssignLoom}
                       />
                     </td>
@@ -920,11 +1058,8 @@ export function QualityMasterTable({
                         {totals.overall > 0 ? `${totals.overall.toLocaleString()} m` : '0 m'}
                       </span>
                     </td>
-                    {isEndedView && (
-                      <td className="px-2 small">{formatShortDate(q.endedOn)}</td>
-                    )}
                     <td className="px-1 text-center">
-                      {canEditProduction && !readOnly && !isEndedView && (
+                      {canEndOrAssign ? (
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-danger py-0 px-1"
@@ -934,17 +1069,7 @@ export function QualityMasterTable({
                         >
                           End
                         </button>
-                      )}
-                      {isEndedView && (
-                        <Link
-                          href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
-                          className="btn btn-sm btn-outline-primary py-0"
-                          style={{ fontSize: '0.72rem' }}
-                        >
-                          Track
-                        </Link>
-                      )}
-                      {!isEndedView && (readOnly || !canEditProduction) && (
+                      ) : (
                         <span className="text-muted small">—</span>
                       )}
                     </td>
@@ -1126,27 +1251,46 @@ export function QualityMasterTable({
               </div>
               <div className="modal-body p-3">
                 <p className="small text-secondary mb-2">
-                  Sirf choose ki hui looms se yeh quality is date pe hat jayegi. Baqi looms pe chalti rahegi.
+                  Selected loom se quality is date pe end hogi. Pehle end ho chuki loom{' '}
+                  <strong>Already ended</strong> dikhegi.
                 </p>
+                <div className="d-flex justify-content-end mb-2">
+                  <button type="button" className="btn btn-sm btn-outline-secondary py-0" onClick={selectAllEndLooms}>
+                    Select all available
+                  </button>
+                </div>
                 <div className="d-flex flex-column gap-1">
-                  {(assignedByQuality.get(endPick.quality.id) || []).map((loomNumber) => {
+                  {endDialogLooms.map((loomNumber) => {
                     const loom = looms.find((l) => l.loomNumber === loomNumber)
+                    const already = qualityLoomAlreadyEnded(endPick.quality, loomNumber)
                     const checked = endPick.selected.includes(loomNumber)
                     return (
                       <label
                         key={loomNumber}
-                        className="d-flex align-items-center gap-2 mb-0 px-2 py-1 border-bottom rounded-1"
-                        style={checked ? { background: 'rgba(220, 53, 69, 0.12)' } : undefined}
+                        className={`d-flex align-items-center gap-2 mb-0 px-2 py-1 border-bottom rounded-1 ${already ? 'opacity-75' : ''}`}
+                        style={
+                          already
+                            ? { background: 'rgba(108, 117, 125, 0.12)' }
+                            : checked
+                              ? { background: 'rgba(220, 53, 69, 0.12)' }
+                              : undefined
+                        }
                       >
                         <input
                           type="checkbox"
                           className="form-check-input m-0"
-                          checked={checked}
+                          checked={already ? true : checked}
+                          disabled={already}
                           onChange={() => toggleEndLoom(loomNumber)}
                         />
-                        <span className={checked ? 'fw-semibold text-danger' : 'fw-semibold'}>
+                        <span className={`flex-grow-1 ${already ? 'text-muted' : checked ? 'fw-semibold text-danger' : 'fw-semibold'}`}>
                           {loom ? loomChoiceLabel(loom) : `L#${loomNumber}`}
                         </span>
+                        {already && (
+                          <span className="badge text-bg-secondary" style={{ fontSize: '0.65rem' }}>
+                            Already ended
+                          </span>
+                        )}
                       </label>
                     )
                   })}
@@ -1160,9 +1304,10 @@ export function QualityMasterTable({
                   type="button"
                   className="btn btn-sm btn-danger"
                   disabled={endPick.selected.length === 0}
-                  onClick={confirmEndLooms}
+                  onClick={() => void confirmEndLooms()}
                 >
-                  End selected ({endPick.selected.length})
+                  End on {endPick.selected.length || 0} loom
+                  {endPick.selected.length === 1 ? '' : 's'}
                 </button>
               </div>
             </div>

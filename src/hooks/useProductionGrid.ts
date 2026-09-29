@@ -339,9 +339,32 @@ export function useProductionGrid() {
 
   const updateQuality = useCallback(
     (id: string, patch: Partial<QualityMaster>) => {
-      setQualities(productionMastersService.updateQuality(id, patch, selectedDate))
+      const next = productionMastersService.updateQuality(id, patch, selectedDate)
+      setQualities(next)
       setLooms(productionMastersService.getLooms())
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
+      if (patch.status === 'ENDED' || patch.endedOn !== undefined) {
+        void productionMastersService.flushQualityStatus(id)
+      }
+    },
+    [selectedDate]
+  )
+
+  const endQualityOnLooms = useCallback(
+    async (qualityId: string, loomNumbers: number[]) => {
+      const result = productionMastersService.endQualityOnLooms(qualityId, loomNumbers, selectedDate)
+      setQualities(productionMastersService.getQualities())
+      setLooms(productionMastersService.getLooms())
+      setEntries(result.entries)
+      const saved = await productionMastersService.flushQualityStatus(qualityId)
+      if (!saved) {
+        console.warn(
+          '[floor] Quality end saved in browser; DB sync failed — refresh will still keep it via local backup.'
+        )
+      }
+      // Re-read after flush so UI matches merged local+memory state.
+      setQualities(productionMastersService.getQualities())
+      return result.fullyEnded
     },
     [selectedDate]
   )
@@ -401,6 +424,7 @@ export function useProductionGrid() {
     addYarnInward,
     issueYarnToLoom,
     updateQuality,
+    endQualityOnLooms,
     addQuality,
     deleteQuality,
     startNewDay,

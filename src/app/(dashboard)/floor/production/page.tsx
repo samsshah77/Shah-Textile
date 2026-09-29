@@ -80,6 +80,7 @@ function ProductionWorkspaceContent() {
     issueYarnToLoom,
     yarnIssuances,
     yarnMovements,
+    endQualityOnLooms,
     updateQuality,
     addQuality,
     deleteQuality,
@@ -119,7 +120,10 @@ function ProductionWorkspaceContent() {
   const isBeamsTab = currentTab === 'beams'
   const isQualityTab = currentTab === 'quality'
   const beamCounts = useMemo(() => beamStockCounts(beams), [beams])
-  const qualityCounts = useMemo(() => qualityStatusCounts(qualities), [qualities])
+  const qualityCounts = useMemo(
+    () => qualityStatusCounts(qualities, selectedDate),
+    [qualities, selectedDate]
+  )
 
   return (
     <div className="pb-3">
@@ -295,6 +299,7 @@ function ProductionWorkspaceContent() {
           entries={entries}
           looms={looms}
           onAssignLoom={(loomNumber, qualityId) => updateLoom(loomNumber, { qualityId })}
+          onEndOnLooms={endQualityOnLooms}
           beams={beams}
           yarn={yarn}
           statusFilter={qualityStatusFilter}
