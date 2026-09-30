@@ -203,7 +203,7 @@ export function BeamMasterTable({
   onFilterChange,
 }: BeamMasterTableProps) {
   const { canEditProduction } = useAuth()
-  const { showError, showConfirm } = useAlertDialog()
+  const { showError, showConfirm, showSuccessSoon } = useAlertDialog()
   const [filterInternal, setFilterInternal] = useState<BeamFilterType>('ALL')
   const filter = filterProp ?? filterInternal
   const setFilter = onFilterChange ?? setFilterInternal
@@ -254,7 +254,17 @@ export function BeamMasterTable({
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
         title={tableEdit ? 'Lock table (view only)' : 'Enable editing'}
-        onClick={() => setTableEdit((v) => !v)}
+        onClick={() => {
+          if (tableEdit) {
+            setTableEdit(false)
+            showSuccessSoon({
+              title: 'Saved',
+              message: 'Beam edits save ho gayi hain.',
+            })
+          } else {
+            setTableEdit(true)
+          }
+        }}
       >
         <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
         {tableEdit ? 'Done' : 'Edit'}
@@ -298,7 +308,13 @@ export function BeamMasterTable({
       type: 'confirm',
       confirmText: 'Haan, Delete Karein',
       cancelText: 'Cancel',
-      onConfirm: () => onDelete(b.beamNo),
+      onConfirm: () => {
+        onDelete(b.beamNo)
+        showSuccessSoon({
+          title: 'Deleted',
+          message: `Beam "${b.beamNo}" delete ho gaya.`,
+        })
+      },
     })
   }
 
@@ -623,7 +639,13 @@ export function BeamMasterTable({
       <AddBeamModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={(newBeam) => onAdd(newBeam)}
+        onAdd={(newBeam) => {
+          onAdd(newBeam)
+          showSuccessSoon({
+            title: 'Beam Added',
+            message: `Beam "${newBeam.beamNo}" add ho gaya.`,
+          })
+        }}
         existingBeamNos={beams.map((b) => b.beamNo)}
         activeLooms={activeLooms}
       />

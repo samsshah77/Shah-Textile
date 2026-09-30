@@ -207,7 +207,7 @@ export function useProductionGrid() {
         // Auto-end (last loom cleared) or revive — persist status to DB.
         if (prevQualityId && prevQualityId !== patch.qualityId) {
           const prevQ = productionMastersService.getQualities().find((q) => q.id === prevQualityId)
-          if (prevQ?.status === 'ENDED') {
+          if (prevQ?.status === 'ENDED' || prevQ?.status === 'HOLD') {
             void productionMastersService.flushQualityStatus(prevQualityId)
           }
         }
@@ -356,7 +356,13 @@ export function useProductionGrid() {
       setQualities(next)
       setLooms(productionMastersService.getLooms())
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
-      if (patch.status === 'ENDED' || patch.endedOn !== undefined || patch.status === 'ACTIVE') {
+      if (
+        patch.status === 'ENDED' ||
+        patch.status === 'HOLD' ||
+        patch.endedOn !== undefined ||
+        patch.status === 'ACTIVE' ||
+        patch.createdOn !== undefined
+      ) {
         void productionMastersService.flushQualityStatus(id)
       }
     },

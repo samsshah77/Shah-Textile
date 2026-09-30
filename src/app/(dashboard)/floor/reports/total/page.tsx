@@ -11,6 +11,7 @@ import {
   hydrateFloorFromDb,
   preloadMonthSheets,
   productionMastersService,
+  qualityRunOwnsSheetEntry,
 } from '@/services/productionMastersService'
 import { formatNumber } from '@/lib/utils'
 import { PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
@@ -51,16 +52,6 @@ function cleanQualityName(s: string) {
   return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-function entryMatchesQuality(entryQualityName: string, targetName: string) {
-  const t = cleanQualityName(targetName)
-  const e = cleanQualityName(entryQualityName)
-  if (!t || !e) return false
-  return (
-    e === t ||
-    (t.length >= 4 && (e.includes(t) || t.includes(e)))
-  )
-}
-
 function entryMeters(e: { totalMeters?: number | null; shiftAMeters?: number; shiftBMeters?: number }) {
   if (e.totalMeters != null) return Number(e.totalMeters) || 0
   return (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
@@ -81,7 +72,9 @@ function ProductionTotalTrackingContent() {
   const searchParams = useSearchParams()
   const qualityId = searchParams.get('quality')
   const qualityNameParam = searchParams.get('name')
+  const qualityFromParam = searchParams.get('from')
   const view = readTrackView(searchParams.get('view'))
+  const isQualityDeepLink = Boolean(qualityId || qualityNameParam)
 
   const [month, setMonth] = useState(PRODUCTION_TODAY_MONTH)
   const [matrix, setMatrix] = useState<MatrixState>(EMPTY_MATRIX)
@@ -120,53 +113,102 @@ function ProductionTotalTrackingContent() {
   const qualityFocus = useMemo(() => {
     if (!qualityId && !qualityNameParam) return null
     const masters = productionMastersService.getQualities()
-    const master = qualityId ? masters.find((q) => q.id === qualityId) : undefined
+    const master = qualityId
+      ? masters.find((q) => q.id === qualityId)
+      : masters.find((q) => cleanQualityName(q.name) === cleanQualityName(qualityNameParam || ''))
     const name = qualityNameParam || master?.name || ''
     if (!name && !master) return null
+    const createdOn =
+      (master?.createdOn ? String(master.createdOn).slice(0, 10) : null) ||
+      (qualityFromParam ? String(qualityFromParam).slice(0, 10) : null)
+    // Ensure run boundary exists even if DB lagged on createdOn.
+    const masterForRun: typeof master =
+      master && createdOn && !master.createdOn
+        ? { ...master, createdOn }
+        : master
+          ? { ...master, createdOn: master.createdOn || createdOn }
+          : master
     return {
       id: master?.id || qualityId || '',
       name: name || master?.name || '',
-      endedOn: master?.status === 'ENDED' ? master.endedOn : null,
+      createdOn,
+      endedOn:
+        master && (master.status === 'ENDED' || master.status === 'HOLD')
+          ? master.endedOn
+            ? String(master.endedOn).slice(0, 10)
+            : null
+          : null,
+      status: master?.status ?? 'ACTIVE',
+      pick: master?.pick,
+      master: masterForRun || null,
     }
-  }, [qualityId, qualityNameParam, loading, matrix])
+  }, [qualityId, qualityNameParam, qualityFromParam, loading, matrix])
+
+  const qualityCatalog = useMemo(() => {
+    const list = productionMastersService.getQualities()
+    if (!qualityFocus?.id || !qualityFocus.createdOn) return list
+    // Patch focused quality createdOn into catalog so ownership never falls back to full history.
+    return list.map((q) =>
+      q.id === qualityFocus.id && !q.createdOn
+        ? { ...q, createdOn: qualityFocus.createdOn }
+        : q
+    )
+  }, [loading, matrix, qualityFocus?.id, qualityFocus?.createdOn])
 
   const qualityDaySeries = useMemo(() => {
-    if (!qualityFocus?.name) return null
+    // Quality deep-link: never fall back to full-mill series (that caused the old-production flash).
+    if (isQualityDeepLink && !qualityFocus?.master) {
+      return matrix.days.map((d) => ({ label: String(d.day), value: 0 }))
+    }
+    if (!qualityFocus?.master) return null
+    const q = qualityFocus.master
     return matrix.days.map((d) => {
       if (!d.date || !productionMastersService.hasPersistedSheet(d.date)) {
         return { label: String(d.day), value: 0 }
       }
       const entries = productionMastersService.buildSheetForDate(d.date)
       const value = entries
-        .filter((e) => entryMatchesQuality(e.qualityName, qualityFocus.name))
+        .filter((e) => qualityRunOwnsSheetEntry(q, { ...e, date: d.date }, qualityCatalog, d.date))
         .reduce((s, e) => s + entryMeters(e), 0)
       return { label: String(d.day), value }
     })
-  }, [matrix.days, qualityFocus])
+  }, [matrix.days, qualityFocus, qualityCatalog, isQualityDeepLink])
 
-  const daySeries = useMemo(
-    () =>
-      (qualityDaySeries ?? matrix.days.map((d) => ({
+  const daySeries = useMemo(() => {
+    if (isQualityDeepLink) {
+      return (
+        qualityDaySeries ??
+        matrix.days.map((d) => ({ label: String(d.day), value: 0 }))
+      )
+    }
+    return (
+      qualityDaySeries ??
+      matrix.days.map((d) => ({
         label: String(d.day),
         value: d.totalMeters || 0,
-      }))),
-    [matrix.days, qualityDaySeries]
-  )
+      }))
+    )
+  }, [matrix.days, qualityDaySeries, isQualityDeepLink])
 
   const qualityLoomSet = useMemo(() => {
-    if (!qualityFocus?.name) return null
+    if (isQualityDeepLink && !qualityFocus?.master) return new Set<number>()
+    if (!qualityFocus?.master) return null
+    const q = qualityFocus.master
     const set = new Set<number>()
     for (const d of matrix.days) {
       if (!d.date || !d.hasSheet) continue
       const entries = productionMastersService.buildSheetForDate(d.date)
       for (const e of entries) {
-        if (entryMatchesQuality(e.qualityName, qualityFocus.name) && entryMeters(e) > 0) {
+        if (
+          qualityRunOwnsSheetEntry(q, { ...e, date: d.date }, qualityCatalog, d.date) &&
+          entryMeters(e) > 0
+        ) {
           set.add(e.loomNumber)
         }
       }
     }
     return set
-  }, [matrix.days, qualityFocus])
+  }, [matrix.days, qualityFocus, qualityCatalog, isQualityDeepLink])
 
   const loomSeries = useMemo(() => {
     const entries = Object.entries(matrix.loomTotals || {}).map(([loom, meters]) => ({
@@ -244,7 +286,7 @@ function ProductionTotalTrackingContent() {
     })
     Object.keys(matrix.loomTotals || {}).forEach((k) => set.add(Number(k)))
     let list = Array.from(set).sort((a, b) => a - b)
-    if (qualityLoomSet && qualityLoomSet.size > 0) {
+    if (qualityLoomSet) {
       list = list.filter((n) => qualityLoomSet.has(n))
     }
     return list
@@ -259,11 +301,15 @@ function ProductionTotalTrackingContent() {
   const fortnight1 =
     view === 'efficiency'
       ? weightedSlice(0, mid)
-      : matrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
+      : isQualityDeepLink
+        ? daySeries.slice(0, mid).reduce((s, d) => s + (d.value || 0), 0)
+        : matrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
   const fortnight2 =
     view === 'efficiency'
       ? weightedSlice(mid, matrix.days.length)
-      : matrix.days.slice(mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
+      : isQualityDeepLink
+        ? daySeries.slice(mid).reduce((s, d) => s + (d.value || 0), 0)
+        : matrix.days.slice(mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
 
   const loomFortnight = (loom: number, half: 1 | 2, source: MatrixState = matrix) => {
     const slice = half === 1 ? source.days.slice(0, mid) : source.days.slice(mid)
@@ -336,16 +382,25 @@ function ProductionTotalTrackingContent() {
       {qualityFocus && (
         <div className="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3">
           <div>
-            <strong>Quality records:</strong> {qualityFocus.name}
-            {qualityFocus.endedOn && (
+            <strong>Quality run:</strong> {qualityFocus.name}
+            {qualityFocus.createdOn && (
+              <span className="ms-2 text-secondary">
+                (From {formatShortDate(qualityFocus.createdOn)}
+                {qualityFocus.endedOn ? ` → ${formatShortDate(qualityFocus.endedOn)}` : ''})
+              </span>
+            )}
+            {!qualityFocus.createdOn && qualityFocus.endedOn && (
               <span className="ms-2 text-secondary">
                 (Ended {formatShortDate(qualityFocus.endedOn)})
               </span>
             )}
             {qualityMonthTotal != null && (
               <span className="ms-2 badge text-bg-light border">
-                {formatNumber(qualityMonthTotal, 0)} m this month
+                {formatNumber(qualityMonthTotal, 0)} m this run / month
               </span>
+            )}
+            {qualityMonthTotal === 0 && (
+              <span className="ms-2 small text-warning">Abhi is run pe production start nahi hui.</span>
             )}
           </div>
           <Link href="/floor/production?tab=quality" className="btn btn-sm btn-outline-secondary">

@@ -170,7 +170,11 @@ export function EditLoomModal({
                   >
                     <option value="">—</option>
                     {qualities
-                      .filter((q) => (q.status ?? 'ACTIVE') !== 'ENDED' || q.id === loom.qualityId)
+                      .filter(
+                        (q) =>
+                          ((q.status ?? 'ACTIVE') !== 'ENDED' && (q.status ?? 'ACTIVE') !== 'HOLD') ||
+                          q.id === loom.qualityId
+                      )
                       .map((q) => (
                         <option key={q.id} value={q.id}>
                           {q.name}

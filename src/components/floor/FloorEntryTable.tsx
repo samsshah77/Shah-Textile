@@ -44,7 +44,7 @@ export function FloorEntryTable({
   onUnlockSheet,
 }: FloorEntryTableProps) {
   const { user, isAdmin, isQualityController } = useAuth()
-  const { showConfirm } = useAlertDialog()
+  const { showConfirm, showSuccessSoon } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEdit, setTableEdit] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -126,6 +126,10 @@ export function FloorEntryTable({
         const editor = user?.name || (isAdmin ? 'Javed Sir' : 'Ahmer')
         onResetDayMeters(editor)
         setFeedbackMsg({ type: 'success', text: 'Daily Entry meters zero ho gaye.' })
+        showSuccessSoon({
+          title: 'Reset Done',
+          message: 'Daily Entry meters zero ho gaye.',
+        })
       },
     })
   }
@@ -140,6 +144,10 @@ export function FloorEntryTable({
         setFeedbackMsg({ type: 'success', text: 'Production sheet finalized.' })
         setTableEdit(false)
         setEditedSinceFinalize(false)
+        showSuccessSoon({
+          title: 'Finalized',
+          message: 'Production sheet finalize ho gayi.',
+        })
       } else {
         setFeedbackMsg({ type: 'danger', text: res.error || 'Finalize failed' })
       }
@@ -177,7 +185,17 @@ export function FloorEntryTable({
             ? 'Lock table (view only)'
             : 'Enable editing'
       }
-      onClick={() => setTableEdit((v) => !v)}
+      onClick={() => {
+        if (tableEdit) {
+          setTableEdit(false)
+          showSuccessSoon({
+            title: 'Saved',
+            message: 'Daily entry edits save ho gayi hain.',
+          })
+        } else {
+          setTableEdit(true)
+        }
+      }}
     >
       <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
       {tableEdit ? 'Done' : 'Edit'}

@@ -16,7 +16,7 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { showConfirm } = useAlertDialog()
+  const { showConfirm, showSuccessSoon } = useAlertDialog()
   const canAdd = images.length < MAX_LOOM_PICTURES && !uploading
 
   const addFiles = async (files: FileList | null) => {
@@ -46,7 +46,13 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
       type: 'confirm',
       confirmText: 'Haan, Delete',
       cancelText: 'Cancel',
-      onConfirm: () => onChange(images.filter((_, i) => i !== index)),
+      onConfirm: () => {
+        onChange(images.filter((_, i) => i !== index))
+        showSuccessSoon({
+          title: 'Deleted',
+          message: 'Photo delete ho gayi.',
+        })
+      },
     })
   }
 

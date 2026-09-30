@@ -254,20 +254,25 @@ export async function dbSaveYarnIssuances(list: YarnLoomIssuance[]): Promise<voi
 
 export async function dbGetQualities(): Promise<QualityMaster[]> {
   const rows = await prisma.floorQuality.findMany({ orderBy: { name: 'asc' } })
-  return rows.map((q) => ({
-    id: q.id,
-    name: q.name,
-    fabricType: q.fabricType,
-    warpYarn: q.warpYarn,
-    weftYarn: q.weftYarn,
-    reed: q.reed,
-    pick: q.pick,
-    widthInch: q.widthInch,
-    gsm: q.gsm,
-    status: q.status === 'ENDED' ? 'ENDED' : 'ACTIVE',
-    createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
-    endedOn: q.status === 'ENDED' ? q.endedOn : null,
-  }))
+  return rows.map((q) => {
+    const status =
+      q.status === 'ENDED' ? 'ENDED' : q.status === 'HOLD' ? 'HOLD' : 'ACTIVE'
+    return {
+      id: q.id,
+      name: q.name,
+      fabricType: q.fabricType,
+      weavePlan: (q as { weavePlan?: string | null }).weavePlan ?? '',
+      warpYarn: q.warpYarn,
+      weftYarn: q.weftYarn,
+      reed: q.reed,
+      pick: q.pick,
+      widthInch: q.widthInch,
+      gsm: q.gsm,
+      status,
+      createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
+      endedOn: status === 'ACTIVE' ? null : q.endedOn,
+    }
+  })
 }
 
 export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void> {
@@ -290,15 +295,18 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
         id: q.id,
         name: q.name,
         fabricType: q.fabricType,
+        weavePlan: q.weavePlan ?? '',
         warpYarn: q.warpYarn,
         weftYarn: q.weftYarn,
         reed: q.reed,
         pick: q.pick,
         widthInch: q.widthInch,
         gsm: q.gsm,
-        status: q.status === 'ENDED' ? 'ENDED' : 'ACTIVE',
+        status:
+          q.status === 'ENDED' ? 'ENDED' : q.status === 'HOLD' ? 'HOLD' : 'ACTIVE',
         createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
-        endedOn: q.status === 'ENDED' ? q.endedOn ?? null : null,
+        endedOn:
+          q.status === 'ENDED' || q.status === 'HOLD' ? q.endedOn ?? null : null,
       })),
     })
   })
@@ -307,12 +315,14 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
 /** Patch one quality status/endedOn — survives refresh without rewriting the whole table. */
 export async function dbPatchQualityStatus(
   id: string,
-  status: 'ACTIVE' | 'ENDED',
+  status: 'ACTIVE' | 'HOLD' | 'ENDED',
   endedOn: string | null
 ): Promise<void> {
+  const normalized =
+    status === 'ENDED' ? 'ENDED' : status === 'HOLD' ? 'HOLD' : 'ACTIVE'
   const data = {
-    status: status === 'ENDED' ? 'ENDED' : 'ACTIVE',
-    endedOn: status === 'ENDED' ? endedOn : null,
+    status: normalized,
+    endedOn: normalized === 'ACTIVE' ? null : endedOn,
   }
   try {
     await prisma.floorQuality.update({ where: { id }, data })

@@ -89,6 +89,7 @@ const STATEMENTS = [
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "fabricType" TEXT NOT NULL DEFAULT 'Suiting',
+    "weavePlan" TEXT NOT NULL DEFAULT '',
     "warpYarn" TEXT NOT NULL DEFAULT '',
     "weftYarn" TEXT NOT NULL DEFAULT '',
     "reed" INTEGER NOT NULL DEFAULT 120,
@@ -120,6 +121,7 @@ const STATEMENTS = [
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'ACTIVE'`,
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "endedOn" TEXT`,
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "createdOn" TEXT`,
+  `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "weavePlan" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "floor_looms" ADD COLUMN IF NOT EXISTS "statusSince" TEXT`,
 ]
 

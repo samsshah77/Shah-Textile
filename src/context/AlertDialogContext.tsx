@@ -29,6 +29,8 @@ interface AlertDialogContextValue {
   showWarning: (options: AlertOptions | string) => void
   showError: (options: AlertOptions | string) => void
   showSuccess: (options: AlertOptions | string) => void
+  /** Success dialog after confirm/modal closes (avoids clobbering the confirm). */
+  showSuccessSoon: (options: AlertOptions | string, delayMs?: number) => void
   showInfo: (options: AlertOptions | string) => void
   showConfirm: (options: ConfirmOptions) => void
 }
@@ -114,6 +116,15 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
     [openDialog]
   )
 
+  const showSuccessSoon = useCallback(
+    (options: AlertOptions | string, delayMs = 80) => {
+      window.setTimeout(() => {
+        openDialog(normalizeOptions(options, 'success'))
+      }, delayMs)
+    },
+    [openDialog]
+  )
+
   const showInfo = useCallback(
     (options: AlertOptions | string) => {
       openDialog(normalizeOptions(options, 'info'))
@@ -160,10 +171,11 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
       showWarning,
       showError,
       showSuccess,
+      showSuccessSoon,
       showInfo,
       showConfirm,
     }),
-    [showAlert, showWarning, showError, showSuccess, showInfo, showConfirm]
+    [showAlert, showWarning, showError, showSuccess, showSuccessSoon, showInfo, showConfirm]
   )
 
   return (

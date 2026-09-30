@@ -12,6 +12,7 @@ import {
   rpmOnLoomForDate,
   statusOnLoomForDate,
   mergeSheetEntriesForDate,
+  loomRecentQualityClearNote,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { LoomCategory } from '@/types/loom'
@@ -67,7 +68,7 @@ export function LoomMasterTable({
   const [tableEdit, setTableEdit] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const { canEditProduction } = useAuth()
-  const { showConfirm } = useAlertDialog()
+  const { showConfirm, showSuccessSoon } = useAlertDialog()
   const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
   const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
@@ -102,7 +103,8 @@ export function LoomMasterTable({
     const currentId = dayQualityId(loom)
     const day = String(sheetDate || '').slice(0, 10)
     return qualities.filter((q) => {
-      if ((q.status ?? 'ACTIVE') === 'ENDED' && q.id !== currentId) return false
+      const status = q.status ?? 'ACTIVE'
+      if ((status === 'ENDED' || status === 'HOLD') && q.id !== currentId) return false
       const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
       if (createdOn && day && day < createdOn && q.id !== currentId) return false
       return true
@@ -111,9 +113,28 @@ export function LoomMasterTable({
 
   const qualityLabel = (loom: LoomMaster) => {
     const id = dayQualityId(loom)
-    if (!id) return '—'
-    const q = qualities.find((item) => item.id === id)
-    return q ? qualityDisplayName(q, qualities) : '—'
+    if (id) {
+      const q = qualities.find((item) => item.id === id)
+      if (q && q.status !== 'ENDED' && q.status !== 'HOLD') {
+        return qualityDisplayName(q, qualities)
+      }
+    }
+    const note = loomRecentQualityClearNote(loom.loomNumber, qualities, sheetDate)
+    if (note?.status === 'ENDED') return `Ended: ${note.name}`
+    if (note?.status === 'HOLD') return `Hold: ${note.name}`
+    return '—'
+  }
+
+  const qualityCellClass = (loom: LoomMaster) => {
+    const id = dayQualityId(loom)
+    if (id) {
+      const q = qualities.find((item) => item.id === id)
+      if (q && q.status !== 'ENDED' && q.status !== 'HOLD') return 'fw-semibold'
+    }
+    const note = loomRecentQualityClearNote(loom.loomNumber, qualities, sheetDate)
+    if (note?.status === 'ENDED') return 'fw-semibold text-danger'
+    if (note?.status === 'HOLD') return 'fw-semibold text-warning'
+    return 'fw-semibold'
   }
 
   const canManagePics = canEditProduction && !readOnly
@@ -132,7 +153,17 @@ export function LoomMasterTable({
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
         title={tableEdit ? 'Lock table (view only)' : 'Enable editing'}
-        onClick={() => setTableEdit((v) => !v)}
+        onClick={() => {
+          if (tableEdit) {
+            setTableEdit(false)
+            showSuccessSoon({
+              title: 'Saved',
+              message: 'Loom edits save ho gayi hain.',
+            })
+          } else {
+            setTableEdit(true)
+          }
+        }}
       >
         <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
         {tableEdit ? 'Done' : 'Edit'}
@@ -146,13 +177,20 @@ export function LoomMasterTable({
 
   const handleDeleteLoom = (l: LoomMaster) => {
     if (!masterEdit || !onDelete) return
+    const label = l.name || `Loom ${l.loomNumber}`
     showConfirm({
       title: 'Loom Delete Karein?',
-      message: `Kya aap waqai "${l.name || `Loom ${l.loomNumber}`}" (Loom #${l.loomNumber}) ko delete karna chahte hain?`,
+      message: `Kya aap waqai "${label}" (Loom #${l.loomNumber}) ko delete karna chahte hain?`,
       type: 'confirm',
       confirmText: 'Haan, Delete Karein',
       cancelText: 'Cancel',
-      onConfirm: () => onDelete(l.loomNumber),
+      onConfirm: () => {
+        onDelete(l.loomNumber)
+        showSuccessSoon({
+          title: 'Deleted',
+          message: `"${label}" delete ho gayi.`,
+        })
+      },
     })
   }
 
@@ -333,7 +371,7 @@ export function LoomMasterTable({
                       ))}
                     </select>
                   ) : (
-                    <div className="small fw-semibold text-truncate" title={qualityLabel(l)}>
+                    <div className={`small text-truncate ${qualityCellClass(l)}`} title={qualityLabel(l)}>
                       {qualityLabel(l)}
                     </div>
                   )}
@@ -464,7 +502,7 @@ export function LoomMasterTable({
                         </select>
                       ) : (
                         <span
-                          className="fw-semibold text-truncate d-block text-start"
+                          className={`text-truncate d-block text-start ${qualityCellClass(l)}`}
                           style={{ maxWidth: '100%' }}
                           title={qualityLabel(l)}
                         >
@@ -502,7 +540,13 @@ export function LoomMasterTable({
       <AddLoomModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={onAdd}
+        onAdd={(partial) => {
+          onAdd(partial)
+          showSuccessSoon({
+            title: 'Loom Added',
+            message: 'Naya loom add ho gaya.',
+          })
+        }}
         suggestedLoomNumber={nextLoomNumber}
       />
     </div>

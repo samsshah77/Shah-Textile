@@ -121,20 +121,31 @@ export interface QualityLoomEnd {
   loomNumber: number
 }
 
+export const QUALITY_FABRIC_TYPES = ['Suiting', 'Shirting'] as const
+export type QualityFabricType = (typeof QUALITY_FABRIC_TYPES)[number]
+
+export function normalizeFabricType(value?: string | null): QualityFabricType {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'shirting' || raw.includes('shirt')) return 'Shirting'
+  return 'Suiting'
+}
+
 export interface QualityMaster {
   id: string
   name: string
   fabricType: string
+  /** Weave plan text entered on quality (before reed). */
+  weavePlan?: string
   warpYarn: string
   weftYarn: string
   reed: number
   pick: number
   widthInch: number
   gsm: number
-  status?: 'ACTIVE' | 'ENDED'
-  /** YYYY-MM-DD when quality was first added — hidden on earlier dates. */
+  status?: 'ACTIVE' | 'HOLD' | 'ENDED'
+  /** YYYY-MM-DD when quality was first added — hidden on earlier dates; meters count from this day. */
   createdOn?: string | null
-  /** YYYY-MM-DD when quality was ended (latest stamp) */
+  /** YYYY-MM-DD when quality was ended or put on hold (latest stamp) */
   endedOn?: string | null
   /** Per-loom end history (which loom ended on which date). */
   loomEnds?: QualityLoomEnd[]
@@ -150,8 +161,16 @@ function normalizeLoomEnds(raw: unknown): QualityLoomEnd[] | undefined {
   return rows.length ? rows : undefined
 }
 
+export type QualityLifecycleStatus = 'ACTIVE' | 'HOLD' | 'ENDED'
+
+export function normalizeQualityStatus(status?: string | null): QualityLifecycleStatus {
+  if (status === 'ENDED') return 'ENDED'
+  if (status === 'HOLD') return 'HOLD'
+  return 'ACTIVE'
+}
+
 function normalizeQuality(q: QualityMaster): QualityMaster {
-  const status = q.status === 'ENDED' ? 'ENDED' : 'ACTIVE'
+  const status = normalizeQualityStatus(q.status)
   const yarnHistory = Array.isArray(q.yarnHistory)
     ? q.yarnHistory
         .filter((h) => h && h.from)
@@ -164,6 +183,8 @@ function normalizeQuality(q: QualityMaster): QualityMaster {
     : undefined
   return {
     ...q,
+    fabricType: q.fabricType ? String(q.fabricType) : 'Suiting',
+    weavePlan: q.weavePlan != null ? String(q.weavePlan) : '',
     status,
     createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
@@ -268,6 +289,28 @@ export function qualityLoomEndsOnDate(q: QualityMaster, dateStr?: string): numbe
   return [...new Set(nums)].sort((a, b) => a - b)
 }
 
+/** If this loom's quality was ended/held on `dateStr`, return a short note for Looms UI. */
+export function loomRecentQualityClearNote(
+  loomNumber: number,
+  qualities: QualityMaster[],
+  dateStr: string
+): { status: 'ENDED' | 'HOLD'; name: string } | null {
+  const day = String(dateStr || '').slice(0, 10)
+  if (!day) return null
+  for (const q of qualities) {
+    const status = normalizeQualityStatus(q.status)
+    if (status !== 'ENDED' && status !== 'HOLD') continue
+    const stamp = String(q.endedOn || '').slice(0, 10)
+    if (stamp !== day) continue
+    const onLoom =
+      (q.loomEnds || []).some((e) => e.loomNumber === loomNumber && e.date === day) ||
+      qualityLoomEndsOnDate(q, day).includes(loomNumber)
+    if (!onLoom) continue
+    return { status, name: qualityDisplayName(q, qualities) }
+  }
+  return null
+}
+
 /** True if this loom already has an end recorded for the quality (any date). */
 export function qualityLoomAlreadyEnded(q: QualityMaster, loomNumber: number): boolean {
   return (q.loomEnds || []).some((e) => e.loomNumber === loomNumber)
@@ -363,7 +406,64 @@ export function matchQualityByNameAndPick(
   return undefined
 }
 
-/** Active tab on `sheetDate`: running qualities + ended ones still visible on/before their end day. */
+/**
+ * Which quality *run* owns a sheet row when the same name is re-added / reassigned.
+ * Latest `createdOn` that still covers that day wins — so Track/Overall start at 0 for new runs.
+ */
+export function qualityRunThatOwnsSheetEntry(
+  entry: { qualityName?: string; pick?: number; date?: string },
+  catalog: QualityMaster[],
+  fallbackDate?: string
+): QualityMaster | null {
+  const eClean = qualityNameKey(entry.qualityName || '')
+  if (!eClean || entry.qualityName === '—') return null
+  const day = String(entry.date || fallbackDate || '').slice(0, 10)
+  if (!day) return null
+
+  const nameCounts = new Map<string, number>()
+  for (const q of catalog) {
+    const key = qualityNameKey(q.name)
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
+  }
+
+  const candidates = catalog.filter((q) => {
+    const qClean = qualityNameKey(q.name)
+    const nameHit =
+      eClean === qClean ||
+      (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
+    if (!nameHit) return false
+    if ((nameCounts.get(qClean) || 0) > 1 && Number(entry.pick) !== Number(q.pick)) return false
+
+    const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : '1970-01-01'
+    if (day < createdOn) return false
+
+    const status = normalizeQualityStatus(q.status)
+    const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : null
+    if ((status === 'ENDED' || status === 'HOLD') && stamp && day > stamp) return false
+    return true
+  })
+
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+  return [...candidates].sort((a, b) => {
+    const ca = a.createdOn ? String(a.createdOn).slice(0, 10) : '1970-01-01'
+    const cb = b.createdOn ? String(b.createdOn).slice(0, 10) : '1970-01-01'
+    if (ca !== cb) return cb.localeCompare(ca)
+    return b.id.localeCompare(a.id)
+  })[0]
+}
+
+export function qualityRunOwnsSheetEntry(
+  quality: QualityMaster,
+  entry: { qualityName?: string; pick?: number; date?: string },
+  catalog: QualityMaster[],
+  fallbackDate?: string
+): boolean {
+  const owner = qualityRunThatOwnsSheetEntry(entry, catalog, fallbackDate)
+  return Boolean(owner && owner.id === quality.id)
+}
+
+/** Active tab on `sheetDate`: running qualities only (HOLD / ENDED stay off Active). */
 export function qualityActiveOnSheetDate(
   q: QualityMaster,
   sheetDate: string,
@@ -377,14 +477,9 @@ export function qualityActiveOnSheetDate(
     // Exception: already on that day's sheet (legacy / imported allotment).
     if (!dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))) return false
   }
-  if ((q.status ?? 'ACTIVE') !== 'ENDED') return true
-  const endedOn = q.endedOn
-  if (!endedOn) return false
-  if (sheetDate < endedOn) return true
-  if (sheetDate === endedOn) {
-    return dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))
-  }
-  return false
+  const status = normalizeQualityStatus(q.status)
+  if (status === 'HOLD' || status === 'ENDED') return false
+  return true
 }
 
 /** True when this quality is on at least one loom master row or today's sheet. */
@@ -1312,7 +1407,7 @@ async function persistKey(key: string, value: unknown): Promise<boolean> {
 /** Patch one quality ENDED/ACTIVE in DB so refresh keeps the record. */
 async function persistQualityStatus(
   id: string,
-  status: 'ACTIVE' | 'ENDED',
+  status: QualityLifecycleStatus,
   endedOn: string | null
 ): Promise<boolean> {
   if (!isClient()) return false
@@ -1778,7 +1873,7 @@ class ProductionMastersService {
       }
       if (masterPatch.qualityId) {
         const nextQ = this.getQualities().find((q) => q.id === masterPatch.qualityId)
-        if (nextQ?.status === 'ENDED') {
+        if (nextQ && (nextQ.status === 'ENDED' || nextQ.status === 'HOLD')) {
           this.updateQuality(masterPatch.qualityId, { status: 'ACTIVE', endedOn: null }, dateStr)
         }
       }
@@ -2275,47 +2370,69 @@ class ProductionMastersService {
     const current = this.getQualities().find((q) => q.id === id)
     const catalogBefore = this.getQualities()
     const nextPatch = { ...patch }
-    // Already ended: still allow re-stamping endedOn (another loom ended later / same day).
-    if (current?.status === 'ENDED') {
+    const currentStatus = normalizeQualityStatus(current?.status)
+    // Already ended/hold: only allow explicit revive to ACTIVE (or re-stamp date).
+    if (currentStatus === 'ENDED' || currentStatus === 'HOLD') {
       if (nextPatch.status === 'ACTIVE') {
-        // explicit revive only
-      } else {
+        // explicit revive / reassign
+      } else if (nextPatch.status && nextPatch.status !== currentStatus) {
+        // allow HOLD ↔ ENDED switches
+      } else if (nextPatch.status) {
         delete nextPatch.status
       }
     }
+
+    // End / Hold: collect looms first, stamp loomEnds, then clear allotment + sheet.
+    const clearing = nextPatch.status === 'ENDED' || nextPatch.status === 'HOLD'
+    const clearLoomNums = new Set<number>()
+    if (clearing) {
+      const day = this.peekSheetDay(fromDate) || []
+      for (const l of this.getLooms()) {
+        if (l.qualityId === id) clearLoomNums.add(l.loomNumber)
+      }
+      if (current) {
+        for (const e of day) {
+          if (sheetRowShowsQuality(e, current, catalogBefore)) clearLoomNums.add(e.loomNumber)
+        }
+      }
+    }
+
     const qualities = this.getQualities().map((q) => {
       if (q.id !== id) return q
       const merged = applyMidRunYarnChange(q, nextPatch, fromDate)
-      if (nextPatch.loomEnds) {
-        merged.loomEnds = mergeLoomEndLists(q.loomEnds, nextPatch.loomEnds)
+      let loomEnds = nextPatch.loomEnds
+        ? mergeLoomEndLists(q.loomEnds, nextPatch.loomEnds)
+        : q.loomEnds
+      if (clearing && clearLoomNums.size > 0) {
+        const stamped = [...clearLoomNums].map((loomNumber) => ({
+          date: String(fromDate).slice(0, 10),
+          loomNumber,
+        }))
+        loomEnds = mergeLoomEndLists(loomEnds, stamped)
       }
+      if (loomEnds) merged.loomEnds = loomEnds
       return normalizeQuality(merged)
     })
-    // Ending: do not wipe remaining looms on this day — caller clears selected looms.
-    // Drop master allotment only where this day's sheet no longer shows the quality.
-    if (nextPatch.status === 'ENDED') {
-      const day = this.peekSheetDay(fromDate) || []
-      const stillOn = new Set(
-        current
-          ? day
-              .filter((e) => sheetRowShowsQuality(e, current, catalogBefore))
-              .map((e) => e.loomNumber)
-          : []
-      )
+
+    if (clearing) {
+      for (const loomNumber of clearLoomNums) {
+        this.updateSheetEntry(fromDate, loomNumber, {
+          qualityName: '—',
+          fabricType: '',
+          warpYarn: '',
+          weftYarn: '',
+        })
+      }
       const looms = this.getLooms()
-      if (looms.some((l) => l.qualityId === id && !stillOn.has(l.loomNumber))) {
-        this.saveLooms(
-          looms.map((l) =>
-            l.qualityId === id && !stillOn.has(l.loomNumber) ? { ...l, qualityId: null } : l
-          )
-        )
+      if (looms.some((l) => l.qualityId === id)) {
+        this.saveLooms(looms.map((l) => (l.qualityId === id ? { ...l, qualityId: null } : l)))
       }
     }
     this.saveQualities(qualities)
     const saved = qualities.find((q) => q.id === id)
     if (saved?.status === 'ENDED' && saved.endedOn) {
       rememberLocalQualityEnd(id, saved.endedOn, saved.name, saved.loomEnds)
-    } else if (nextPatch.status === 'ACTIVE') {
+    } else if (nextPatch.status === 'ACTIVE' || nextPatch.status === 'HOLD') {
       forgetLocalQualityEnd(id)
     }
     const recipeTouched =
@@ -2349,7 +2466,8 @@ class ProductionMastersService {
       normalizeQuality({
         id: `q-${Date.now()}`,
         name: partial?.name || 'New Quality',
-        fabricType: partial?.fabricType || 'Suiting',
+        fabricType: normalizeFabricType(partial?.fabricType),
+        weavePlan: partial?.weavePlan != null ? String(partial.weavePlan) : '',
         warpYarn: partial?.warpYarn != null ? partial.warpYarn : '20/1',
         weftYarn: partial?.weftYarn != null ? partial.weftYarn : '20/1',
         reed: partial?.reed ?? 120,
@@ -2369,24 +2487,25 @@ class ProductionMastersService {
   async flushQualityStatus(id: string): Promise<boolean> {
     const q = this.getQualities().find((item) => item.id === id)
     if (!q) return false
-    if (q.status === 'ENDED' && q.endedOn) {
+    const status = normalizeQualityStatus(q.status)
+    if (status === 'ENDED' && q.endedOn) {
       rememberLocalQualityEnd(id, q.endedOn, q.name, q.loomEnds)
     }
-    const status = q.status === 'ENDED' ? 'ENDED' : 'ACTIVE'
-    const endedOn = q.status === 'ENDED' ? q.endedOn ?? null : null
+    const endedOn = status === 'ACTIVE' ? null : q.endedOn ?? null
     const okPatch = await persistQualityStatus(id, status, endedOn)
     // Full list save as backup (may fail wipe-guard; patch is enough).
     const okFull = await persistKey(KEY_QUALITY, this.getQualities())
     return okPatch || okFull
   }
 
-  /** Push full qualities list + status patch for ended rows. */
+  /** Push full qualities list + status patch for ended/hold rows. */
   async flushQualitiesToDb(): Promise<boolean> {
     const list = this.getQualities()
     const ok = await persistKey(KEY_QUALITY, list)
     for (const q of list) {
-      if (q.status === 'ENDED') {
-        await persistQualityStatus(q.id, 'ENDED', q.endedOn ?? null)
+      const status = normalizeQualityStatus(q.status)
+      if (status === 'ENDED' || status === 'HOLD') {
+        await persistQualityStatus(q.id, status, q.endedOn ?? null)
       }
     }
     return ok

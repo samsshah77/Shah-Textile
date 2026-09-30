@@ -30,7 +30,7 @@ export function LoomPicturesGallery({
   const [index, setIndex] = useState(initialIndex)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { showConfirm } = useAlertDialog()
+  const { showConfirm, showSuccessSoon } = useAlertDialog()
 
   useEffect(() => {
     if (open) {
@@ -115,7 +115,13 @@ export function LoomPicturesGallery({
       type: 'confirm',
       confirmText: 'Haan, Delete',
       cancelText: 'Cancel',
-      onConfirm: () => applyRemoveAt(i),
+      onConfirm: () => {
+        applyRemoveAt(i)
+        showSuccessSoon({
+          title: 'Deleted',
+          message: 'Photo delete ho gayi.',
+        })
+      },
     })
   }
 
@@ -354,7 +360,13 @@ export function LoomPicturesGallery({
               type="button"
               className="btn btn-sm btn-primary ms-auto"
               disabled={uploading}
-              onClick={onClose}
+              onClick={() => {
+                onClose()
+                showSuccessSoon({
+                  title: 'Saved',
+                  message: 'Loom photos save ho gayi hain.',
+                })
+              }}
             >
               <i className="bi bi-check-lg me-1" /> Save
             </button>

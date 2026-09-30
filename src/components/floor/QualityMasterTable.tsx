@@ -1,19 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import {
   QualityMaster,
   LoomMaster,
   BeamMaster,
   YarnMaster,
-  orderQualitiesByLoomAllotment,
-  qualityNameKey,
   qualityDisplayName,
   mergeSheetEntriesForDate,
   mergedSheetEntriesForTotals,
   qualityActiveOnSheetDate,
   sheetRowShowsQuality,
+  QUALITY_FABRIC_TYPES,
+  normalizeFabricType,
+  qualityRunThatOwnsSheetEntry,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -28,29 +28,31 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   sr: 46,
   loom: 168,
   name: 150,
-  type: 115,
+  type: 100,
   warp: 110,
   weft: 110,
+  weavePlan: 110,
   reed: 65,
   pick: 65,
   width: 65,
   gsm: 80,
   production: 105,
-  actions: 120,
+  actions: 140,
   endedOn: 95,
 }
 
-export type QualityStatusFilter = 'ACTIVE' | 'ENDED'
+export type QualityStatusFilter = 'ACTIVE' | 'HOLD' | 'ENDED'
 
 export function qualityStatusCounts(qualities: QualityMaster[], sheetDate?: string) {
-  const active = qualities.filter((q) => (q.status ?? 'ACTIVE') !== 'ENDED').length
+  const active = qualities.filter((q) => (q.status ?? 'ACTIVE') === 'ACTIVE').length
   const day = String(sheetDate || '').slice(0, 10)
+  const hold = qualities.filter((q) => (q.status ?? 'ACTIVE') === 'HOLD').length
   const ended = qualities.filter((q) => {
     if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
     if (!day) return true
     return String(q.endedOn || '').slice(0, 10) === day
   }).length
-  return { active, ended }
+  return { active, hold, ended }
 }
 
 export function QualityStatusFilterBar({
@@ -70,6 +72,13 @@ export function QualityStatusFilterBar({
         onClick={() => onChange('ACTIVE')}
       >
         Active ({counts.active})
+      </button>
+      <button
+        type="button"
+        className={`btn ${filter === 'HOLD' ? 'btn-primary' : 'btn-outline-secondary'}`}
+        onClick={() => onChange('HOLD')}
+      >
+        Hold ({counts.hold})
       </button>
       <button
         type="button"
@@ -140,7 +149,7 @@ export function QualityMasterTable({
   sheetDate = PRODUCTION_TODAY,
 }: QualityMasterTableProps) {
   const { canEditProduction } = useAuth()
-  const { showConfirm } = useAlertDialog()
+  const { showConfirm, showSuccessSoon, showInfo } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEdit, setTableEdit] = useState(false)
 
@@ -148,7 +157,8 @@ export function QualityMasterTable({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [addForm, setAddForm] = useState({
     name: '',
-    fabricType: 'Suiting',
+    fabricType: 'Suiting' as string,
+    weavePlan: '',
     warpYarn: '',
     weftYarn: '',
     reed: 120,
@@ -156,13 +166,16 @@ export function QualityMasterTable({
     widthInch: 66,
     gsm: 1.77,
   })
+  const [endsFabricFilter, setEndsFabricFilter] = useState<'ALL' | 'Suiting' | 'Shirting'>('ALL')
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_quality_col_widths_v10',
+    'sara_quality_col_widths_v11',
     DEFAULT_WIDTHS
   )
 
   const isEndedView = statusFilter === 'ENDED'
+  const isHoldView = statusFilter === 'HOLD'
+  const isArchiveView = isEndedView || isHoldView
 
   const dayRows = useMemo(
     () => mergeSheetEntriesForDate(sheetDate, entries || []),
@@ -171,22 +184,78 @@ export function QualityMasterTable({
 
   const counts = useMemo(() => qualityStatusCounts(qualities, sheetDate), [qualities, sheetDate])
 
+  /** Keep card/row order fixed while editing so renaming does not reshuffle the grid. */
+  const frozenOrderRef = useRef<string[] | null>(null)
+
   const displayedQualities = useMemo(() => {
+    const matchesFabric = (q: QualityMaster) => {
+      if (!isEndedView || endsFabricFilter === 'ALL') return true
+      return normalizeFabricType(q.fabricType) === endsFabricFilter
+    }
     if (isEndedView) {
       const day = String(sheetDate || '').slice(0, 10)
       return qualities
         .filter((q) => {
           if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
-          if (!day) return true
-          return String(q.endedOn || '').slice(0, 10) === day
+          if (!day) return matchesFabric(q)
+          if (String(q.endedOn || '').slice(0, 10) !== day) return false
+          return matchesFabric(q)
         })
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    }
+    if (isHoldView) {
+      return qualities
+        .filter((q) => (q.status ?? 'ACTIVE') === 'HOLD')
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     }
     const activeOnDay = qualities.filter((q) =>
       qualityActiveOnSheetDate(q, sheetDate, dayRows, qualities)
     )
-    return orderQualitiesByLoomAllotment(activeOnDay, looms, dayRows)
-  }, [qualities, looms, dayRows, sheetDate, isEndedView])
+    // Prefer loom.qualityId order (stable on rename); catalog index for the rest.
+    const indexById = new Map(qualities.map((q, i) => [q.id, i]))
+    const byLoomId: QualityMaster[] = []
+    const seen = new Set<string>()
+    const sortedLooms = [...looms].sort((a, b) => a.loomNumber - b.loomNumber)
+    for (const l of sortedLooms) {
+      if (!l.qualityId || seen.has(l.qualityId)) continue
+      const q = activeOnDay.find((item) => item.id === l.qualityId)
+      if (!q) continue
+      seen.add(q.id)
+      byLoomId.push(q)
+    }
+    const rest = activeOnDay
+      .filter((q) => !seen.has(q.id))
+      .sort((a, b) => (indexById.get(a.id) ?? 0) - (indexById.get(b.id) ?? 0))
+    return [...byLoomId, ...rest]
+  }, [qualities, looms, dayRows, sheetDate, isEndedView, isHoldView, endsFabricFilter])
+
+  const orderedForView = useMemo(() => {
+    if (!tableEdit || isArchiveView) {
+      frozenOrderRef.current = displayedQualities.map((q) => q.id)
+      return displayedQualities
+    }
+    const frozen = frozenOrderRef.current
+    if (!frozen || frozen.length === 0) {
+      frozenOrderRef.current = displayedQualities.map((q) => q.id)
+      return displayedQualities
+    }
+    const byId = new Map(displayedQualities.map((q) => [q.id, q]))
+    const kept: QualityMaster[] = []
+    for (const id of frozen) {
+      const q = byId.get(id)
+      if (q) {
+        kept.push(q)
+        byId.delete(id)
+      }
+    }
+    // Newly appeared rows (rare while editing) go at the end.
+    for (const q of byId.values()) kept.push(q)
+    return kept
+  }, [displayedQualities, tableEdit, isArchiveView])
+
+  useEffect(() => {
+    if (!tableEdit) frozenOrderRef.current = null
+  }, [tableEdit])
 
   // Calculate production meters for each quality from production sheet entries
   const warpOptions = useMemo(() => {
@@ -236,32 +305,14 @@ export function QualityMasterTable({
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, number> = {}
-    const nameCounts = new Map<string, number>()
-    for (const q of qualities) {
-      const key = qualityNameKey(q.name)
-      nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
-    }
+    for (const q of qualities) stats[q.id] = 0
 
     const allDays = mergedSheetEntriesForTotals(sheetDate, entries || [])
 
-    const sumMatching = (rows: DailyLoomProductionEntry[], q: QualityMaster) => {
-      const qClean = qualityNameKey(q.name)
-      const sharedName = (nameCounts.get(qClean) || 0) > 1
-      return rows
-        .filter((e) => {
-          const eClean = qualityNameKey(e.qualityName)
-          const nameHit =
-            eClean === qClean ||
-            (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
-          if (!nameHit) return false
-          if (sharedName) return Number(e.pick) === Number(q.pick)
-          return true
-        })
-        .reduce((s, e) => s + meterOf(e), 0)
-    }
-
-    for (const q of qualities) {
-      stats[q.id] = sumMatching(allDays, q)
+    for (const e of allDays) {
+      const owner = qualityRunThatOwnsSheetEntry(e, qualities, sheetDate)
+      if (!owner) continue
+      stats[owner.id] = (stats[owner.id] || 0) + meterOf(e)
     }
     return stats
   }, [qualities, entries, sheetDate])
@@ -272,7 +323,8 @@ export function QualityMasterTable({
   )
 
   /** Field edits — only while Edit is on. Loom assign is on Looms table. */
-  const canOps = canEditProduction && !readOnly && !isEndedView
+  const canOps = canEditProduction && !readOnly && !isArchiveView
+  const canArchiveOps = canEditProduction && !readOnly
   const opsEdit = canOps && tableEdit && mode === 'table'
   const masterEdit = canOps && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
@@ -280,15 +332,27 @@ export function QualityMasterTable({
   const cardTitle =
     statusFilter === 'ENDED'
       ? `Quality — Ended (${counts.ended})`
-      : `Quality — Active (${counts.active})`
+      : statusFilter === 'HOLD'
+        ? `Quality — Hold (${counts.hold})`
+        : `Quality — Active (${counts.active})`
 
   const editToggle =
-    canEditProduction && !readOnly && !isEndedView ? (
+    canEditProduction && !readOnly && !isArchiveView ? (
       <button
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
         title={tableEdit ? 'Lock table (view only)' : 'Enable editing'}
-        onClick={() => setTableEdit((v) => !v)}
+        onClick={() => {
+          if (tableEdit) {
+            setTableEdit(false)
+            showSuccessSoon({
+              title: 'Saved',
+              message: 'Quality edits save ho gayi hain.',
+            })
+          } else {
+            setTableEdit(true)
+          }
+        }}
       >
         <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
         {tableEdit ? 'Done' : 'Edit'}
@@ -305,6 +369,10 @@ export function QualityMasterTable({
       cancelText: 'Cancel',
       onConfirm: () => {
         onDelete(q.id)
+        showSuccessSoon({
+          title: 'Deleted',
+          message: `"${q.name}" delete ho gayi.`,
+        })
       },
     })
   }
@@ -313,54 +381,175 @@ export function QualityMasterTable({
     if (!canOps) return
     if ((q.status ?? 'ACTIVE') === 'ENDED') return
     const endDate = String(sheetDate || '').slice(0, 10)
+    const label = qualityDisplayName(q, qualities)
     showConfirm({
       title: 'Quality End Karein?',
-      message: `"${qualityDisplayName(q, qualities)}" ko ${formatShortDate(endDate)} pe end kar dein?`,
+      message: `"${label}" ko ${formatShortDate(endDate)} pe end kar dein? Loom se bhi hata di jayegi.`,
       type: 'confirm',
       confirmText: 'End',
       cancelText: 'Cancel',
       onConfirm: () => {
         onUpdate(q.id, { status: 'ENDED', endedOn: endDate })
+        showSuccessSoon({
+          title: 'Quality Ended',
+          message: `"${label}" end ho gayi. Related looms pe “Ended” dikhega.`,
+        })
       },
     })
   }
 
-  const canEndQuality = (q: QualityMaster) =>
-    canOps && (q.status ?? 'ACTIVE') !== 'ENDED'
+  const handleHold = (q: QualityMaster) => {
+    if (!canOps) return
+    if ((q.status ?? 'ACTIVE') !== 'ACTIVE') return
+    const holdDate = String(sheetDate || '').slice(0, 10)
+    const label = qualityDisplayName(q, qualities)
+    showConfirm({
+      title: 'Quality Hold Karein?',
+      message: `"${label}" ko hold pe rakh dein? Loom se hata di jayegi; baad mein resume kar sakte ho.`,
+      type: 'confirm',
+      confirmText: 'Hold',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        onUpdate(q.id, { status: 'HOLD', endedOn: holdDate })
+        showSuccessSoon({
+          title: 'Quality On Hold',
+          message: `"${label}" hold pe aa gayi. Related looms pe “Hold” dikhega.`,
+        })
+      },
+    })
+  }
 
-  const endAction = (q: QualityMaster, compact?: boolean) => {
-    if (canEndQuality(q)) {
-      return (
+  const handleResume = (q: QualityMaster) => {
+    if (!canArchiveOps) return
+    const label = qualityDisplayName(q, qualities)
+    showConfirm({
+      title: 'Quality Resume?',
+      message: `"${label}" ko Active pe wapas laayein?`,
+      type: 'confirm',
+      confirmText: 'Resume',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        showSuccessSoon({
+          title: 'Quality Resumed',
+          message: `"${label}" Active pe wapas aa gayi.`,
+        })
+      },
+    })
+  }
+
+  const handleReassign = (q: QualityMaster) => {
+    if (!canArchiveOps) return
+    const day = String(sheetDate || '').slice(0, 10)
+    const label = qualityDisplayName(q, qualities)
+    showConfirm({
+      title: 'Quality Reassign?',
+      message: `"${label}" ko Active pe wapas laayein? Overall meters zero se shuru hongi.`,
+      type: 'confirm',
+      confirmText: 'Reassign',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        onUpdate(q.id, { status: 'ACTIVE', endedOn: null, createdOn: day })
+        showSuccessSoon({
+          title: 'Quality Reassigned',
+          message: `"${label}" Active pe aa gayi — meters zero se shuru.`,
+        })
+      },
+    })
+  }
+
+  const rowMenu = (q: QualityMaster, compact?: boolean) => {
+    if (!canOps) return null
+    return (
+      <div className="dropdown">
         <button
           type="button"
-          className={`btn btn-sm btn-outline-danger ${compact ? 'py-0' : ''}`}
-          style={compact ? { fontSize: '0.72rem' } : undefined}
-          onClick={() => handleEnd(q)}
+          className={`btn btn-sm btn-outline-secondary ${compact ? 'py-0 px-1' : ''}`}
+          style={compact ? { fontSize: '0.85rem', lineHeight: 1 } : undefined}
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+          title="More actions"
         >
-          End
+          <i className="bi bi-three-dots-vertical" />
         </button>
-      )
-    }
-    if ((q.status ?? 'ACTIVE') === 'ENDED') {
-      return (
-        <span
-          className={`badge text-bg-secondary ${compact ? '' : 'align-self-center'}`}
-          style={compact ? { fontSize: '0.72rem' } : undefined}
-          title={q.endedOn ? `Ended ${formatShortDate(q.endedOn)}` : 'Ended'}
+        <ul className="dropdown-menu dropdown-menu-end">
+          <li>
+            <button type="button" className="dropdown-item" onClick={() => handleHold(q)}>
+              <i className="bi bi-pause-circle me-2" /> Hold
+            </button>
+          </li>
+          <li>
+            <button type="button" className="dropdown-item text-danger" onClick={() => handleEnd(q)}>
+              <i className="bi bi-stop-circle me-2" /> End
+            </button>
+          </li>
+        </ul>
+      </div>
+    )
+  }
+
+  const archiveAction = (q: QualityMaster, compact?: boolean) => {
+    if (!canArchiveOps) return null
+    if (!isHoldView && !isEndedView) return null
+    return (
+      <div className="dropdown">
+        <button
+          type="button"
+          className={`btn btn-sm btn-outline-secondary ${compact ? 'py-0 px-1' : ''}`}
+          style={compact ? { fontSize: '0.85rem', lineHeight: 1 } : undefined}
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+          title="More actions"
         >
-          Ended
-        </span>
-      )
+          <i className="bi bi-three-dots-vertical" />
+        </button>
+        <ul className="dropdown-menu dropdown-menu-end">
+          {isHoldView && (
+            <li>
+              <button type="button" className="dropdown-item" onClick={() => handleResume(q)}>
+                <i className="bi bi-play-circle me-2" /> Resume
+              </button>
+            </li>
+          )}
+          {isEndedView && (
+            <li>
+              <button type="button" className="dropdown-item" onClick={() => handleReassign(q)}>
+                <i className="bi bi-arrow-repeat me-2" /> Reassign
+              </button>
+            </li>
+          )}
+        </ul>
+      </div>
+    )
+  }
+
+  const openTrack = (q: QualityMaster) => {
+    const overall = Number(productionByQuality[q.id] || 0)
+    // Re-add / reassign run with no meters yet → dialog only, never open Track page.
+    if (!(overall > 0)) {
+      showInfo({
+        title: 'Abhi Production Start Nahi Hui',
+        message: `"${qualityDisplayName(q, qualities)}" pe abhi production start nahi hui. Jab meters aayein tab Track zero se shuru hoga.`,
+      })
+      return
     }
-    return null
+    const from = q.createdOn ? String(q.createdOn).slice(0, 10) : ''
+    const qs = new URLSearchParams({
+      quality: q.id,
+      name: q.name,
+    })
+    if (from) qs.set('from', from)
+    window.location.assign(`/floor/reports/total?${qs.toString()}`)
   }
 
   const handleCreateQuality = (e: React.FormEvent) => {
     e.preventDefault()
     if (!addForm.name.trim()) return
+    const name = addForm.name.trim()
     onAdd({
-      name: addForm.name.trim(),
-      fabricType: addForm.fabricType.trim() || 'Suiting',
+      name,
+      fabricType: normalizeFabricType(addForm.fabricType),
+      weavePlan: addForm.weavePlan.trim(),
       warpYarn: addForm.warpYarn.trim(),
       weftYarn: addForm.weftYarn.trim(),
       reed: Number(addForm.reed) || 0,
@@ -372,12 +561,17 @@ export function QualityMasterTable({
     setAddForm({
       name: '',
       fabricType: 'Suiting',
+      weavePlan: '',
       warpYarn: '',
       weftYarn: '',
       reed: 120,
       pick: 60,
       widthInch: 66,
       gsm: 1.77,
+    })
+    showSuccessSoon({
+      title: 'Quality Added',
+      message: `"${name}" add ho gayi — meters zero se shuru.`,
     })
   }
 
@@ -393,9 +587,34 @@ export function QualityMasterTable({
           )}
         </div>
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
+          {isEndedView && (
+            <div className="btn-group btn-group-sm" role="group" aria-label="Fabric type filter">
+              <button
+                type="button"
+                className={`btn ${endsFabricFilter === 'ALL' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                onClick={() => setEndsFabricFilter('ALL')}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className={`btn ${endsFabricFilter === 'Suiting' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                onClick={() => setEndsFabricFilter('Suiting')}
+              >
+                Suiting
+              </button>
+              <button
+                type="button"
+                className={`btn ${endsFabricFilter === 'Shirting' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                onClick={() => setEndsFabricFilter('Shirting')}
+              >
+                Shirting
+              </button>
+            </div>
+          )}
           {editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && canEditProduction && !isEndedView && (
+          {!readOnly && canEditProduction && !isArchiveView && (
             <button
               type="button"
               className="btn btn-sm btn-primary"
@@ -408,15 +627,17 @@ export function QualityMasterTable({
       </div>
 
       {mode === 'grid' ? (
-        isEndedView ? (
+        isArchiveView ? (
           <div className="card-body p-3">
-            {displayedQualities.length === 0 ? (
+            {orderedForView.length === 0 ? (
               <p className="text-muted small mb-0">
-                Is date ({formatShortDate(sheetDate)}) pe koi quality end nahi hui.
+                {isHoldView
+                  ? 'Koi quality hold pe nahi hai.'
+                  : `Is date (${formatShortDate(sheetDate)}) pe koi quality end nahi hui.`}
               </p>
             ) : (
               <ul className="list-group list-group-flush">
-                {displayedQualities.map((q, rowIdx) => {
+                {orderedForView.map((q, rowIdx) => {
                   const overall = productionByQuality[q.id] || 0
                   return (
                   <li
@@ -430,14 +651,18 @@ export function QualityMasterTable({
                         </span>
                         <span className="fw-semibold text-truncate">{qualityDisplayName(q, qualities)}</span>
                       </div>
-                      <span className="small fw-bold text-success font-monospace">
-                        {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
-                      </span>
+                      <div className="d-flex align-items-center gap-2">
+                        <span className="small fw-bold text-success font-monospace">
+                          {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
+                        </span>
+                        {archiveAction(q)}
+                      </div>
                     </div>
                     <div className="small text-muted ps-4 d-flex flex-wrap gap-x-3 gap-y-1">
                       <span>{q.fabricType || '—'}</span>
                       <span>Warp: {q.warpYarn || '—'}</span>
                       <span>Weft: {q.weftYarn || '—'}</span>
+                      <span>Weave: {q.weavePlan || '—'}</span>
                       <span>Reed: {q.reed || '—'}</span>
                       <span>Pick: {q.pick || '—'}</span>
                       <span>Width: {q.widthInch ? `${q.widthInch}"` : '—'}</span>
@@ -445,7 +670,9 @@ export function QualityMasterTable({
                         GSM:{' '}
                         {q.gsm != null && q.gsm !== 0 ? Number(q.gsm).toFixed(2) : '—'}
                       </span>
-                      <span>Ended: {formatShortDate(q.endedOn || sheetDate)}</span>
+                      <span>
+                        {isHoldView ? 'Held' : 'Ended'}: {formatShortDate(q.endedOn || sheetDate)}
+                      </span>
                     </div>
                   </li>
                   )
@@ -455,7 +682,7 @@ export function QualityMasterTable({
           </div>
         ) : (
         <div className="master-grid">
-          {displayedQualities.map((q, rowIdx) => {
+          {orderedForView.map((q, rowIdx) => {
             const overall = productionByQuality[q.id] || 0
 
             return (
@@ -508,13 +735,17 @@ export function QualityMasterTable({
 
                 <label className="small mb-0">Fabric Type</label>
                 {masterEdit ? (
-                  <TextCellInput
-                    className="form-control form-control-sm"
-                    value={q.fabricType || ''}
-                    navRow={rowIdx}
-                    navCol={1}
-                    onValueChange={(v) => onUpdate(q.id, { fabricType: v })}
-                  />
+                  <select
+                    className="form-select form-select-sm"
+                    value={normalizeFabricType(q.fabricType)}
+                    onChange={(e) => onUpdate(q.id, { fabricType: e.target.value })}
+                  >
+                    {QUALITY_FABRIC_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
                 ) : (
                   <div className="small text-secondary">{q.fabricType || '—'}</div>
                 )}
@@ -552,6 +783,19 @@ export function QualityMasterTable({
                   </div>
                 </div>
 
+                <label className="small mb-0">Weave Plan</label>
+                {masterEdit ? (
+                  <TextCellInput
+                    className="form-control form-control-sm"
+                    value={q.weavePlan || ''}
+                    navRow={rowIdx}
+                    navCol={4}
+                    onValueChange={(v) => onUpdate(q.id, { weavePlan: v })}
+                  />
+                ) : (
+                  <div className="small">{q.weavePlan || '—'}</div>
+                )}
+
                 <div className="d-flex gap-2">
                   <div className="flex-fill">
                     <label className="small mb-0">Reed</label>
@@ -560,7 +804,7 @@ export function QualityMasterTable({
                         className="form-control form-control-sm text-end"
                         value={q.reed}
                         navRow={rowIdx}
-                        navCol={4}
+                        navCol={5}
                         onValueChange={(v) => onUpdate(q.id, { reed: v })}
                       />
                     ) : (
@@ -574,7 +818,7 @@ export function QualityMasterTable({
                         className="form-control form-control-sm text-end"
                         value={q.pick}
                         navRow={rowIdx}
-                        navCol={5}
+                        navCol={6}
                         onValueChange={(v) => onUpdate(q.id, { pick: v })}
                       />
                     ) : (
@@ -588,7 +832,7 @@ export function QualityMasterTable({
                         className="form-control form-control-sm text-end"
                         value={q.widthInch}
                         navRow={rowIdx}
-                        navCol={6}
+                        navCol={7}
                         onValueChange={(v) => onUpdate(q.id, { widthInch: v })}
                       />
                     ) : (
@@ -603,7 +847,7 @@ export function QualityMasterTable({
                     className="form-control form-control-sm text-end"
                     value={q.gsm ?? 0}
                     navRow={rowIdx}
-                    navCol={7}
+                    navCol={8}
                     onValueChange={(v) => onUpdate(q.id, { gsm: Number(Number(v).toFixed(2)) })}
                   />
                 ) : (
@@ -619,14 +863,15 @@ export function QualityMasterTable({
                   </span>
                 </div>
 
-                <div className="d-flex gap-1 mt-2">
-                  <Link
-                    href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                <div className="d-flex gap-1 mt-2 align-items-center">
+                  <button
+                    type="button"
                     className="btn btn-sm btn-outline-primary flex-fill"
+                    onClick={() => openTrack(q)}
                   >
                     Track
-                  </Link>
-                  {endAction(q)}
+                  </button>
+                  {rowMenu(q)}
                 </div>
 
               </div>
@@ -634,7 +879,7 @@ export function QualityMasterTable({
           })}
         </div>
         )
-      ) : isEndedView ? (
+      ) : isArchiveView ? (
         <div className="card-body p-0">
           <table className="table table-sm table-hover mb-0 align-middle">
             <thead className="table-light">
@@ -646,25 +891,31 @@ export function QualityMasterTable({
                 <th className="px-2">Type</th>
                 <th className="px-2">Warp Yarn</th>
                 <th className="px-2">Weft Yarn</th>
+                <th className="px-2">Weave Plan</th>
                 <th className="px-2 text-end">Reed</th>
                 <th className="px-2 text-end">Pick</th>
                 <th className="px-2 text-end">Width</th>
                 <th className="px-2 text-end">GSM</th>
                 <th className="px-2 text-end">Overall</th>
                 <th className="px-2" style={{ width: 110 }}>
-                  Ended On
+                  {isHoldView ? 'Held On' : 'Ended On'}
+                </th>
+                <th className="px-2 text-center" style={{ width: 100 }}>
+                  Action
                 </th>
               </tr>
             </thead>
             <tbody>
-              {displayedQualities.length === 0 ? (
+              {orderedForView.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-4 text-muted small text-center">
-                    Is date ({formatShortDate(sheetDate)}) pe koi quality end nahi hui.
+                  <td colSpan={13} className="px-3 py-4 text-muted small text-center">
+                    {isHoldView
+                      ? 'Koi quality hold pe nahi hai.'
+                      : `Is date (${formatShortDate(sheetDate)}) pe koi quality end nahi hui.`}
                   </td>
                 </tr>
               ) : (
-                displayedQualities.map((q, rowIdx) => {
+                orderedForView.map((q, rowIdx) => {
                   const overall = productionByQuality[q.id] || 0
                   return (
                   <tr key={q.id}>
@@ -673,6 +924,7 @@ export function QualityMasterTable({
                     <td className="px-2 text-secondary">{q.fabricType || '—'}</td>
                     <td className="px-2 small">{q.warpYarn || '—'}</td>
                     <td className="px-2 small">{q.weftYarn || '—'}</td>
+                    <td className="px-2 small">{q.weavePlan || '—'}</td>
                     <td className="px-2 text-end font-monospace">{q.reed || '—'}</td>
                     <td className="px-2 text-end font-monospace">{q.pick || '—'}</td>
                     <td className="px-2 text-end font-monospace">{q.widthInch ? `${q.widthInch}"` : '—'}</td>
@@ -685,6 +937,7 @@ export function QualityMasterTable({
                       </span>
                     </td>
                     <td className="px-2 font-monospace small">{formatShortDate(q.endedOn || sheetDate)}</td>
+                    <td className="px-2 text-center">{archiveAction(q, true)}</td>
                   </tr>
                   )
                 })
@@ -728,6 +981,9 @@ export function QualityMasterTable({
                 <ResizableTh columnKey="weft" width={widths.weft} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Weft Yarn
                 </ResizableTh>
+                <ResizableTh columnKey="weavePlan" width={widths.weavePlan} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Weave Plan
+                </ResizableTh>
                 <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   Reed
                 </ResizableTh>
@@ -750,7 +1006,7 @@ export function QualityMasterTable({
               </tr>
             </thead>
             <tbody>
-              {displayedQualities.map((q, rowIdx) => {
+              {orderedForView.map((q, rowIdx) => {
                 const overall = productionByQuality[q.id] || 0
 
                 return (
@@ -768,7 +1024,22 @@ export function QualityMasterTable({
                       <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>
                     </td>
                     <td className="px-2 text-truncate">
-                      <span className="text-secondary">{q.fabricType || '—'}</span>
+                      {opsEdit ? (
+                        <select
+                          className="form-select form-select-sm"
+                          style={{ width: '100%', minWidth: 0 }}
+                          value={normalizeFabricType(q.fabricType)}
+                          onChange={(e) => onUpdate(q.id, { fabricType: e.target.value })}
+                        >
+                          {QUALITY_FABRIC_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-secondary">{q.fabricType || '—'}</span>
+                      )}
                     </td>
                     <td className="px-1">
                       {opsEdit ? (
@@ -806,12 +1077,28 @@ export function QualityMasterTable({
                     </td>
                     <td className="px-1">
                       {opsEdit ? (
+                        <TextCellInput
+                          className="form-control form-control-sm"
+                          style={{ width: '100%', minWidth: 0 }}
+                          value={q.weavePlan || ''}
+                          navRow={rowIdx}
+                          navCol={4}
+                          onValueChange={(v) => onUpdate(q.id, { weavePlan: v })}
+                        />
+                      ) : (
+                        <span className="text-secondary text-truncate d-inline-block" style={{ maxWidth: '100%' }}>
+                          {q.weavePlan || '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-1">
+                      {opsEdit ? (
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           style={{ width: '100%', minWidth: 0 }}
                           value={q.reed}
                           navRow={rowIdx}
-                          navCol={4}
+                          navCol={5}
                           onValueChange={(v) => onUpdate(q.id, { reed: v })}
                         />
                       ) : (
@@ -825,7 +1112,7 @@ export function QualityMasterTable({
                           style={{ width: '100%', minWidth: 0 }}
                           value={q.pick}
                           navRow={rowIdx}
-                          navCol={5}
+                          navCol={6}
                           onValueChange={(v) => onUpdate(q.id, { pick: v })}
                         />
                       ) : (
@@ -839,7 +1126,7 @@ export function QualityMasterTable({
                           style={{ width: '100%', minWidth: 0 }}
                           value={q.widthInch}
                           navRow={rowIdx}
-                          navCol={6}
+                          navCol={7}
                           onValueChange={(v) => onUpdate(q.id, { widthInch: v })}
                         />
                       ) : (
@@ -853,7 +1140,7 @@ export function QualityMasterTable({
                           style={{ width: '100%', minWidth: 0 }}
                           value={q.gsm ?? 0}
                           navRow={rowIdx}
-                          navCol={7}
+                          navCol={8}
                           onValueChange={(v) => onUpdate(q.id, { gsm: Number(Number(v).toFixed(2)) })}
                         />
                       ) : (
@@ -869,14 +1156,15 @@ export function QualityMasterTable({
                     </td>
                     <td className="px-1 text-center">
                       <div className="d-inline-flex align-items-center gap-1">
-                        <Link
-                          href={`/floor/reports/total?quality=${encodeURIComponent(q.id)}&name=${encodeURIComponent(q.name)}`}
+                        <button
+                          type="button"
                           className="btn btn-sm btn-outline-primary py-0"
                           style={{ fontSize: '0.72rem' }}
+                          onClick={() => openTrack(q)}
                         >
                           Track
-                        </Link>
-                        {endAction(q, true)}
+                        </button>
+                        {rowMenu(q, true)}
                       </div>
                     </td>
                   </tr>
@@ -928,13 +1216,17 @@ export function QualityMasterTable({
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold mb-1">Fabric Type</label>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm"
-                        placeholder="e.g. Suiting, Shirting"
-                        value={addForm.fabricType}
+                      <select
+                        className="form-select form-select-sm"
+                        value={normalizeFabricType(addForm.fabricType)}
                         onChange={(e) => setAddForm({ ...addForm, fabricType: e.target.value })}
-                      />
+                      >
+                        {QUALITY_FABRIC_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="col-md-6">
@@ -969,6 +1261,17 @@ export function QualityMasterTable({
                         placeholder="Yarn stock se weft likho"
                         value={addForm.weftYarn}
                         onChange={(e) => setAddForm({ ...addForm, weftYarn: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="col-md-4">
+                      <label className="form-label small fw-semibold mb-1">Weave Plan</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder="e.g. 2/1 Twill"
+                        value={addForm.weavePlan}
+                        onChange={(e) => setAddForm({ ...addForm, weavePlan: e.target.value })}
                       />
                     </div>
 

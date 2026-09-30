@@ -102,7 +102,7 @@ export function YarnStockTable({
   onDelete,
 }: YarnStockTableProps) {
   const { canEditProduction } = useAuth()
-  const { showConfirm } = useAlertDialog()
+  const { showConfirm, showSuccessSoon } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [activeView, setActiveView] = useState<YarnViewMode>('STOCK')
   const [unit, setUnit] = useState<WeightUnit>('KG')
@@ -220,7 +220,13 @@ export function YarnStockTable({
       type: 'confirm',
       confirmText: 'Haan, Delete Karein',
       cancelText: 'Cancel',
-      onConfirm: () => onDelete(y.id),
+      onConfirm: () => {
+        onDelete(y.id)
+        showSuccessSoon({
+          title: 'Deleted',
+          message: `"${y.yarnType}" delete ho gaya.`,
+        })
+      },
     })
   }
 
@@ -272,7 +278,17 @@ export function YarnStockTable({
         type="button"
         className={`btn btn-sm ${tableEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
         title={tableEdit ? 'Lock table (view only)' : 'Enable editing'}
-        onClick={() => setTableEdit((v) => !v)}
+        onClick={() => {
+          if (tableEdit) {
+            setTableEdit(false)
+            showSuccessSoon({
+              title: 'Saved',
+              message: 'Yarn edits save ho gayi hain.',
+            })
+          } else {
+            setTableEdit(true)
+          }
+        }}
       >
         <i className={`bi ${tableEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
         {tableEdit ? 'Done' : 'Edit'}
@@ -924,7 +940,13 @@ export function YarnStockTable({
       <AddYarnModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={(newYarn, arrival) => onAdd(newYarn, arrival)}
+        onAdd={(newYarn, arrival) => {
+          onAdd(newYarn, arrival)
+          showSuccessSoon({
+            title: 'Yarn Added',
+            message: `"${newYarn.yarnType || 'Yarn'}" add ho gaya.`,
+          })
+        }}
         activeDate={selectedDate}
       />
 
