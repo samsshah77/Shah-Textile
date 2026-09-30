@@ -85,19 +85,17 @@ function ProductionTotalTrackingContent() {
     let cancelled = false
     ;(async () => {
       setLoading(true)
+      setMatrix(EMPTY_MATRIX)
+      setShiftBMatrix(EMPTY_MATRIX)
       try {
         await hydrateFloorFromDb()
+        await preloadMonthSheets(month)
+        if (cancelled) return
         const primary =
           view === 'shifts' ? 'shiftA' : view === 'efficiency' ? 'efficiency' : view === 'active' ? 'active' : 'meters'
-        if (!cancelled) {
-          setMatrix(productionMastersService.buildMonthlyMatrix(month, primary))
-          if (view === 'shifts') setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB'))
-        }
-        await preloadMonthSheets(month)
-        if (!cancelled) {
-          setMatrix(productionMastersService.buildMonthlyMatrix(month, primary))
-          if (view === 'shifts') setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB'))
-        }
+        // One paint only after hydrate + month sheets — avoids 0 m flash then real data.
+        setMatrix(productionMastersService.buildMonthlyMatrix(month, primary))
+        if (view === 'shifts') setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB'))
       } catch (err) {
         console.error('[total tracking] load failed', err)
         if (!cancelled) setMatrix(EMPTY_MATRIX)
@@ -351,9 +349,14 @@ function ProductionTotalTrackingContent() {
     view === 'efficiency' ? `${Math.round(n)}%` : view === 'active' ? formatNumber(n, 0) : `${formatNumber(n, 0)} m`
 
   const qualityMonthTotal = useMemo(
-    () => (qualityDaySeries ? qualityDaySeries.reduce((s, p) => s + p.value, 0) : null),
-    [qualityDaySeries]
+    () =>
+      loading || !qualityDaySeries
+        ? null
+        : qualityDaySeries.reduce((s, p) => s + p.value, 0),
+    [qualityDaySeries, loading]
   )
+
+  const focusName = qualityFocus?.name || qualityNameParam || ''
 
   return (
     <div className="pb-4">
@@ -367,6 +370,7 @@ function ProductionTotalTrackingContent() {
               style={{ width: 'auto' }}
               value={month}
               onChange={(e) => setMonth(e.target.value)}
+              disabled={loading}
             >
               {MONTH_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -379,27 +383,30 @@ function ProductionTotalTrackingContent() {
         }
       />
 
-      {qualityFocus && (
+      {(qualityFocus || (isQualityDeepLink && focusName)) && (
         <div className="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3">
           <div>
-            <strong>Quality run:</strong> {qualityFocus.name}
-            {qualityFocus.createdOn && (
+            <strong>Quality run:</strong> {focusName || qualityFocus?.name}
+            {!loading && qualityFocus?.createdOn && (
               <span className="ms-2 text-secondary">
                 (From {formatShortDate(qualityFocus.createdOn)}
                 {qualityFocus.endedOn ? ` → ${formatShortDate(qualityFocus.endedOn)}` : ''})
               </span>
             )}
-            {!qualityFocus.createdOn && qualityFocus.endedOn && (
+            {!loading && !qualityFocus?.createdOn && qualityFocus?.endedOn && (
               <span className="ms-2 text-secondary">
                 (Ended {formatShortDate(qualityFocus.endedOn)})
               </span>
             )}
-            {qualityMonthTotal != null && (
+            {loading && (
+              <span className="ms-2 badge text-bg-light border">Loading…</span>
+            )}
+            {!loading && qualityMonthTotal != null && (
               <span className="ms-2 badge text-bg-light border">
                 {formatNumber(qualityMonthTotal, 0)} m this run / month
               </span>
             )}
-            {qualityMonthTotal === 0 && (
+            {!loading && qualityMonthTotal === 0 && (
               <span className="ms-2 small text-warning">Abhi is run pe production start nahi hui.</span>
             )}
           </div>
@@ -409,6 +416,19 @@ function ProductionTotalTrackingContent() {
         </div>
       )}
 
+      {loading ? (
+        <div className="card">
+          <div className="card-body text-center py-5">
+            <div className="spinner-border text-primary" role="status" aria-label="Loading" />
+            <div className="mt-3 text-secondary">
+              {focusName
+                ? `${focusName} ka production data load ho raha hai…`
+                : 'Production data load ho raha hai…'}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <MetricCard
@@ -709,6 +729,8 @@ function ProductionTotalTrackingContent() {
             </table>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )

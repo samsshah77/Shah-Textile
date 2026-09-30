@@ -655,6 +655,14 @@ export function QualityMasterTable({
                         <span className="small fw-bold text-success font-monospace">
                           {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
                         </span>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary py-0"
+                          style={{ fontSize: '0.72rem' }}
+                          onClick={() => openTrack(q)}
+                        >
+                          Track
+                        </button>
                         {archiveAction(q)}
                       </div>
                     </div>
@@ -900,7 +908,7 @@ export function QualityMasterTable({
                 <th className="px-2" style={{ width: 110 }}>
                   {isHoldView ? 'Held On' : 'Ended On'}
                 </th>
-                <th className="px-2 text-center" style={{ width: 100 }}>
+                <th className="px-2 text-center" style={{ width: 140 }}>
                   Action
                 </th>
               </tr>
@@ -937,7 +945,19 @@ export function QualityMasterTable({
                       </span>
                     </td>
                     <td className="px-2 font-monospace small">{formatShortDate(q.endedOn || sheetDate)}</td>
-                    <td className="px-2 text-center">{archiveAction(q, true)}</td>
+                    <td className="px-2 text-center">
+                      <div className="d-inline-flex align-items-center gap-1">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary py-0"
+                          style={{ fontSize: '0.72rem' }}
+                          onClick={() => openTrack(q)}
+                        >
+                          Track
+                        </button>
+                        {archiveAction(q, true)}
+                      </div>
+                    </td>
                   </tr>
                   )
                 })
