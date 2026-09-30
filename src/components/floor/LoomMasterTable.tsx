@@ -104,9 +104,10 @@ export function LoomMasterTable({
     const day = String(sheetDate || '').slice(0, 10)
     return qualities.filter((q) => {
       const status = q.status ?? 'ACTIVE'
-      if ((status === 'ENDED' || status === 'HOLD') && q.id !== currentId) return false
+      // HOLD stays hidden unless already on this loom; ENDED stays selectable so reuse can fork Active.
+      if (status === 'HOLD' && q.id !== currentId) return false
       const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
-      if (createdOn && day && day < createdOn && q.id !== currentId) return false
+      if (status === 'ACTIVE' && createdOn && day && day < createdOn && q.id !== currentId) return false
       return true
     })
   }
@@ -367,6 +368,7 @@ export function LoomMasterTable({
                       {qualityOptionsFor(l).map((q) => (
                         <option key={q.id} value={q.id}>
                           {qualityDisplayName(q, qualities)}
+                          {(q.status ?? 'ACTIVE') === 'ENDED' ? ' (Ended — reuse)' : ''}
                         </option>
                       ))}
                     </select>
@@ -497,6 +499,7 @@ export function LoomMasterTable({
                           {qualityOptionsFor(l).map((q) => (
                             <option key={q.id} value={q.id}>
                               {qualityDisplayName(q, qualities)}
+                              {(q.status ?? 'ACTIVE') === 'ENDED' ? ' (Ended — reuse)' : ''}
                             </option>
                           ))}
                         </select>

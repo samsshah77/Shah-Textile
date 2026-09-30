@@ -125,6 +125,8 @@ interface QualityMasterTableProps {
   onUpdate: (id: string, patch: Partial<QualityMaster>) => void
   onAdd: (newQuality?: Partial<QualityMaster>) => void
   onDelete: (id: string) => void
+  /** Keep ENDED row for month PDF; fork a new Active run from zero. */
+  onReassignEnded: (id: string, createdOn: string) => void
   readOnly?: boolean
   entries?: DailyLoomProductionEntry[]
   looms?: LoomMaster[]
@@ -140,6 +142,7 @@ export function QualityMasterTable({
   onUpdate,
   onAdd,
   onDelete,
+  onReassignEnded,
   readOnly,
   entries = [],
   looms = [],
@@ -442,16 +445,16 @@ export function QualityMasterTable({
     const day = String(sheetDate || '').slice(0, 10)
     const label = qualityDisplayName(q, qualities)
     showConfirm({
-      title: 'Quality Reassign?',
-      message: `"${label}" ko Active pe wapas laayein? Overall meters zero se shuru hongi.`,
+      title: 'Quality Reuse / Reassign?',
+      message: `"${label}" ka naya Active run banega — meters zero se. Purana Ends record month hisab / PDF ke liye waisa hi rahega.`,
       type: 'confirm',
-      confirmText: 'Reassign',
+      confirmText: 'Reuse',
       cancelText: 'Cancel',
       onConfirm: () => {
-        onUpdate(q.id, { status: 'ACTIVE', endedOn: null, createdOn: day })
+        onReassignEnded(q.id, day)
         showSuccessSoon({
-          title: 'Quality Reassigned',
-          message: `"${label}" Active pe aa gayi — meters zero se shuru.`,
+          title: 'Quality Reused',
+          message: `"${label}" Active pe naya run — zero se. Ends tab pe purana close record maujood hai.`,
         })
       },
     })
@@ -513,7 +516,7 @@ export function QualityMasterTable({
           {isEndedView && (
             <li>
               <button type="button" className="dropdown-item" onClick={() => handleReassign(q)}>
-                <i className="bi bi-arrow-repeat me-2" /> Reassign
+                <i className="bi bi-arrow-repeat me-2" /> Reuse (zero se)
               </button>
             </li>
           )}

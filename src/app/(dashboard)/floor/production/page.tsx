@@ -83,6 +83,7 @@ function ProductionWorkspaceContent() {
     updateQuality,
     addQuality,
     deleteQuality,
+    reassignEndedQuality,
     startNewDay,
     updateEntry,
     resetDayMeters,
@@ -301,6 +302,7 @@ function ProductionWorkspaceContent() {
           onUpdate={updateQuality}
           onAdd={addQuality}
           onDelete={deleteQuality}
+          onReassignEnded={reassignEndedQuality}
           readOnly={!canEditProduction}
           entries={entries}
           looms={looms}

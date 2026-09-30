@@ -14,6 +14,7 @@ import {
   getCalendarToday,
   getProductionToday,
   shiftProductionDate,
+  productionAccountingMonthBounds,
 } from '@/constants/productionCalendar'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 
@@ -468,7 +469,8 @@ export function qualityRunThatOwnsSheetEntry(
 }
 
 /**
- * Ends tab: quality shows on `endedOn` and the next day so mill hisab (2→1) stays complete.
+ * Ends tab: keep closed qualities for the whole factory month (2 → next 1)
+ * so month PDF / hisab can still list them after reuse.
  */
 export function qualityEndedVisibleOnDate(
   q: Pick<QualityMaster, 'status' | 'endedOn'>,
@@ -478,7 +480,8 @@ export function qualityEndedVisibleOnDate(
   const day = String(sheetDate || '').slice(0, 10)
   const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
   if (!day || !stamp) return false
-  return day === stamp || day === shiftProductionDate(stamp, 1)
+  const { from, to } = productionAccountingMonthBounds(day)
+  return stamp >= from && stamp <= to
 }
 
 export function qualityRunOwnsSheetEntry(
@@ -1754,9 +1757,18 @@ class ProductionMastersService {
     const previousLoom = this.getLooms().find((l) => l.loomNumber === loomNumber)
     const previousQualityId = previousLoom?.qualityId ?? null
     const isPastProductionDay = dateStr !== getProductionToday()
-    const dayOnlyQuality = isPastProductionDay && patch.qualityId !== undefined
-    const dayOnlyRpm = isPastProductionDay && patch.defaultRpm !== undefined
-    const dayOnlyStatus = isPastProductionDay && patch.status !== undefined
+
+    let workingPatch: Partial<LoomMaster> = { ...patch }
+    if (workingPatch.qualityId) {
+      const resolved = this.resolveQualityIdForAssign(workingPatch.qualityId, dateStr)
+      if (resolved && resolved !== workingPatch.qualityId) {
+        workingPatch = { ...workingPatch, qualityId: resolved }
+      }
+    }
+
+    const dayOnlyQuality = isPastProductionDay && workingPatch.qualityId !== undefined
+    const dayOnlyRpm = isPastProductionDay && workingPatch.defaultRpm !== undefined
+    const dayOnlyStatus = isPastProductionDay && workingPatch.status !== undefined
 
     // Past days: quality / RPM / status stay on that day's sheet only — master + other dates untouched.
     if (dayOnlyQuality || dayOnlyRpm || dayOnlyStatus) {
@@ -1764,10 +1776,10 @@ class ProductionMastersService {
       if (current) {
         const sheetPatch: Partial<DailyLoomProductionEntry> = {}
         if (dayOnlyQuality) {
-          if (patch.qualityId) {
+          if (workingPatch.qualityId) {
             Object.assign(
               sheetPatch,
-              this.recipeForLoom({ ...current, qualityId: patch.qualityId }, dateStr)
+              this.recipeForLoom({ ...current, qualityId: workingPatch.qualityId }, dateStr)
             )
           } else {
             Object.assign(sheetPatch, {
@@ -1779,20 +1791,20 @@ class ProductionMastersService {
           }
         }
         if (dayOnlyRpm) {
-          sheetPatch.rpm = patch.defaultRpm
+          sheetPatch.rpm = workingPatch.defaultRpm
         }
-        if (dayOnlyStatus && patch.status) {
-          const label = LOOM_STATUS_LABEL[patch.status] || patch.status
-          sheetPatch.status = patch.status
-          sheetPatch.remarks = patch.status === 'RUNNING' ? '' : label
+        if (dayOnlyStatus && workingPatch.status) {
+          const label = LOOM_STATUS_LABEL[workingPatch.status] || workingPatch.status
+          sheetPatch.status = workingPatch.status
+          sheetPatch.remarks = workingPatch.status === 'RUNNING' ? '' : label
           if (
-            patch.status === 'BEAM_END' ||
-            patch.status === 'STOPPED' ||
-            patch.status === 'BEAM_CUT'
+            workingPatch.status === 'BEAM_END' ||
+            workingPatch.status === 'STOPPED' ||
+            workingPatch.status === 'BEAM_CUT'
           ) {
             sheetPatch.rollerHours = 0
           }
-          if (patch.status === 'BEAM_END' || patch.status === 'BEAM_CUT') {
+          if (workingPatch.status === 'BEAM_END' || workingPatch.status === 'BEAM_CUT') {
             this.flagBeamEndFromLoom(loomNumber, dateStr)
             this.reconcileBeamEndsWithLooms(dateStr)
           }
@@ -1803,7 +1815,7 @@ class ProductionMastersService {
       }
     }
 
-    const masterPatch: Partial<LoomMaster> = { ...patch }
+    const masterPatch: Partial<LoomMaster> = { ...workingPatch }
     if (dayOnlyQuality) delete masterPatch.qualityId
     if (dayOnlyRpm) delete masterPatch.defaultRpm
     if (dayOnlyStatus) delete masterPatch.status
@@ -1880,8 +1892,7 @@ class ProductionMastersService {
     }
 
     // Clear quality from loom → if no looms left on that quality, mark ENDED.
-    // Assigning a quality → revive if it was ENDED.
-    // Only when master allotment actually changed (production today).
+    // Assigning HOLD → resume same run. ENDED is forked above (Ends row stays).
     if (masterPatch.qualityId !== undefined) {
       if (previousQualityId && previousQualityId !== masterPatch.qualityId) {
         const stillOn = looms.some((l) => l.qualityId === previousQualityId)
@@ -1901,7 +1912,7 @@ class ProductionMastersService {
       }
       if (masterPatch.qualityId) {
         const nextQ = this.getQualities().find((q) => q.id === masterPatch.qualityId)
-        if (nextQ && (nextQ.status === 'ENDED' || nextQ.status === 'HOLD')) {
+        if (nextQ && nextQ.status === 'HOLD') {
           this.updateQuality(masterPatch.qualityId, { status: 'ACTIVE', endedOn: null }, dateStr)
         }
       }
@@ -2509,6 +2520,52 @@ class ProductionMastersService {
     )
     this.saveQualities(qualities)
     return qualities
+  }
+
+  /**
+   * Reuse an ENDED quality without wiping Ends history:
+   * keep the ended row for month PDF (2→1), fork a new ACTIVE run from zero.
+   */
+  reassignEndedQuality(
+    id: string,
+    createdOn: string = getProductionToday()
+  ): { qualities: QualityMaster[]; newQuality: QualityMaster | null } {
+    const list = this.getQualities()
+    const src = list.find((q) => q.id === id)
+    if (!src || normalizeQualityStatus(src.status) !== 'ENDED') {
+      return { qualities: list, newQuality: null }
+    }
+    const day = String(createdOn || getProductionToday()).slice(0, 10)
+    const newQuality = normalizeQuality({
+      id: `q-${Date.now()}`,
+      name: src.name,
+      fabricType: src.fabricType,
+      weavePlan: src.weavePlan || '',
+      warpYarn: src.warpYarn,
+      weftYarn: src.weftYarn,
+      reed: src.reed,
+      pick: src.pick,
+      widthInch: src.widthInch,
+      gsm: src.gsm,
+      status: 'ACTIVE',
+      createdOn: day,
+      endedOn: null,
+    })
+    const qualities = [...list, newQuality]
+    this.saveQualities(qualities)
+    return { qualities, newQuality }
+  }
+
+  /** If user picks an ENDED quality on a loom, fork Active run; keep Ends record. */
+  private resolveQualityIdForAssign(
+    qualityId: string | null | undefined,
+    dateStr: string
+  ): string | null | undefined {
+    if (!qualityId) return qualityId
+    const q = this.getQualities().find((item) => item.id === qualityId)
+    if (!q || normalizeQualityStatus(q.status) !== 'ENDED') return qualityId
+    const { newQuality } = this.reassignEndedQuality(qualityId, dateStr)
+    return newQuality?.id || qualityId
   }
 
   /** Push one quality's status/endedOn to DB (await before refresh-safe UI). */

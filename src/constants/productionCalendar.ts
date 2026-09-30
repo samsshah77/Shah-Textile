@@ -62,6 +62,22 @@ export function shiftProductionDate(dateStr: string, deltaDays: number): string 
   return `${y}-${m}-${day}`
 }
 
+/**
+ * Factory accounting month: starts on the 2nd, closes on the 1st of next month.
+ * On the 1st, the open period is still the previous month’s 2 → this 1.
+ */
+export function productionAccountingMonthBounds(dateStr: string): { from: string; to: string } {
+  const day = String(dateStr || '').slice(0, 10)
+  const dom = Number(day.slice(8, 10)) || 1
+  const anchor = dom === 1 ? shiftProductionDate(day, -1) : day
+  const y = Number(anchor.slice(0, 4))
+  const m = Number(anchor.slice(5, 7))
+  const from = `${y}-${String(m).padStart(2, '0')}-02`
+  const close = new Date(y, m, 1) // next calendar month, day 1
+  const to = `${close.getFullYear()}-${String(close.getMonth() + 1).padStart(2, '0')}-01`
+  return { from, to }
+}
+
 export function formatProductionDayLabel(dateStr: string): string {
   try {
     return new Date(`${String(dateStr).slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', {

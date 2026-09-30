@@ -385,6 +385,20 @@ export function useProductionGrid() {
     setQualities(productionMastersService.deleteQuality(id))
   }, [])
 
+  const reassignEndedQuality = useCallback(
+    (id: string, createdOn: string) => {
+      const { qualities: next, newQuality } = productionMastersService.reassignEndedQuality(
+        id,
+        createdOn || selectedDate
+      )
+      setQualities(next)
+      if (newQuality) {
+        void productionMastersService.flushQualitiesToDb()
+      }
+    },
+    [selectedDate]
+  )
+
   const startNewDay = useCallback(
     async (targetDate: string) => {
       setLoading(true)
@@ -434,6 +448,7 @@ export function useProductionGrid() {
     updateQuality,
     addQuality,
     deleteQuality,
+    reassignEndedQuality,
     startNewDay,
     todaySheetReady,
     submitForApproval,

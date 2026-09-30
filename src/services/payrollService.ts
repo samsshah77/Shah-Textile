@@ -3137,7 +3137,9 @@ class PayrollService {
 
     const pushMissing = (src: EmployeeProfile) => {
       const key = normalizeName(src.name)
-      if (!key || known.has(key)) return
+      if (next.some((e) => e.id === src.id)) return
+      // Same-name new hires (emp-sep-*) may share a display name with a resigned person.
+      if (!src.id?.startsWith('emp-sep-') && key && known.has(key)) return
       const remarks = src.remarks || ''
       const looksResigned = /resign/i.test(remarks) || (src.status || '').toLowerCase() === 'resigned'
       next.push({
@@ -3151,12 +3153,60 @@ class PayrollService {
       changed = true
     }
 
+    // Apply Sep Excel roster: resign/update existing by id, add missing General Wages hires.
     for (const src of allEmployeesData as unknown as EmployeeProfile[]) {
       const d = (src.designation || '').toLowerCase()
       const isFloor = d.includes('weaver') || d.includes('helper')
-      const isResigned = /resign/i.test(src.remarks || '') || (src.status || '').toLowerCase() === 'resigned'
-      if (isFloor || isResigned) pushMissing(src)
+      const seedResigned =
+        (src.status || '').toLowerCase() === 'resigned' || /resign/i.test(src.remarks || '')
+
+      const byId = next.findIndex((e) => e.id === src.id)
+      if (byId >= 0) {
+        const cur = next[byId]
+        if (seedResigned && (cur.status || 'Active') !== 'Resigned') {
+          next[byId] = {
+            ...cur,
+            status: 'Resigned',
+            remarks: src.remarks || cur.remarks,
+            resignedAt:
+              src.resignedAt ||
+              parseResignationDateFromRemarks(src.remarks || cur.remarks) ||
+              cur.resignedAt ||
+              '',
+            salary: src.salary ?? cur.salary,
+            designation: src.designation || cur.designation,
+            dutyHrs: src.dutyHrs ?? cur.dutyHrs,
+            shiftFromTo: src.shiftFromTo || cur.shiftFromTo,
+            doj: src.doj || cur.doj,
+          }
+          changed = true
+        } else if (!seedResigned && src.salary && src.salary !== cur.salary) {
+          next[byId] = {
+            ...cur,
+            salary: src.salary,
+            designation: src.designation || cur.designation,
+            dutyHrs: src.dutyHrs ?? cur.dutyHrs,
+            shiftFromTo: src.shiftFromTo || cur.shiftFromTo,
+            doj: src.doj || cur.doj,
+            remarks: src.remarks ?? cur.remarks,
+          }
+          changed = true
+        }
+        continue
+      }
+
+      // New Sep hires (Ubaid / Israr / Dawood) or historical resigned missing from live DB.
+      if (src.id?.startsWith('emp-sep-') || isFloor || seedResigned) {
+        pushMissing(src)
+      } else if (!known.has(normalizeName(src.name))) {
+        // Active General Wages person present in seed but not live roster.
+        const cat = (src.employeeCategory || '').toLowerCase()
+        if (cat === 'weaver' || cat === 'helper' || cat === 'contractor') continue
+        pushMissing(src)
+      }
     }
+
+    known = names()
 
     const skipName = (name?: string) => {
       const n = (name || '').trim().toLowerCase()
