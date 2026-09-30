@@ -14,6 +14,7 @@ import {
   QUALITY_FABRIC_TYPES,
   normalizeFabricType,
   qualityRunThatOwnsSheetEntry,
+  qualityEndedVisibleOnDate,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -48,9 +49,8 @@ export function qualityStatusCounts(qualities: QualityMaster[], sheetDate?: stri
   const day = String(sheetDate || '').slice(0, 10)
   const hold = qualities.filter((q) => (q.status ?? 'ACTIVE') === 'HOLD').length
   const ended = qualities.filter((q) => {
-    if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
-    if (!day) return true
-    return String(q.endedOn || '').slice(0, 10) === day
+    if (!day) return (q.status ?? 'ACTIVE') === 'ENDED'
+    return qualityEndedVisibleOnDate(q, day)
   }).length
   return { active, hold, ended }
 }
@@ -196,9 +196,8 @@ export function QualityMasterTable({
       const day = String(sheetDate || '').slice(0, 10)
       return qualities
         .filter((q) => {
-          if ((q.status ?? 'ACTIVE') !== 'ENDED') return false
-          if (!day) return matchesFabric(q)
-          if (String(q.endedOn || '').slice(0, 10) !== day) return false
+          if (!day) return (q.status ?? 'ACTIVE') === 'ENDED' && matchesFabric(q)
+          if (!qualityEndedVisibleOnDate(q, day)) return false
           return matchesFabric(q)
         })
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
@@ -699,11 +698,11 @@ export function QualityMasterTable({
                 className={`master-grid-card${editActive ? ' sara-edit-card' : ''}`}
               >
                 <div className="d-flex align-items-center justify-content-between">
-                  <div className="fw-semibold d-flex align-items-center gap-1.5">
+                  <div className="fw-semibold d-flex align-items-center gap-1.5 min-w-0">
                     <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: '0.74rem' }}>
                       #{rowIdx + 1}
                     </span>
-                    {!masterEdit && <span>{qualityDisplayName(q, qualities)}</span>}
+                    <span className="text-truncate">{q.name || '—'}</span>
                   </div>
                   {masterEdit && (
                     <button
@@ -728,17 +727,17 @@ export function QualityMasterTable({
                 <label className="small mb-0">Looms</label>
                 <LoomListCell nums={assignedByQuality.get(q.id) || []} />
 
-                <label className="small mb-0">Quality Name</label>
-                {masterEdit ? (
-                  <TextCellInput
-                    className="form-control form-control-sm"
-                    value={q.name}
-                    navRow={rowIdx}
-                    navCol={0}
-                    onValueChange={(v) => onUpdate(q.id, { name: v })}
-                  />
-                ) : (
-                  <div className="small fw-semibold">{q.name}</div>
+                {masterEdit && (
+                  <>
+                    <label className="small mb-0">Quality Name</label>
+                    <TextCellInput
+                      className="form-control form-control-sm"
+                      value={q.name}
+                      navRow={rowIdx}
+                      navCol={0}
+                      onValueChange={(v) => onUpdate(q.id, { name: v })}
+                    />
+                  </>
                 )}
 
                 <label className="small mb-0">Fabric Type</label>

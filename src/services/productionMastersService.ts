@@ -301,9 +301,17 @@ export function loomRecentQualityClearNote(
     const status = normalizeQualityStatus(q.status)
     if (status !== 'ENDED' && status !== 'HOLD') continue
     const stamp = String(q.endedOn || '').slice(0, 10)
-    if (stamp !== day) continue
+    if (!stamp) continue
+    const visible =
+      status === 'ENDED'
+        ? qualityEndedVisibleOnDate(q, day)
+        : stamp === day
+    if (!visible) continue
     const onLoom =
-      (q.loomEnds || []).some((e) => e.loomNumber === loomNumber && e.date === day) ||
+      (q.loomEnds || []).some(
+        (e) => e.loomNumber === loomNumber && (e.date === stamp || e.date === day)
+      ) ||
+      qualityLoomEndsOnDate(q, stamp).includes(loomNumber) ||
       qualityLoomEndsOnDate(q, day).includes(loomNumber)
     if (!onLoom) continue
     return { status, name: qualityDisplayName(q, qualities) }
@@ -439,7 +447,13 @@ export function qualityRunThatOwnsSheetEntry(
 
     const status = normalizeQualityStatus(q.status)
     const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : null
-    if ((status === 'ENDED' || status === 'HOLD') && stamp && day > stamp) return false
+    // ENDED runs stay on the next production day too (factory month 2→1 hisab).
+    if (status === 'ENDED' && stamp) {
+      const through = shiftProductionDate(stamp, 1)
+      if (day > through) return false
+    } else if (status === 'HOLD' && stamp && day > stamp) {
+      return false
+    }
     return true
   })
 
@@ -451,6 +465,20 @@ export function qualityRunThatOwnsSheetEntry(
     if (ca !== cb) return cb.localeCompare(ca)
     return b.id.localeCompare(a.id)
   })[0]
+}
+
+/**
+ * Ends tab: quality shows on `endedOn` and the next day so mill hisab (2→1) stays complete.
+ */
+export function qualityEndedVisibleOnDate(
+  q: Pick<QualityMaster, 'status' | 'endedOn'>,
+  sheetDate: string
+): boolean {
+  if (normalizeQualityStatus(q.status) !== 'ENDED') return false
+  const day = String(sheetDate || '').slice(0, 10)
+  const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
+  if (!day || !stamp) return false
+  return day === stamp || day === shiftProductionDate(stamp, 1)
 }
 
 export function qualityRunOwnsSheetEntry(
