@@ -105,19 +105,19 @@ export function LoomMasterTable({
     const day = String(sheetDate || '').slice(0, 10)
     const visible = qualities.filter((q) => {
       const status = q.status ?? 'ACTIVE'
+      // Loom dropdown = Active tab only (no Ended / Hold / reuse options).
+      if (status !== 'ACTIVE' && q.id !== currentId) return false
       if (status === 'HOLD' && q.id !== currentId) return false
       const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
       if (status === 'ACTIVE' && createdOn && day && day < createdOn && q.id !== currentId) return false
       return true
     })
 
-    // One option per name (+ pick). Prefer: current allotment → Active → newest run.
+    // One option per name (+ pick) if reuse left duplicate Active rows.
     const rank = (q: QualityMaster) => {
-      const status = q.status ?? 'ACTIVE'
       let score = 0
       if (q.id === currentId) score += 1000
-      if (status === 'ACTIVE') score += 100
-      if (status === 'ENDED') score += 10
+      if ((q.status ?? 'ACTIVE') === 'ACTIVE') score += 100
       const created = q.createdOn ? String(q.createdOn).slice(0, 10) : ''
       score += created ? Number(created.replace(/-/g, '')) / 1e8 : 0
       return score
@@ -139,9 +139,7 @@ export function LoomMasterTable({
   }
 
   const qualityOptionLabel = (q: QualityMaster) => {
-    const bare = (q.name || '').replace(/\s*\(\s*pick\s*\d+\s*\)\s*$/i, '').trim() || q.name
-    if ((q.status ?? 'ACTIVE') === 'ENDED') return `${bare} (Ended — reuse)`
-    return bare
+    return (q.name || '').replace(/\s*\(\s*pick\s*\d+\s*\)\s*$/i, '').trim() || q.name
   }
 
   const qualityLabel = (loom: LoomMaster) => {
