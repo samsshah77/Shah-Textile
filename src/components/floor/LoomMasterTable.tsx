@@ -105,24 +105,43 @@ export function LoomMasterTable({
     const day = String(sheetDate || '').slice(0, 10)
     const visible = qualities.filter((q) => {
       const status = q.status ?? 'ACTIVE'
-      // HOLD stays hidden unless already on this loom.
       if (status === 'HOLD' && q.id !== currentId) return false
       const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
       if (status === 'ACTIVE' && createdOn && day && day < createdOn && q.id !== currentId) return false
       return true
     })
-    // One row per name: prefer Active. Hide Ended if Active already exists (reuse already done).
-    const activeNameKeys = new Set(
-      visible
-        .filter((q) => (q.status ?? 'ACTIVE') === 'ACTIVE')
-        .map((q) => `${qualityNameKey(q.name)}:${Number(q.pick)}`)
+
+    // One option per name (+ pick). Prefer: current allotment → Active → newest run.
+    const rank = (q: QualityMaster) => {
+      const status = q.status ?? 'ACTIVE'
+      let score = 0
+      if (q.id === currentId) score += 1000
+      if (status === 'ACTIVE') score += 100
+      if (status === 'ENDED') score += 10
+      const created = q.createdOn ? String(q.createdOn).slice(0, 10) : ''
+      score += created ? Number(created.replace(/-/g, '')) / 1e8 : 0
+      return score
+    }
+    const optionKey = (q: QualityMaster) => {
+      const bare = (q.name || '').replace(/\s*\(\s*pick\s*\d+\s*\)\s*$/i, '').trim()
+      return `${qualityNameKey(bare)}:${Number(q.pick) || 0}`
+    }
+
+    const bestByKey = new Map<string, QualityMaster>()
+    for (const q of visible) {
+      const key = optionKey(q)
+      const prev = bestByKey.get(key)
+      if (!prev || rank(q) > rank(prev)) bestByKey.set(key, q)
+    }
+    return [...bestByKey.values()].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
     )
-    return visible.filter((q) => {
-      if ((q.status ?? 'ACTIVE') !== 'ENDED') return true
-      if (q.id === currentId) return true
-      const key = `${qualityNameKey(q.name)}:${Number(q.pick)}`
-      return !activeNameKeys.has(key)
-    })
+  }
+
+  const qualityOptionLabel = (q: QualityMaster) => {
+    const bare = (q.name || '').replace(/\s*\(\s*pick\s*\d+\s*\)\s*$/i, '').trim() || q.name
+    if ((q.status ?? 'ACTIVE') === 'ENDED') return `${bare} (Ended — reuse)`
+    return bare
   }
 
   const qualityLabel = (loom: LoomMaster) => {
@@ -380,8 +399,7 @@ export function LoomMasterTable({
                       <option value="">—</option>
                       {qualityOptionsFor(l).map((q) => (
                         <option key={q.id} value={q.id}>
-                          {qualityDisplayName(q, qualities)}
-                          {(q.status ?? 'ACTIVE') === 'ENDED' ? ' (Ended — reuse)' : ''}
+                          {qualityOptionLabel(q)}
                         </option>
                       ))}
                     </select>
@@ -511,8 +529,7 @@ export function LoomMasterTable({
                           <option value="">—</option>
                           {qualityOptionsFor(l).map((q) => (
                             <option key={q.id} value={q.id}>
-                              {qualityDisplayName(q, qualities)}
-                              {(q.status ?? 'ACTIVE') === 'ENDED' ? ' (Ended — reuse)' : ''}
+                              {qualityOptionLabel(q)}
                             </option>
                           ))}
                         </select>
