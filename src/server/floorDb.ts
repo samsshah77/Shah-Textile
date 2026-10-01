@@ -287,10 +287,11 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
       `Refusing quality overwrite: DB has ${existingCount} qualities, payload has ${list.length}.`
     )
   }
-  await prisma.$transaction(async (tx) => {
-    await tx.floorQuality.deleteMany()
+
+  // First seed only — empty table gets a full insert.
+  if (existingCount === 0) {
     if (list.length === 0) return
-    await tx.floorQuality.createMany({
+    await prisma.floorQuality.createMany({
       data: list.map((q) => ({
         id: q.id,
         name: q.name,
@@ -309,7 +310,22 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
           q.status === 'ENDED' || q.status === 'HOLD' ? q.endedOn ?? null : null,
       })),
     })
-  })
+    return
+  }
+
+  // MERGE upsert — never deleteMany. Stale full PUTs used to wipe reused Active forks.
+  for (const q of list) {
+    await dbUpsertQuality(q)
+  }
+}
+
+export async function dbDeleteQuality(id: string): Promise<void> {
+  if (!id) return
+  try {
+    await prisma.floorQuality.delete({ where: { id } })
+  } catch {
+    // Already gone — ok.
+  }
 }
 
 /** Patch one quality status/endedOn — survives refresh without rewriting the whole table. */
@@ -330,6 +346,109 @@ export async function dbPatchQualityStatus(
     // Row missing (rare) — skip rather than failing the whole end action.
     console.error('[floorDb] patchQualityStatus: quality not found', id)
   }
+}
+
+/** Insert or update one quality — needed when reuse forks a new Active run. */
+export async function dbUpsertQuality(q: QualityMaster): Promise<void> {
+  const status =
+    q.status === 'ENDED' ? 'ENDED' : q.status === 'HOLD' ? 'HOLD' : 'ACTIVE'
+  const data = {
+    name: q.name,
+    fabricType: q.fabricType || 'Suiting',
+    weavePlan: q.weavePlan ?? '',
+    warpYarn: q.warpYarn || '',
+    weftYarn: q.weftYarn || '',
+    reed: Number(q.reed) || 0,
+    pick: Number(q.pick) || 0,
+    widthInch: Number(q.widthInch) || 0,
+    gsm: Number(q.gsm) || 0,
+    status,
+    createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
+    endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
+  }
+  await prisma.floorQuality.upsert({
+    where: { id: q.id },
+    create: { id: q.id, ...data },
+    update: data,
+  })
+}
+
+/**
+ * Atomic reuse: keep ENDED row, insert/update new Active run from zero.
+ * One server call — survives refresh without client race.
+ */
+export async function dbReuseQuality(params: {
+  endedId: string
+  createdOn: string
+  newQuality?: QualityMaster | null
+}): Promise<{ ended: QualityMaster; active: QualityMaster }> {
+  const endedId = String(params.endedId || '')
+  const createdOn = String(params.createdOn || '').slice(0, 10)
+  if (!endedId || !createdOn) {
+    throw new Error('endedId and createdOn required')
+  }
+
+  const row = await prisma.floorQuality.findUnique({ where: { id: endedId } })
+  if (!row) throw new Error(`Quality not found: ${endedId}`)
+
+  const endedOn =
+    row.endedOn && String(row.endedOn).slice(0, 10)
+      ? String(row.endedOn).slice(0, 10)
+      : createdOn
+
+  // Force original to stay ENDED for Ends tab / month PDF.
+  await prisma.floorQuality.update({
+    where: { id: endedId },
+    data: {
+      status: 'ENDED',
+      endedOn,
+    },
+  })
+
+  const incoming = params.newQuality
+  const activeId =
+    incoming?.id && String(incoming.id) !== endedId
+      ? String(incoming.id)
+      : `q-${Date.now()}`
+
+  const activePayload: QualityMaster = {
+    id: activeId,
+    name: incoming?.name || row.name,
+    fabricType: incoming?.fabricType || row.fabricType || 'Suiting',
+    weavePlan:
+      incoming?.weavePlan != null
+        ? String(incoming.weavePlan)
+        : ((row as { weavePlan?: string | null }).weavePlan ?? ''),
+    warpYarn: incoming?.warpYarn ?? row.warpYarn ?? '',
+    weftYarn: incoming?.weftYarn ?? row.weftYarn ?? '',
+    reed: Number(incoming?.reed ?? row.reed) || 0,
+    pick: Number(incoming?.pick ?? row.pick) || 0,
+    widthInch: Number(incoming?.widthInch ?? row.widthInch) || 0,
+    gsm: Number(incoming?.gsm ?? row.gsm) || 0,
+    status: 'ACTIVE',
+    createdOn,
+    endedOn: null,
+  }
+
+  await dbUpsertQuality(activePayload)
+
+  const ended: QualityMaster = {
+    id: endedId,
+    name: row.name,
+    fabricType: row.fabricType,
+    weavePlan: (row as { weavePlan?: string | null }).weavePlan ?? '',
+    warpYarn: row.warpYarn,
+    weftYarn: row.weftYarn,
+    reed: row.reed,
+    pick: row.pick,
+    widthInch: row.widthInch,
+    gsm: row.gsm,
+    status: 'ENDED',
+    createdOn: row.createdOn ? String(row.createdOn).slice(0, 10) : null,
+    endedOn,
+  }
+
+  return { ended, active: activePayload }
 }
 
 export async function dbListAllSheets(): Promise<{ date: string; entries: DailyLoomProductionEntry[] }[]> {

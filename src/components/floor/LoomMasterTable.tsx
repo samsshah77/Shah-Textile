@@ -8,6 +8,7 @@ import {
   getLoomPictures,
   normalizeLoomPictures,
   qualityDisplayName,
+  qualityNameKey,
   qualityIdOnLoomForDate,
   rpmOnLoomForDate,
   statusOnLoomForDate,
@@ -102,13 +103,25 @@ export function LoomMasterTable({
   const qualityOptionsFor = (loom: LoomMaster) => {
     const currentId = dayQualityId(loom)
     const day = String(sheetDate || '').slice(0, 10)
-    return qualities.filter((q) => {
+    const visible = qualities.filter((q) => {
       const status = q.status ?? 'ACTIVE'
-      // HOLD stays hidden unless already on this loom; ENDED stays selectable so reuse can fork Active.
+      // HOLD stays hidden unless already on this loom.
       if (status === 'HOLD' && q.id !== currentId) return false
       const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
       if (status === 'ACTIVE' && createdOn && day && day < createdOn && q.id !== currentId) return false
       return true
+    })
+    // One row per name: prefer Active. Hide Ended if Active already exists (reuse already done).
+    const activeNameKeys = new Set(
+      visible
+        .filter((q) => (q.status ?? 'ACTIVE') === 'ACTIVE')
+        .map((q) => `${qualityNameKey(q.name)}:${Number(q.pick)}`)
+    )
+    return visible.filter((q) => {
+      if ((q.status ?? 'ACTIVE') !== 'ENDED') return true
+      if (q.id === currentId) return true
+      const key = `${qualityNameKey(q.name)}:${Number(q.pick)}`
+      return !activeNameKeys.has(key)
     })
   }
 

@@ -30,6 +30,8 @@ const KEY_SHEET = 'sara_textile_production_sheet_v8'
 const KEY_YARN_MOVEMENTS = 'sara_textile_yarn_movements_v8'
 /** Browser backup so Quality Ends survive refresh if DB PUT is slow/fails. */
 const KEY_QUALITY_ENDS_LOCAL = 'sara_textile_quality_ends_v1'
+/** Browser backup for reused/new Active qualities until DB upsert confirms. */
+const KEY_QUALITY_PENDING_LOCAL = 'sara_textile_quality_pending_v1'
 
 export interface LoomMaster {
   loomNumber: number
@@ -224,6 +226,99 @@ function writeLocalQualityEnds(rows: LocalQualityEnd[]) {
   }
 }
 
+function readLocalPendingQualities(): QualityMaster[] {
+  if (!isClient()) return []
+  try {
+    const raw = localStorage.getItem(KEY_QUALITY_PENDING_LOCAL)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as QualityMaster[]
+    return Array.isArray(parsed) ? parsed.map(normalizeQuality).filter((q) => q.id && q.name) : []
+  } catch {
+    return []
+  }
+}
+
+function writeLocalPendingQualities(rows: QualityMaster[]) {
+  if (!isClient()) return
+  try {
+    localStorage.setItem(KEY_QUALITY_PENDING_LOCAL, JSON.stringify(rows))
+  } catch {
+    // ignore quota
+  }
+}
+
+function rememberLocalPendingQuality(q: QualityMaster) {
+  const next = readLocalPendingQualities().filter((e) => e.id !== q.id)
+  next.push(normalizeQuality(q))
+  writeLocalPendingQualities(next)
+}
+
+function forgetLocalPendingQuality(id: string) {
+  writeLocalPendingQualities(readLocalPendingQualities().filter((e) => e.id !== id))
+}
+
+/** Merge pending reused/new Active rows onto DB list (refresh-safe). */
+function applyLocalPendingQualities(qualities: QualityMaster[]): QualityMaster[] {
+  const pending = readLocalPendingQualities()
+  if (pending.length === 0) return qualities
+  const byId = new Map(qualities.map((q) => [q.id, q]))
+  let changed = false
+  for (const p of pending) {
+    const existing = byId.get(p.id)
+    const pStatus = normalizeQualityStatus(p.status)
+    if (!existing) {
+      // New fork or Ends archive not yet in DB.
+      byId.set(p.id, normalizeQuality(p))
+      changed = true
+      continue
+    }
+    const eStatus = normalizeQualityStatus(existing.status)
+    // Same-id reuse: pending ACTIVE must win over stale DB/local ENDED.
+    if (pStatus === 'ACTIVE' && eStatus !== 'ACTIVE') {
+      forgetLocalQualityEnd(p.id)
+      byId.set(
+        p.id,
+        normalizeQuality({
+          ...existing,
+          ...p,
+          status: 'ACTIVE',
+          endedOn: null,
+          loomEnds: [],
+          createdOn: p.createdOn || existing.createdOn,
+        })
+      )
+      changed = true
+      continue
+    }
+    if (pStatus === 'ACTIVE' && eStatus === 'ACTIVE') {
+      // Confirmed in DB — drop pending backup only when createdOn also matches.
+      if (p.createdOn && p.createdOn !== existing.createdOn) {
+        byId.set(
+          p.id,
+          normalizeQuality({
+            ...existing,
+            createdOn: p.createdOn,
+            endedOn: null,
+            loomEnds: [],
+          })
+        )
+        changed = true
+        // Keep pending until DB createdOn catches up.
+      } else {
+        forgetLocalPendingQuality(p.id)
+      }
+      continue
+    }
+    if (pStatus === eStatus) {
+      forgetLocalPendingQuality(p.id)
+      continue
+    }
+    byId.set(p.id, normalizeQuality({ ...existing, ...p }))
+    changed = true
+  }
+  return changed ? [...byId.values()] : qualities
+}
+
 function mergeLoomEndLists(
   a: QualityLoomEnd[] | undefined,
   b: QualityLoomEnd[] | undefined
@@ -263,8 +358,15 @@ function forgetLocalQualityEnd(id: string) {
 function applyLocalQualityEnds(qualities: QualityMaster[]): QualityMaster[] {
   const ends = readLocalQualityEnds()
   if (ends.length === 0) return qualities
+  // Same-id reuse: never force ENDED if a pending Active revive exists.
+  const pendingActiveIds = new Set(
+    readLocalPendingQualities()
+      .filter((p) => normalizeQualityStatus(p.status) === 'ACTIVE')
+      .map((p) => p.id)
+  )
   const byId = new Map(ends.map((e) => [e.id, e]))
   return qualities.map((q) => {
+    if (pendingActiveIds.has(q.id)) return q
     const local = byId.get(q.id)
     if (!local) return q
     const loomEnds = mergeLoomEndLists(q.loomEnds, local.loomEnds)
@@ -392,15 +494,22 @@ export function qualityNameKey(name: string) {
   return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-/** Same quality name is allowed when pick differs. */
+/** Same quality name is allowed when pick differs (Active runs only). */
 export function qualityHasDuplicateName(q: QualityMaster, qualities: QualityMaster[]) {
   const key = qualityNameKey(q.name)
   if (!key) return false
-  return qualities.filter((item) => qualityNameKey(item.name) === key).length > 1
+  const activeSame = qualities.filter(
+    (item) =>
+      qualityNameKey(item.name) === key && normalizeQualityStatus(item.status) === 'ACTIVE'
+  )
+  if (activeSame.length <= 1) return false
+  const picks = new Set(activeSame.map((item) => Number(item.pick)))
+  return picks.size > 1
 }
 
-export function qualityDisplayName(q: QualityMaster, qualities: QualityMaster[]) {
-  return qualityHasDuplicateName(q, qualities) ? `${q.name} (Pick ${q.pick})` : q.name
+/** Display name on cards / looms — plain name only (Pick is shown in its own column). */
+export function qualityDisplayName(q: QualityMaster, _qualities?: QualityMaster[]) {
+  return q.name
 }
 
 export function matchQualityByNameAndPick(
@@ -443,10 +552,15 @@ export function qualityRunThatOwnsSheetEntry(
     if (!nameHit) return false
     if ((nameCounts.get(qClean) || 0) > 1 && Number(entry.pick) !== Number(q.pick)) return false
 
-    const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : '1970-01-01'
+    const status = normalizeQualityStatus(q.status)
+    // Undated Active must not steal full history after reuse (zero-start).
+    const createdOn = q.createdOn
+      ? String(q.createdOn).slice(0, 10)
+      : status === 'ACTIVE'
+        ? day
+        : '1970-01-01'
     if (day < createdOn) return false
 
-    const status = normalizeQualityStatus(q.status)
     const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : null
     // ENDED runs stay on the next production day too (factory month 2→1 hisab).
     if (status === 'ENDED' && stamp) {
@@ -461,6 +575,11 @@ export function qualityRunThatOwnsSheetEntry(
   if (candidates.length === 0) return null
   if (candidates.length === 1) return candidates[0]
   return [...candidates].sort((a, b) => {
+    const statusA = normalizeQualityStatus(a.status)
+    const statusB = normalizeQualityStatus(b.status)
+    // Prefer Active run over Ends history when both cover the day (reuse same day).
+    if (statusA === 'ACTIVE' && statusB !== 'ACTIVE') return -1
+    if (statusB === 'ACTIVE' && statusA !== 'ACTIVE') return 1
     const ca = a.createdOn ? String(a.createdOn).slice(0, 10) : '1970-01-01'
     const cb = b.createdOn ? String(b.createdOn).slice(0, 10) : '1970-01-01'
     if (ca !== cb) return cb.localeCompare(ca)
@@ -1420,6 +1539,7 @@ async function persistKey(key: string, value: unknown): Promise<boolean> {
   try {
     const res = await fetch('/api/floor/store', {
       method: 'PUT',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value }),
     })
@@ -1445,6 +1565,7 @@ async function persistQualityStatus(
   try {
     const res = await fetch('/api/floor/store', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'patchQualityStatus', id, status, endedOn }),
     })
@@ -1457,6 +1578,63 @@ async function persistQualityStatus(
   } catch (err) {
     console.error('[floor] patchQualityStatus failed', id, err)
     return false
+  }
+}
+
+/** Insert/update one quality row — reuse fork must hit DB or refresh drops Active. */
+async function persistQualityUpsert(quality: QualityMaster): Promise<boolean> {
+  if (!isClient()) return false
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upsertQuality', quality }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      console.error('[floor] upsertQuality failed', quality.id, res.status, data)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[floor] upsertQuality failed', quality.id, err)
+    return false
+  }
+}
+
+/** Server-atomic reuse: keep ENDED + insert Active in one request. */
+async function persistQualityReuse(
+  endedId: string,
+  createdOn: string,
+  newQuality: QualityMaster
+): Promise<{ ok: boolean; active: QualityMaster | null; ended: QualityMaster | null }> {
+  if (!isClient()) return { ok: false, active: null, ended: null }
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'reuseQuality',
+        endedId,
+        createdOn,
+        newQuality,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data?.ok) {
+      console.error('[floor] reuseQuality failed', endedId, res.status, data)
+      return { ok: false, active: null, ended: null }
+    }
+    return {
+      ok: true,
+      active: data.active ? normalizeQuality(data.active) : newQuality,
+      ended: data.ended ? normalizeQuality(data.ended) : null,
+    }
+  } catch (err) {
+    console.error('[floor] reuseQuality failed', endedId, err)
+    return { ok: false, active: null, ended: null }
   }
 }
 
@@ -1575,17 +1753,41 @@ export async function hydrateFloorFromDb(): Promise<void> {
         Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
           memoryStore.set(key, JSON.stringify(value))
         })
-        // Re-apply browser-backed Quality Ends so refresh does not wipe them if DB lagged.
+        // Re-apply browser-backed Quality Ends + pending reused Actives if DB lagged.
         try {
           const raw = memoryStore.get(KEY_QUALITY)
           if (raw) {
+            const pendingSnapshot = readLocalPendingQualities()
+            const pendingActiveIds = new Set(
+              pendingSnapshot
+                .filter((p) => normalizeQualityStatus(p.status) === 'ACTIVE')
+                .map((p) => p.id)
+            )
             const fromDb = (JSON.parse(raw) as QualityMaster[]).map(normalizeQuality)
-            const merged = applyLocalQualityEnds(fromDb)
+            const withEnds = applyLocalQualityEnds(fromDb)
+            const merged = applyLocalPendingQualities(withEnds)
             memoryStore.set(KEY_QUALITY, JSON.stringify(merged))
             for (const q of merged) {
-              if (q.status === 'ENDED' && q.endedOn) {
+              // Never re-stamp ENDED over a same-id Active reuse still in pending.
+              if (q.status === 'ENDED' && q.endedOn && !pendingActiveIds.has(q.id)) {
                 void persistQualityStatus(q.id, 'ENDED', q.endedOn)
               }
+            }
+            // Push any still-pending rows (Active reuse / new quality) to DB.
+            for (const p of readLocalPendingQualities()) {
+              const alreadyInDb = fromDb.some((q) => q.id === p.id)
+              void (async () => {
+                const okUpsert = await persistQualityUpsert(p)
+                const status = normalizeQualityStatus(p.status)
+                const okPatch =
+                  status === 'ACTIVE'
+                    ? await persistQualityStatus(p.id, 'ACTIVE', null)
+                    : status === 'ENDED' || status === 'HOLD'
+                      ? await persistQualityStatus(p.id, status, p.endedOn ?? null)
+                      : false
+                // Drop pending only once DB has confirmed the row (or upsert just wrote it).
+                if (alreadyInDb || okUpsert || okPatch) forgetLocalPendingQuality(p.id)
+              })()
             }
           }
         } catch {
@@ -2389,7 +2591,16 @@ class ProductionMastersService {
   }
 
   getQualities(): QualityMaster[] {
-    return applyLocalQualityEnds(loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality))
+    const merged = applyLocalPendingQualities(
+      applyLocalQualityEnds(loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality))
+    )
+    // Keep merged Active forks in memory so later PUTs include them.
+    try {
+      memoryStore.set(KEY_QUALITY, JSON.stringify(merged))
+    } catch {
+      // ignore
+    }
+    return merged
   }
 
   /** Qualities ordered by loom allotment (Loom 1 → N). */
@@ -2398,7 +2609,17 @@ class ProductionMastersService {
   }
 
   saveQualities(qualities: QualityMaster[]) {
+    // Memory + merge-upsert PUT (server no longer deleteMany). Prefer row upserts for new forks.
     saveJson(KEY_QUALITY, qualities)
+  }
+
+  /** Memory only — avoids racing a full qualities PUT while reuse upsert is in flight. */
+  private saveQualitiesMemory(qualities: QualityMaster[]) {
+    try {
+      memoryStore.set(KEY_QUALITY, JSON.stringify(qualities.map(normalizeQuality)))
+    } catch {
+      // ignore
+    }
   }
 
   updateQuality(
@@ -2501,41 +2722,49 @@ class ProductionMastersService {
 
   addQuality(partial?: Partial<QualityMaster>, createdOn: string = getProductionToday()): QualityMaster[] {
     const qualities = this.getQualities()
-    qualities.push(
-      normalizeQuality({
-        id: `q-${Date.now()}`,
-        name: partial?.name || 'New Quality',
-        fabricType: normalizeFabricType(partial?.fabricType),
-        weavePlan: partial?.weavePlan != null ? String(partial.weavePlan) : '',
-        warpYarn: partial?.warpYarn != null ? partial.warpYarn : '20/1',
-        weftYarn: partial?.weftYarn != null ? partial.weftYarn : '20/1',
-        reed: partial?.reed ?? 120,
-        pick: partial?.pick ?? 60,
-        widthInch: partial?.widthInch ?? 66,
-        gsm: partial?.gsm !== undefined ? Number(Number(partial.gsm).toFixed(2)) : 0,
-        status: partial?.status ?? 'ACTIVE',
-        createdOn: partial?.createdOn || createdOn,
-        endedOn: partial?.endedOn ?? null,
-      })
-    )
+    const added = normalizeQuality({
+      id: `q-${Date.now()}`,
+      name: partial?.name || 'New Quality',
+      fabricType: normalizeFabricType(partial?.fabricType),
+      weavePlan: partial?.weavePlan != null ? String(partial.weavePlan) : '',
+      warpYarn: partial?.warpYarn != null ? partial.warpYarn : '20/1',
+      weftYarn: partial?.weftYarn != null ? partial.weftYarn : '20/1',
+      reed: partial?.reed ?? 120,
+      pick: partial?.pick ?? 60,
+      widthInch: partial?.widthInch ?? 66,
+      gsm: partial?.gsm !== undefined ? Number(Number(partial.gsm).toFixed(2)) : 0,
+      status: partial?.status ?? 'ACTIVE',
+      createdOn: partial?.createdOn || createdOn,
+      endedOn: partial?.endedOn ?? null,
+    })
+    qualities.push(added)
     this.saveQualities(qualities)
+    rememberLocalPendingQuality(added)
+    void this.flushNewQuality(added)
     return qualities
   }
 
   /**
-   * Reuse an ENDED quality without wiping Ends history:
-   * keep the ended row for month PDF (2→1), fork a new ACTIVE run from zero.
+   * Reuse an ENDED quality without losing Ends history:
+   * - keep the original ENDED row for Ends tab / month PDF (2→1)
+   * - fork a NEW Active id from zero (new createdOn → Track starts at 0)
    */
   reassignEndedQuality(
     id: string,
     createdOn: string = getProductionToday()
-  ): { qualities: QualityMaster[]; newQuality: QualityMaster | null } {
+  ): { qualities: QualityMaster[]; newQuality: QualityMaster | null; archive: QualityMaster | null } {
     const list = this.getQualities()
     const src = list.find((q) => q.id === id)
     if (!src || normalizeQualityStatus(src.status) !== 'ENDED') {
-      return { qualities: list, newQuality: null }
+      return { qualities: list, newQuality: null, archive: null }
+    }
+    // Frozen archive rows are history only — never fork from them.
+    if (String(id).startsWith('q-end-')) {
+      return { qualities: list, newQuality: null, archive: null }
     }
     const day = String(createdOn || getProductionToday()).slice(0, 10)
+    const endedOn = src.endedOn ? String(src.endedOn).slice(0, 10) : day
+
     const newQuality = normalizeQuality({
       id: `q-${Date.now()}`,
       name: src.name,
@@ -2550,13 +2779,81 @@ class ProductionMastersService {
       status: 'ACTIVE',
       createdOn: day,
       endedOn: null,
+      loomEnds: [],
     })
-    const qualities = [...list, newQuality]
-    this.saveQualities(qualities)
-    return { qualities, newQuality }
+
+    // Keep original ENDED for Ends tab — do NOT revive / forget its local end.
+    rememberLocalQualityEnd(src.id, endedOn, src.name, src.loomEnds)
+    rememberLocalPendingQuality(newQuality)
+
+    const qualities = [...list.filter((q) => q.id !== newQuality.id), newQuality]
+    // Memory only — full PUT can race and drop the new Active before upsert lands.
+    this.saveQualitiesMemory(qualities)
+    return { qualities, newQuality, archive: normalizeQuality({ ...src, status: 'ENDED', endedOn }) }
   }
 
-  /** If user picks an ENDED quality on a loom, fork Active run; keep Ends record. */
+  /** Persist new Active run; keep original ENDED row in DB (server-atomic). */
+  async flushReassign(revived: QualityMaster, archive: QualityMaster | null): Promise<boolean> {
+    // Browser backup until hydrate confirms DB has the Active fork.
+    rememberLocalPendingQuality(revived)
+    if (archive?.id && archive.endedOn) {
+      rememberLocalQualityEnd(archive.id, String(archive.endedOn).slice(0, 10), archive.name, archive.loomEnds)
+    }
+
+    const createdOn = String(revived.createdOn || getProductionToday()).slice(0, 10)
+    let ok = false
+    let active = revived
+
+    if (archive?.id) {
+      const result = await persistQualityReuse(archive.id, createdOn, revived)
+      ok = result.ok
+      if (result.active) active = result.active
+    } else {
+      ok = await persistQualityUpsert(revived)
+    }
+
+    // Fallback: plain upsert if atomic call failed (older server / network).
+    if (!ok) {
+      ok = await persistQualityUpsert(revived)
+      if (archive?.id && archive.endedOn) {
+        await persistQualityStatus(archive.id, 'ENDED', String(archive.endedOn).slice(0, 10))
+      }
+    }
+
+    // Merge-safe full list PUT — now upserts rows, never deleteMany.
+    const list = this.getQualities()
+    const synced = list.some((q) => q.id === active.id)
+      ? list.map((q) => (q.id === active.id ? normalizeQuality(active) : q))
+      : [...list, normalizeQuality(active)]
+    const withEnded = synced.map((q) =>
+      archive && q.id === archive.id
+        ? normalizeQuality({
+            ...q,
+            status: 'ENDED',
+            endedOn: archive.endedOn ? String(archive.endedOn).slice(0, 10) : q.endedOn,
+          })
+        : q
+    )
+    this.saveQualitiesMemory(withEnded)
+    // Extra belt: merge-upsert entire catalog so Active cannot vanish on refresh.
+    await persistKey(KEY_QUALITY, withEnded)
+
+    // Keep pending if still not confirmed — hydrate drops it when DB has the id.
+    if (ok) {
+      // Leave pending; hydrate forgets only after DB confirms.
+    }
+    return ok
+  }
+
+  /** @deprecated prefer flushReassign — kept for addQuality path */
+  async flushNewQuality(quality: QualityMaster): Promise<boolean> {
+    rememberLocalPendingQuality(quality)
+    const okUpsert = await persistQualityUpsert(quality)
+    // Keep pending until hydrate confirms — protects against stale quality PUT wipe.
+    return okUpsert
+  }
+
+  /** If user picks an ENDED quality on a loom, fork a new Active run (Ends row stays). */
   private resolveQualityIdForAssign(
     qualityId: string | null | undefined,
     dateStr: string
@@ -2564,6 +2861,8 @@ class ProductionMastersService {
     if (!qualityId) return qualityId
     const q = this.getQualities().find((item) => item.id === qualityId)
     if (!q || normalizeQualityStatus(q.status) !== 'ENDED') return qualityId
+    // Archive ids are already closed history — don't reuse those.
+    if (String(qualityId).startsWith('q-end-')) return qualityId
     const { newQuality } = this.reassignEndedQuality(qualityId, dateStr)
     return newQuality?.id || qualityId
   }
@@ -2575,12 +2874,14 @@ class ProductionMastersService {
     const status = normalizeQualityStatus(q.status)
     if (status === 'ENDED' && q.endedOn) {
       rememberLocalQualityEnd(id, q.endedOn, q.name, q.loomEnds)
+    } else if (status === 'ACTIVE') {
+      forgetLocalQualityEnd(id)
     }
     const endedOn = status === 'ACTIVE' ? null : q.endedOn ?? null
+    // Row upsert + status patch only — full-table PUT races and can wipe reuse archives.
+    const okUpsert = await persistQualityUpsert(q)
     const okPatch = await persistQualityStatus(id, status, endedOn)
-    // Full list save as backup (may fail wipe-guard; patch is enough).
-    const okFull = await persistKey(KEY_QUALITY, this.getQualities())
-    return okPatch || okFull
+    return okPatch || okUpsert
   }
 
   /** Push full qualities list + status patch for ended/hold rows. */
@@ -2670,7 +2971,17 @@ class ProductionMastersService {
 
   deleteQuality(id: string): QualityMaster[] {
     const qualities = this.getQualities().filter((q) => q.id !== id)
-    this.saveQualities(qualities)
+    this.saveQualitiesMemory(qualities)
+    forgetLocalPendingQuality(id)
+    forgetLocalQualityEnd(id)
+    if (isClient()) {
+      void fetch('/api/floor/store', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteQuality', id }),
+      }).catch((err) => console.error('[floor] deleteQuality failed', id, err))
+    }
     return qualities
   }
 

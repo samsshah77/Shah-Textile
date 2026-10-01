@@ -14,6 +14,7 @@ import {
 } from '@/services/productionMastersService'
 import {
   getCalendarToday,
+  getProductionToday,
   getProductionTodayMonth,
   PRODUCTION_START,
 } from '@/constants/productionCalendar'
@@ -22,7 +23,7 @@ import { useAlertDialog } from '@/context/AlertDialogContext'
 const FLOOR_DATE_KEY = 'sara_floor_selected_date'
 
 function readStoredFloorDate(): string {
-  const today = getCalendarToday()
+  const today = getProductionToday()
   if (typeof window === 'undefined') return today
   try {
     const raw = sessionStorage.getItem(FLOOR_DATE_KEY)
@@ -45,8 +46,8 @@ export function useProductionGrid() {
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDateState] = useState<string>(() => getCalendarToday())
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => getCalendarToday().slice(0, 7))
+  const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionToday())
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getProductionToday().slice(0, 7))
   const [todaySheetReady, setTodaySheetReady] = useState(false)
   const [dateReady, setDateReady] = useState(false)
 
@@ -198,21 +199,43 @@ export function useProductionGrid() {
       const prevQualityId =
         productionMastersService.getLooms().find((l) => l.loomNumber === loomNumber)?.qualityId ??
         null
+      const selectedBefore =
+        patch.qualityId
+          ? productionMastersService.getQualities().find((q) => q.id === patch.qualityId)
+          : null
+      const selectedWasEnded = (selectedBefore?.status ?? 'ACTIVE') === 'ENDED'
+
       const nextLooms = productionMastersService.updateLoom(loomNumber, patch, selectedDate)
       setLooms(nextLooms)
       // Always re-read beams so Loom Status → Beam End appears without page refresh
       setBeams(productionMastersService.getBeams().map((b) => ({ ...b })))
       if (patch.qualityId !== undefined) {
         setQualities(productionMastersService.getQualities())
-        // Auto-end (last loom cleared) or revive — persist status to DB.
+        // Auto-end (last loom cleared) — persist status to DB.
         if (prevQualityId && prevQualityId !== patch.qualityId) {
           const prevQ = productionMastersService.getQualities().find((q) => q.id === prevQualityId)
           if (prevQ?.status === 'ENDED' || prevQ?.status === 'HOLD') {
             void productionMastersService.flushQualityStatus(prevQualityId)
           }
         }
-        if (patch.qualityId) {
-          void productionMastersService.flushQualityStatus(patch.qualityId)
+        const assignedId =
+          nextLooms.find((l) => l.loomNumber === loomNumber)?.qualityId ?? patch.qualityId
+        if (assignedId) {
+          const assigned = productionMastersService.getQualities().find((q) => q.id === assignedId)
+          if (assigned && selectedWasEnded) {
+            // Original ENDED row (user selected this id) must stay on Ends.
+            const endedOriginal =
+              productionMastersService
+                .getQualities()
+                .find(
+                  (q) =>
+                    q.id === patch.qualityId &&
+                    (q.status ?? '') === 'ENDED'
+                ) || selectedBefore || null
+            void productionMastersService.flushReassign(assigned, endedOriginal)
+          } else if (assignedId) {
+            void productionMastersService.flushQualityStatus(assignedId)
+          }
         }
       }
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
@@ -387,16 +410,25 @@ export function useProductionGrid() {
 
   const reassignEndedQuality = useCallback(
     (id: string, createdOn: string) => {
-      const { qualities: next, newQuality } = productionMastersService.reassignEndedQuality(
+      const { qualities: next, newQuality, archive } = productionMastersService.reassignEndedQuality(
         id,
         createdOn || selectedDate
       )
       setQualities(next)
       if (newQuality) {
-        void productionMastersService.flushQualitiesToDb()
+        void productionMastersService.flushReassign(newQuality, archive).then((ok) => {
+          setQualities(productionMastersService.getQualities())
+          if (!ok) {
+            showError({
+              title: 'Reuse save fail',
+              message:
+                'Quality Active pe aa gayi lekin DB me save nahi hui. Internet/login check karke dobara Reuse dabao — warna refresh pe gayab ho sakti hai.',
+            })
+          }
+        })
       }
     },
-    [selectedDate]
+    [selectedDate, showError]
   )
 
   const startNewDay = useCallback(

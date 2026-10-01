@@ -312,7 +312,7 @@ export function QualityMasterTable({
     const allDays = mergedSheetEntriesForTotals(sheetDate, entries || [])
 
     for (const e of allDays) {
-      const owner = qualityRunThatOwnsSheetEntry(e, qualities, sheetDate)
+      const owner = qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)
       if (!owner) continue
       stats[owner.id] = (stats[owner.id] || 0) + meterOf(e)
     }

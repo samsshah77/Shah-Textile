@@ -16,6 +16,9 @@ import {
   dbSaveLooms,
   dbSaveQualities,
   dbPatchQualityStatus,
+  dbUpsertQuality,
+  dbReuseQuality,
+  dbDeleteQuality,
   dbSaveSheet,
   dbSaveYarn,
   dbSaveYarnIssuances,
@@ -24,6 +27,7 @@ import {
   dbSetSheetApproval,
 } from '@/server/floorDb'
 import { buildFloorSeedPayload } from '@/server/floorSeed'
+import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
 
 export const runtime = 'nodejs'
 
@@ -42,6 +46,9 @@ async function requireSession(req: NextRequest) {
 
 export async function GET() {
   try {
+    // Heal missing columns (e.g. weavePlan) before any quality upsert/read.
+    await ensureFloorPayrollTables()
+
     if (await dbFloorIsEmpty()) {
       const seed = buildFloorSeedPayload()
       await dbSaveLooms(seed.looms)
@@ -187,6 +194,41 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 })
       }
       await dbPatchQualityStatus(id, status, status === 'ACTIVE' ? null : endedOn)
+      return NextResponse.json({ ok: true })
+    }
+
+    if (action === 'upsertQuality') {
+      const q = body?.quality
+      if (!q?.id || !q?.name) {
+        return NextResponse.json({ ok: false, error: 'quality with id+name required' }, { status: 400 })
+      }
+      await dbUpsertQuality(q)
+      return NextResponse.json({ ok: true })
+    }
+
+    if (action === 'reuseQuality') {
+      const endedId = String(body?.endedId || '')
+      const createdOn = String(body?.createdOn || '').slice(0, 10)
+      if (!endedId || !createdOn) {
+        return NextResponse.json(
+          { ok: false, error: 'endedId and createdOn required' },
+          { status: 400 }
+        )
+      }
+      const result = await dbReuseQuality({
+        endedId,
+        createdOn,
+        newQuality: body?.newQuality || null,
+      })
+      return NextResponse.json({ ok: true, ...result })
+    }
+
+    if (action === 'deleteQuality') {
+      const id = String(body?.id || '')
+      if (!id) {
+        return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 })
+      }
+      await dbDeleteQuality(id)
       return NextResponse.json({ ok: true })
     }
 
