@@ -541,6 +541,20 @@
     border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   }
 
+  /* Empty states — soft icon circle, no heavy card look */
+  .sara-empty-placeholder__icon {
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 1.35rem;
+  }
+
+  .sara-empty-placeholder {
+    min-height: 9rem;
+  }
+
   /* Hold tab — deep orange (yellow was hard to see) */
   .sara-btn-hold {
     --bs-btn-color: #fff;

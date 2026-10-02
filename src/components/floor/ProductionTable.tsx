@@ -7,6 +7,7 @@ import { LoomDataRow } from './LoomDataRow'
 import { LoomCard } from './LoomCard'
 import { formatNumber, cn } from '@/lib/utils'
 import { Download, RotateCcw, Search, LayoutGrid, Table as TableIcon } from 'lucide-react'
+import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 
 interface ProductionTableProps {
   entries: DailyLoomProductionEntry[]
@@ -171,8 +172,12 @@ export function ProductionTable({
         /* Mobile / Touch Ergonomic Card Grid */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {entries.length === 0 ? (
-            <div className="col-span-full py-12 text-center text-sm font-medium text-slate-500 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-              No looms match the selected criteria.
+            <div className="col-span-full">
+              <EmptyPlaceholder
+                icon="bi-grid-3x3-gap"
+                title="No looms match filters"
+                hint="Category, status ya search change karke dekho — matching looms yahan dikhengi."
+              />
             </div>
           ) : (
             entries.map((entry) => (
@@ -212,8 +217,13 @@ export function ProductionTable({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {entries.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-sm font-medium text-slate-500">
-                      No looms match the selected criteria.
+                    <td colSpan={13} className="p-0 border-0">
+                      <EmptyPlaceholder
+                        icon="bi-grid-3x3-gap"
+                        title="No looms match filters"
+                        hint="Category, status ya search change karke dekho — matching looms yahan dikhengi."
+                        compact
+                      />
                     </td>
                   </tr>
                 ) : (

@@ -17,6 +17,7 @@ import { AddYarnModal } from '@/components/floor/AddYarnModal'
 import { IssueYarnModal } from '@/components/floor/IssueYarnModal'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 
 export type WeightUnit = 'KG' | 'LBS'
 export type YarnViewMode = 'STOCK' | 'LEDGER'
@@ -492,7 +493,16 @@ export function YarnStockTable({
           <>
             {mode === 'grid' ? (
               <div className="master-grid">
-                {yarn.map((y, rowIdx) => {
+                {yarn.length === 0 ? (
+                  <div className="w-100">
+                    <EmptyPlaceholder
+                      icon="bi-layers"
+                      title="No yarn in stock"
+                      hint="Add Inward Yarn se pehla stock entry karo — yahan balance dikhega."
+                    />
+                  </div>
+                ) : (
+                yarn.map((y, rowIdx) => {
                   const yarnIss = issuancesByYarn.get(y.id) || []
 
                   return (
@@ -615,7 +625,8 @@ export function YarnStockTable({
                       )}
                     </div>
                   )
-                })}
+                })
+                )}
               </div>
             ) : (
               <div
@@ -661,7 +672,19 @@ export function YarnStockTable({
                     </tr>
                   </thead>
                   <tbody>
-                    {yarn.map((y, rowIdx) => {
+                    {yarn.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-0 border-0">
+                          <EmptyPlaceholder
+                            icon="bi-layers"
+                            title="No yarn in stock"
+                            hint="Add Inward Yarn se pehla stock entry karo — yahan balance dikhega."
+                            compact
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                    yarn.map((y, rowIdx) => {
                       const yarnIss = issuancesByYarn.get(y.id) || []
 
                       return (
@@ -764,7 +787,8 @@ export function YarnStockTable({
                           </td>
                         </tr>
                       )
-                    })}
+                    })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -889,9 +913,13 @@ export function YarnStockTable({
                 <tbody>
                   {filteredMovements.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-4 text-center text-muted">
-                        <i className="bi bi-inbox fs-4 d-block mb-2" />
-                        No movement records found for the selected filters.
+                      <td colSpan={7} className="p-0 border-0">
+                        <EmptyPlaceholder
+                          icon="bi-arrow-left-right"
+                          title="No yarn movements"
+                          hint="Selected filters pe koi inward / issue record nahi. Date ya period change karke dekho."
+                          compact
+                        />
                       </td>
                     </tr>
                   ) : (

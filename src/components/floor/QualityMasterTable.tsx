@@ -31,6 +31,7 @@ import {
   peekQualityAssignFlashIds,
   clearQualityAssignFlashIds,
 } from '@/lib/qualityAssignFlash'
+import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   sr: 46,
@@ -766,6 +767,24 @@ export function QualityMasterTable({
     })
   }
 
+  const emptyCopy = isHoldView
+    ? {
+        icon: 'bi-pause-circle',
+        title: 'No qualities on Hold',
+        hint: 'Active se Hold karne par yahan dikhengi — baad mein Resume se wapas Active.',
+      }
+    : isEndedView
+      ? {
+          icon: 'bi-stop-circle',
+          title: `No ends on ${formatShortDate(sheetDate)}`,
+          hint: 'Is date pe koi quality end nahi hui. Jab End karoge, Ends list yahan aayegi.',
+        }
+      : {
+          icon: 'bi-stars',
+          title: 'No active qualities yet',
+          hint: 'Add Quality se naya run banao, phir Looms pe assign karo — list yahan dikhegi.',
+        }
+
   return (
     <div className="card">
       <style>{`
@@ -871,11 +890,11 @@ export function QualityMasterTable({
         isArchiveView ? (
           <div className="card-body p-3">
             {orderedForView.length === 0 ? (
-              <p className="text-muted small mb-0">
-                {isHoldView
-                  ? 'Koi quality hold pe nahi hai.'
-                  : `Is date (${formatShortDate(sheetDate)}) pe koi quality end nahi hui.`}
-              </p>
+              <EmptyPlaceholder
+                icon={emptyCopy.icon}
+                title={emptyCopy.title}
+                hint={emptyCopy.hint}
+              />
             ) : (
               <ul className="list-group list-group-flush">
                 {orderedForView.map((q, rowIdx) => {
@@ -932,7 +951,16 @@ export function QualityMasterTable({
           </div>
         ) : (
         <div className="master-grid">
-          {orderedForView.map((q, rowIdx) => {
+          {orderedForView.length === 0 ? (
+            <div className="w-100">
+              <EmptyPlaceholder
+                icon={emptyCopy.icon}
+                title={emptyCopy.title}
+                hint={emptyCopy.hint}
+              />
+            </div>
+          ) : (
+          orderedForView.map((q, rowIdx) => {
             const overall = productionByQuality[q.id] || 0
 
             return (
@@ -1133,7 +1161,8 @@ export function QualityMasterTable({
 
               </div>
             )
-          })}
+          })
+          )}
         </div>
         )
       ) : isArchiveView ? (
@@ -1165,10 +1194,13 @@ export function QualityMasterTable({
             <tbody>
               {orderedForView.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-3 py-4 text-muted small text-center">
-                    {isHoldView
-                      ? 'Koi quality hold pe nahi hai.'
-                      : `Is date (${formatShortDate(sheetDate)}) pe koi quality end nahi hui.`}
+                  <td colSpan={13} className="p-0 border-0">
+                    <EmptyPlaceholder
+                      icon={emptyCopy.icon}
+                      title={emptyCopy.title}
+                      hint={emptyCopy.hint}
+                      compact
+                    />
                   </td>
                 </tr>
               ) : (
@@ -1275,7 +1307,19 @@ export function QualityMasterTable({
               </tr>
             </thead>
             <tbody>
-              {orderedForView.map((q, rowIdx) => {
+              {orderedForView.length === 0 ? (
+                <tr>
+                  <td colSpan={13} className="p-0 border-0">
+                    <EmptyPlaceholder
+                      icon={emptyCopy.icon}
+                      title={emptyCopy.title}
+                      hint={emptyCopy.hint}
+                      compact
+                    />
+                  </td>
+                </tr>
+              ) : (
+              orderedForView.map((q, rowIdx) => {
                 const overall = productionByQuality[q.id] || 0
 
                 return (
@@ -1441,7 +1485,8 @@ export function QualityMasterTable({
                     </td>
                   </tr>
                 )
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>

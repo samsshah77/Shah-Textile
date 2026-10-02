@@ -11,6 +11,7 @@ import type { LoomStatus } from '@/types/loom'
 import { AddBeamModal } from '@/components/floor/AddBeamModal'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 110,
@@ -392,19 +393,19 @@ export function BeamMasterTable({
       {mode === 'grid' ? (
         <div className="master-grid">
           {filteredBeams.length === 0 ? (
-            <div className="col-12 py-5 text-center text-muted">
-              <i className="bi bi-inbox fs-2 d-block mb-2" />
-              No beams found in category:{' '}
-              <strong>
-                {filter === 'IN_STOCK'
+            <EmptyPlaceholder
+              icon="bi-bounding-box"
+              title="No beams in this category"
+              hint={`Filter: ${
+                filter === 'IN_STOCK'
                   ? 'In Stock'
                   : filter === 'AT_SIZING'
                     ? 'Empty Beam'
                     : filter === 'ON_LOOM'
                       ? 'On Loom'
-                      : 'All'}
-              </strong>
-            </div>
+                      : 'All'
+              }. Add Beam ya dusra filter try karo.`}
+            />
           ) : (
             filteredBeams.map((b, rowIdx) => {
               return (
@@ -571,18 +572,21 @@ export function BeamMasterTable({
             <tbody>
               {filteredBeams.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-4 text-center text-muted">
-                    <i className="bi bi-inbox me-2" />
-                    No beams found in category:{' '}
-              <strong>
-                {filter === 'IN_STOCK'
-                  ? 'In Stock'
-                  : filter === 'AT_SIZING'
-                    ? 'Empty Beam'
-                    : filter === 'ON_LOOM'
-                      ? 'On Loom'
-                      : 'All'}
-              </strong>
+                  <td colSpan={9} className="p-0 border-0">
+                    <EmptyPlaceholder
+                      icon="bi-bounding-box"
+                      title="No beams in this category"
+                      hint={`Filter: ${
+                        filter === 'IN_STOCK'
+                          ? 'In Stock'
+                          : filter === 'AT_SIZING'
+                            ? 'Empty Beam'
+                            : filter === 'ON_LOOM'
+                              ? 'On Loom'
+                              : 'All'
+                      }. Add Beam ya dusra filter try karo.`}
+                      compact
+                    />
                   </td>
                 </tr>
               ) : (
