@@ -189,7 +189,14 @@
     background-color: #ffffff;
     color: #212529;
     border-color: rgba(0, 0, 0, 0.125);
-    box-shadow: 0 0 1px rgba(0, 0, 0, 0.125), 0 1px 3px rgba(0, 0, 0, 0.05);
+    box-shadow: none;
+  }
+
+  body.layout-fixed .card.shadow,
+  body.layout-fixed .card.shadow-sm,
+  body.layout-fixed .card.shadow-lg,
+  body.layout-fixed .card.shadow-xs {
+    box-shadow: none !important;
   }
 
   /* Keep title + helper text stacked (AdminLTE floats .card-title by default) */
@@ -464,6 +471,108 @@
     min-height: 0;
     -webkit-overflow-scrolling: touch;
     padding-top: 0.75rem;
+  }
+
+  /* Production: chrome fixed, only table panel scrolls */
+  .sara-app-content:has(.sara-production-workspace) {
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding-top: 1rem !important;
+    padding-bottom: 0.75rem;
+  }
+
+  .sara-app-content:has(.sara-production-workspace) > .container-fluid {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sara-production-workspace {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .sara-production-chrome {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    background: transparent;
+    z-index: 5;
+    padding-bottom: 0.15rem;
+  }
+
+  .sara-production-chrome .sara-page-header {
+    margin-bottom: 0 !important;
+    padding-top: 0.35rem;
+  }
+
+  .sara-prod-toolbar-row {
+    margin-bottom: 0 !important;
+    padding-top: 0.15rem;
+  }
+
+  .sara-production-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-top: 0.35rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .sara-production-panel > .card,
+  .sara-production-panel > .d-flex.flex-column {
+    margin-bottom: 0;
+  }
+
+  /* Keep each tab's card toolbar visible while rows scroll */
+  .sara-production-panel .card > .card-header {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background-color: #fff !important;
+    box-shadow: none;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  }
+
+  /* Hold tab — deep orange (yellow was hard to see) */
+  .sara-btn-hold {
+    --bs-btn-color: #fff;
+    --bs-btn-bg: #ea580c;
+    --bs-btn-border-color: #ea580c;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #c2410c;
+    --bs-btn-hover-border-color: #c2410c;
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: #c2410c;
+    --bs-btn-active-border-color: #c2410c;
+    color: #fff !important;
+    background-color: #ea580c !important;
+    border-color: #ea580c !important;
+  }
+
+  .sara-btn-hold-outline {
+    --bs-btn-color: #c2410c;
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: #ea580c;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #ea580c;
+    --bs-btn-hover-border-color: #ea580c;
+    color: #c2410c !important;
+    background-color: transparent !important;
+    border-color: #ea580c !important;
+  }
+
+  .sara-btn-hold-outline:hover {
+    color: #fff !important;
+    background-color: #ea580c !important;
+    border-color: #ea580c !important;
   }
 
   .sara-page-header {

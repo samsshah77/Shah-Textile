@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { AlertDialogProvider } from '@/context/AlertDialogContext'
+import { FloorDateProvider } from '@/context/FloorDateContext'
 import { Sidebar } from '@/components/shared/Sidebar'
 import { Header } from '@/components/shared/Header'
 import { AdminLteAssets } from '@/components/shared/AdminLteAssets'
@@ -138,7 +139,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <AlertDialogProvider>
-        <AppShell>{children}</AppShell>
+        <FloorDateProvider>
+          <AppShell>{children}</AppShell>
+        </FloorDateProvider>
       </AlertDialogProvider>
     </AuthProvider>
   )

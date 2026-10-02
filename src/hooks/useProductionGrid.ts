@@ -16,25 +16,11 @@ import {
   getCalendarToday,
   getProductionToday,
   getProductionTodayMonth,
-  PRODUCTION_START,
 } from '@/constants/productionCalendar'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { rememberQualityAssignFlash } from '@/lib/qualityAssignFlash'
 
 const FLOOR_DATE_KEY = 'sara_floor_selected_date'
-
-function readStoredFloorDate(): string {
-  const today = getProductionToday()
-  if (typeof window === 'undefined') return today
-  try {
-    const raw = sessionStorage.getItem(FLOOR_DATE_KEY)
-    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && raw >= PRODUCTION_START && raw <= today) {
-      return raw
-    }
-  } catch {
-    // ignore
-  }
-  return today
-}
 
 export function useProductionGrid() {
   const { showError } = useAlertDialog()
@@ -46,15 +32,21 @@ export function useProductionGrid() {
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
+  /** Full page load / refresh always opens on production Today (wall-clock aaj). */
   const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionToday())
   const [selectedMonth, setSelectedMonth] = useState<string>(() => getProductionToday().slice(0, 7))
   const [todaySheetReady, setTodaySheetReady] = useState(false)
   const [dateReady, setDateReady] = useState(false)
 
   useEffect(() => {
-    const stored = readStoredFloorDate()
-    setSelectedDateState(stored)
-    setSelectedMonth(stored.slice(0, 7) || getProductionTodayMonth())
+    const today = getProductionToday()
+    setSelectedDateState(today)
+    setSelectedMonth(today.slice(0, 7) || getProductionTodayMonth())
+    try {
+      sessionStorage.setItem(FLOOR_DATE_KEY, today)
+    } catch {
+      // ignore
+    }
     setDateReady(true)
   }, [])
 
@@ -220,6 +212,9 @@ export function useProductionGrid() {
         }
         const assignedId =
           nextLooms.find((l) => l.loomNumber === loomNumber)?.qualityId ?? patch.qualityId
+        if (assignedId && assignedId !== prevQualityId) {
+          rememberQualityAssignFlash(assignedId)
+        }
         if (assignedId) {
           const assigned = productionMastersService.getQualities().find((q) => q.id === assignedId)
           if (assigned && selectedWasEnded) {
@@ -394,12 +389,15 @@ export function useProductionGrid() {
 
   const addQuality = useCallback(
     (partial?: Partial<QualityMaster>) => {
+      const beforeIds = new Set(productionMastersService.getQualities().map((q) => q.id))
       setQualities(
         productionMastersService.addQuality({
           ...partial,
           createdOn: partial?.createdOn || selectedDate,
         })
       )
+      const added = productionMastersService.getQualities().find((q) => !beforeIds.has(q.id))
+      return added?.id ?? null
     },
     [selectedDate]
   )
@@ -427,6 +425,7 @@ export function useProductionGrid() {
           }
         })
       }
+      return newQuality?.id ?? null
     },
     [selectedDate, showError]
   )

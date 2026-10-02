@@ -30,7 +30,7 @@ export function PageHeader({
             <h1 className="fw-normal text-body text-truncate mb-0">{title}</h1>
           </div>
           {actions && (
-            <div className="d-flex flex-wrap align-items-center gap-2 row-gap-2 sara-page-header__actions">
+            <div className="d-flex flex-wrap align-items-center gap-2 row-gap-2 justify-content-sm-end sara-page-header__actions">
               {actions}
             </div>
           )}

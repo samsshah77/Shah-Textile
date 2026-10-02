@@ -507,6 +507,94 @@ export function qualityHasDuplicateName(q: QualityMaster, qualities: QualityMast
   return picks.size > 1
 }
 
+/** Live Active/Hold row with the same cleaned name (exclude one id). */
+export function findLiveQualityByName(
+  qualities: QualityMaster[],
+  name: string,
+  excludeId?: string
+): QualityMaster | undefined {
+  const key = qualityNameKey(name)
+  if (!key) return undefined
+  return qualities.find((item) => {
+    if (excludeId && item.id === excludeId) return false
+    const status = normalizeQualityStatus(item.status)
+    if (status !== 'ACTIVE' && status !== 'HOLD') return false
+    return qualityNameKey(item.name) === key
+  })
+}
+
+/**
+ * At most one Active per quality name. Older duplicates become ENDED
+ * so Reuse / Continue never leave two SILVER-SHINE on Active.
+ * Returns { qualities, remaps } where remaps maps demotedId → kept Active id.
+ */
+export function collapseDuplicateActiveQualities(
+  list: QualityMaster[],
+  endDay: string = getProductionToday()
+): QualityMaster[] {
+  const day = String(endDay || getProductionToday()).slice(0, 10)
+  const byName = new Map<string, QualityMaster[]>()
+  for (const q of list) {
+    if (normalizeQualityStatus(q.status) !== 'ACTIVE') continue
+    const key = qualityNameKey(q.name)
+    if (!key) continue
+    const arr = byName.get(key) || []
+    arr.push(q)
+    byName.set(key, arr)
+  }
+  const demote = new Map<string, string>() // demotedId → keptId
+  for (const arr of byName.values()) {
+    if (arr.length <= 1) continue
+    const sorted = [...arr].sort((a, b) => {
+      const ca = a.createdOn ? String(a.createdOn).slice(0, 10) : '1970-01-01'
+      const cb = b.createdOn ? String(b.createdOn).slice(0, 10) : '1970-01-01'
+      if (ca !== cb) return cb.localeCompare(ca)
+      return b.id.localeCompare(a.id)
+    })
+    const kept = sorted[0]
+    for (const older of sorted.slice(1)) demote.set(older.id, kept.id)
+  }
+  if (demote.size === 0) return list
+  return list.map((q) =>
+    demote.has(q.id)
+      ? normalizeQuality({
+          ...q,
+          status: 'ENDED',
+          endedOn: q.endedOn ? String(q.endedOn).slice(0, 10) : day,
+        })
+      : q
+  )
+}
+
+/** Remap loom.qualityId after duplicate Active collapse (demoted → kept). */
+export function remapLoomQualityIdsAfterCollapse(
+  looms: LoomMaster[],
+  before: QualityMaster[],
+  after: QualityMaster[]
+): LoomMaster[] {
+  const beforeActive = before.filter((q) => normalizeQualityStatus(q.status) === 'ACTIVE')
+  const afterByName = new Map<string, string>()
+  for (const q of after) {
+    if (normalizeQualityStatus(q.status) !== 'ACTIVE') continue
+    afterByName.set(qualityNameKey(q.name), q.id)
+  }
+  let changed = false
+  const next = looms.map((l) => {
+    if (!l.qualityId) return l
+    const stillActive = after.some(
+      (q) => q.id === l.qualityId && normalizeQualityStatus(q.status) === 'ACTIVE'
+    )
+    if (stillActive) return l
+    const was = beforeActive.find((q) => q.id === l.qualityId)
+    if (!was) return l
+    const keptId = afterByName.get(qualityNameKey(was.name))
+    if (!keptId || keptId === l.qualityId) return l
+    changed = true
+    return { ...l, qualityId: keptId }
+  })
+  return changed ? next : looms
+}
+
 /** Display name on cards / looms — plain name only (Pick is shown in its own column). */
 export function qualityDisplayName(q: QualityMaster, _qualities?: QualityMaster[]) {
   return q.name
@@ -519,9 +607,61 @@ export function matchQualityByNameAndPick(
 ): QualityMaster | undefined {
   const named = qualities.filter((item) => qualityNameKey(item.name) === qualityNameKey(name))
   if (named.length === 0) return undefined
-  if (named.length === 1) return named[0]
-  if (pick != null) return named.find((item) => Number(item.pick) === Number(pick))
-  return undefined
+
+  const rank = (q: QualityMaster) => {
+    const status = normalizeQualityStatus(q.status)
+    if (status === 'ACTIVE') return 3
+    if (status === 'HOLD') return 2
+    return 1
+  }
+  const byPick =
+    pick != null && named.length > 1
+      ? named.filter((item) => Number(item.pick) === Number(pick))
+      : named
+  const pool = byPick.length > 0 ? byPick : named
+  return [...pool].sort((a, b) => {
+    const ra = rank(a)
+    const rb = rank(b)
+    if (ra !== rb) return rb - ra
+    const ca = a.createdOn ? String(a.createdOn).slice(0, 10) : '1970-01-01'
+    const cb = b.createdOn ? String(b.createdOn).slice(0, 10) : '1970-01-01'
+    if (ca !== cb) return cb.localeCompare(ca)
+    return b.id.localeCompare(a.id)
+  })[0]
+}
+
+/** Day-wise quality on a loom: sheet row for that date, else master allotment. */
+export function qualityIdOnLoomForDate(
+  loom: LoomMaster,
+  qualities: QualityMaster[],
+  dayRows: DailyLoomProductionEntry[]
+): string | null {
+  const row = dayRows.find((e) => e.loomNumber === loom.loomNumber)
+
+  // Prefer live master allotment when sheet name matches it (Reuse left ENDED+Active
+  // with the same name — old match picked ENDED and the dropdown looked blank).
+  if (loom.qualityId) {
+    const masterQ = qualities.find((q) => q.id === loom.qualityId)
+    const masterStatus = masterQ ? normalizeQualityStatus(masterQ.status) : null
+    if (masterQ && (masterStatus === 'ACTIVE' || masterStatus === 'HOLD')) {
+      if (!row) return loom.qualityId
+      const sheetName = (row.qualityName || '').trim()
+      if (sheetName && sheetName !== '—' && qualityNameKey(sheetName) === qualityNameKey(masterQ.name)) {
+        return loom.qualityId
+      }
+    }
+  }
+
+  if (row) {
+    const name = (row.qualityName || '').trim()
+    if (!name || name === '—') return null
+    return (
+      matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ??
+      loom.qualityId ??
+      null
+    )
+  }
+  return loom.qualityId ?? null
 }
 
 /**
@@ -577,7 +717,9 @@ export function qualityRunThatOwnsSheetEntry(
   return [...candidates].sort((a, b) => {
     const statusA = normalizeQualityStatus(a.status)
     const statusB = normalizeQualityStatus(b.status)
-    // Prefer Active run over Ends history when both cover the day (reuse same day).
+    // Prefer ENDED history over new Active — Reuse Track starts at zero same day.
+    if (statusA === 'ENDED' && statusB === 'ACTIVE') return -1
+    if (statusB === 'ENDED' && statusA === 'ACTIVE') return 1
     if (statusA === 'ACTIVE' && statusB !== 'ACTIVE') return -1
     if (statusB === 'ACTIVE' && statusA !== 'ACTIVE') return 1
     const ca = a.createdOn ? String(a.createdOn).slice(0, 10) : '1970-01-01'
@@ -641,21 +783,6 @@ export function qualityAssignedOnDay(
 ): boolean {
   if (looms.some((l) => l.qualityId === q.id)) return true
   return dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))
-}
-
-/** Day-wise quality on a loom: sheet row for that date, else master allotment. */
-export function qualityIdOnLoomForDate(
-  loom: LoomMaster,
-  qualities: QualityMaster[],
-  dayRows: DailyLoomProductionEntry[]
-): string | null {
-  const row = dayRows.find((e) => e.loomNumber === loom.loomNumber)
-  if (row) {
-    const name = (row.qualityName || '').trim()
-    if (!name || name === '—') return null
-    return matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ?? null
-  }
-  return loom.qualityId ?? null
 }
 
 /** Day-wise RPM on a loom: sheet row for that date, else master default. */
@@ -2591,14 +2718,33 @@ class ProductionMastersService {
   }
 
   getQualities(): QualityMaster[] {
-    const merged = applyLocalPendingQualities(
+    const before = applyLocalPendingQualities(
       applyLocalQualityEnds(loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality))
     )
+    const merged = collapseDuplicateActiveQualities(before)
     // Keep merged Active forks in memory so later PUTs include them.
     try {
       memoryStore.set(KEY_QUALITY, JSON.stringify(merged))
     } catch {
       // ignore
+    }
+    // If collapse demoted an Active that looms still pointed at, remap to the kept Active.
+    const demoted = before.some((q) => {
+      const next = merged.find((item) => item.id === q.id)
+      return (
+        normalizeQualityStatus(q.status) === 'ACTIVE' &&
+        next != null &&
+        normalizeQualityStatus(next.status) === 'ENDED'
+      )
+    })
+    if (demoted) {
+      try {
+        const looms = loadJson(KEY_LOOMS, seedLooms)
+        const remapped = remapLoomQualityIdsAfterCollapse(looms, before, merged)
+        if (remapped !== looms) saveJson(KEY_LOOMS, remapped)
+      } catch {
+        // ignore
+      }
     }
     return merged
   }
@@ -2634,13 +2780,34 @@ class ProductionMastersService {
     // Already ended/hold: only allow explicit revive to ACTIVE (or re-stamp date).
     if (currentStatus === 'ENDED' || currentStatus === 'HOLD') {
       if (nextPatch.status === 'ACTIVE') {
-        // explicit revive / reassign
+        // explicit revive / continue / resume
       } else if (nextPatch.status && nextPatch.status !== currentStatus) {
         // allow HOLD ↔ ENDED switches
       } else if (nextPatch.status) {
         delete nextPatch.status
       }
     }
+
+    /** Continue / Resume: undo End-Hold clear so same meters stay on this run. */
+    const reviving =
+      Boolean(current) &&
+      (currentStatus === 'ENDED' || currentStatus === 'HOLD') &&
+      nextPatch.status === 'ACTIVE'
+    // Cannot Continue/Resume when another Active already uses this name (Reuse path).
+    if (reviving && current && findLiveQualityByName(catalogBefore, current.name, current.id)) {
+      return catalogBefore
+    }
+    const reviveEndDay = reviving
+      ? String(current?.endedOn || fromDate).slice(0, 10)
+      : ''
+    const restoreLoomNums = reviving
+      ? [
+          ...new Set([
+            ...qualityLoomEndsOnDate(current!, reviveEndDay),
+            ...qualityLoomEndsOnDate(current!),
+          ]),
+        ]
+      : []
 
     // End / Hold: collect looms first, stamp loomEnds, then clear allotment + sheet.
     const clearing = nextPatch.status === 'ENDED' || nextPatch.status === 'HOLD'
@@ -2660,17 +2827,25 @@ class ProductionMastersService {
     const qualities = this.getQualities().map((q) => {
       if (q.id !== id) return q
       const merged = applyMidRunYarnChange(q, nextPatch, fromDate)
-      let loomEnds = nextPatch.loomEnds
-        ? mergeLoomEndLists(q.loomEnds, nextPatch.loomEnds)
-        : q.loomEnds
-      if (clearing && clearLoomNums.size > 0) {
-        const stamped = [...clearLoomNums].map((loomNumber) => ({
-          date: String(fromDate).slice(0, 10),
-          loomNumber,
-        }))
-        loomEnds = mergeLoomEndLists(loomEnds, stamped)
+      if (reviving) {
+        // Drop the close stamp so L# / Track treat this as the same open run.
+        const kept = (q.loomEnds || []).filter((e) => e.date !== reviveEndDay)
+        merged.loomEnds = kept.length ? kept : undefined
+        merged.endedOn = null
+        merged.status = 'ACTIVE'
+      } else {
+        let loomEnds = nextPatch.loomEnds
+          ? mergeLoomEndLists(q.loomEnds, nextPatch.loomEnds)
+          : q.loomEnds
+        if (clearing && clearLoomNums.size > 0) {
+          const stamped = [...clearLoomNums].map((loomNumber) => ({
+            date: String(fromDate).slice(0, 10),
+            loomNumber,
+          }))
+          loomEnds = mergeLoomEndLists(loomEnds, stamped)
+        }
+        if (loomEnds) merged.loomEnds = loomEnds
       }
-      if (loomEnds) merged.loomEnds = loomEnds
       return normalizeQuality(merged)
     })
 
@@ -2689,6 +2864,29 @@ class ProductionMastersService {
       }
     }
     this.saveQualities(qualities)
+
+    if (reviving && restoreLoomNums.length > 0) {
+      const looms = this.getLooms()
+      const nextLooms = looms.map((l) => {
+        if (!restoreLoomNums.includes(l.loomNumber)) return l
+        // Don't steal a loom already given to another quality after the close.
+        if (l.qualityId && l.qualityId !== id) return l
+        return { ...l, qualityId: id }
+      })
+      this.saveLooms(nextLooms)
+
+      const sheetDays = new Set<string>([reviveEndDay, String(fromDate).slice(0, 10)])
+      for (const day of sheetDays) {
+        if (!day || !this.peekSheetDay(day)) continue
+        for (const loomNumber of restoreLoomNums) {
+          const loom = nextLooms.find((l) => l.loomNumber === loomNumber)
+          if (!loom || loom.qualityId !== id) continue
+          // Restore quality name on the cleared day — Actual A/B meters stay as-is.
+          this.updateSheetEntry(day, loomNumber, this.recipeForLoom({ ...loom, qualityId: id }, day))
+        }
+      }
+    }
+
     const saved = qualities.find((q) => q.id === id)
     if (saved?.status === 'ENDED' && saved.endedOn) {
       rememberLocalQualityEnd(id, saved.endedOn, saved.name, saved.loomEnds)
@@ -2717,7 +2915,7 @@ class ProductionMastersService {
         )
       }
     }
-    return qualities
+    return this.getQualities()
   }
 
   addQuality(partial?: Partial<QualityMaster>, createdOn: string = getProductionToday()): QualityMaster[] {
@@ -2762,6 +2960,11 @@ class ProductionMastersService {
     if (String(id).startsWith('q-end-')) {
       return { qualities: list, newQuality: null, archive: null }
     }
+    // Same name already live on Active/Hold → Reuse would duplicate the row.
+    const liveSame = findLiveQualityByName(list, src.name, src.id)
+    if (liveSame) {
+      return { qualities: list, newQuality: null, archive: null }
+    }
     const day = String(createdOn || getProductionToday()).slice(0, 10)
     const endedOn = src.endedOn ? String(src.endedOn).slice(0, 10) : day
 
@@ -2786,7 +2989,10 @@ class ProductionMastersService {
     rememberLocalQualityEnd(src.id, endedOn, src.name, src.loomEnds)
     rememberLocalPendingQuality(newQuality)
 
-    const qualities = [...list.filter((q) => q.id !== newQuality.id), newQuality]
+    const qualities = collapseDuplicateActiveQualities(
+      [...list.filter((q) => q.id !== newQuality.id), newQuality],
+      day
+    )
     // Memory only — full PUT can race and drop the new Active before upsert lands.
     this.saveQualitiesMemory(qualities)
     return { qualities, newQuality, archive: normalizeQuality({ ...src, status: 'ENDED', endedOn }) }
@@ -2860,11 +3066,15 @@ class ProductionMastersService {
   ): string | null | undefined {
     if (!qualityId) return qualityId
     const q = this.getQualities().find((item) => item.id === qualityId)
-    if (!q || normalizeQualityStatus(q.status) !== 'ENDED') return qualityId
+    if (!q) return qualityId
+    if (normalizeQualityStatus(q.status) !== 'ENDED') return qualityId
     // Archive ids are already closed history — don't reuse those.
     if (String(qualityId).startsWith('q-end-')) return qualityId
     const { newQuality } = this.reassignEndedQuality(qualityId, dateStr)
-    return newQuality?.id || qualityId
+    if (newQuality) return newQuality.id
+    // Same name already Active (Reuse blocked) — assign that live row instead.
+    const live = findLiveQualityByName(this.getQualities(), q.name, q.id)
+    return live?.id || qualityId
   }
 
   /** Push one quality's status/endedOn to DB (await before refresh-safe UI). */

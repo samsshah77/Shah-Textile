@@ -91,6 +91,11 @@ interface BeamMasterTableProps {
   /** Controlled stock filter (PageHeader). */
   filter?: BeamFilterType
   onFilterChange?: (f: BeamFilterType) => void
+  toolbarInChrome?: boolean
+  tableEdit?: boolean
+  onTableEditChange?: (next: boolean) => void
+  addModalOpen?: boolean
+  onAddModalOpenChange?: (open: boolean) => void
 }
 
 function getDaysDifference(from?: string | null, to?: string | null): number {
@@ -201,15 +206,31 @@ export function BeamMasterTable({
   readOnly,
   filter: filterProp,
   onFilterChange,
+  toolbarInChrome = false,
+  tableEdit: tableEditProp,
+  onTableEditChange,
+  addModalOpen: addModalOpenProp,
+  onAddModalOpenChange,
 }: BeamMasterTableProps) {
   const { canEditProduction } = useAuth()
   const { showError, showConfirm, showSuccessSoon } = useAlertDialog()
   const [filterInternal, setFilterInternal] = useState<BeamFilterType>('ALL')
   const filter = filterProp ?? filterInternal
   const setFilter = onFilterChange ?? setFilterInternal
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const [mode, setMode] = useState<TableGridMode>('table')
-  const [tableEdit, setTableEdit] = useState(false)
+  const [tableEditLocal, setTableEditLocal] = useState(false)
+
+  const tableEdit = tableEditProp ?? tableEditLocal
+  const setTableEdit = (next: boolean) => {
+    onTableEditChange?.(next)
+    if (tableEditProp === undefined) setTableEditLocal(next)
+  }
+  const isAddModalOpen = addModalOpenProp ?? isAddModalOpenLocal
+  const setIsAddModalOpen = (next: boolean) => {
+    onAddModalOpenChange?.(next)
+    if (addModalOpenProp === undefined) setIsAddModalOpenLocal(next)
+  }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_beam_col_widths_v7',
@@ -354,12 +375,12 @@ export function BeamMasterTable({
         </div>
 
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto justify-content-end">
-          {editToggle}
+          {!toolbarInChrome && editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && canEditProduction && (
+          {!toolbarInChrome && !readOnly && canEditProduction && (
             <button
               type="button"
-              className="btn btn-sm btn-primary"
+              className="btn btn-sm btn-success"
               onClick={() => setIsAddModalOpen(true)}
             >
               <i className="bi bi-plus-lg me-1" /> Add Beam

@@ -104,6 +104,7 @@ function shortDay(dateStr: string) {
 export default function DashboardPage() {
   const productionToday = getProductionToday()
   const productionYesterday = getProductionYesterday()
+  /** Open on Today — yesterday user khud select karega. */
   const [selectedDate, setSelectedDate] = useState(() => getProductionToday())
   const [loading, setLoading] = useState(true)
   const [day, setDay] = useState({
@@ -388,7 +389,7 @@ export default function DashboardPage() {
           <p className="text-body-secondary mb-0 small">
             Dashboard sirf floor production sheets se data leta hai (dummy history nahi). Date
             calendar se koi bhi entered din dekho — default{' '}
-            <strong>{shortDay(productionYesterday)}</strong> (completed day).
+            <strong>{shortDay(productionToday)}</strong> (Today).
           </p>
         </div>
       </div>

@@ -1,13 +1,9 @@
 /** Production floor calendar — Asia/Karachi.
- * Daily Entry and Production Sheet are dated the wall-clock day (28 banegi 28 ki).
- * Dashboard shows the previous calendar day, because that cloth is already off the roller.
- * wall-clock 28 → sheet Today = 28, dashboard = 27.
+ * Default open day is always wall-clock Today.
+ * Yesterday / other days: user selects manually (date picker or quick buttons).
  */
 
 const MILL_TZ = 'Asia/Karachi'
-
-/** Production day lags wall-clock by this many days (sheet = pichla din). */
-const PRODUCTION_DAY_LAG = 1
 
 function formatLocalIso(d: Date, timeZone: string = MILL_TZ): string {
   // en-CA → YYYY-MM-DD
@@ -22,20 +18,20 @@ function formatLocalIso(d: Date, timeZone: string = MILL_TZ): string {
 /** Earliest day the floor calendar allows (seed / Excel start). */
 export const PRODUCTION_START = '2026-09-01'
 
-/** Real wall-clock date in mill timezone (not used as sheet date). */
+/** Real wall-clock date in mill timezone. */
 export function getCalendarToday(): string {
   return formatLocalIso(new Date())
 }
 
 /**
- * Active production “Today” — always yesterday’s calendar date
- * (sheet hamesha pichle din ki banti hai).
+ * Active production “Today” — same as mill wall-clock date
+ * (Daily Entry / Production Sheet open on aaj).
  */
 export function getProductionToday(): string {
-  return shiftProductionDate(getCalendarToday(), -PRODUCTION_DAY_LAG)
+  return getCalendarToday()
 }
 
-/** Completed production day before active Today (calendar today − 2). */
+/** Completed production day before active Today (calendar yesterday). */
 export function getProductionYesterday(): string {
   return shiftProductionDate(getProductionToday(), -1)
 }

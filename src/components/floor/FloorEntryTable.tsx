@@ -19,6 +19,9 @@ interface FloorEntryTableProps {
   onSubmitForApproval?: () => Promise<{ success: boolean; error?: string }>
   onApproveSheet?: () => Promise<{ success: boolean; error?: string }>
   onUnlockSheet?: () => Promise<{ success: boolean; error?: string }>
+  toolbarInChrome?: boolean
+  tableEdit?: boolean
+  onTableEditChange?: (next: boolean) => void
 }
 
 const DEFAULT_WIDTHS: Record<string, number> = {
@@ -42,15 +45,24 @@ export function FloorEntryTable({
   onSubmitForApproval,
   onApproveSheet,
   onUnlockSheet,
+  toolbarInChrome = false,
+  tableEdit: tableEditProp,
+  onTableEditChange,
 }: FloorEntryTableProps) {
   const { user, isAdmin, isQualityController } = useAuth()
   const { showConfirm, showSuccessSoon } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
-  const [tableEdit, setTableEdit] = useState(false)
+  const [tableEditLocal, setTableEditLocal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'danger'; text: string } | null>(null)
   /** After Finalize, Reset stays off until someone edits Daily Entry again. */
   const [editedSinceFinalize, setEditedSinceFinalize] = useState(false)
+
+  const tableEdit = tableEditProp ?? tableEditLocal
+  const setTableEdit = (next: boolean) => {
+    onTableEditChange?.(next)
+    if (tableEditProp === undefined) setTableEditLocal(next)
+  }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_prod_entry_col_widths_v3',
@@ -267,7 +279,7 @@ export function FloorEntryTable({
             </button>
           )}
 
-          {editToggle}
+          {!toolbarInChrome && editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
           <button
             type="button"

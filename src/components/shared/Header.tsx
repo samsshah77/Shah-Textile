@@ -1,17 +1,33 @@
 'use client'
 
-import { useState, useEffect, Suspense, useRef } from 'react'
+import { useState, useEffect, Suspense, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
+import { useFloorDateLabel } from '@/context/FloorDateContext'
 import { UserRole } from '@/types/auth'
 import { toggleSidebar } from '@/lib/sidebarToggle'
+import { getCalendarToday } from '@/constants/productionCalendar'
+
+function formatHeaderDate(dateStr: string) {
+  try {
+    return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+  } catch {
+    return dateStr
+  }
+}
 
 function HeaderContent() {
   const pathname = usePathname()
   const [timeStr, setTimeStr] = useState('')
   const [pendingCount, setPendingCount] = useState(0)
   const menuRef = useRef<HTMLLIElement>(null)
+  const { dateLabel: floorDateLabel } = useFloorDateLabel()
 
   const {
     user,
@@ -19,6 +35,11 @@ function HeaderContent() {
     isLoggingOut,
     logout,
   } = useAuth()
+
+  const headerDateLabel = useMemo(
+    () => floorDateLabel || formatHeaderDate(getCalendarToday()),
+    [floorDateLabel]
+  )
 
   useEffect(() => {
     const updateTime = () => {
@@ -100,7 +121,17 @@ function HeaderContent() {
           </li>
         </ul>
 
-        <ul className="navbar-nav ms-auto">
+        <ul className="navbar-nav ms-auto align-items-center">
+          <li className="nav-item d-none d-sm-flex align-items-center me-2">
+            <span
+              className="badge text-bg-secondary fw-semibold"
+              title="Floor date"
+              style={{ fontSize: '0.78rem', letterSpacing: '0.01em' }}
+            >
+              {headerDateLabel}
+            </span>
+          </li>
+
           <li className="nav-item d-none d-sm-flex align-items-center me-2">
             <span
               className="d-inline-flex align-items-center gap-2 px-2.5 py-1 rounded-pill border"

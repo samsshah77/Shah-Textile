@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useRef, useEffect } from 'react'
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import {
   QualityMaster,
   LoomMaster,
@@ -16,6 +16,7 @@ import {
   qualityEndedVisibleOnDate,
   qualityNameKey,
   qualityLoomEndsOnDate,
+  findLiveQualityByName,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -25,6 +26,11 @@ import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import {
+  rememberQualityAssignFlash,
+  peekQualityAssignFlashIds,
+  clearQualityAssignFlashIds,
+} from '@/lib/qualityAssignFlash'
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   sr: 46,
@@ -69,21 +75,21 @@ export function QualityStatusFilterBar({
     <div className="btn-group btn-group-sm" role="group" aria-label="Quality status filter">
       <button
         type="button"
-        className={`btn ${filter === 'ACTIVE' ? 'btn-primary' : 'btn-outline-secondary'}`}
+        className={`btn ${filter === 'ACTIVE' ? 'btn-success' : 'btn-outline-success'}`}
         onClick={() => onChange('ACTIVE')}
       >
         Active ({counts.active})
       </button>
       <button
         type="button"
-        className={`btn ${filter === 'HOLD' ? 'btn-primary' : 'btn-outline-secondary'}`}
+        className={`btn ${filter === 'HOLD' ? 'sara-btn-hold' : 'sara-btn-hold-outline'}`}
         onClick={() => onChange('HOLD')}
       >
         Hold ({counts.hold})
       </button>
       <button
         type="button"
-        className={`btn ${filter === 'ENDED' ? 'btn-primary' : 'btn-outline-secondary'}`}
+        className={`btn ${filter === 'ENDED' ? 'btn-secondary' : 'btn-outline-secondary'}`}
         onClick={() => onChange('ENDED')}
       >
         Quality Ends ({counts.ended})
@@ -124,18 +130,40 @@ function formatShortDate(dateStr?: string | null) {
 interface QualityMasterTableProps {
   qualities: QualityMaster[]
   onUpdate: (id: string, patch: Partial<QualityMaster>) => void
-  onAdd: (newQuality?: Partial<QualityMaster>) => void
+  onAdd: (newQuality?: Partial<QualityMaster>) => string | null | void
   onDelete: (id: string) => void
-  /** Keep ENDED row for month PDF; fork a new Active run from zero. */
-  onReassignEnded: (id: string, createdOn: string) => void
+  /** Keep ENDED row for month PDF; fork a new Active run from zero. Returns new Active id. */
+  onReassignEnded: (id: string, createdOn: string) => string | null | void
   readOnly?: boolean
   entries?: DailyLoomProductionEntry[]
   looms?: LoomMaster[]
   beams?: BeamMaster[]
   yarn?: YarnMaster[]
   statusFilter?: QualityStatusFilter
+  /** Switch Active / Hold / Ends tab after End / Hold / Resume / etc. */
+  onStatusFilterChange?: (filter: QualityStatusFilter) => void
   /** Production day whose looms and meters this table is showing. */
   sheetDate?: string
+  /** Put Edit / View / Add in the page sticky chrome (not the scrolling card header). */
+  toolbarInChrome?: boolean
+  tableEdit?: boolean
+  onTableEditChange?: (next: boolean) => void
+  viewMode?: TableGridMode
+  onViewModeChange?: (mode: TableGridMode) => void
+  addModalOpen?: boolean
+  onAddModalOpenChange?: (open: boolean) => void
+}
+
+type FlashTone = 'ended' | 'hold' | 'active' | 'reuse'
+
+/** Row stays highlighted this long after assign / End / Hold / etc. */
+const QUALITY_FLASH_MS = 8500
+
+const FLASH_CLASS: Record<FlashTone, string> = {
+  ended: 'sara-quality-flash-ended',
+  hold: 'sara-quality-flash-hold',
+  active: 'sara-quality-flash-active',
+  reuse: 'sara-quality-flash-reuse',
 }
 
 export function QualityMasterTable({
@@ -150,12 +178,24 @@ export function QualityMasterTable({
   beams = [],
   yarn = [],
   statusFilter = 'ACTIVE',
+  onStatusFilterChange,
   sheetDate = PRODUCTION_TODAY,
+  toolbarInChrome = false,
+  tableEdit: tableEditProp,
+  onTableEditChange,
+  viewMode: viewModeProp,
+  onViewModeChange,
+  addModalOpen: addModalOpenProp,
+  onAddModalOpenChange,
 }: QualityMasterTableProps) {
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon, showInfo, showError } = useAlertDialog()
-  const [mode, setMode] = useState<TableGridMode>('table')
-  const [tableEdit, setTableEdit] = useState(false)
+  const [modeLocal, setModeLocal] = useState<TableGridMode>('table')
+  const [tableEditLocal, setTableEditLocal] = useState(false)
+  const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set())
+  const [flashTone, setFlashTone] = useState<FlashTone>('active')
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const assignFlashShownRef = useRef(false)
 
   // Add Quality Modal Dialog State
   const emptyAddForm = {
@@ -169,9 +209,30 @@ export function QualityMasterTable({
     widthInch: '',
     gsm: '',
   }
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const [addForm, setAddForm] = useState(emptyAddForm)
   const [endsFabricFilter, setEndsFabricFilter] = useState<'ALL' | 'Suiting' | 'Shirting'>('ALL')
+
+  const mode = viewModeProp ?? modeLocal
+  const setMode = (next: TableGridMode) => {
+    onViewModeChange?.(next)
+    if (viewModeProp === undefined) setModeLocal(next)
+  }
+  const tableEdit = tableEditProp ?? tableEditLocal
+  const setTableEdit = (next: boolean) => {
+    onTableEditChange?.(next)
+    if (tableEditProp === undefined) setTableEditLocal(next)
+  }
+  const isAddModalOpen = addModalOpenProp ?? isAddModalOpenLocal
+  const setIsAddModalOpen = (next: boolean) => {
+    onAddModalOpenChange?.(next)
+    if (addModalOpenProp === undefined) setIsAddModalOpenLocal(next)
+  }
+
+  useEffect(() => {
+    if (isAddModalOpen) setAddForm({ ...emptyAddForm })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when modal opens
+  }, [isAddModalOpen])
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_quality_col_widths_v11',
@@ -398,6 +459,45 @@ export function QualityMasterTable({
     })
   }
 
+  /** Highlight only — no tab switch, no scroll navigation. */
+  const flashRows = useCallback((ids: string | string[], tone: FlashTone) => {
+    const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean)
+    if (list.length === 0) return
+    setFlashTone(tone)
+    setFlashIds(new Set(list))
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = setTimeout(() => setFlashIds(new Set()), QUALITY_FLASH_MS)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    }
+  }, [])
+
+  // Quality Active: briefly tint rows newly assigned from Looms (no auto-navigation).
+  useEffect(() => {
+    if (statusFilter !== 'ACTIVE') {
+      assignFlashShownRef.current = false
+      return
+    }
+    if (assignFlashShownRef.current) return
+    const pending = peekQualityAssignFlashIds()
+    if (pending.length === 0) {
+      assignFlashShownRef.current = true
+      return
+    }
+    const visible = pending.filter((id) => qualities.some((q) => q.id === id))
+    // Wait until qualities list has loaded before consuming pending ids.
+    if (visible.length === 0 && qualities.length === 0) return
+    assignFlashShownRef.current = true
+    clearQualityAssignFlashIds()
+    if (visible.length > 0) flashRows(visible, 'active')
+  }, [statusFilter, qualities, flashRows])
+
+  const flashClassFor = (id: string) =>
+    flashIds.has(id) ? FLASH_CLASS[flashTone] : undefined
+
   const handleEnd = (q: QualityMaster) => {
     if (!canOps) return
     if ((q.status ?? 'ACTIVE') === 'ENDED') return
@@ -413,7 +513,7 @@ export function QualityMasterTable({
         onUpdate(q.id, { status: 'ENDED', endedOn: endDate })
         showSuccessSoon({
           title: 'Quality Ended',
-          message: `"${label}" end ho gayi. Related looms pe “Ended” dikhega.`,
+          message: `"${label}" Ends pe chali gayi.`,
         })
       },
     })
@@ -434,7 +534,7 @@ export function QualityMasterTable({
         onUpdate(q.id, { status: 'HOLD', endedOn: holdDate })
         showSuccessSoon({
           title: 'Quality On Hold',
-          message: `"${label}" hold pe aa gayi. Related looms pe “Hold” dikhega.`,
+          message: `"${label}" Hold pe chali gayi.`,
         })
       },
     })
@@ -451,9 +551,11 @@ export function QualityMasterTable({
       cancelText: 'Cancel',
       onConfirm: () => {
         onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        rememberQualityAssignFlash(q.id)
+        flashRows(q.id, 'active')
         showSuccessSoon({
           title: 'Quality Resumed',
-          message: `"${label}" Active pe wapas aa gayi.`,
+          message: `"${label}" Active pe wapas — thodi der highlight.`,
         })
       },
     })
@@ -463,6 +565,14 @@ export function QualityMasterTable({
     if (!canArchiveOps) return
     const day = String(sheetDate || '').slice(0, 10)
     const label = qualityDisplayName(q, qualities)
+    const liveSame = findLiveQualityByName(qualities, q.name, q.id)
+    if (liveSame) {
+      showError({
+        title: 'Same name Active pe pehle se hai',
+        message: `"${liveSame.name}" Active/Hold pe already hai. Same quality name do baar nahi ho sakta. Pehle usko End karo, ya sirf Continue use karo (purane meters). Reuse = naya run zero se — tabhi jab Active pe ye naam na ho.`,
+      })
+      return
+    }
     showConfirm({
       title: 'Quality Reuse / Reassign?',
       message: `"${label}" ka naya Active run banega — meters zero se. Purana Ends record month hisab / PDF ke liye waisa hi rahega.`,
@@ -470,10 +580,18 @@ export function QualityMasterTable({
       confirmText: 'Reuse',
       cancelText: 'Cancel',
       onConfirm: () => {
-        onReassignEnded(q.id, day)
+        const newId = onReassignEnded(q.id, day) || null
+        if (!newId) {
+          showError({
+            title: 'Reuse nahi hua',
+            message: `Same naam Active pe pehle se maujood hai, ya Ends row reuse nahi ho sakti.`,
+          })
+          return
+        }
+        rememberQualityAssignFlash(newId)
         showSuccessSoon({
           title: 'Quality Reused',
-          message: `"${label}" Active pe naya run — zero se. Ends tab pe purana close record maujood hai.`,
+          message: `"${label}" Active pe naya run — zero se. Quality Active pe jao — thodi der highlight dikhegi.`,
         })
       },
     })
@@ -504,11 +622,11 @@ export function QualityMasterTable({
       confirmText: 'Continue',
       cancelText: 'Cancel',
       onConfirm: () => {
-        // Same run: keep createdOn; only clear ENDED.
         onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        rememberQualityAssignFlash(q.id)
         showSuccessSoon({
           title: 'Quality Continued',
-          message: `"${label}" Active pe wapas — purane meters / Track same rahenge.`,
+          message: `"${label}" Active pe wapas — purane meters same. Active pe jao to highlight dikhegi.`,
         })
       },
     })
@@ -614,15 +732,18 @@ export function QualityMasterTable({
     if (!addForm.name.trim()) return
     const name = addForm.name.trim()
     const key = qualityNameKey(name)
-    const duplicate = qualities.find((q) => qualityNameKey(q.name) === key)
+    const duplicate = findLiveQualityByName(qualities, name) || qualities.find((q) => qualityNameKey(q.name) === key)
     if (duplicate) {
       showError({
         title: 'Quality pehle se maujood hai',
-        message: `"${duplicate.name}" is naam se pehle se list me hai. Naya naam use karo, ya Ends se Reuse karo.`,
+        message:
+          (duplicate.status ?? 'ACTIVE') === 'ACTIVE' || (duplicate.status ?? '') === 'HOLD'
+            ? `"${duplicate.name}" Active/Hold pe pehle se hai. Same naam do baar nahi. Ends pe ho to wahan se Reuse (zero se) karo.`
+            : `"${duplicate.name}" Ends list me pehle se hai. Naya Add mat karo — Ends se Reuse (zero se) karo, ya Continue (same meters).`,
       })
       return
     }
-    onAdd({
+    const newId = onAdd({
       name,
       fabricType: normalizeFabricType(addForm.fabricType),
       weavePlan: addForm.weavePlan.trim(),
@@ -635,14 +756,65 @@ export function QualityMasterTable({
     })
     setIsAddModalOpen(false)
     setAddForm({ ...emptyAddForm })
+    if (newId) {
+      rememberQualityAssignFlash(newId)
+      flashRows(newId, 'active')
+    }
     showSuccessSoon({
       title: 'Quality Added',
-      message: `"${name}" add ho gayi — meters zero se shuru.`,
+      message: `"${name}" add ho gayi — thodi der highlight.`,
     })
   }
 
   return (
     <div className="card">
+      <style>{`
+        /* Flat soft row tint — one solid color, no per-cell accent stripes */
+        .sara-quality-flash-ended,
+        .sara-quality-flash-ended.master-grid-card,
+        li.sara-quality-flash-ended {
+          background-color: var(--bs-danger-bg-subtle, #f8d7da) !important;
+          box-shadow: none !important;
+        }
+        tr.sara-quality-flash-ended > td {
+          background-color: var(--bs-danger-bg-subtle, #f8d7da) !important;
+          border-color: var(--bs-danger-bg-subtle, #f8d7da) !important;
+          box-shadow: none !important;
+        }
+        .sara-quality-flash-hold,
+        .sara-quality-flash-hold.master-grid-card,
+        li.sara-quality-flash-hold {
+          background-color: var(--bs-warning-bg-subtle, #fff3cd) !important;
+          box-shadow: none !important;
+        }
+        tr.sara-quality-flash-hold > td {
+          background-color: var(--bs-warning-bg-subtle, #fff3cd) !important;
+          border-color: var(--bs-warning-bg-subtle, #fff3cd) !important;
+          box-shadow: none !important;
+        }
+        .sara-quality-flash-active,
+        .sara-quality-flash-active.master-grid-card,
+        li.sara-quality-flash-active {
+          background-color: var(--bs-success-bg-subtle, #d1e7dd) !important;
+          box-shadow: none !important;
+        }
+        tr.sara-quality-flash-active > td {
+          background-color: var(--bs-success-bg-subtle, #d1e7dd) !important;
+          border-color: var(--bs-success-bg-subtle, #d1e7dd) !important;
+          box-shadow: none !important;
+        }
+        .sara-quality-flash-reuse,
+        .sara-quality-flash-reuse.master-grid-card,
+        li.sara-quality-flash-reuse {
+          background-color: var(--bs-info-bg-subtle, #cff4fc) !important;
+          box-shadow: none !important;
+        }
+        tr.sara-quality-flash-reuse > td {
+          background-color: var(--bs-info-bg-subtle, #cff4fc) !important;
+          border-color: var(--bs-info-bg-subtle, #cff4fc) !important;
+          box-shadow: none !important;
+        }
+      `}</style>
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
         <div className="min-w-0">
           <h3 className="card-title mb-0">{cardTitle}</h3>
@@ -678,12 +850,12 @@ export function QualityMasterTable({
               </button>
             </div>
           )}
-          {editToggle}
+          {!toolbarInChrome && editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && canEditProduction && !isArchiveView && (
+          {!toolbarInChrome && !readOnly && canEditProduction && !isArchiveView && (
             <button
               type="button"
-              className="btn btn-sm btn-primary"
+              className="btn btn-sm btn-success"
               onClick={() => {
                 setAddForm({ ...emptyAddForm })
                 setIsAddModalOpen(true)
@@ -711,7 +883,8 @@ export function QualityMasterTable({
                   return (
                   <li
                     key={q.id}
-                    className="list-group-item d-flex flex-column gap-2 px-0"
+                    data-quality-row={q.id}
+                    className={`list-group-item d-flex flex-column gap-2 px-0 ${flashClassFor(q.id) || ''}`}
                   >
                     <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                       <div className="d-flex align-items-center gap-2 min-w-0">
@@ -765,7 +938,14 @@ export function QualityMasterTable({
             return (
               <div
                 key={q.id}
-                className={`master-grid-card${editActive ? ' sara-edit-card' : ''}`}
+                data-quality-row={q.id}
+                className={[
+                  'master-grid-card',
+                  editActive ? 'sara-edit-card' : '',
+                  flashClassFor(q.id) || '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               >
                 <div className="d-flex align-items-center justify-content-between">
                   <div className="fw-semibold d-flex align-items-center gap-1.5 min-w-0">
@@ -995,7 +1175,7 @@ export function QualityMasterTable({
                 orderedForView.map((q, rowIdx) => {
                   const overall = productionByQuality[q.id] || 0
                   return (
-                  <tr key={q.id}>
+                  <tr key={q.id} data-quality-row={q.id} className={flashClassFor(q.id) || undefined}>
                     <td className="px-2 text-center text-muted fw-semibold font-monospace">{rowIdx + 1}</td>
                     <td className="px-2 fw-semibold">{qualityDisplayName(q, qualities)}</td>
                     <td className="px-2 text-secondary">{q.fabricType || '—'}</td>
@@ -1101,7 +1281,10 @@ export function QualityMasterTable({
                 return (
                   <tr
                     key={q.id}
-                    className={editActive ? 'sara-edit-row' : undefined}
+                    data-quality-row={q.id}
+                    className={[editActive ? 'sara-edit-row' : '', flashClassFor(q.id) || '']
+                      .filter(Boolean)
+                      .join(' ') || undefined}
                   >
                     <td className="px-1 text-center text-muted fw-semibold font-monospace" style={{ fontSize: '0.8rem' }}>
                       {rowIdx + 1}
@@ -1273,7 +1456,7 @@ export function QualityMasterTable({
         >
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content shadow-lg border-0">
-              <div className="modal-header bg-primary text-white py-2.5 px-3">
+              <div className="modal-header bg-success text-white py-2.5 px-3">
                 <h5 className="modal-title fs-6 fw-semibold mb-0">
                   <i className="bi bi-plus-circle me-1.5" />
                   Nayi Quality Shamil Karein (Add Quality)

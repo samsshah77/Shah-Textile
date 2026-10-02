@@ -74,7 +74,7 @@ export function ProductionDateFilterBar({
   }
 
   return (
-    <div className="card mb-3 print:hidden d-print-none">
+    <div className="card mb-0 print:hidden d-print-none">
       <div className="card-body py-2">
         <div className="d-flex flex-column flex-lg-row gap-2 align-items-lg-center justify-content-lg-between">
           <div className="d-flex flex-wrap align-items-center gap-2">
@@ -109,15 +109,6 @@ export function ProductionDateFilterBar({
             </div>
 
             <div className="btn-group btn-group-sm" role="group" aria-label="Quick day">
-              <button
-                type="button"
-                onClick={() => setSelectedDate(productionYesterday)}
-                className={cn(smBtn, isYesterday ? 'btn-primary' : 'btn-outline-secondary')}
-                title="Yesterday's complete 24h production (cloth off roller)"
-              >
-                Yesterday
-                <span className="d-none d-md-inline"> ({shortDayLabel(productionYesterday)})</span>
-              </button>
               <button
                 type="button"
                 onClick={() => setSelectedDate(productionToday)}

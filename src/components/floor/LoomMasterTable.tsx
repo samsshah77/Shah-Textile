@@ -51,6 +51,11 @@ interface LoomMasterTableProps {
   onAdd: (partial?: Partial<LoomMaster>) => void
   onDelete?: (loomNumber: number) => void
   readOnly?: boolean
+  toolbarInChrome?: boolean
+  tableEdit?: boolean
+  onTableEditChange?: (next: boolean) => void
+  addModalOpen?: boolean
+  onAddModalOpenChange?: (open: boolean) => void
 }
 
 export function LoomMasterTable({
@@ -62,13 +67,30 @@ export function LoomMasterTable({
   onAdd,
   onDelete,
   readOnly,
+  toolbarInChrome = false,
+  tableEdit: tableEditProp,
+  onTableEditChange,
+  addModalOpen: addModalOpenProp,
+  onAddModalOpenChange,
 }: LoomMasterTableProps) {
   const [mode, setMode] = useState<TableGridMode>('table')
   const [modelFilter, setModelFilter] = useState<'ALL' | LoomCategory>('ALL')
-  const [tableEdit, setTableEdit] = useState(false)
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [tableEditLocal, setTableEditLocal] = useState(false)
+  const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon } = useAlertDialog()
+
+  const tableEdit = tableEditProp ?? tableEditLocal
+  const setTableEdit = (next: boolean) => {
+    onTableEditChange?.(next)
+    if (tableEditProp === undefined) setTableEditLocal(next)
+  }
+  const isAddModalOpen = addModalOpenProp ?? isAddModalOpenLocal
+  const setIsAddModalOpen = (next: boolean) => {
+    onAddModalOpenChange?.(next)
+    if (addModalOpenProp === undefined) setIsAddModalOpenLocal(next)
+  }
+
   const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
   const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
@@ -232,7 +254,7 @@ export function LoomMasterTable({
           )}
         </div>
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
-          {editToggle}
+          {!toolbarInChrome && editToggle}
           <select
             className="form-select form-select-sm"
             style={{ width: 'auto', minWidth: 120 }}
@@ -248,10 +270,10 @@ export function LoomMasterTable({
             ))}
           </select>
           <ViewModeToggle mode={mode} onChange={setMode} />
-          {!readOnly && canEditProduction && (
+          {!toolbarInChrome && !readOnly && canEditProduction && (
             <button
               type="button"
-              className="btn btn-sm btn-primary"
+              className="btn btn-sm btn-success"
               onClick={() => setIsAddModalOpen(true)}
             >
               <i className="bi bi-plus-lg me-1" /> Add

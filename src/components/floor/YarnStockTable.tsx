@@ -86,6 +86,11 @@ interface YarnStockTableProps {
   dateFilterMode: YarnDateFilterMode
   setDateFilterMode: (mode: YarnDateFilterMode) => void
   onDelete?: (id: string) => void
+  toolbarInChrome?: boolean
+  tableEdit?: boolean
+  onTableEditChange?: (next: boolean) => void
+  addModalOpen?: boolean
+  onAddModalOpenChange?: (open: boolean) => void
 }
 
 export function YarnStockTable({
@@ -100,6 +105,11 @@ export function YarnStockTable({
   dateFilterMode,
   setDateFilterMode,
   onDelete,
+  toolbarInChrome = false,
+  tableEdit: tableEditProp,
+  onTableEditChange,
+  addModalOpen: addModalOpenProp,
+  onAddModalOpenChange,
 }: YarnStockTableProps) {
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon } = useAlertDialog()
@@ -108,9 +118,20 @@ export function YarnStockTable({
   const [unit, setUnit] = useState<WeightUnit>('KG')
   const [movementTypeFilter, setMovementTypeFilter] = useState<'ALL' | 'INWARD' | 'OUTWARD'>('ALL')
   const [ledgerLoomFilter, setLedgerLoomFilter] = useState<string>('ALL')
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const [issuingYarn, setIssuingYarn] = useState<YarnMaster | null>(null)
-  const [tableEdit, setTableEdit] = useState(false)
+  const [tableEditLocal, setTableEditLocal] = useState(false)
+
+  const tableEdit = tableEditProp ?? tableEditLocal
+  const setTableEdit = (next: boolean) => {
+    onTableEditChange?.(next)
+    if (tableEditProp === undefined) setTableEditLocal(next)
+  }
+  const isAddModalOpen = addModalOpenProp ?? isAddModalOpenLocal
+  const setIsAddModalOpen = (next: boolean) => {
+    onAddModalOpenChange?.(next)
+    if (addModalOpenProp === undefined) setIsAddModalOpenLocal(next)
+  }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_yarn_col_widths_v5',
@@ -308,7 +329,7 @@ export function YarnStockTable({
       {/* 1. TOP SUMMARY CARDS (IN / OUT / BALANCE WITH ICONS) */}
       <div className="row g-3">
         <div className="col-12 col-md-4">
-          <div className="card shadow-sm border-0 border-start border-4 border-success h-100">
+          <div className="card border-0 border-start border-4 border-success h-100">
             <div className="card-body p-3 d-flex align-items-center justify-content-between">
               <div>
                 <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
@@ -337,7 +358,7 @@ export function YarnStockTable({
         </div>
 
         <div className="col-12 col-md-4">
-          <div className="card shadow-sm border-0 border-start border-4 border-danger h-100">
+          <div className="card border-0 border-start border-4 border-danger h-100">
             <div className="card-body p-3 d-flex align-items-center justify-content-between">
               <div>
                 <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
@@ -366,7 +387,7 @@ export function YarnStockTable({
         </div>
 
         <div className="col-12 col-md-4">
-          <div className="card shadow-sm border-0 border-start border-4 border-primary h-100">
+          <div className="card border-0 border-start border-4 border-primary h-100">
             <div className="card-body p-3 d-flex align-items-center justify-content-between">
               <div>
                 <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
@@ -449,13 +470,13 @@ export function YarnStockTable({
             {activeView === 'STOCK' && tableEdit && (
               <span className="small text-warning align-self-center">Edit on — Enter / Tab next field</span>
             )}
-            {stockEditToggle}
+            {!toolbarInChrome && stockEditToggle}
             {activeView === 'STOCK' && <ViewModeToggle mode={mode} onChange={setMode} />}
 
-            {!readOnly && canEditProduction && (
+            {!toolbarInChrome && !readOnly && canEditProduction && (
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-success"
                 onClick={() => setIsAddModalOpen(true)}
               >
                 <i className="bi bi-plus-lg me-1" /> Add Inward Yarn
