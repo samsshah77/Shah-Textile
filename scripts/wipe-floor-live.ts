@@ -1,5 +1,6 @@
 /**
- * Wipe ALL floor production tables (live/local via DATABASE_URL).
+ * Wipe floor production data (live/local via DATABASE_URL).
+ * KEEPS floor_looms (only clears quality/weft assign).
  * Does NOT touch users, roles, payroll, accounts.
  *
  * Usage:
@@ -50,30 +51,23 @@ if (!connectionString) {
 
 const hostMatch = connectionString.match(/@([^/]+)/)
 console.log('Target host:', hostMatch?.[1] || '(unknown)')
-console.log('Wiping ALL floor_* tables…')
+console.log('Wiping floor data (looms KEPT)…')
 
 const pool = new pg.Pool({ connectionString })
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
 
 async function countAll() {
-  const [
-    sheets,
-    qualities,
-    movements,
-    issuances,
-    yarns,
-    beams,
-    looms,
-  ] = await Promise.all([
-    prisma.floorDailySheet.count(),
-    prisma.floorQuality.count(),
-    prisma.floorYarnMovement.count(),
-    prisma.floorYarnIssuance.count(),
-    prisma.floorYarn.count(),
-    prisma.floorBeam.count(),
-    prisma.floorLoom.count(),
-  ])
+  const [sheets, qualities, movements, issuances, yarns, beams, looms] =
+    await Promise.all([
+      prisma.floorDailySheet.count(),
+      prisma.floorQuality.count(),
+      prisma.floorYarnMovement.count(),
+      prisma.floorYarnIssuance.count(),
+      prisma.floorYarn.count(),
+      prisma.floorBeam.count(),
+      prisma.floorLoom.count(),
+    ])
   return { sheets, qualities, movements, issuances, yarns, beams, looms }
 }
 
@@ -87,7 +81,10 @@ async function main() {
   const qualities = await prisma.floorQuality.deleteMany({})
   const yarns = await prisma.floorYarn.deleteMany({})
   const beams = await prisma.floorBeam.deleteMany({})
-  const looms = await prisma.floorLoom.deleteMany({})
+  // Looms stay — only clear quality / weft allotment for fresh test.
+  const loomsCleared = await prisma.floorLoom.updateMany({
+    data: { qualityId: null, weftYarnId: null },
+  })
 
   console.log('Deleted:', {
     sheets: sheets.count,
@@ -96,18 +93,27 @@ async function main() {
     qualities: qualities.count,
     yarns: yarns.count,
     beams: beams.count,
-    looms: looms.count,
   })
+  console.log('Looms kept:', before.looms, '| cleared assign on:', loomsCleared.count)
 
   const after = await countAll()
   console.log('After:', after)
 
-  const leftover = Object.values(after).reduce((a, b) => a + b, 0)
-  if (leftover !== 0) {
-    console.error('Wipe incomplete — leftover rows:', after)
+  const leftoverOps =
+    after.sheets +
+    after.qualities +
+    after.movements +
+    after.issuances +
+    after.yarns +
+    after.beams
+  if (leftoverOps !== 0) {
+    console.error('Wipe incomplete — leftover ops rows:', after)
     process.exit(1)
   }
-  console.log('Floor wipe complete. Users / payroll / accounts untouched.')
+  if (after.looms === 0) {
+    console.warn('WARNING: no looms in DB (they were already empty). Seed looms from app if needed.')
+  }
+  console.log('Floor wipe complete. Looms kept. Users / payroll / accounts untouched.')
 }
 
 main()

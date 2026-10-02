@@ -1,10 +1,8 @@
 /**
- * Wipe ALL floor_* tables. Users / payroll / accounts untouched.
+ * Wipe floor production data. KEEPS floor_looms (clears quality/weft only).
  *
- * On Plesk (Application Root /httpdocs), Run Node.js command:
+ * Plesk Run Node.js command:
  *   CONFIRM_FLOOR_WIPE=YES node scripts/wipe-floor-live.mjs
- *
- * Uses DATABASE_URL from the environment (Plesk Node.js custom vars).
  */
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -23,7 +21,7 @@ if (!connectionString) {
 
 const hostMatch = connectionString.match(/@([^/]+)/)
 console.log('Target host:', hostMatch?.[1] || '(unknown)')
-console.log('Wiping ALL floor_* tables…')
+console.log('Wiping floor data (looms KEPT)…')
 
 const pool = new pg.Pool({ connectionString })
 const adapter = new PrismaPg(pool)
@@ -53,7 +51,9 @@ async function main() {
   const qualities = await prisma.floorQuality.deleteMany({})
   const yarns = await prisma.floorYarn.deleteMany({})
   const beams = await prisma.floorBeam.deleteMany({})
-  const looms = await prisma.floorLoom.deleteMany({})
+  const loomsCleared = await prisma.floorLoom.updateMany({
+    data: { qualityId: null, weftYarnId: null },
+  })
 
   console.log('Deleted:', {
     sheets: sheets.count,
@@ -62,18 +62,24 @@ async function main() {
     qualities: qualities.count,
     yarns: yarns.count,
     beams: beams.count,
-    looms: looms.count,
   })
+  console.log('Looms kept:', before.looms, '| cleared assign on:', loomsCleared.count)
 
   const after = await countAll()
   console.log('After:', after)
 
-  const leftover = Object.values(after).reduce((a, b) => a + b, 0)
-  if (leftover !== 0) {
-    console.error('Wipe incomplete — leftover rows:', after)
+  const leftoverOps =
+    after.sheets +
+    after.qualities +
+    after.movements +
+    after.issuances +
+    after.yarns +
+    after.beams
+  if (leftoverOps !== 0) {
+    console.error('Wipe incomplete — leftover ops rows:', after)
     process.exit(1)
   }
-  console.log('Floor wipe complete. Users / payroll / accounts untouched.')
+  console.log('Floor wipe complete. Looms kept. Users / payroll / accounts untouched.')
 }
 
 main()

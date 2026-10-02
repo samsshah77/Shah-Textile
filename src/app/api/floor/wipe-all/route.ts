@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 const DEPLOY_SEED_KEY = 'sara_deploy_secret_key_2026'
 
 /**
- * Wipe ALL floor_* tables on the DB this app is connected to.
+ * Wipe floor ops tables. KEEPS floor_looms (clears quality/weft assign only).
  * Does NOT touch users / roles / payroll / accounts.
  *
  * GET /api/floor/wipe-all?key=…&confirm=YES
@@ -43,8 +43,11 @@ export async function GET(req: NextRequest) {
       qualities: (await prisma.floorQuality.deleteMany({})).count,
       yarns: (await prisma.floorYarn.deleteMany({})).count,
       beams: (await prisma.floorBeam.deleteMany({})).count,
-      looms: (await prisma.floorLoom.deleteMany({})).count,
     }
+
+    const loomsCleared = await prisma.floorLoom.updateMany({
+      data: { qualityId: null, weftYarnId: null },
+    })
 
     const after = {
       sheets: await prisma.floorDailySheet.count(),
@@ -58,9 +61,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      message: 'Floor wipe complete. Users / payroll / accounts untouched.',
+      message: 'Floor wipe complete. Looms kept. Users / payroll / accounts untouched.',
       before,
       deleted,
+      loomsCleared: loomsCleared.count,
       after,
     })
   } catch (err) {
