@@ -10,11 +10,12 @@ import {
   mergeSheetEntriesForDate,
   mergedSheetEntriesForTotals,
   qualityActiveOnSheetDate,
-  sheetRowShowsQuality,
   QUALITY_FABRIC_TYPES,
   normalizeFabricType,
   qualityRunThatOwnsSheetEntry,
   qualityEndedVisibleOnDate,
+  qualityNameKey,
+  qualityLoomEndsOnDate,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -152,23 +153,24 @@ export function QualityMasterTable({
   sheetDate = PRODUCTION_TODAY,
 }: QualityMasterTableProps) {
   const { canEditProduction } = useAuth()
-  const { showConfirm, showSuccessSoon, showInfo } = useAlertDialog()
+  const { showConfirm, showSuccessSoon, showInfo, showError } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEdit, setTableEdit] = useState(false)
 
   // Add Quality Modal Dialog State
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [addForm, setAddForm] = useState({
+  const emptyAddForm = {
     name: '',
     fabricType: 'Suiting' as string,
     weavePlan: '',
     warpYarn: '',
     weftYarn: '',
-    reed: 120,
-    pick: 60,
-    widthInch: 66,
-    gsm: 1.77,
-  })
+    reed: '',
+    pick: '',
+    widthInch: '',
+    gsm: '',
+  }
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [addForm, setAddForm] = useState(emptyAddForm)
   const [endsFabricFilter, setEndsFabricFilter] = useState<'ALL' | 'Suiting' | 'Shirting'>('ALL')
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
@@ -286,21 +288,38 @@ export function QualityMasterTable({
   const assignedByQuality = useMemo(() => {
     const map = new Map<string, number[]>()
     const day = (entries || []).filter((e) => !e.date || !sheetDate || e.date === sheetDate)
-    const sheetBuilt = day.length > 0
     for (const q of qualities) {
-      const fromSheet = [
-        ...new Set(
-          day.filter((e) => sheetRowShowsQuality(e, q, qualities)).map((e) => e.loomNumber)
-        ),
-      ].sort((a, b) => a - b)
-      if (sheetBuilt) {
-        map.set(q.id, fromSheet)
+      const status = q.status ?? 'ACTIVE'
+      // Active / Hold: only looms explicitly allotted to this quality id (new add = empty L#).
+      if (status === 'ACTIVE' || status === 'HOLD') {
+        const fromLooms = looms
+          .filter((l) => l.qualityId === q.id)
+          .map((l) => l.loomNumber)
+        map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
         continue
       }
-      const fromLooms = looms
-        .filter((l) => l.qualityId === q.id)
-        .map((l) => l.loomNumber)
-      map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
+      // Ended: stamped loom ends for this close, else sheet rows this run owns (by id).
+      const fromEnds = qualityLoomEndsOnDate(q, sheetDate)
+      if (fromEnds.length > 0) {
+        map.set(q.id, fromEnds)
+        continue
+      }
+      const fromAllEnds = qualityLoomEndsOnDate(q)
+      if (fromAllEnds.length > 0) {
+        map.set(q.id, fromAllEnds)
+        continue
+      }
+      const fromSheet = [
+        ...new Set(
+          day
+            .filter(
+              (e) =>
+                qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
+            )
+            .map((e) => e.loomNumber)
+        ),
+      ].sort((a, b) => a - b)
+      map.set(q.id, fromSheet)
     }
     return map
   }, [entries, qualities, sheetDate, looms])
@@ -460,6 +479,41 @@ export function QualityMasterTable({
     })
   }
 
+  /** Accidental End undo — same id / createdOn, Track zero nahi hota. */
+  const handleContinue = (q: QualityMaster) => {
+    if (!canArchiveOps) return
+    const label = qualityDisplayName(q, qualities)
+    const key = qualityNameKey(q.name)
+    const activeSame = qualities.find(
+      (item) =>
+        item.id !== q.id &&
+        qualityNameKey(item.name) === key &&
+        (item.status ?? 'ACTIVE') === 'ACTIVE'
+    )
+    if (activeSame) {
+      showError({
+        title: 'Continue nahi ho sakta',
+        message: `"${activeSame.name}" pehle se Active pe hai. Continue sirf tab jab galti se End hua ho aur Active pe same naam na ho.`,
+      })
+      return
+    }
+    showConfirm({
+      title: 'Quality Continue?',
+      message: `"${label}" galti se end hui thi? Wapas Active pe aayegi — purani production / Track zero se shuru nahi hogi.`,
+      type: 'confirm',
+      confirmText: 'Continue',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        // Same run: keep createdOn; only clear ENDED.
+        onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        showSuccessSoon({
+          title: 'Quality Continued',
+          message: `"${label}" Active pe wapas — purane meters / Track same rahenge.`,
+        })
+      },
+    })
+  }
+
   const rowMenu = (q: QualityMaster, compact?: boolean) => {
     if (!canOps) return null
     return (
@@ -514,11 +568,22 @@ export function QualityMasterTable({
             </li>
           )}
           {isEndedView && (
-            <li>
-              <button type="button" className="dropdown-item" onClick={() => handleReassign(q)}>
-                <i className="bi bi-arrow-repeat me-2" /> Reuse (zero se)
-              </button>
-            </li>
+            <>
+              <li>
+                <button type="button" className="dropdown-item" onClick={() => handleReassign(q)}>
+                  <i className="bi bi-arrow-repeat me-2" /> Reuse (zero se)
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  className="dropdown-item text-success"
+                  onClick={() => handleContinue(q)}
+                >
+                  <i className="bi bi-play-circle me-2" /> Continue (same meters)
+                </button>
+              </li>
+            </>
           )}
         </ul>
       </div>
@@ -548,6 +613,15 @@ export function QualityMasterTable({
     e.preventDefault()
     if (!addForm.name.trim()) return
     const name = addForm.name.trim()
+    const key = qualityNameKey(name)
+    const duplicate = qualities.find((q) => qualityNameKey(q.name) === key)
+    if (duplicate) {
+      showError({
+        title: 'Quality pehle se maujood hai',
+        message: `"${duplicate.name}" is naam se pehle se list me hai. Naya naam use karo, ya Ends se Reuse karo.`,
+      })
+      return
+    }
     onAdd({
       name,
       fabricType: normalizeFabricType(addForm.fabricType),
@@ -560,17 +634,7 @@ export function QualityMasterTable({
       gsm: Number(Number(addForm.gsm).toFixed(2)) || 0,
     })
     setIsAddModalOpen(false)
-    setAddForm({
-      name: '',
-      fabricType: 'Suiting',
-      weavePlan: '',
-      warpYarn: '',
-      weftYarn: '',
-      reed: 120,
-      pick: 60,
-      widthInch: 66,
-      gsm: 1.77,
-    })
+    setAddForm({ ...emptyAddForm })
     showSuccessSoon({
       title: 'Quality Added',
       message: `"${name}" add ho gayi — meters zero se shuru.`,
@@ -620,7 +684,10 @@ export function QualityMasterTable({
             <button
               type="button"
               className="btn btn-sm btn-primary"
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => {
+                setAddForm({ ...emptyAddForm })
+                setIsAddModalOpen(true)
+              }}
             >
               <i className="bi bi-plus-lg me-1" /> Add Quality
             </button>
@@ -1258,7 +1325,7 @@ export function QualityMasterTable({
                         className="form-control form-control-sm"
                         placeholder="e.g. 66"
                         value={addForm.widthInch}
-                        onChange={(e) => setAddForm({ ...addForm, widthInch: Number(e.target.value) || 0 })}
+                        onChange={(e) => setAddForm({ ...addForm, widthInch: e.target.value })}
                       />
                     </div>
 
@@ -1302,9 +1369,9 @@ export function QualityMasterTable({
                       <input
                         type="number"
                         className="form-control form-control-sm"
-                        placeholder="120"
+                        placeholder="e.g. 120"
                         value={addForm.reed}
-                        onChange={(e) => setAddForm({ ...addForm, reed: Number(e.target.value) || 0 })}
+                        onChange={(e) => setAddForm({ ...addForm, reed: e.target.value })}
                       />
                     </div>
 
@@ -1313,9 +1380,9 @@ export function QualityMasterTable({
                       <input
                         type="number"
                         className="form-control form-control-sm"
-                        placeholder="60"
+                        placeholder="e.g. 60"
                         value={addForm.pick}
-                        onChange={(e) => setAddForm({ ...addForm, pick: Number(e.target.value) || 0 })}
+                        onChange={(e) => setAddForm({ ...addForm, pick: e.target.value })}
                       />
                     </div>
 
@@ -1327,7 +1394,7 @@ export function QualityMasterTable({
                         className="form-control form-control-sm"
                         placeholder="e.g. 1.77"
                         value={addForm.gsm}
-                        onChange={(e) => setAddForm({ ...addForm, gsm: Number(e.target.value) || 0 })}
+                        onChange={(e) => setAddForm({ ...addForm, gsm: e.target.value })}
                       />
                     </div>
                   </div>

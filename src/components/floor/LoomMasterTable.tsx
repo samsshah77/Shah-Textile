@@ -13,7 +13,6 @@ import {
   rpmOnLoomForDate,
   statusOnLoomForDate,
   mergeSheetEntriesForDate,
-  loomRecentQualityClearNote,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { LoomCategory } from '@/types/loom'
@@ -150,9 +149,6 @@ export function LoomMasterTable({
         return qualityDisplayName(q, qualities)
       }
     }
-    const note = loomRecentQualityClearNote(loom.loomNumber, qualities, sheetDate)
-    if (note?.status === 'ENDED') return `Ended: ${note.name}`
-    if (note?.status === 'HOLD') return `Hold: ${note.name}`
     return '—'
   }
 
@@ -162,10 +158,7 @@ export function LoomMasterTable({
       const q = qualities.find((item) => item.id === id)
       if (q && q.status !== 'ENDED' && q.status !== 'HOLD') return 'fw-semibold'
     }
-    const note = loomRecentQualityClearNote(loom.loomNumber, qualities, sheetDate)
-    if (note?.status === 'ENDED') return 'fw-semibold text-danger'
-    if (note?.status === 'HOLD') return 'fw-semibold text-warning'
-    return 'fw-semibold'
+    return 'fw-semibold text-muted'
   }
 
   const canManagePics = canEditProduction && !readOnly
