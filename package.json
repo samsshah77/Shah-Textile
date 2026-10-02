@@ -8,7 +8,7 @@
     "start": "node server.js",
     "db:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
-    "db:wipe-floor": "CONFIRM_FLOOR_WIPE=YES node scripts/wipe-floor-live.mjs",
+    "db:wipe-floor": "sh scripts/run-wipe-floor.sh",
     "postinstall": "prisma generate",
     "lint": "eslint"
   },
