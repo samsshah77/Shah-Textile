@@ -10,14 +10,47 @@ import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/sh
 import {
   hydrateFloorFromDb,
   preloadMonthSheets,
+  preloadAllFloorSheets,
   productionMastersService,
   qualityRunOwnsSheetEntry,
 } from '@/services/productionMastersService'
 import { formatNumber } from '@/lib/utils'
-import { PRODUCTION_TODAY_MONTH } from '@/constants/productionCalendar'
+import {
+  getProductionTodayMonth,
+  PRODUCTION_START,
+} from '@/constants/productionCalendar'
 import type { MonthlyMatrixDay } from '@/types/production'
 
-const MONTH_OPTIONS = [{ value: '2026-09', label: 'September 2026' }]
+function buildMonthOptions(): { value: string; label: string }[] {
+  const end = getProductionTodayMonth()
+  const start = PRODUCTION_START.slice(0, 7)
+  const out: { value: string; label: string }[] = []
+  let cursor = start
+  while (cursor <= end) {
+    const [y, m] = cursor.split('-').map(Number)
+    out.push({
+      value: cursor,
+      label: new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    })
+    cursor =
+      m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+  }
+  return out.length > 0 ? out : [{ value: '2026-09', label: 'September 2026' }]
+}
+
+const MONTH_OPTIONS = buildMonthOptions()
+
+function initialTrackMonth(fromParam: string | null): string {
+  // Quality deep-link: open the run's month when provided.
+  if (fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)) {
+    const m = fromParam.slice(0, 7)
+    if (MONTH_OPTIONS.some((o) => o.value === m)) return m
+  }
+  // Default = current production month; older months stay available in the dropdown.
+  const todayM = getProductionTodayMonth()
+  if (MONTH_OPTIONS.some((o) => o.value === todayM)) return todayM
+  return MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value || '2026-09'
+}
 
 type TrackView = 'meters' | 'shifts' | 'efficiency' | 'active'
 
@@ -76,7 +109,7 @@ function ProductionTotalTrackingContent() {
   const view = readTrackView(searchParams.get('view'))
   const isQualityDeepLink = Boolean(qualityId || qualityNameParam)
 
-  const [month, setMonth] = useState(PRODUCTION_TODAY_MONTH)
+  const [month, setMonth] = useState(() => initialTrackMonth(qualityFromParam))
   const [matrix, setMatrix] = useState<MatrixState>(EMPTY_MATRIX)
   const [shiftBMatrix, setShiftBMatrix] = useState<MatrixState>(EMPTY_MATRIX)
   const [loading, setLoading] = useState(true)
@@ -89,11 +122,13 @@ function ProductionTotalTrackingContent() {
       setShiftBMatrix(EMPTY_MATRIX)
       try {
         await hydrateFloorFromDb()
+        // Keep prior months available for Overall / quality jump + dropdown history.
+        await preloadAllFloorSheets()
+        if (cancelled) return
         await preloadMonthSheets(month)
         if (cancelled) return
         const primary =
           view === 'shifts' ? 'shiftA' : view === 'efficiency' ? 'efficiency' : view === 'active' ? 'active' : 'meters'
-        // One paint only after hydrate + month sheets — avoids 0 m flash then real data.
         setMatrix(productionMastersService.buildMonthlyMatrix(month, primary))
         if (view === 'shifts') setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB'))
       } catch (err) {
