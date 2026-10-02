@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   '/api/roles',
   '/api/floor/store',
   '/api/floor/restore-28sep',
+  '/api/floor/wipe-all',
   '/api/payroll/store',
   '/api/db/ensure-floor',
 ]
