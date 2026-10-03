@@ -2870,6 +2870,12 @@ class ProductionMastersService {
     }
     this.saveQualities(qualities)
 
+    // Backdated start date must survive refresh until DB upsert confirms createdOn.
+    if (nextPatch.createdOn !== undefined) {
+      const stamped = qualities.find((q) => q.id === id)
+      if (stamped) rememberLocalPendingQuality(stamped)
+    }
+
     if (reviving && restoreLoomNums.length > 0) {
       const looms = this.getLooms()
       const nextLooms = looms.map((l) => {

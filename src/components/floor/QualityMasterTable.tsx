@@ -251,6 +251,18 @@ export function QualityMasterTable({
 
   const counts = useMemo(() => qualityStatusCounts(qualities, sheetDate), [qualities, sheetDate])
 
+  /** Active qualities whose start date is after the selected day (hidden on that day). */
+  const laterStartQualities = useMemo(() => {
+    if (isArchiveView) return [] as QualityMaster[]
+    const day = String(sheetDate || '').slice(0, 10)
+    if (!day) return [] as QualityMaster[]
+    return qualities.filter((q) => {
+      if ((q.status ?? 'ACTIVE') !== 'ACTIVE') return false
+      const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
+      return Boolean(createdOn && createdOn > day)
+    })
+  }, [qualities, sheetDate, isArchiveView])
+
   /** Keep card/row order fixed while editing so renaming does not reshuffle the grid. */
   const frozenOrderRef = useRef<string[] | null>(null)
 
@@ -469,6 +481,36 @@ export function QualityMasterTable({
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
     flashTimerRef.current = setTimeout(() => setFlashIds(new Set()), QUALITY_FLASH_MS)
   }, [])
+
+  const backdateLaterStartsToSheet = () => {
+    const day = String(sheetDate || '').slice(0, 10)
+    if (!day || laterStartQualities.length === 0) return
+    const names = laterStartQualities
+      .slice(0, 8)
+      .map((q) => q.name)
+      .join(', ')
+    const more =
+      laterStartQualities.length > 8 ? ` +${laterStartQualities.length - 8} aur` : ''
+    showConfirm({
+      title: `${formatShortDate(day)} se dikhao?`,
+      message: `${laterStartQualities.length} qualities (${names}${more}) ka start date ${formatShortDate(day)} ho jayega. 3 ka data nahi urega — sirf is date pe list / loom dropdown mein aa jayengi.`,
+      type: 'confirm',
+      confirmText: 'Haan, dikhao',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        const ids: string[] = []
+        for (const q of laterStartQualities) {
+          onUpdate(q.id, { createdOn: day })
+          ids.push(q.id)
+        }
+        flashRows(ids, 'active')
+        showSuccessSoon({
+          title: 'Start date update',
+          message: `${ids.length} qualities ab ${formatShortDate(day)} se dikhengi. Loom assign tum khud kar sakte ho.`,
+        })
+      },
+    })
+  }
 
   useEffect(() => {
     return () => {
@@ -944,6 +986,24 @@ export function QualityMasterTable({
           )}
         </div>
       </div>
+
+      {!readOnly && canEditProduction && !isArchiveView && laterStartQualities.length > 0 && (
+        <div className="alert alert-warning border-0 rounded-0 mb-0 py-2 px-3 d-flex flex-wrap align-items-center gap-2">
+          <div className="small flex-grow-1 min-w-0">
+            <strong>{laterStartQualities.length}</strong> qualities baad ki date pe add hui hain —
+            is liye <strong>{formatShortDate(sheetDate)}</strong> pe list / loom mein nahi dikh rahin.
+            Data delete nahi hoga; sirf start date is din pe set hogi.
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-warning text-dark fw-semibold"
+            onClick={backdateLaterStartsToSheet}
+          >
+            <i className="bi bi-calendar-check me-1" />
+            {formatShortDate(sheetDate)} se dikhao
+          </button>
+        </div>
+      )}
 
       {mode === 'grid' ? (
         isArchiveView ? (
