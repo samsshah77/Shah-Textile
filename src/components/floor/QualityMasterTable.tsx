@@ -728,6 +728,65 @@ export function QualityMasterTable({
     window.location.assign(`/floor/reports/total?${qs.toString()}`)
   }
 
+  const addFormFieldOrder = [
+    'name',
+    'fabricType',
+    'widthInch',
+    'warpYarn',
+    'weftYarn',
+    'weavePlan',
+    'reed',
+    'pick',
+    'gsm',
+  ] as const
+
+  const focusAddFormField = useCallback((name: string) => {
+    const el = document.querySelector<HTMLElement>(`[data-add-q-field="${name}"]`)
+    if (!el) return
+    el.focus()
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      el.select?.()
+    }
+  }, [])
+
+  const handleAddFormKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLElement>, field: (typeof addFormFieldOrder)[number]) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setIsAddModalOpen(false)
+        return
+      }
+      if (e.key !== 'Enter') return
+      // Ctrl/Cmd+Enter → save from any field
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        const form = e.currentTarget.closest('form')
+        form?.requestSubmit()
+        return
+      }
+      e.preventDefault()
+      const idx = addFormFieldOrder.indexOf(field)
+      if (idx < 0) return
+      if (idx < addFormFieldOrder.length - 1) {
+        focusAddFormField(addFormFieldOrder[idx + 1])
+        return
+      }
+      // Last field → submit
+      const form = e.currentTarget.closest('form')
+      form?.requestSubmit()
+    },
+    [focusAddFormField, setIsAddModalOpen]
+  )
+
+  useEffect(() => {
+    if (!isAddModalOpen) return
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsAddModalOpen(false)
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [isAddModalOpen, setIsAddModalOpen])
+
   const handleCreateQuality = (e: React.FormEvent) => {
     e.preventDefault()
     if (!addForm.name.trim()) return
@@ -1497,15 +1556,34 @@ export function QualityMasterTable({
         <div
           className="modal fade show d-block"
           tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 1055 }}
         >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content shadow-lg border-0">
-              <div className="modal-header bg-success text-white py-2.5 px-3">
-                <h5 className="modal-title fs-6 fw-semibold mb-0">
-                  <i className="bi bi-plus-circle me-1.5" />
-                  Nayi Quality Shamil Karein (Add Quality)
-                </h5>
+          <div
+            className="modal-dialog modal-dialog-centered modal-dialog-scrollable mx-2 mx-sm-auto my-2"
+            style={{
+              maxWidth: 560,
+              width: '100%',
+              maxHeight: 'min(88dvh, 720px)',
+              marginTop: 'auto',
+              marginBottom: 'auto',
+            }}
+          >
+            <div
+              className="modal-content shadow-lg border-0 d-flex flex-column"
+              style={{ maxHeight: 'min(88dvh, 720px)', overflow: 'hidden' }}
+            >
+              <div className="modal-header bg-success text-white py-2 px-3 flex-shrink-0">
+                <div>
+                  <h5 className="modal-title fs-6 fw-semibold mb-0">
+                    <i className="bi bi-plus-circle me-1" />
+                    Nayi Quality Shamil Karein
+                  </h5>
+                  <div className="small text-white-50" style={{ fontSize: '0.72rem' }}>
+                    Enter = next · Esc = close · Ctrl+Enter = save
+                  </div>
+                </div>
                 <button
                   type="button"
                   className="btn-close btn-close-white"
@@ -1513,8 +1591,15 @@ export function QualityMasterTable({
                   onClick={() => setIsAddModalOpen(false)}
                 />
               </div>
-              <form onSubmit={handleCreateQuality}>
-                <div className="modal-body p-3">
+              <form
+                onSubmit={handleCreateQuality}
+                className="d-flex flex-column flex-grow-1"
+                style={{ minHeight: 0 }}
+              >
+                <div
+                  className="modal-body p-3"
+                  style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: '1 1 auto' }}
+                >
                   <div className="row g-2">
                     <div className="col-12">
                       <label className="form-label small fw-semibold mb-1">
@@ -1524,19 +1609,23 @@ export function QualityMasterTable({
                         type="text"
                         required
                         autoFocus
-                        className="form-control form-control-sm"
+                        data-add-q-field="name"
+                        className="form-control"
                         placeholder="e.g. PARCOPV, EVEREST"
                         value={addForm.name}
                         onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'name')}
                       />
                     </div>
 
                     <div className="col-md-6">
                       <label className="form-label small fw-semibold mb-1">Fabric Type</label>
                       <select
-                        className="form-select form-select-sm"
+                        data-add-q-field="fabricType"
+                        className="form-select"
                         value={normalizeFabricType(addForm.fabricType)}
                         onChange={(e) => setAddForm({ ...addForm, fabricType: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'fabricType')}
                       >
                         {QUALITY_FABRIC_TYPES.map((t) => (
                           <option key={t} value={t}>
@@ -1550,10 +1639,12 @@ export function QualityMasterTable({
                       <label className="form-label small fw-semibold mb-1">Width (Inches)</label>
                       <input
                         type="number"
-                        className="form-control form-control-sm"
+                        data-add-q-field="widthInch"
+                        className="form-control"
                         placeholder="e.g. 66"
                         value={addForm.widthInch}
                         onChange={(e) => setAddForm({ ...addForm, widthInch: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'widthInch')}
                       />
                     </div>
 
@@ -1562,10 +1653,12 @@ export function QualityMasterTable({
                       <input
                         type="text"
                         list="quality-warp-stock"
-                        className="form-control form-control-sm"
+                        data-add-q-field="warpYarn"
+                        className="form-control"
                         placeholder="Beam stock se warp likho"
                         value={addForm.warpYarn}
                         onChange={(e) => setAddForm({ ...addForm, warpYarn: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'warpYarn')}
                       />
                     </div>
 
@@ -1574,10 +1667,12 @@ export function QualityMasterTable({
                       <input
                         type="text"
                         list="quality-weft-stock"
-                        className="form-control form-control-sm"
+                        data-add-q-field="weftYarn"
+                        className="form-control"
                         placeholder="Yarn stock se weft likho"
                         value={addForm.weftYarn}
                         onChange={(e) => setAddForm({ ...addForm, weftYarn: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'weftYarn')}
                       />
                     </div>
 
@@ -1585,10 +1680,12 @@ export function QualityMasterTable({
                       <label className="form-label small fw-semibold mb-1">Weave Plan</label>
                       <input
                         type="text"
-                        className="form-control form-control-sm"
+                        data-add-q-field="weavePlan"
+                        className="form-control"
                         placeholder="e.g. 2/1 Twill"
                         value={addForm.weavePlan}
                         onChange={(e) => setAddForm({ ...addForm, weavePlan: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'weavePlan')}
                       />
                     </div>
 
@@ -1596,10 +1693,12 @@ export function QualityMasterTable({
                       <label className="form-label small fw-semibold mb-1">Reed</label>
                       <input
                         type="number"
-                        className="form-control form-control-sm"
+                        data-add-q-field="reed"
+                        className="form-control"
                         placeholder="e.g. 120"
                         value={addForm.reed}
                         onChange={(e) => setAddForm({ ...addForm, reed: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'reed')}
                       />
                     </div>
 
@@ -1607,28 +1706,35 @@ export function QualityMasterTable({
                       <label className="form-label small fw-semibold mb-1">Pick</label>
                       <input
                         type="number"
-                        className="form-control form-control-sm"
+                        data-add-q-field="pick"
+                        className="form-control"
                         placeholder="e.g. 60"
                         value={addForm.pick}
                         onChange={(e) => setAddForm({ ...addForm, pick: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'pick')}
                       />
                     </div>
 
-                    <div className="col-md-4">
+                    <div className="col-md-6">
                       <label className="form-label small fw-semibold mb-1">GSM (2 Decimals)</label>
                       <input
                         type="number"
                         step="0.01"
-                        className="form-control form-control-sm"
+                        data-add-q-field="gsm"
+                        className="form-control"
                         placeholder="e.g. 1.77"
                         value={addForm.gsm}
                         onChange={(e) => setAddForm({ ...addForm, gsm: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'gsm')}
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="modal-footer py-2 px-3 bg-light">
+                <div className="modal-footer py-2 px-3 bg-light gap-2 flex-shrink-0">
+                  <span className="me-auto small text-muted d-none d-md-inline">
+                    Last field pe Enter = Save
+                  </span>
                   <button
                     type="button"
                     className="btn btn-sm btn-outline-secondary"
@@ -1636,7 +1742,7 @@ export function QualityMasterTable({
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-sm btn-primary">
+                  <button type="submit" className="btn btn-sm btn-primary px-3">
                     <i className="bi bi-check-lg me-1" /> Quality Save Karein
                   </button>
                 </div>

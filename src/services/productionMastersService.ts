@@ -630,36 +630,40 @@ export function matchQualityByNameAndPick(
   })[0]
 }
 
-/** Day-wise quality on a loom: sheet row for that date, else master allotment. */
+/** Day-wise quality on a loom: sheet row for that date, else master (today only). */
 export function qualityIdOnLoomForDate(
   loom: LoomMaster,
   qualities: QualityMaster[],
-  dayRows: DailyLoomProductionEntry[]
+  dayRows: DailyLoomProductionEntry[],
+  sheetDate?: string
 ): string | null {
   const row = dayRows.find((e) => e.loomNumber === loom.loomNumber)
+  const day = String(sheetDate || '').slice(0, 10)
+  const isPastDay = Boolean(day && day !== getProductionToday())
 
-  // Prefer live master allotment when sheet name matches it (Reuse left ENDED+Active
-  // with the same name — old match picked ENDED and the dropdown looked blank).
+  // Named sheet row for this date wins.
+  if (row) {
+    const name = (row.qualityName || '').trim()
+    if (name && name !== '—') {
+      return (
+        matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ?? null
+      )
+    }
+    // Past day empty/cleared stays empty — do not leak today's master.
+    if (isPastDay) return null
+    // Today empty sheet: fall through to live master allotment.
+  }
+
+  // Past day with no sheet row yet: do not show today's master allotment.
+  if (isPastDay) return null
+
+  // Today / unknown date: live master allotment.
   if (loom.qualityId) {
     const masterQ = qualities.find((q) => q.id === loom.qualityId)
     const masterStatus = masterQ ? normalizeQualityStatus(masterQ.status) : null
     if (masterQ && (masterStatus === 'ACTIVE' || masterStatus === 'HOLD')) {
-      if (!row) return loom.qualityId
-      const sheetName = (row.qualityName || '').trim()
-      if (sheetName && sheetName !== '—' && qualityNameKey(sheetName) === qualityNameKey(masterQ.name)) {
-        return loom.qualityId
-      }
+      return loom.qualityId
     }
-  }
-
-  if (row) {
-    const name = (row.qualityName || '').trim()
-    if (!name || name === '—') return null
-    return (
-      matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ??
-      loom.qualityId ??
-      null
-    )
   }
   return loom.qualityId ?? null
 }
@@ -2099,7 +2103,8 @@ class ProductionMastersService {
     const dayOnlyRpm = isPastProductionDay && workingPatch.defaultRpm !== undefined
     const dayOnlyStatus = isPastProductionDay && workingPatch.status !== undefined
 
-    // Past days: quality / RPM / status stay on that day's sheet only — master + other dates untouched.
+    // Past days: quality / RPM / status stay on that day's sheet only —
+    // master + later dates (e.g. today) untouched. Backfill on 2 must not change 3.
     if (dayOnlyQuality || dayOnlyRpm || dayOnlyStatus) {
       const current = previousLoom
       if (current) {
@@ -3298,22 +3303,31 @@ class ProductionMastersService {
       const beam = beams.find((b) => beamOnLoom(b, loom.loomNumber))
       const live = this.recipeForLoom(loom, dateStr)
       const prior = this.priorSheetRow(dateStr, loom.loomNumber)
+      const isPastDay = dateStr !== getProductionToday()
       const named = (name?: string | null) => {
         const n = (name || '').trim()
         return n !== '' && n !== '—' && n !== '-'
       }
       // A saved row keeps the quality stored on that date, including a deliberate clear.
-      // Do not copy yesterday or the live loom back onto a day that was emptied.
+      // Past days must NOT fall back to today's live loom master — factory backfill
+      // starts empty / from prior day only (e.g. set up 2 Oct without copying 3 Oct).
       const cleared = prev ? !named(prev.qualityName) : false
       const identity = cleared
         ? null
         : prev
           ? prev
-          : (prior && named(prior.qualityName) ? prior : null) ||
-            (named(live.qualityName) ? live : null)
-      const pick = identity?.pick || live.pick || 60
-      const reed = identity?.reed || live.reed || 60
-      const rpm = identity?.rpm || live.rpm || loom.defaultRpm
+          : prior && named(prior.qualityName)
+            ? prior
+            : !isPastDay && named(live.qualityName)
+              ? live
+              : null
+      const pick = identity?.pick || (!isPastDay ? live.pick : undefined) || 60
+      const reed = identity?.reed || (!isPastDay ? live.reed : undefined) || 60
+      const rpm =
+        identity?.rpm ||
+        (!isPastDay ? live.rpm : undefined) ||
+        (prev || prior ? undefined : loom.defaultRpm) ||
+        loom.defaultRpm
       const masterStatus = (loom.status || 'RUNNING') as LoomStatus
       // Day-wise status: saved row for this date → else prior day (auto carry) → else master.
       const statusSource = prev || prior
@@ -3337,7 +3351,7 @@ class ProductionMastersService {
       const rollerHours =
         prev?.rollerHours != null
           ? prev.rollerHours
-          : status === 'BEAM_END' || status === 'STOPPED' || dateStr >= PRODUCTION_TODAY
+          : status === 'BEAM_END' || status === 'STOPPED' || dateStr >= getProductionToday()
             ? 0
             : 24
       const shiftA = prev?.shiftAMeters ?? 0
@@ -3366,8 +3380,8 @@ class ProductionMastersService {
         rpm,
         reed,
         pick,
-        widthInch: identity?.widthInch || live.widthInch || 66,
-        gsm: identity?.gsm ?? live.gsm ?? 0,
+        widthInch: identity?.widthInch || (!isPastDay ? live.widthInch : undefined) || 66,
+        gsm: identity?.gsm ?? (!isPastDay ? live.gsm : undefined) ?? 0,
         rollerHours,
         runningHours: rollerHours,
         runningTheoretical: metrics.theoreticalMeters,

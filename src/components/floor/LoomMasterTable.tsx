@@ -10,9 +10,11 @@ import {
   qualityDisplayName,
   qualityNameKey,
   qualityIdOnLoomForDate,
+  qualityActiveOnSheetDate,
   rpmOnLoomForDate,
   statusOnLoomForDate,
   mergeSheetEntriesForDate,
+  normalizeQualityStatus,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { LoomCategory } from '@/types/loom'
@@ -115,7 +117,7 @@ export function LoomMasterTable({
   }, [looms, modelFilter])
 
   const dayQualityId = (loom: LoomMaster) =>
-    qualityIdOnLoomForDate(loom, qualities, dayRows)
+    qualityIdOnLoomForDate(loom, qualities, dayRows, sheetDate)
 
   const dayRpm = (loom: LoomMaster) => rpmOnLoomForDate(loom, dayRows)
 
@@ -125,13 +127,12 @@ export function LoomMasterTable({
     const currentId = dayQualityId(loom)
     const day = String(sheetDate || '').slice(0, 10)
     const visible = qualities.filter((q) => {
-      const status = q.status ?? 'ACTIVE'
-      // Loom dropdown = Active tab only (no Ended / Hold / reuse options).
-      if (status !== 'ACTIVE' && q.id !== currentId) return false
-      if (status === 'HOLD' && q.id !== currentId) return false
-      const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
-      if (status === 'ACTIVE' && createdOn && day && day < createdOn && q.id !== currentId) return false
-      return true
+      // Keep current selection visible even if it would otherwise be filtered.
+      if (q.id === currentId) return true
+      // Loom dropdown = Active only; qualities created after this date stay hidden
+      // (e.g. made on 3 Oct must not appear when assigning on 2 Oct).
+      if (normalizeQualityStatus(q.status) !== 'ACTIVE') return false
+      return qualityActiveOnSheetDate(q, day, dayRows, qualities)
     })
 
     // One option per name (+ pick) if reuse left duplicate Active rows.

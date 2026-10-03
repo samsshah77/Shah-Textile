@@ -210,8 +210,9 @@ export function useProductionGrid() {
             void productionMastersService.flushQualityStatus(prevQualityId)
           }
         }
-        const assignedId =
-          nextLooms.find((l) => l.loomNumber === loomNumber)?.qualityId ?? patch.qualityId
+        // Past-day assign writes the sheet only; master may still hold today's quality.
+        // Always prefer the id the user just chose (patch), not stale master.
+        const assignedId = patch.qualityId
         if (assignedId && assignedId !== prevQualityId) {
           rememberQualityAssignFlash(assignedId)
         }
