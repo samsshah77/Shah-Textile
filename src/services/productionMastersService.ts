@@ -690,10 +690,8 @@ export function qualityRunThatOwnsSheetEntry(
 
   const candidates = catalog.filter((q) => {
     const qClean = qualityNameKey(q.name)
-    const nameHit =
-      eClean === qClean ||
-      (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
-    if (!nameHit) return false
+    // Exact cleaned name only — "PARCO" must not steal "PARCO PU" meters (substring false friends).
+    if (eClean !== qClean) return false
     if ((nameCounts.get(qClean) || 0) > 1 && Number(entry.pick) !== Number(q.pick)) return false
 
     const status = normalizeQualityStatus(q.status)
@@ -816,11 +814,9 @@ export function sheetRowShowsQuality(
 ): boolean {
   const qClean = qualityNameKey(quality.name)
   const eClean = qualityNameKey(row.qualityName || '')
-  if (!qClean || !eClean) return false
-  const nameHit =
-    eClean === qClean ||
-    (qClean.length >= 4 && (eClean.includes(qClean) || qClean.includes(eClean)))
-  if (!nameHit) return false
+  if (!qClean || !eClean || row.qualityName === '—') return false
+  // Exact cleaned name only — "PARCO" ≠ "PARCO PU".
+  if (eClean !== qClean) return false
   const shared = catalog.filter((item) => qualityNameKey(item.name) === qClean).length > 1
   if (shared) return Number(row.pick) === Number(quality.pick)
   return true
