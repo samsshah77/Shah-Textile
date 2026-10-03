@@ -16,7 +16,7 @@ import {
   mergeSheetEntriesForDate,
   normalizeQualityStatus,
 } from '@/services/productionMastersService'
-import { PRODUCTION_TODAY, getProductionToday } from '@/constants/productionCalendar'
+import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { LoomCategory } from '@/types/loom'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
@@ -111,9 +111,6 @@ export function LoomMasterTable({
     [entries, sheetDate]
   )
 
-  const day = String(sheetDate || '').slice(0, 10)
-  const isPastSheetDay = Boolean(day && day !== getProductionToday())
-
   const filteredLooms = useMemo(() => {
     if (modelFilter === 'ALL') return looms
     return looms.filter((l) => (l.model || l.category) === modelFilter)
@@ -121,46 +118,6 @@ export function LoomMasterTable({
 
   const dayQualityId = (loom: LoomMaster) =>
     qualityIdOnLoomForDate(loom, qualities, dayRows, sheetDate)
-
-  /** Master pe assign hai, lekin is past date ki sheet pe quality nahi — backfill candidates. */
-  const loomsMissingQualityOnPastDay = useMemo(() => {
-    if (!isPastSheetDay) return [] as LoomMaster[]
-    return looms.filter((l) => {
-      if (!l.qualityId) return false
-      if (qualityIdOnLoomForDate(l, qualities, dayRows, sheetDate)) return false
-      const q = qualities.find((item) => item.id === l.qualityId)
-      if (!q || normalizeQualityStatus(q.status) !== 'ACTIVE') return false
-      return qualityActiveOnSheetDate(q, day, dayRows, qualities)
-    })
-  }, [isPastSheetDay, looms, qualities, dayRows, sheetDate, day])
-
-  const applyMasterAssignToPastDay = () => {
-    if (!isPastSheetDay || loomsMissingQualityOnPastDay.length === 0) return
-    const sample = loomsMissingQualityOnPastDay
-      .slice(0, 10)
-      .map((l) => `L#${l.loomNumber}`)
-      .join(', ')
-    const more =
-      loomsMissingQualityOnPastDay.length > 10
-        ? ` +${loomsMissingQualityOnPastDay.length - 10} aur`
-        : ''
-    showConfirm({
-      title: `${day} pe loom assign likho?`,
-      message: `${loomsMissingQualityOnPastDay.length} looms (${sample}${more}) pe aaj wali quality is date ki sheet pe likhi jayegi. 3 ka data nahi urega — sirf ${day} pe dikhegi.`,
-      type: 'confirm',
-      confirmText: 'Haan, likho',
-      cancelText: 'Cancel',
-      onConfirm: () => {
-        for (const l of loomsMissingQualityOnPastDay) {
-          if (l.qualityId) onUpdate(l.loomNumber, { qualityId: l.qualityId })
-        }
-        showSuccessSoon({
-          title: 'Loom assign likh diya',
-          message: `${loomsMissingQualityOnPastDay.length} looms pe quality ${day} ki sheet pe aa gayi.`,
-        })
-      },
-    })
-  }
 
   const dayRpm = (loom: LoomMaster) => rpmOnLoomForDate(loom, dayRows)
 
@@ -325,24 +282,6 @@ export function LoomMasterTable({
           )}
         </div>
       </div>
-
-      {!readOnly && canEditProduction && loomsMissingQualityOnPastDay.length > 0 && (
-        <div className="alert alert-warning border-0 rounded-0 mb-0 py-2 px-3 d-flex flex-wrap align-items-center gap-2">
-          <div className="small flex-grow-1 min-w-0">
-            <strong>{loomsMissingQualityOnPastDay.length}</strong> looms pe quality aaj / master pe
-            assigned hai, lekin <strong>{day}</strong> ki Loom table pe khali hai (past date alag
-            sheet). Data delete nahi hoga.
-          </div>
-          <button
-            type="button"
-            className="btn btn-sm btn-warning text-dark fw-semibold"
-            onClick={applyMasterAssignToPastDay}
-          >
-            <i className="bi bi-link-45deg me-1" />
-            {day} pe assign likho
-          </button>
-        </div>
-      )}
 
       {mode === 'grid' ? (
         <div className="master-grid">
