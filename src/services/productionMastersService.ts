@@ -17,6 +17,14 @@ import {
   productionAccountingMonthBounds,
 } from '@/constants/productionCalendar'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
+import {
+  beamDailyEntryLot,
+  buildBeamTrackFromEntries,
+  type BeamTrackResult,
+} from '@/services/beamTrack'
+
+export { normalizeBeamLotKey, buildBeamTrackFromEntries, beamDailyEntryLot, formatSwLotForDailyEntry } from '@/services/beamTrack'
+export type { BeamTrackResult, BeamTrackDay } from '@/services/beamTrack'
 
 /** 1 kg = 2.2046 lbs → kg = lbs / 2.2046 */
 export const LBS_PER_KG = 2.2046
@@ -32,6 +40,53 @@ const KEY_YARN_MOVEMENTS = 'sara_textile_yarn_movements_v8'
 const KEY_QUALITY_ENDS_LOCAL = 'sara_textile_quality_ends_v1'
 /** Browser backup for reused/new Active qualities until DB upsert confirms. */
 const KEY_QUALITY_PENDING_LOCAL = 'sara_textile_quality_pending_v1'
+/** Browser backup so Sw# survives refresh if DB patch is slow/fails. */
+const KEY_BEAM_SWLOT_LOCAL = 'sara_textile_beam_swlot_v1'
+
+function readLocalBeamSwLots(): Record<string, string> {
+  if (!isClient()) return {}
+  try {
+    const raw = localStorage.getItem(KEY_BEAM_SWLOT_LOCAL)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(parsed || {})) {
+      const s = String(v || '').trim()
+      if (k && s) out[k] = s
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function writeLocalBeamSwLot(beamNo: string, swLot: string | null | undefined) {
+  if (!isClient() || !beamNo) return
+  try {
+    const map = readLocalBeamSwLots()
+    const next = swLot != null && String(swLot).trim() !== '' ? String(swLot).trim() : ''
+    if (next) map[beamNo] = next
+    else delete map[beamNo]
+    localStorage.setItem(KEY_BEAM_SWLOT_LOCAL, JSON.stringify(map))
+  } catch {
+    // ignore
+  }
+}
+
+function applyLocalBeamSwLots(beams: BeamMaster[]): BeamMaster[] {
+  const map = readLocalBeamSwLots()
+  if (!Object.keys(map).length) return beams
+  let changed = false
+  const next = beams.map((b) => {
+    if (b.swLot && String(b.swLot).trim()) return b
+    const local = map[b.beamNo]
+    if (!local) return b
+    changed = true
+    return { ...b, swLot: local }
+  })
+  return changed ? next : beams
+}
+
 
 export interface LoomMaster {
   loomNumber: number
@@ -72,6 +127,10 @@ export interface BeamMaster {
   beamEndedOn: string | null
   /** Loom it ended on (for Beam table note) */
   endedFromLoom: string | null
+  /** Linked Quality (warp recipe). Null = manual warp only. */
+  qualityId?: string | null
+  /** Sw# — links Daily Entry SW # column + Beam Track consumption (Excel). */
+  swLot?: string | null
 }
 
 export interface YarnMovementRecord {
@@ -291,7 +350,8 @@ function applyLocalPendingQualities(qualities: QualityMaster[]): QualityMaster[]
       continue
     }
     if (pStatus === 'ACTIVE' && eStatus === 'ACTIVE') {
-      // Confirmed in DB — drop pending backup only when createdOn also matches.
+      // Prefer pending createdOn until DB catches up — but do NOT drop pending here.
+      // Early forget let hydrate overwrite Continue with stale ENDED before flush finished.
       if (p.createdOn && p.createdOn !== existing.createdOn) {
         byId.set(
           p.id,
@@ -303,9 +363,6 @@ function applyLocalPendingQualities(qualities: QualityMaster[]): QualityMaster[]
           })
         )
         changed = true
-        // Keep pending until DB createdOn catches up.
-      } else {
-        forgetLocalPendingQuality(p.id)
       }
       continue
     }
@@ -671,16 +728,39 @@ export function qualityIdOnLoomForDate(
 /**
  * Which quality *run* owns a sheet row when the same name is re-added / reassigned.
  * Latest `createdOn` that still covers that day wins — so Track/Overall start at 0 for new runs.
+ *
+ * End/Hold clears `qualityName` to "—" but keeps meters. Those rows still belong to the
+ * closed run via `loomEnds` (date + loom) so Ends totals match pre-End / Continue meters.
  */
 export function qualityRunThatOwnsSheetEntry(
-  entry: { qualityName?: string; pick?: number; date?: string },
+  entry: { qualityName?: string; pick?: number; date?: string; loomNumber?: number },
   catalog: QualityMaster[],
   fallbackDate?: string
 ): QualityMaster | null {
-  const eClean = qualityNameKey(entry.qualityName || '')
-  if (!eClean || entry.qualityName === '—') return null
   const day = String(entry.date || fallbackDate || '').slice(0, 10)
   if (!day) return null
+
+  // Cleared end-day rows: meters stay, name wiped — credit via loomEnds stamp.
+  if (!entry.qualityName || entry.qualityName === '—') {
+    const loomNumber = Number(entry.loomNumber)
+    if (!Number.isFinite(loomNumber) || loomNumber <= 0) return null
+    const stamped = catalog.filter((q) => {
+      const status = normalizeQualityStatus(q.status)
+      if (status !== 'ENDED' && status !== 'HOLD') return false
+      return (q.loomEnds || []).some((e) => e.loomNumber === loomNumber && e.date === day)
+    })
+    if (stamped.length === 0) return null
+    if (stamped.length === 1) return stamped[0]
+    return [...stamped].sort((a, b) => {
+      const ea = a.endedOn ? String(a.endedOn).slice(0, 10) : ''
+      const eb = b.endedOn ? String(b.endedOn).slice(0, 10) : ''
+      if (ea !== eb) return eb.localeCompare(ea)
+      return b.id.localeCompare(a.id)
+    })[0]
+  }
+
+  const eClean = qualityNameKey(entry.qualityName || '')
+  if (!eClean) return null
 
   const nameCounts = new Map<string, number>()
   for (const q of catalog) {
@@ -749,7 +829,7 @@ export function qualityEndedVisibleOnDate(
 
 export function qualityRunOwnsSheetEntry(
   quality: QualityMaster,
-  entry: { qualityName?: string; pick?: number; date?: string },
+  entry: { qualityName?: string; pick?: number; date?: string; loomNumber?: number },
   catalog: QualityMaster[],
   fallbackDate?: string
 ): boolean {
@@ -979,6 +1059,10 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
   const fillStatus = b.fillStatus || (usedInLoom ? 'FULL' : b.status === 'EMPTY' ? 'EMPTY' : 'FULL')
   const status: BeamMaster['status'] = usedInLoom ? 'MOUNTED' : fillStatus
   const location = usedInLoom ? String(usedInLoom) : (b.location || 'STORE')
+  const qualityId =
+    b.qualityId != null && String(b.qualityId).trim() !== '' ? String(b.qualityId).trim() : null
+  const swLot =
+    b.swLot != null && String(b.swLot).trim() !== '' ? String(b.swLot).trim() : null
   return {
     beamNo: b.beamNo,
     warp: simplifyWarpName(b.warp),
@@ -994,6 +1078,8 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
     mountedOn: usedInLoom ? (b.mountedOn || '2026-09-15') : null,
     beamEndedOn: b.beamEndedOn ?? null,
     endedFromLoom: normalizeLoomRef(b.endedFromLoom as string | number | null | undefined),
+    qualityId,
+    swLot,
   }
 }
 
@@ -1106,6 +1192,8 @@ function seedBeams(): BeamMaster[] {
       mountedOn: mountedDate,
       beamEndedOn: b.beamNo === '134' ? '2026-09-22' : null,
       endedFromLoom: b.beamNo === '134' ? '13' : null,
+      qualityId: null,
+      swLot: null,
     })
   })
 }
@@ -1663,6 +1751,19 @@ let hydrated = false
 
 async function persistKey(key: string, value: unknown): Promise<boolean> {
   if (!isClient()) return false
+  // Never push seed/fallback masters before DB hydrate — that wiped swLot on refresh.
+  if (
+    !hydrated &&
+    (key === KEY_BEAMS ||
+      key === KEY_LOOMS ||
+      key === KEY_QUALITY ||
+      key === KEY_YARN ||
+      key === KEY_YARN_ISSUANCE ||
+      key === KEY_YARN_MOVEMENTS)
+  ) {
+    console.warn('[floor] skip persist before hydrate', key)
+    return false
+  }
   try {
     const res = await fetch('/api/floor/store', {
       method: 'PUT',
@@ -1678,6 +1779,31 @@ async function persistKey(key: string, value: unknown): Promise<boolean> {
     return true
   } catch (err) {
     console.error('[floor] persist failed', key, err)
+    return false
+  }
+}
+
+
+async function persistBeamPatch(
+  beamNo: string,
+  patch: Partial<Pick<BeamMaster, 'swLot' | 'qualityId' | 'warp' | 'reed' | 'width' | 'length' | 'loomType'>>
+): Promise<boolean> {
+  if (!isClient() || !beamNo) return false
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'patchBeam', beamNo, patch }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      console.error('[floor] patchBeam failed', beamNo, res.status, data)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[floor] patchBeam failed', beamNo, err)
     return false
   }
 }
@@ -1921,6 +2047,20 @@ export async function hydrateFloorFromDb(): Promise<void> {
           // ignore merge errors
         }
         clearLegacyFloorLocalStorage()
+        // Re-apply browser Sw# backup if DB row came back empty (patch race).
+        try {
+          const rawBeams = memoryStore.get(KEY_BEAMS)
+          if (rawBeams) {
+            const fromDb = (JSON.parse(rawBeams) as BeamMaster[]).map((b) => normalizeBeam(b))
+            const merged = applyLocalBeamSwLots(fromDb)
+            memoryStore.set(KEY_BEAMS, JSON.stringify(merged.map((b) => normalizeBeam(b))))
+            for (const b of merged) {
+              if (b.swLot) void persistBeamPatch(b.beamNo, { swLot: b.swLot })
+            }
+          }
+        } catch {
+          // ignore
+        }
       }
       hydrated = true
     } catch (err) {
@@ -1930,6 +2070,38 @@ export async function hydrateFloorFromDb(): Promise<void> {
   })()
 
   return hydratePromise
+}
+
+/** Re-pull beams/looms/qualities from DB (Track needs fresh swLot after seed). */
+export async function refreshFloorMastersFromDb(): Promise<void> {
+  if (!isClient()) return
+  try {
+    const res = await fetch('/api/floor/store', { method: 'GET', cache: 'no-store', credentials: 'include' })
+    const data = await res.json()
+    if (!data?.ok || !data.store || typeof data.store !== 'object') return
+    const store = data.store as Record<string, unknown>
+    for (const key of [KEY_BEAMS, KEY_LOOMS, KEY_QUALITY, KEY_YARN, KEY_YARN_ISSUANCE, KEY_YARN_MOVEMENTS]) {
+      if (key in store) memoryStore.set(key, JSON.stringify(store[key]))
+    }
+    // Keep browser Sw# backup if server row is still empty.
+    try {
+      const rawBeams = memoryStore.get(KEY_BEAMS)
+      if (rawBeams) {
+        const fromDb = (JSON.parse(rawBeams) as BeamMaster[]).map((b) => normalizeBeam(b))
+        const merged = applyLocalBeamSwLots(fromDb)
+        memoryStore.set(KEY_BEAMS, JSON.stringify(merged.map((b) => normalizeBeam(b))))
+        for (const b of merged) {
+          if (b.swLot && !(fromDb.find((x) => x.beamNo === b.beamNo)?.swLot)) {
+            void persistBeamPatch(b.beamNo, { swLot: b.swLot })
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  } catch (err) {
+    console.error('[floor] refresh masters failed', err)
+  }
 }
 
 async function loadSheetFromDb(dateStr: string): Promise<DailyLoomProductionEntry[] | null> {
@@ -1949,12 +2121,13 @@ async function loadSheetFromDb(dateStr: string): Promise<DailyLoomProductionEntr
   return null
 }
 
-/** Load every saved production day into memory so Quality overall is not stuck on the open day. */
+/** Load every saved production day into memory so Quality overall / Beam Track see all days. */
 export async function preloadAllFloorSheets(): Promise<void> {
   if (!isClient()) return
   try {
     const res = await fetch('/api/floor/store', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getAllSheets' }),
     })
@@ -1963,7 +2136,8 @@ export async function preloadAllFloorSheets(): Promise<void> {
     for (const sheet of data.sheets as { date?: string; entries?: DailyLoomProductionEntry[] }[]) {
       if (!sheet?.date || !Array.isArray(sheet.entries) || sheet.entries.length === 0) continue
       const key = `${KEY_SHEET}_${sheet.date}`
-      if (!memoryStore.has(key)) memoryStore.set(key, JSON.stringify(sheet.entries))
+      // Always take DB truth — stale in-memory sheets (wrong lot / 0 meters) were blocking Track.
+      memoryStore.set(key, JSON.stringify(sheet.entries))
     }
   } catch (err) {
     console.error('[floor] preload all sheets failed', err)
@@ -2023,12 +2197,24 @@ export function mergeSheetEntriesForDate(
   return [...byLoom.values()]
 }
 
-/** All persisted production days, with the selected day replaced by saved + live merge. */
+/**
+ * Production days for Quality Overall / Track gate, as-of `sheetDate`.
+ * Includes all persisted days up to and including the selected day (today = full run;
+ * past day = cut later days so yesterday does not still show today's meters).
+ * Selected day is replaced by saved + live merge.
+ */
 export function mergedSheetEntriesForTotals(
   sheetDate: string,
   live: DailyLoomProductionEntry[] = []
 ): DailyLoomProductionEntry[] {
-  const otherDays = listPersistedSheetEntries().filter((e) => e.date !== sheetDate)
+  const day = String(sheetDate || '').slice(0, 10)
+  const otherDays = listPersistedSheetEntries().filter((e) => {
+    const d = String(e.date || '').slice(0, 10)
+    if (!d || d === day) return false
+    // Cap at selected date — no future days in Overall.
+    if (day && d > day) return false
+    return true
+  })
   return [...otherDays, ...mergeSheetEntriesForDate(sheetDate, live)]
 }
 
@@ -2371,19 +2557,59 @@ class ProductionMastersService {
   }
 
   getBeams(): BeamMaster[] {
-    return loadJson(KEY_BEAMS, seedBeams).map((b) => normalizeBeam(b))
+    const beams = loadJson(KEY_BEAMS, seedBeams).map((b) => normalizeBeam(b))
+    return applyLocalBeamSwLots(beams).map((b) => normalizeBeam(b))
   }
 
   saveBeams(beams: BeamMaster[]) {
     saveJson(KEY_BEAMS, beams.map((b) => normalizeBeam(b)))
   }
 
-  updateBeam(beamNo: string, patch: Partial<BeamMaster>): BeamMaster[] {
+  updateBeam(
+    beamNo: string,
+    patch: Partial<BeamMaster>,
+    opts?: { sheetDate?: string }
+  ): BeamMaster[] {
+    if (patch.swLot !== undefined) {
+      writeLocalBeamSwLot(beamNo, patch.swLot)
+    }
     const beams = this.getBeams().map((b) => {
       if (b.beamNo !== beamNo) return b
       return normalizeBeam({ ...b, ...patch, beamNo })
     })
     this.saveBeams(beams)
+    const next = beams.find((b) => b.beamNo === beamNo)
+    // Sw# must hit DB immediately — also stamps Daily Entry SW # when mounted.
+    if (
+      patch.swLot !== undefined ||
+      patch.qualityId !== undefined ||
+      patch.warp !== undefined ||
+      patch.reed !== undefined ||
+      patch.width !== undefined ||
+      patch.length !== undefined ||
+      patch.loomType !== undefined
+    ) {
+      void persistBeamPatch(beamNo, {
+        ...(patch.swLot !== undefined ? { swLot: next?.swLot ?? null } : {}),
+        ...(patch.qualityId !== undefined ? { qualityId: next?.qualityId ?? null } : {}),
+        ...(patch.warp !== undefined ? { warp: next?.warp } : {}),
+        ...(patch.reed !== undefined ? { reed: next?.reed } : {}),
+        ...(patch.width !== undefined ? { width: next?.width } : {}),
+        ...(patch.length !== undefined ? { length: next?.length } : {}),
+        ...(patch.loomType !== undefined ? { loomType: next?.loomType } : {}),
+      })
+    }
+    if (patch.swLot !== undefined && next?.usedInLoom) {
+      const loomNum = Number(next.usedInLoom)
+      if (Number.isFinite(loomNum) && loomNum > 0) {
+        const day = String(opts?.sheetDate || getProductionToday()).slice(0, 10)
+        const lot = beamDailyEntryLot(next)
+        this.updateSheetEntry(day, loomNum, { lot })
+        // Also stamp today so Daily Entry always shows the same Sw#.
+        const today = getProductionToday()
+        if (today !== day) this.updateSheetEntry(today, loomNum, { lot })
+      }
+    }
     return beams
   }
 
@@ -2418,9 +2644,31 @@ class ProductionMastersService {
         usedInLoom: partial.usedInLoom ?? null,
         location: partial.location,
         mountedOn: partial.mountedOn,
+        qualityId: partial.qualityId ?? null,
+        swLot: partial.swLot ?? null,
       })
     )
+    if (partial.swLot) writeLocalBeamSwLot(partial.beamNo, partial.swLot)
     this.saveBeams(beams)
+    const added = this.getBeams().find((b) => b.beamNo === partial.beamNo)
+    // Ensure new beam + Sw# land in DB before a quick refresh can wipe memory-only state.
+    if (added) {
+      void persistKey(KEY_BEAMS, this.getBeams()).then((ok) => {
+        if (ok && (added.swLot || added.qualityId)) {
+          void persistBeamPatch(added.beamNo, {
+            swLot: added.swLot ?? null,
+            qualityId: added.qualityId ?? null,
+          })
+        }
+      })
+    }
+    if (added?.usedInLoom) {
+      const loomNum = Number(added.usedInLoom)
+      if (Number.isFinite(loomNum) && loomNum > 0) {
+        const mountDay = String(added.mountedOn || getProductionToday()).slice(0, 10)
+        this.updateSheetEntry(mountDay, loomNum, { lot: beamDailyEntryLot(added) })
+      }
+    }
     return this.getBeams()
   }
 
@@ -2466,7 +2714,32 @@ class ProductionMastersService {
       return b
     })
     this.saveBeams(beams)
+    const mounted = beams.find((b) => b.beamNo === beamNo)
+    // Stamp Sw# lot on Daily Entry (Excel SW # Lot column).
+    this.updateSheetEntry(dateStr, loomNumber, {
+      lot: mounted ? beamDailyEntryLot(mounted) : beamNo,
+    })
     return { ok: true, beams }
+  }
+
+  /** Excel Beem Length model — Length / Consumed / Balance from sheet lot rows. */
+  buildBeamTrack(beamNo: string): BeamTrackResult | null {
+    const beam = this.getBeams().find((b) => b.beamNo === beamNo)
+    if (!beam) return null
+    const qualityName = beam.qualityId
+      ? this.getQualities().find((q) => q.id === beam.qualityId)?.name || null
+      : null
+    return buildBeamTrackFromEntries(
+      beam,
+      listPersistedSheetEntries(),
+      getProductionToday(),
+      qualityName
+    )
+  }
+
+  /** Quick consumed meters for Track button gate. */
+  beamConsumedMeters(beamNo: string): number {
+    return this.buildBeamTrack(beamNo)?.consumed ?? 0
   }
 
   /** Beam wapas sizing se store me (FULL) — ab loom pe laga sakte ho. */
@@ -2895,7 +3168,19 @@ class ProductionMastersService {
     }
 
     const saved = qualities.find((q) => q.id === id)
-    if (saved?.status === 'ENDED' && saved.endedOn) {
+    if (reviving && saved) {
+      // Keep Active revive until DB confirms — otherwise hydrate/local ends snap back to ENDED
+      // and Continue looks like success while Ends row never leaves.
+      forgetLocalQualityEnd(id)
+      rememberLocalPendingQuality(
+        normalizeQuality({
+          ...saved,
+          status: 'ACTIVE',
+          endedOn: null,
+          loomEnds: saved.loomEnds,
+        })
+      )
+    } else if (saved?.status === 'ENDED' && saved.endedOn) {
       rememberLocalQualityEnd(id, saved.endedOn, saved.name, saved.loomEnds)
     } else if (nextPatch.status === 'ACTIVE' || nextPatch.status === 'HOLD') {
       forgetLocalQualityEnd(id)
@@ -3098,7 +3383,12 @@ class ProductionMastersService {
     // Row upsert + status patch only — full-table PUT races and can wipe reuse archives.
     const okUpsert = await persistQualityUpsert(q)
     const okPatch = await persistQualityStatus(id, status, endedOn)
-    return okPatch || okUpsert
+    const ok = okPatch || okUpsert
+    // Only clear Continue/Resume pending after DB confirms Active.
+    if (ok && status === 'ACTIVE') {
+      forgetLocalPendingQuality(id)
+    }
+    return ok
   }
 
   /** Push full qualities list + status patch for ended/hold rows. */
@@ -3191,6 +3481,10 @@ class ProductionMastersService {
     this.saveQualitiesMemory(qualities)
     forgetLocalPendingQuality(id)
     forgetLocalQualityEnd(id)
+    const beams = this.getBeams()
+    if (beams.some((b) => b.qualityId === id)) {
+      this.saveBeams(beams.map((b) => (b.qualityId === id ? { ...b, qualityId: null } : b)))
+    }
     if (isClient()) {
       void fetch('/api/floor/store', {
         method: 'POST',
@@ -3367,7 +3661,9 @@ class ProductionMastersService {
         shiftBMeters: shiftB,
         loomNumber: loom.loomNumber,
       })
-      const carriedLot = this.carriedLot(dateStr, loom.loomNumber)
+      const fromBeam = beam ? beamDailyEntryLot(beam) : ''
+      // Mounted beam owns SW # (read-only in Daily Entry). Beam Identity is never the lot.
+      const lot = beam ? fromBeam : ''
 
       return {
         id: `PROD-${dateStr}-${loom.loomNumber}`,
@@ -3397,7 +3693,7 @@ class ProductionMastersService {
         loss24h: metrics.loss24h,
         status,
         remarks,
-        lot: prev ? prev.lot || '' : carriedLot != null ? carriedLot : beam?.beamNo || '',
+        lot,
       } satisfies DailyLoomProductionEntry
     })
 

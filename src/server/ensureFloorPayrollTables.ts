@@ -123,6 +123,8 @@ const STATEMENTS = [
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "createdOn" TEXT`,
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "weavePlan" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "floor_looms" ADD COLUMN IF NOT EXISTS "statusSince" TEXT`,
+  `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "qualityId" TEXT`,
+  `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "swLot" TEXT`,
 ]
 
 export async function ensureFloorPayrollTables(): Promise<{ ok: true; statements: number }> {

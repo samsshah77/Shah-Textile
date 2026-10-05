@@ -7,6 +7,7 @@ import {
   hydrateFloorFromDb,
   preloadFloorSheet,
   preloadAllFloorSheets,
+  refreshFloorMastersFromDb,
   LoomMaster,
   BeamMaster,
   YarnMaster,
@@ -74,6 +75,7 @@ export function useProductionGrid() {
       const today = getCalendarToday()
       try {
         await hydrateFloorFromDb()
+        await refreshFloorMastersFromDb()
         await preloadAllFloorSheets()
         await preloadFloorSheet(selectedDate)
         await preloadFloorSheet(today)
@@ -270,7 +272,7 @@ export function useProductionGrid() {
 
   const updateBeam = useCallback(
     (beamNo: string, patch: Partial<BeamMaster>) => {
-      setBeams(productionMastersService.updateBeam(beamNo, patch))
+      setBeams(productionMastersService.updateBeam(beamNo, patch, { sheetDate: selectedDate }))
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
     },
     [selectedDate]
@@ -370,11 +372,17 @@ export function useProductionGrid() {
   )
 
   const updateQuality = useCallback(
-    (id: string, patch: Partial<QualityMaster>) => {
+    (id: string, patch: Partial<QualityMaster>): boolean => {
       const next = productionMastersService.updateQuality(id, patch, selectedDate)
       setQualities(next)
       setLooms(productionMastersService.getLooms())
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
+      const after = next.find((q) => q.id === id)
+      const statusOk =
+        patch.status === undefined ||
+        (after != null &&
+          (after.status ?? 'ACTIVE') === patch.status &&
+          (patch.status !== 'ACTIVE' || !after.endedOn))
       if (
         patch.status === 'ENDED' ||
         patch.status === 'HOLD' ||
@@ -382,8 +390,12 @@ export function useProductionGrid() {
         patch.status === 'ACTIVE' ||
         patch.createdOn !== undefined
       ) {
-        void productionMastersService.flushQualityStatus(id)
+        void productionMastersService.flushQualityStatus(id).then(() => {
+          setQualities(productionMastersService.getQualities())
+          setLooms(productionMastersService.getLooms())
+        })
       }
+      return statusOk
     },
     [selectedDate]
   )
@@ -433,16 +445,16 @@ export function useProductionGrid() {
 
   const startNewDay = useCallback(
     async (targetDate: string) => {
-      setLoading(true)
-      try {
+    setLoading(true)
+    try {
         productionMastersService.startNewDay(targetDate)
         setSelectedDateState(targetDate)
         setSelectedMonth(targetDate.slice(0, 7) || getProductionTodayMonth())
         refresh(targetDate)
         setTodaySheetReady(productionMastersService.hasPersistedSheet(getCalendarToday()))
-      } finally {
-        setLoading(false)
-      }
+    } finally {
+      setLoading(false)
+    }
     },
     [refresh]
   )

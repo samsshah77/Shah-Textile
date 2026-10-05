@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FocusEvent } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -57,6 +57,8 @@ export function FloorEntryTable({
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'danger'; text: string } | null>(null)
   /** After Finalize, Reset stays off until someone edits Daily Entry again. */
   const [editedSinceFinalize, setEditedSinceFinalize] = useState(false)
+  /** Loom# cell highlight while any field in that row is focused. */
+  const [activeLoom, setActiveLoom] = useState<number | null>(null)
 
   const tableEdit = tableEditProp ?? tableEditLocal
   const setTableEdit = (next: boolean) => {
@@ -95,6 +97,10 @@ export function FloorEntryTable({
   const canEdit = canUserEdit && tableEdit
   const resetDisabled = !canUserEdit || (isApproved && !editedSinceFinalize)
 
+  useEffect(() => {
+    if (!canEdit) setActiveLoom(null)
+  }, [canEdit])
+
   // Show notice ONLY when Ahmar has edited/submitted and it is not yet finalized
   const hasPendingAhmarEntry =
     !isApproved &&
@@ -102,6 +108,18 @@ export function FloorEntryTable({
       submittedBy ||
         (lastEditedBy && lastEditedBy.toLowerCase().includes('ahmer'))
     )
+
+  const markRowActive = (loomNumber: number) => {
+    if (canEdit) setActiveLoom(loomNumber)
+  }
+  const clearRowActiveIfLeaving = (
+    e: FocusEvent<HTMLElement>,
+    loomNumber: number
+  ) => {
+    const next = e.relatedTarget as Node | null
+    if (next && e.currentTarget.contains(next)) return
+    setActiveLoom((cur) => (cur === loomNumber ? null : cur))
+  }
 
   const patchEntry = (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
     const current = entries.find((e) => e.loomNumber === loomNumber)
@@ -305,10 +323,20 @@ export function FloorEntryTable({
           {entries.map((e, rowIdx) => (
             <div
               key={e.loomNumber}
-              className={`master-grid-card${canEdit ? ' sara-edit-card' : ''}`}
+              className={`master-grid-card${canEdit ? ' sara-edit-card' : ''}${
+                activeLoom === e.loomNumber ? ' sara-active-entry-card' : ''
+              }`}
               style={canEdit ? undefined : loomConditionRowStyle(e.status, e.remarks)}
+              onFocusCapture={() => markRowActive(e.loomNumber)}
+              onBlurCapture={(ev) => clearRowActiveIfLeaving(ev, e.loomNumber)}
             >
-              <div className="fw-semibold">Loom Number {e.loomNumber}</div>
+              <div
+                className={`fw-semibold${
+                  activeLoom === e.loomNumber ? ' sara-active-loom-num rounded px-1' : ''
+                }`}
+              >
+                Loom Number {e.loomNumber}
+              </div>
               <div className="small text-secondary text-truncate">
                 {e.qualityName || '—'} · {e.fabricType || '—'}
               </div>
@@ -382,19 +410,10 @@ export function FloorEntryTable({
                 <div className="small text-secondary">{e.remarks || '—'}</div>
               )}
 
-              <label className="small mb-0">Lot Number</label>
-              {canEdit ? (
-                <TextCellInput
-                  className="form-control form-control-sm"
-                  value={e.lot || ''}
-                  placeholder="Lot Number"
-                  navRow={rowIdx}
-                  navCol={4}
-                  onValueChange={(v) => patchEntry(e.loomNumber, { lot: v })}
-                />
-              ) : (
-                <div className="small text-secondary">{e.lot || '—'}</div>
-              )}
+              <label className="small mb-0">SW #</label>
+              <div className="small text-secondary" title="Beam pe jo Sw# hai — Daily Entry pe edit nahi">
+                {e.lot || '—'}
+              </div>
             </div>
           ))}
         </div>
@@ -443,7 +462,7 @@ export function FloorEntryTable({
                   Remarks
                 </ResizableTh>
                 <ResizableTh columnKey="lot" width={widths.lot} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Lot Number
+                  SW #
                 </ResizableTh>
               </tr>
             </thead>
@@ -451,10 +470,23 @@ export function FloorEntryTable({
               {entries.map((e, rowIdx) => (
                 <tr
                   key={e.loomNumber}
-                  className={canEdit ? 'sara-edit-row' : undefined}
+                  className={[
+                    canEdit ? 'sara-edit-row' : undefined,
+                    activeLoom === e.loomNumber ? 'sara-active-entry-row' : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || undefined}
                   style={canEdit ? undefined : loomConditionRowStyle(e.status, e.remarks)}
+                  onFocusCapture={() => markRowActive(e.loomNumber)}
+                  onBlurCapture={(ev) => clearRowActiveIfLeaving(ev, e.loomNumber)}
                 >
-                  <td className="fw-semibold px-2">{e.loomNumber}</td>
+                  <td
+                    className={`fw-semibold px-2${
+                      activeLoom === e.loomNumber ? ' sara-active-loom-num' : ''
+                    }`}
+                  >
+                    {e.loomNumber}
+                  </td>
                   <td className="px-2 text-truncate">{e.qualityName || '—'}</td>
                   <td className="small text-secondary px-2 text-truncate">
                     {e.fabricType || '—'}
@@ -522,21 +554,12 @@ export function FloorEntryTable({
                     )}
                   </td>
                   <td className="px-1">
-                    {canEdit ? (
-                      <TextCellInput
-                        className="form-control form-control-sm"
-                        style={{ width: '100%', minWidth: 0 }}
-                        value={e.lot || ''}
-                        placeholder="Lot Number…"
-                        navRow={rowIdx}
-                        navCol={4}
-                        onValueChange={(v) => patchEntry(e.loomNumber, { lot: v })}
-                      />
-                    ) : (
-                      <div className="px-1 text-truncate" title={e.lot || ''}>
-                        {e.lot || '—'}
-                      </div>
-                    )}
+                    <div
+                      className="px-1 text-truncate text-secondary"
+                      title={e.lot ? `${e.lot} (from beam Sw#)` : 'Beam pe Sw# set karo'}
+                    >
+                      {e.lot || '—'}
+                    </div>
                   </td>
                 </tr>
               ))}

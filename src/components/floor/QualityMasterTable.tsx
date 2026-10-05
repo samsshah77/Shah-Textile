@@ -130,7 +130,7 @@ function formatShortDate(dateStr?: string | null) {
 
 interface QualityMasterTableProps {
   qualities: QualityMaster[]
-  onUpdate: (id: string, patch: Partial<QualityMaster>) => void
+  onUpdate: (id: string, patch: Partial<QualityMaster>) => boolean | void
   onAdd: (newQuality?: Partial<QualityMaster>) => string | null | void
   onDelete: (id: string) => void
   /** Keep ENDED row for month PDF; fork a new Active run from zero. Returns new Active id. */
@@ -544,6 +544,14 @@ export function QualityMasterTable({
   const handleResume = (q: QualityMaster) => {
     if (!canArchiveOps) return
     const label = qualityDisplayName(q, qualities)
+    const liveSame = findLiveQualityByName(qualities, q.name, q.id)
+    if (liveSame) {
+      showError({
+        title: 'Resume nahi ho sakta',
+        message: `"${liveSame.name}" pehle se Active/Hold pe hai. Same naam do baar nahi chalega.`,
+      })
+      return
+    }
     showConfirm({
       title: 'Quality Resume?',
       message: `"${label}" ko Active pe wapas laayein?`,
@@ -551,9 +559,17 @@ export function QualityMasterTable({
       confirmText: 'Resume',
       cancelText: 'Cancel',
       onConfirm: () => {
-        onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        const ok = onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        if (ok === false) {
+          showError({
+            title: 'Resume nahi hua',
+            message: `"${label}" Active pe nahi aayi. Dobara try karo.`,
+          })
+          return
+        }
         rememberQualityAssignFlash(q.id)
         flashRows(q.id, 'active')
+        onStatusFilterChange?.('ACTIVE')
         showSuccessSoon({
           title: 'Quality Resumed',
           message: `"${label}" Active pe wapas — thodi der highlight.`,
@@ -602,32 +618,34 @@ export function QualityMasterTable({
   const handleContinue = (q: QualityMaster) => {
     if (!canArchiveOps) return
     const label = qualityDisplayName(q, qualities)
-    const key = qualityNameKey(q.name)
-    const activeSame = qualities.find(
-      (item) =>
-        item.id !== q.id &&
-        qualityNameKey(item.name) === key &&
-        (item.status ?? 'ACTIVE') === 'ACTIVE'
-    )
-    if (activeSame) {
+    const liveSame = findLiveQualityByName(qualities, q.name, q.id)
+    if (liveSame) {
       showError({
         title: 'Continue nahi ho sakta',
-        message: `"${activeSame.name}" pehle se Active pe hai. Continue sirf tab jab galti se End hua ho aur Active pe same naam na ho.`,
+        message: `"${liveSame.name}" pehle se Active/Hold pe hai. Continue sirf tab jab galti se End hua ho aur Active pe same naam na ho. Agar zero se naya run chahiye to Reuse use karo (purana Ends pe rehta hai).`,
       })
       return
     }
     showConfirm({
       title: 'Quality Continue?',
-      message: `"${label}" galti se end hui thi? Wapas Active pe aayegi — purani production / Track zero se shuru nahi hogi.`,
+      message: `"${label}" galti se end hui thi? Wapas Active pe aayegi — Ends se hat jayegi, purani production / Track zero se shuru nahi hogi.`,
       type: 'confirm',
       confirmText: 'Continue',
       cancelText: 'Cancel',
       onConfirm: () => {
-        onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        const ok = onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
+        if (ok === false) {
+          showError({
+            title: 'Continue nahi hua',
+            message: `"${label}" Ends se nahi hati. Agar same naam Active pe hai to pehle usko End karo, ya Reuse (zero se) use karo.`,
+          })
+          return
+        }
         rememberQualityAssignFlash(q.id)
+        onStatusFilterChange?.('ACTIVE')
         showSuccessSoon({
           title: 'Quality Continued',
-          message: `"${label}" Active pe wapas — purane meters same. Active pe jao to highlight dikhegi.`,
+          message: `"${label}" Ends se hat kar Active pe aa gayi — purane meters same.`,
         })
       },
     })

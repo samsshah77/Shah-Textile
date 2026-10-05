@@ -1,7 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { BeamMaster, LoomMaster, calcTotalThreads } from '@/services/productionMastersService'
+import {
+  BeamMaster,
+  LoomMaster,
+  calcTotalThreads,
+} from '@/services/productionMastersService'
 import { LOOM_STATUS_LABEL } from '@/components/floor/LoomStatusSelect'
 import type { LoomStatus } from '@/types/loom'
 
@@ -11,6 +15,8 @@ interface AddBeamModalProps {
   onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void
   existingBeamNos: string[]
   activeLooms: LoomMaster[]
+  /** Unused — warp manual; kept for API compat with BeamMasterTable. */
+  qualities?: unknown[]
 }
 
 export function AddBeamModal({
@@ -21,6 +27,7 @@ export function AddBeamModal({
   activeLooms,
 }: AddBeamModalProps) {
   const [beamNo, setBeamNo] = useState('')
+  const [swLot, setSwLot] = useState('')
   const [warp, setWarp] = useState('20/1')
   const [reed, setReed] = useState<number | ''>(60)
   const [width, setWidth] = useState<number | ''>(66)
@@ -45,6 +52,11 @@ export function AddBeamModal({
       return
     }
 
+    if (!swLot.trim()) {
+      setError('Sw # zaroori hai — Daily Entry aur Track isi se link hote hain.')
+      return
+    }
+
     if (existingBeamNos.some((no) => no.toLowerCase() === trimmedNo.toLowerCase())) {
       setError(`Beam "${trimmedNo}" already exists in inventory.`)
       return
@@ -54,6 +66,7 @@ export function AddBeamModal({
     try {
       onAdd({
         beamNo: trimmedNo,
+        swLot: swLot.trim() || null,
         warp: warp.trim() || '20/1',
         reed: numReed,
         width: numWidth,
@@ -63,13 +76,14 @@ export function AddBeamModal({
         location: placement,
         usedInLoom: isLoom ? placement : null,
         mountedOn: isLoom ? mountedDate : null,
+        qualityId: null,
       })
     } catch {
       return
     }
 
-    // Reset form
     setBeamNo('')
+    setSwLot('')
     setWarp('20/1')
     setReed(60)
     setWidth(66)
@@ -115,14 +129,14 @@ export function AddBeamModal({
               )}
 
               <div className="row g-3">
-                <div className="col-12">
+                <div className="col-6">
                   <label className="form-label small fw-semibold text-secondary mb-1">
-                    Beam ID / Identity
+                    Beam ID / Beem #
                   </label>
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="e.g. B-101 or 402"
+                    placeholder="e.g. B#G 174"
                     value={beamNo}
                     onChange={(e) => {
                       setBeamNo(e.target.value)
@@ -131,6 +145,24 @@ export function AddBeamModal({
                     autoFocus
                     required
                   />
+                </div>
+
+                <div className="col-6">
+                  <label className="form-label small fw-semibold text-secondary mb-1">
+                    Sw # (Daily Entry + Track) *
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. 331"
+                    value={swLot}
+                    onChange={(e) => setSwLot(e.target.value)}
+                    required
+                  />
+                  <div className="form-text small">
+                    Beam Identity alag hai. Sw# linking ke liye hai — ek Sw# pe kai beams ho sakte
+                    hain. Daily Entry SW # isi se auto aayega (edit nahi).
+                  </div>
                 </div>
 
                 <div className="col-6">
@@ -156,6 +188,7 @@ export function AddBeamModal({
                   </select>
                 </div>
 
+
                 {placement !== 'STORE' && placement !== 'SIZING' && (
                   <div className="col-6">
                     <label className="form-label small fw-semibold text-secondary mb-1">
@@ -170,14 +203,14 @@ export function AddBeamModal({
                   </div>
                 )}
 
-                <div className="col-6">
+                <div className="col-12">
                   <label className="form-label small fw-semibold text-secondary mb-1">
-                    Yarn Warp
+                    Yarn Warp (manual)
                   </label>
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="e.g. 20/1 or 40/1"
+                    placeholder="e.g. 20/1 Pv China"
                     value={warp}
                     onChange={(e) => setWarp(e.target.value)}
                   />
@@ -258,7 +291,7 @@ export function AddBeamModal({
               <button
                 type="submit"
                 className="btn btn-sm btn-primary px-3"
-                disabled={!beamNo.trim()}
+                disabled={!beamNo.trim() || !swLot.trim()}
               >
                 <i className="bi bi-plus-lg me-1" /> Add Beam
               </button>

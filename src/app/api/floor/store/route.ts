@@ -13,6 +13,7 @@ import {
   dbGetYarnIssuances,
   dbGetYarnMovements,
   dbSaveBeams,
+  dbPatchBeam,
   dbSaveLooms,
   dbSaveQualities,
   dbPatchQualityStatus,
@@ -95,6 +96,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Ensure new columns (swLot, qualityId) exist before any beam write.
+    await ensureFloorPayrollTables()
+
     const body = await req.json()
     const key = String(body?.key || '')
     const value = body?.value
@@ -152,6 +156,20 @@ export async function POST(req: NextRequest) {
       const dateStr = String(body?.date || '')
       await dbDeleteSheet(dateStr)
       return NextResponse.json({ ok: true })
+    }
+
+    if (action === 'patchBeam') {
+      await ensureFloorPayrollTables()
+      const beamNo = String(body?.beamNo || '').trim()
+      const patch = body?.patch || {}
+      if (!beamNo) {
+        return NextResponse.json({ ok: false, error: 'beamNo required' }, { status: 400 })
+      }
+      const beam = await dbPatchBeam(beamNo, patch)
+      if (!beam) {
+        return NextResponse.json({ ok: false, error: 'Beam not found' }, { status: 404 })
+      }
+      return NextResponse.json({ ok: true, beam })
     }
 
     if (action === 'updateLoomEntry') {

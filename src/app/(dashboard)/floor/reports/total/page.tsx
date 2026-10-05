@@ -325,33 +325,59 @@ function ProductionTotalTrackingContent() {
     return list
   }, [matrix, qualityLoomSet])
 
-  const mid = Math.ceil(matrix.days.length / 2) || 1
-  const weightedSlice = (from: number, to: number, source: MatrixState = matrix) => {
-    const actual = source.dayActual.slice(from, to).reduce((s, n) => s + n, 0)
-    const target = source.dayTarget.slice(from, to).reduce((s, n) => s + n, 0)
+  /** Calendar fortnights: 1–15 vs 16–end. Never split by “half of days entered so far”
+   * (that wrongly put days 4–5 into 2nd FN early in the month). */
+  const FN1_LAST_DAY = 15
+  const dayNum = (d: { day?: number | string }, fallbackIndex: number) => {
+    const n = Number(d.day)
+    return Number.isFinite(n) && n > 0 ? n : fallbackIndex + 1
+  }
+  const inFortnight = (d: { day?: number | string }, index: number, half: 1 | 2) => {
+    const n = dayNum(d, index)
+    return half === 1 ? n <= FN1_LAST_DAY : n > FN1_LAST_DAY
+  }
+  const weightedFortnight = (half: 1 | 2, source: MatrixState = matrix) => {
+    let actual = 0
+    let target = 0
+    source.days.forEach((d, i) => {
+      if (!inFortnight(d, i, half)) return
+      actual += Number(source.dayActual[i]) || 0
+      target += Number(source.dayTarget[i]) || 0
+    })
     return target > 0 ? Math.round((actual / target) * 100) : 0
   }
-  const fortnight1 =
-    view === 'efficiency'
-      ? weightedSlice(0, mid)
-      : isQualityDeepLink
-        ? daySeries.slice(0, mid).reduce((s, d) => s + (d.value || 0), 0)
-        : matrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
-  const fortnight2 =
-    view === 'efficiency'
-      ? weightedSlice(mid, matrix.days.length)
-      : isQualityDeepLink
-        ? daySeries.slice(mid).reduce((s, d) => s + (d.value || 0), 0)
-        : matrix.days.slice(mid).reduce((s, d) => s + (d.totalMeters || 0), 0)
+  const sumFortnightMeters = (half: 1 | 2) => {
+    if (isQualityDeepLink) {
+      return daySeries.reduce((s, d) => {
+        const n = Number(d.label)
+        if (!Number.isFinite(n)) return s
+        if (half === 1 ? n > FN1_LAST_DAY : n <= FN1_LAST_DAY) return s
+        return s + (d.value || 0)
+      }, 0)
+    }
+    return matrix.days.reduce((s, d, i) => {
+      if (!inFortnight(d, i, half)) return s
+      return s + (d.totalMeters || 0)
+    }, 0)
+  }
+  const fortnight1 = view === 'efficiency' ? weightedFortnight(1) : sumFortnightMeters(1)
+  const fortnight2 = view === 'efficiency' ? weightedFortnight(2) : sumFortnightMeters(2)
 
   const loomFortnight = (loom: number, half: 1 | 2, source: MatrixState = matrix) => {
-    const slice = half === 1 ? source.days.slice(0, mid) : source.days.slice(mid)
     if (view === 'efficiency') {
-      const actual = slice.reduce((s, d) => s + (Number(d.loomActual?.[loom]) || 0), 0)
-      const target = slice.reduce((s, d) => s + (Number(d.loomTarget?.[loom]) || 0), 0)
+      let actual = 0
+      let target = 0
+      source.days.forEach((d, i) => {
+        if (!inFortnight(d, i, half)) return
+        actual += Number(d.loomActual?.[loom]) || 0
+        target += Number(d.loomTarget?.[loom]) || 0
+      })
       return target > 0 ? Math.round((actual / target) * 100) : 0
     }
-    return slice.reduce((s, d) => s + (Number(d.loomMeters?.[loom]) || 0), 0)
+    return source.days.reduce((s, d, i) => {
+      if (!inFortnight(d, i, half)) return s
+      return s + (Number(d.loomMeters?.[loom]) || 0)
+    }, 0)
   }
 
   const monthLabel = (() => {
@@ -487,7 +513,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title="1st Fortnight"
             value={formatTotal(fortnight1)}
-            subValue={`Days 1–${mid}`}
+            subValue="Days 1–15"
             biIcon="bi-1-circle"
             colorVariant="info"
           />
@@ -496,7 +522,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title="2nd Fortnight"
             value={formatTotal(fortnight2)}
-            subValue={`Days ${mid + 1}+`}
+            subValue="Days 16+"
             biIcon="bi-2-circle"
             colorVariant="warning"
           />
@@ -747,13 +773,19 @@ function ProductionTotalTrackingContent() {
                   ))}
                   <td className="text-end px-2">
                     {formatNumber(
-                      shiftBMatrix.days.slice(0, mid).reduce((s, d) => s + (d.totalMeters || 0), 0),
+                      shiftBMatrix.days.reduce(
+                        (s, d, i) => s + (inFortnight(d, i, 1) ? d.totalMeters || 0 : 0),
+                        0
+                      ),
                       0
                     )}
                   </td>
                   <td className="text-end px-2">
                     {formatNumber(
-                      shiftBMatrix.days.slice(mid).reduce((s, d) => s + (d.totalMeters || 0), 0),
+                      shiftBMatrix.days.reduce(
+                        (s, d, i) => s + (inFortnight(d, i, 2) ? d.totalMeters || 0 : 0),
+                        0
+                      ),
                       0
                     )}
                   </td>

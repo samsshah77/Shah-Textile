@@ -388,6 +388,7 @@ function ProductionWorkspaceContent() {
           <BeamMasterTable
             beams={beams}
             looms={looms}
+            qualities={qualities}
             selectedDate={selectedDate}
             onUpdate={updateBeam}
             onAdd={addBeam}

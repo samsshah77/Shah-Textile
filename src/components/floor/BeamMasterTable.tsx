@@ -1,7 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { BeamMaster, LoomMaster, type MountBeamResult } from '@/services/productionMastersService'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  BeamMaster,
+  LoomMaster,
+  QualityMaster,
+  normalizeQualityStatus,
+  formatSwLotForDailyEntry,
+  preloadAllFloorSheets,
+  productionMastersService,
+  type MountBeamResult,
+} from '@/services/productionMastersService'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
@@ -13,16 +22,93 @@ import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 
+
+function SwLotCell({
+  beamNo,
+  value,
+  enabled,
+  navRow,
+  navCol,
+  onCommit,
+}: {
+  beamNo: string
+  value: string
+  enabled: boolean
+  navRow: number
+  navCol: number
+  onCommit: (swLot: string | null) => void
+}) {
+  const [draft, setDraft] = useState(value)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    setDraft(value)
+  }, [value, beamNo])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const commit = (raw: string) => {
+    const next = raw.trim() || null
+    const prev = (value || '').trim() || null
+    if (next !== prev) onCommit(next)
+  }
+
+  if (!enabled) {
+    return (
+      <span className="small px-1 fw-semibold">
+        {value ? formatSwLotForDailyEntry(value, '') : '—'}
+      </span>
+    )
+  }
+
+  return (
+    <input
+      type="text"
+      className="form-control form-control-sm"
+      placeholder="e.g. 331"
+      autoComplete="off"
+      data-nav-row={navRow}
+      data-nav-col={navCol}
+      value={draft}
+      onChange={(e) => {
+        const v = e.target.value
+        setDraft(v)
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => commit(v), 350)
+      }}
+      onBlur={() => {
+        if (timerRef.current) clearTimeout(timerRef.current)
+        commit(draft)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          if (timerRef.current) clearTimeout(timerRef.current)
+          commit(draft)
+          ;(e.target as HTMLInputElement).blur()
+        }
+      }}
+    />
+  )
+}
+
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 110,
   location: 165,
-  warp: 160,
+  swLot: 100,
+  quality: 120,
+  warp: 130,
   reed: 68,
   width: 68,
   threads: 95,
   length: 95,
   machine: 100,
   status: 180,
+  track: 88,
 }
 
 export type BeamFilterType = 'ALL' | 'IN_STOCK' | 'AT_SIZING' | 'ON_LOOM'
@@ -80,6 +166,7 @@ export function BeamStockFilterBar({
 interface BeamMasterTableProps {
   beams: BeamMaster[]
   looms: LoomMaster[]
+  qualities?: QualityMaster[]
   selectedDate: string
   onUpdate: (beamNo: string, patch: Partial<BeamMaster>) => void
   onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void
@@ -196,6 +283,7 @@ function LoomStatusNote({
 export function BeamMasterTable({
   beams,
   looms,
+  qualities = [],
   selectedDate,
   onUpdate,
   onAdd,
@@ -234,7 +322,7 @@ export function BeamMasterTable({
   }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_beam_col_widths_v7',
+    'sara_beam_col_widths_v10',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -242,6 +330,19 @@ export function BeamMasterTable({
     [widths]
   )
   const activeLooms = looms.filter((l) => l.isActive)
+  const activeQualities = useMemo(
+    () =>
+      qualities
+        .filter((q) => normalizeQualityStatus(q.status) === 'ACTIVE')
+        .slice()
+        .sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+    [qualities]
+  )
+  const qualityNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const q of qualities) map.set(q.id, q.name || q.id)
+    return map
+  }, [qualities])
 
   const filteredBeams = useMemo(() => {
     if (filter === 'IN_STOCK') {
@@ -268,6 +369,67 @@ export function BeamMasterTable({
         ? { ...patch, totalThreads: Math.round((width || 0) * (reed || 0) * 0.95) }
         : patch
     onUpdate(b.beamNo, withThreads)
+  }
+
+  const linkQuality = (b: BeamMaster, qualityId: string) => {
+    if (!qualityId) {
+      patchBeam(b, { qualityId: null })
+      return
+    }
+    const q = qualities.find((item) => item.id === qualityId)
+    if (!q) {
+      patchBeam(b, { qualityId })
+      return
+    }
+    patchBeam(b, {
+      qualityId,
+      ...(q.warpYarn ? { warp: q.warpYarn } : {}),
+      ...(q.reed ? { reed: q.reed } : {}),
+      ...(q.widthInch ? { width: q.widthInch } : {}),
+    })
+  }
+
+  const renderQualitySelect = (b: BeamMaster, enabled: boolean) => {
+    const linkedName = b.qualityId ? qualityNameById.get(b.qualityId) : null
+    if (!enabled) {
+      return (
+        <span className="small text-truncate d-block" title={linkedName || undefined}>
+          {linkedName || <span className="text-secondary">—</span>}
+        </span>
+      )
+    }
+    return (
+      <select
+        className="form-select form-select-sm"
+        style={{ width: '100%', minWidth: 0, fontSize: '0.78rem' }}
+        value={b.qualityId || ''}
+        onChange={(e) => linkQuality(b, e.target.value)}
+      >
+        <option value="">— Manual —</option>
+        {b.qualityId && !activeQualities.some((q) => q.id === b.qualityId) && linkedName && (
+          <option value={b.qualityId}>{linkedName} (ended)</option>
+        )}
+        {activeQualities.map((q) => (
+          <option key={q.id} value={q.id}>
+            {q.name}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  const openTrack = (b: BeamMaster) => {
+    const qs = new URLSearchParams({ beam: b.beamNo })
+    const href = `/floor/reports/beam?${qs.toString()}`
+    // Sheets may not be in memory on Beams tab — preload then open (or open anyway).
+    void (async () => {
+      try {
+        await preloadAllFloorSheets()
+      } catch {
+        // still open Track page; it hydrates itself
+      }
+      window.location.assign(href)
+    })()
   }
 
   const editToggle =
@@ -419,6 +581,15 @@ export function BeamMasterTable({
                       <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
                     </div>
                     <div className="d-flex flex-column align-items-end gap-1">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary py-0"
+                        style={{ fontSize: '0.72rem' }}
+                        title="Beam Length Track"
+                        onClick={() => openTrack(b)}
+                      >
+                        Track
+                      </button>
                       {masterEdit && onDelete && (
                         <button
                           type="button"
@@ -433,6 +604,23 @@ export function BeamMasterTable({
                   </div>
 
                   <div>
+                    <label className="form-label small mb-1 fw-semibold">Sw #</label>
+                    <SwLotCell
+                      beamNo={b.beamNo}
+                      value={b.swLot || ''}
+                      enabled={masterEdit}
+                      navRow={rowIdx}
+                      navCol={5}
+                      onCommit={(swLot) => patchBeam(b, { swLot })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label small mb-1 fw-semibold">Quality (optional)</label>
+                    {renderQualitySelect(b, masterEdit)}
+                  </div>
+
+                  <div>
                     <label className="form-label small mb-1 fw-semibold">Yarn Warp</label>
                     {masterEdit ? (
                       <TextCellInput
@@ -440,7 +628,7 @@ export function BeamMasterTable({
                         value={b.warp || ''}
                         navRow={rowIdx}
                         navCol={0}
-                        onValueChange={(v) => patchBeam(b, { warp: v })}
+                        onValueChange={(v) => patchBeam(b, { warp: v, qualityId: null })}
                       />
                     ) : (
                       <div className="small">{b.warp || '—'}</div>
@@ -546,6 +734,12 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="location" width={widths.location} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Location / Loom
                 </ResizableTh>
+                <ResizableTh columnKey="swLot" width={widths.swLot} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Sw #
+                </ResizableTh>
+                <ResizableTh columnKey="quality" width={widths.quality} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Quality
+                </ResizableTh>
                 <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Yarn Warp
                 </ResizableTh>
@@ -567,12 +761,15 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="status" width={widths.status} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Status
                 </ResizableTh>
+                <ResizableTh columnKey="track" width={widths.track} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Track
+                </ResizableTh>
               </tr>
             </thead>
             <tbody>
               {filteredBeams.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-0 border-0">
+                  <td colSpan={12} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon="bi-bounding-box"
                       title="No beams in this category"
@@ -598,6 +795,17 @@ export function BeamMasterTable({
                     >
                       <td className="fw-semibold px-2">{b.beamNo}</td>
                       <td className="px-1">{renderLocationSelect(b, opsEdit)}</td>
+                      <td className="px-1">
+                        <SwLotCell
+                          beamNo={b.beamNo}
+                          value={b.swLot || ''}
+                          enabled={editActive}
+                          navRow={rowIdx}
+                          navCol={0}
+                          onCommit={(swLot) => patchBeam(b, { swLot })}
+                        />
+                      </td>
+                      <td className="px-1">{renderQualitySelect(b, editActive)}</td>
                       <td
                         className="px-2 text-truncate"
                         style={{
@@ -651,6 +859,16 @@ export function BeamMasterTable({
                           <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
                         )}
                       </td>
+                      <td className="px-2">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary py-0"
+                          style={{ fontSize: '0.72rem' }}
+                          onClick={() => openTrack(b)}
+                        >
+                          Track
+                        </button>
+                      </td>
                     </tr>
                   )
                 })
@@ -673,6 +891,7 @@ export function BeamMasterTable({
         }}
         existingBeamNos={beams.map((b) => b.beamNo)}
         activeLooms={activeLooms}
+        qualities={qualities}
       />
     </div>
   )

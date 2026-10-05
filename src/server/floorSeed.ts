@@ -68,6 +68,8 @@ function seedBeams(): BeamMaster[] {
       mountedOn: mountedDate,
       beamEndedOn: b.beamNo === '134' ? '2026-09-22' : null,
       endedFromLoom: b.beamNo === '134' ? '13' : null,
+      qualityId: null,
+      swLot: null,
     }
   })
 }

@@ -225,6 +225,10 @@ model FloorBeam {
   mountedOn      String?
   beamEndedOn    String?
   endedFromLoom  String?
+  /** Linked Quality master (warp recipe) — optional. */
+  qualityId      String?
+  /** Sw# lot — Daily Entry “SW #” column; same quality name, different run id (Excel). */
+  swLot          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

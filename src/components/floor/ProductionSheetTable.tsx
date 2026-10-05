@@ -1,10 +1,11 @@
 'use client'
 
-import { Fragment, useMemo, type CSSProperties } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
 import type { LoomCategory } from '@/types/loom'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
+import { useTablePanScroll } from '@/hooks/useTablePanScroll'
 import { loomConditionRowStyle, LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 import { formatProductionDayLabel, productionDayName } from '@/constants/productionCalendar'
 
@@ -220,6 +221,9 @@ function ModelSectionTotal({ totals }: { totals: SectionTotals }) {
 
 /** Read-only Excel Production sheet — all values auto from masters + Daily Entry. */
 export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTableProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const panRef = useTablePanScroll<HTMLDivElement>()
+  const [fullView, setFullView] = useState(false)
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_prod_sheet_col_widths_v1',
     DEFAULT_WIDTHS
@@ -231,6 +235,42 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
   )
 
   const activeDate = sheetDate || entries[0]?.date || ''
+
+  const exitFullView = () => {
+    setFullView(false)
+    if (typeof document !== 'undefined' && document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {})
+    }
+  }
+
+  const enterFullView = () => {
+    setFullView(true)
+    const el = rootRef.current
+    if (el && typeof el.requestFullscreen === 'function') {
+      void el.requestFullscreen().catch(() => {
+        /* CSS overlay still covers the app chrome */
+      })
+    }
+  }
+
+  useEffect(() => {
+    if (!fullView) return
+    const onFs = () => {
+      if (!document.fullscreenElement) setFullView(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitFullView()
+    }
+    document.addEventListener('fullscreenchange', onFs)
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('fullscreenchange', onFs)
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [fullView])
 
   const modelGroups = useMemo(() => {
     const buckets = new Map<LoomCategory, DailyLoomProductionEntry[]>()
@@ -276,7 +316,10 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
   )
 
   return (
-    <div className="card sara-prod-sheet-print">
+    <div
+      ref={rootRef}
+      className={`card sara-prod-sheet-print${fullView ? ' sara-prod-sheet-fullview' : ''}`}
+    >
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center print:hidden">
         <div className="min-w-0">
           <h3 className="card-title mb-0">Production Sheet</h3>
@@ -284,10 +327,34 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
             <div className="small text-secondary">{formatProductionDayLabel(activeDate)}</div>
           ) : null}
         </div>
+        <div className="d-flex align-items-center gap-2">
+          {fullView ? (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={exitFullView}
+              title="Exit full view (Esc)"
+            >
+              <i className="bi bi-fullscreen-exit me-1" />
+              Exit Full View
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary"
+              onClick={enterFullView}
+              title="Open sheet on full PC screen"
+            >
+              <i className="bi bi-arrows-fullscreen me-1" />
+              Full View
+            </button>
+          )}
+        </div>
       </div>
       <div
-        className="card-body p-0 sara-prod-sheet-print__body"
-        style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+        ref={panRef}
+        className="card-body p-0 sara-prod-sheet-print__body sara-hscroll-pane"
+        title="Click and drag (hand) to scroll sideways"
       >
         <table
           className="table table-sm table-bordered table-hover mb-0 align-middle sara-prod-sheet-print__table"
