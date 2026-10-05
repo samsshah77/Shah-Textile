@@ -1068,7 +1068,10 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
     warp: simplifyWarpName(b.warp),
     reed,
     width,
-    totalThreads: calcTotalThreads(reed, width),
+    totalThreads:
+      b.totalThreads != null && Number.isFinite(Number(b.totalThreads))
+        ? Math.round(Number(b.totalThreads))
+        : calcTotalThreads(reed, width),
     length: b.length ?? 0,
     loomType: b.loomType || 'G6200',
     fillStatus,
@@ -1786,7 +1789,9 @@ async function persistKey(key: string, value: unknown): Promise<boolean> {
 
 async function persistBeamPatch(
   beamNo: string,
-  patch: Partial<Pick<BeamMaster, 'swLot' | 'qualityId' | 'warp' | 'reed' | 'width' | 'length' | 'loomType'>>
+  patch: Partial<
+    Pick<BeamMaster, 'swLot' | 'qualityId' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'>
+  >
 ): Promise<boolean> {
   if (!isClient() || !beamNo) return false
   try {
@@ -2587,7 +2592,8 @@ class ProductionMastersService {
       patch.reed !== undefined ||
       patch.width !== undefined ||
       patch.length !== undefined ||
-      patch.loomType !== undefined
+      patch.loomType !== undefined ||
+      patch.totalThreads !== undefined
     ) {
       void persistBeamPatch(beamNo, {
         ...(patch.swLot !== undefined ? { swLot: next?.swLot ?? null } : {}),
@@ -2597,6 +2603,9 @@ class ProductionMastersService {
         ...(patch.width !== undefined ? { width: next?.width } : {}),
         ...(patch.length !== undefined ? { length: next?.length } : {}),
         ...(patch.loomType !== undefined ? { loomType: next?.loomType } : {}),
+        ...(patch.totalThreads !== undefined || patch.reed !== undefined || patch.width !== undefined
+          ? { totalThreads: next?.totalThreads }
+          : {}),
       })
     }
     if (patch.swLot !== undefined && next?.usedInLoom) {
@@ -2638,6 +2647,7 @@ class ProductionMastersService {
         warp: partial.warp || '',
         reed: partial.reed ?? 60,
         width: partial.width ?? 66,
+        totalThreads: partial.totalThreads,
         length: partial.length ?? 0,
         loomType: partial.loomType || 'G6200',
         fillStatus: partial.fillStatus || 'FULL',

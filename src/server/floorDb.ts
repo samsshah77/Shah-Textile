@@ -205,7 +205,9 @@ export async function dbSaveBeams(beams: BeamMaster[]): Promise<void> {
 /** Patch one beam (Sw# etc.) without rewriting the whole inventory. */
 export async function dbPatchBeam(
   beamNo: string,
-  patch: Partial<Pick<BeamMaster, 'swLot' | 'qualityId' | 'warp' | 'reed' | 'width' | 'length' | 'loomType'>>
+  patch: Partial<
+    Pick<BeamMaster, 'swLot' | 'qualityId' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'>
+  >
 ): Promise<BeamMaster | null> {
   if (!beamNo) return null
   const data: Record<string, unknown> = {}
@@ -226,6 +228,9 @@ export async function dbPatchBeam(
   if (patch.width !== undefined) data.width = patch.width
   if (patch.length !== undefined) data.length = patch.length
   if (patch.loomType !== undefined) data.loomType = patch.loomType
+  if (patch.totalThreads !== undefined) {
+    data.totalThreads = Math.round(Number(patch.totalThreads) || 0)
+  }
   if (Object.keys(data).length === 0) {
     const row = await prisma.floorBeam.findUnique({ where: { beamNo } })
     return row ? beamRowToMaster(row) : null
@@ -233,12 +238,18 @@ export async function dbPatchBeam(
   try {
     const existing = await prisma.floorBeam.findUnique({ where: { beamNo } })
     if (!existing) {
+      const reed = typeof data.reed === 'number' ? data.reed : 60
+      const width = typeof data.width === 'number' ? data.width : 66
       const row = await prisma.floorBeam.create({
         data: {
           beamNo,
           warp: typeof data.warp === 'string' ? data.warp : '',
-          reed: typeof data.reed === 'number' ? data.reed : 60,
-          width: typeof data.width === 'number' ? data.width : 66,
+          reed,
+          width,
+          totalThreads:
+            typeof data.totalThreads === 'number'
+              ? data.totalThreads
+              : Math.round(reed * width * 0.95),
           length: typeof data.length === 'number' ? data.length : 0,
           loomType: typeof data.loomType === 'string' ? data.loomType : 'G6200',
           fillStatus: 'FULL',

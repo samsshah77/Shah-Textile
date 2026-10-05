@@ -5,7 +5,6 @@ import {
   BeamMaster,
   LoomMaster,
   QualityMaster,
-  normalizeQualityStatus,
   formatSwLotForDailyEntry,
   preloadAllFloorSheets,
   productionMastersService,
@@ -100,7 +99,6 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 110,
   location: 165,
   swLot: 100,
-  quality: 120,
   warp: 130,
   reed: 68,
   width: 68,
@@ -322,7 +320,7 @@ export function BeamMasterTable({
   }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_beam_col_widths_v10',
+    'sara_beam_col_widths_v11',
     DEFAULT_WIDTHS
   )
   const tableMinWidth = useMemo(
@@ -330,19 +328,6 @@ export function BeamMasterTable({
     [widths]
   )
   const activeLooms = looms.filter((l) => l.isActive)
-  const activeQualities = useMemo(
-    () =>
-      qualities
-        .filter((q) => normalizeQualityStatus(q.status) === 'ACTIVE')
-        .slice()
-        .sort((a, b) => (a.name || '').localeCompare(b.name || '')),
-    [qualities]
-  )
-  const qualityNameById = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const q of qualities) map.set(q.id, q.name || q.id)
-    return map
-  }, [qualities])
 
   const filteredBeams = useMemo(() => {
     if (filter === 'IN_STOCK') {
@@ -362,60 +347,20 @@ export function BeamMasterTable({
   const editActive = opsEdit || masterEdit
 
   const patchBeam = (b: BeamMaster, patch: Partial<BeamMaster>) => {
-    const reed = patch.reed ?? b.reed
-    const width = patch.width ?? b.width
-    const withThreads =
-      patch.reed !== undefined || patch.width !== undefined
-        ? { ...patch, totalThreads: Math.round((width || 0) * (reed || 0) * 0.95) }
-        : patch
-    onUpdate(b.beamNo, withThreads)
-  }
-
-  const linkQuality = (b: BeamMaster, qualityId: string) => {
-    if (!qualityId) {
-      patchBeam(b, { qualityId: null })
+    // Reed/width change → auto threads, unless caller set totalThreads explicitly.
+    if (
+      (patch.reed !== undefined || patch.width !== undefined) &&
+      patch.totalThreads === undefined
+    ) {
+      const reed = patch.reed ?? b.reed
+      const width = patch.width ?? b.width
+      onUpdate(b.beamNo, {
+        ...patch,
+        totalThreads: Math.round((width || 0) * (reed || 0) * 0.95),
+      })
       return
     }
-    const q = qualities.find((item) => item.id === qualityId)
-    if (!q) {
-      patchBeam(b, { qualityId })
-      return
-    }
-    patchBeam(b, {
-      qualityId,
-      ...(q.warpYarn ? { warp: q.warpYarn } : {}),
-      ...(q.reed ? { reed: q.reed } : {}),
-      ...(q.widthInch ? { width: q.widthInch } : {}),
-    })
-  }
-
-  const renderQualitySelect = (b: BeamMaster, enabled: boolean) => {
-    const linkedName = b.qualityId ? qualityNameById.get(b.qualityId) : null
-    if (!enabled) {
-      return (
-        <span className="small text-truncate d-block" title={linkedName || undefined}>
-          {linkedName || <span className="text-secondary">—</span>}
-        </span>
-      )
-    }
-    return (
-      <select
-        className="form-select form-select-sm"
-        style={{ width: '100%', minWidth: 0, fontSize: '0.78rem' }}
-        value={b.qualityId || ''}
-        onChange={(e) => linkQuality(b, e.target.value)}
-      >
-        <option value="">— Manual —</option>
-        {b.qualityId && !activeQualities.some((q) => q.id === b.qualityId) && linkedName && (
-          <option value={b.qualityId}>{linkedName} (ended)</option>
-        )}
-        {activeQualities.map((q) => (
-          <option key={q.id} value={q.id}>
-            {q.name}
-          </option>
-        ))}
-      </select>
-    )
+    onUpdate(b.beamNo, patch)
   }
 
   const openTrack = (b: BeamMaster) => {
@@ -616,19 +561,15 @@ export function BeamMasterTable({
                   </div>
 
                   <div>
-                    <label className="form-label small mb-1 fw-semibold">Quality (optional)</label>
-                    {renderQualitySelect(b, masterEdit)}
-                  </div>
-
-                  <div>
                     <label className="form-label small mb-1 fw-semibold">Yarn Warp</label>
                     {masterEdit ? (
                       <TextCellInput
                         className="form-control form-control-sm"
                         value={b.warp || ''}
+                        placeholder="e.g. 20/1 Pv China"
                         navRow={rowIdx}
                         navCol={0}
-                        onValueChange={(v) => patchBeam(b, { warp: v, qualityId: null })}
+                        onValueChange={(v) => patchBeam(b, { warp: v })}
                       />
                     ) : (
                       <div className="small">{b.warp || '—'}</div>
@@ -642,6 +583,7 @@ export function BeamMasterTable({
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           value={b.reed}
+                          placeholder="60"
                           navRow={rowIdx}
                           navCol={1}
                           onValueChange={(v) => patchBeam(b, { reed: v })}
@@ -656,6 +598,7 @@ export function BeamMasterTable({
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           value={b.width}
+                          placeholder="66"
                           navRow={rowIdx}
                           navCol={2}
                           onValueChange={(v) => patchBeam(b, { width: v })}
@@ -664,11 +607,21 @@ export function BeamMasterTable({
                         <div className="small">{b.width}</div>
                       )}
                     </div>
-                  </div>
-
-                  <div className="small text-secondary">
-                    Total Thread:{' '}
-                    <strong className="text-dark">{b.totalThreads.toLocaleString()}</strong>
+                    <div className="flex-fill">
+                      <label className="form-label small mb-1 fw-semibold">Threads</label>
+                      {masterEdit ? (
+                        <NumericCellInput
+                          className="form-control form-control-sm text-end"
+                          value={b.totalThreads}
+                          placeholder="auto"
+                          navRow={rowIdx}
+                          navCol={3}
+                          onValueChange={(v) => patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })}
+                        />
+                      ) : (
+                        <div className="small">{b.totalThreads.toLocaleString()}</div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="d-flex gap-2">
@@ -679,7 +632,7 @@ export function BeamMasterTable({
                           className="form-control form-control-sm text-end"
                           value={b.length}
                           navRow={rowIdx}
-                          navCol={3}
+                          navCol={4}
                           onValueChange={(v) => patchBeam(b, { length: v })}
                         />
                       ) : (
@@ -737,9 +690,6 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="swLot" width={widths.swLot} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Sw #
                 </ResizableTh>
-                <ResizableTh columnKey="quality" width={widths.quality} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Quality
-                </ResizableTh>
                 <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Yarn Warp
                 </ResizableTh>
@@ -769,7 +719,7 @@ export function BeamMasterTable({
             <tbody>
               {filteredBeams.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-0 border-0">
+                  <td colSpan={11} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon="bi-bounding-box"
                       title="No beams in this category"
@@ -805,7 +755,6 @@ export function BeamMasterTable({
                           onCommit={(swLot) => patchBeam(b, { swLot })}
                         />
                       </td>
-                      <td className="px-1">{renderQualitySelect(b, editActive)}</td>
                       <td
                         className="px-2 text-truncate"
                         style={{
@@ -816,21 +765,69 @@ export function BeamMasterTable({
                         }}
                         title={b.warp || undefined}
                       >
-                        <span
-                          className="text-secondary d-block text-truncate"
-                          title={b.warp || undefined}
-                        >
-                          {b.warp || '—'}
-                        </span>
+                        {editActive ? (
+                          <TextCellInput
+                            className="form-control form-control-sm"
+                            value={b.warp || ''}
+                            placeholder="e.g. 20/1"
+                            navRow={rowIdx}
+                            navCol={1}
+                            onValueChange={(v) => patchBeam(b, { warp: v })}
+                          />
+                        ) : (
+                          <span
+                            className="text-secondary d-block text-truncate"
+                            title={b.warp || undefined}
+                          >
+                            {b.warp || '—'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-1">
-                        <div className="text-end px-1">{b.reed}</div>
+                        {editActive ? (
+                          <NumericCellInput
+                            className="form-control form-control-sm text-end"
+                            value={b.reed}
+                            placeholder="60"
+                            navRow={rowIdx}
+                            navCol={2}
+                            onValueChange={(v) => patchBeam(b, { reed: v })}
+                          />
+                        ) : (
+                          <div className="text-end px-1">{b.reed}</div>
+                        )}
                       </td>
                       <td className="px-1">
-                        <div className="text-end px-1">{b.width}</div>
+                        {editActive ? (
+                          <NumericCellInput
+                            className="form-control form-control-sm text-end"
+                            value={b.width}
+                            placeholder="66"
+                            navRow={rowIdx}
+                            navCol={3}
+                            onValueChange={(v) => patchBeam(b, { width: v })}
+                          />
+                        ) : (
+                          <div className="text-end px-1">{b.width}</div>
+                        )}
                       </td>
-                      <td className="fw-semibold text-end pe-3">
-                        {b.totalThreads.toLocaleString()}
+                      <td className="px-1">
+                        {editActive ? (
+                          <NumericCellInput
+                            className="form-control form-control-sm text-end fw-semibold"
+                            value={b.totalThreads}
+                            placeholder="threads"
+                            navRow={rowIdx}
+                            navCol={4}
+                            onValueChange={(v) =>
+                              patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })
+                            }
+                          />
+                        ) : (
+                          <div className="fw-semibold text-end pe-3">
+                            {b.totalThreads.toLocaleString()}
+                          </div>
+                        )}
                       </td>
                       <td className="px-1">
                         <div className="text-end px-1">{b.length.toLocaleString()}</div>
