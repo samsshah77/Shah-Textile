@@ -153,7 +153,7 @@ export function LoomDataRow({
       <td className="py-3 px-2 whitespace-nowrap text-center">
         {entry.lot ? (
           <span className="font-mono text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-medium">
-            {entry.lot.toLowerCase().includes('sw') ? entry.lot : `Sw # ${entry.lot}`}
+            {entry.lot}
           </span>
         ) : (
           <span className="text-slate-400 text-xs">—</span>

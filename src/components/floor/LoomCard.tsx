@@ -133,7 +133,7 @@ export function LoomCard({
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">SW #</span>
             <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-mono text-xs font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-              {entry.lot.toLowerCase().includes('sw') ? entry.lot : `Sw # ${entry.lot}`}
+              {entry.lot.replace(/^(sw|wp)\s*#\s*/i, '').trim() || entry.lot}
             </span>
           </div>
         )}

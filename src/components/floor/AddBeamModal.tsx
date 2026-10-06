@@ -5,6 +5,8 @@ import {
   BeamMaster,
   LoomMaster,
   calcTotalThreads,
+  composeLot,
+  type LotKind,
 } from '@/services/productionMastersService'
 import { LOOM_STATUS_LABEL } from '@/components/floor/LoomStatusSelect'
 import type { LoomStatus } from '@/types/loom'
@@ -12,7 +14,7 @@ import type { LoomStatus } from '@/types/loom'
 interface AddBeamModalProps {
   isOpen: boolean
   onClose: () => void
-  onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void
+  onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void | Promise<void>
   existingBeamNos: string[]
   activeLooms: LoomMaster[]
   /** Unused — kept for API compat with BeamMasterTable. */
@@ -22,6 +24,7 @@ interface AddBeamModalProps {
 type BeamField =
   | 'beamNo'
   | 'swLot'
+  | 'beamRepeat'
   | 'placement'
   | 'mountedDate'
   | 'warp'
@@ -40,6 +43,8 @@ export function AddBeamModal({
 }: AddBeamModalProps) {
   const [beamNo, setBeamNo] = useState('')
   const [swLot, setSwLot] = useState('')
+  const [lotKind, setLotKind] = useState<LotKind>('Sw')
+  const [beamRepeat, setBeamRepeat] = useState('')
   const [warp, setWarp] = useState('')
   const [reed, setReed] = useState<number | ''>('')
   const [width, setWidth] = useState<number | ''>('')
@@ -57,8 +62,31 @@ export function AddBeamModal({
   const showMountDate = placement !== 'STORE' && placement !== 'SIZING'
 
   const fieldOrder: BeamField[] = showMountDate
-    ? ['beamNo', 'swLot', 'placement', 'mountedDate', 'warp', 'reed', 'width', 'threads', 'length', 'loomType']
-    : ['beamNo', 'swLot', 'placement', 'warp', 'reed', 'width', 'threads', 'length', 'loomType']
+    ? [
+        'beamNo',
+        'swLot',
+        'beamRepeat',
+        'placement',
+        'mountedDate',
+        'warp',
+        'reed',
+        'width',
+        'threads',
+        'length',
+        'loomType',
+      ]
+    : [
+        'beamNo',
+        'swLot',
+        'beamRepeat',
+        'placement',
+        'warp',
+        'reed',
+        'width',
+        'threads',
+        'length',
+        'loomType',
+      ]
 
   // Reed/width change → refresh auto threads unless user already edited threads.
   useEffect(() => {
@@ -119,19 +147,29 @@ export function AddBeamModal({
         return
       }
 
-      // Arrows only on text/number — selects need ↑↓ for options.
+      // Left / Right arrows — skip while caret is mid-text
       const isTextLike =
         e.currentTarget instanceof HTMLInputElement &&
         e.currentTarget.type !== 'date' &&
         e.currentTarget.tagName === 'INPUT'
       if (!isTextLike) return
 
-      if (e.key === 'ArrowDown') {
+      if (e.key === 'ArrowRight') {
+        const el = e.currentTarget as HTMLInputElement
+        const end = el.selectionEnd ?? 0
+        const len = el.value.length
+        const allSelected = (el.selectionStart ?? 0) === 0 && end === len && len > 0
+        if (end < len && !allSelected) return
         e.preventDefault()
         goNext()
         return
       }
-      if (e.key === 'ArrowUp') {
+      if (e.key === 'ArrowLeft') {
+        const el = e.currentTarget as HTMLInputElement
+        const start = el.selectionStart ?? 0
+        const len = el.value.length
+        const allSelected = start === 0 && (el.selectionEnd ?? 0) === len && len > 0
+        if (start > 0 && !allSelected) return
         e.preventDefault()
         goPrev()
       }
@@ -147,6 +185,8 @@ export function AddBeamModal({
   const resetForm = () => {
     setBeamNo('')
     setSwLot('')
+    setLotKind('Sw')
+    setBeamRepeat('')
     setWarp('')
     setReed('')
     setWidth('')
@@ -158,7 +198,7 @@ export function AddBeamModal({
     setError(null)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const trimmedNo = beamNo.trim()
     if (!trimmedNo) {
@@ -181,21 +221,24 @@ export function AddBeamModal({
 
     const isLoom = placement !== 'STORE' && placement !== 'SIZING'
     try {
-      onAdd({
-        beamNo: trimmedNo,
-        swLot: swLot.trim() || null,
-        warp: warp.trim() || '20/1',
-        reed: numReed || 60,
-        width: numWidth || 66,
-        totalThreads: numThreads || calcTotalThreads(numReed || 60, numWidth || 66),
-        length: numLength || 1500,
-        loomType,
-        fillStatus: 'FULL',
-        location: placement,
-        usedInLoom: isLoom ? placement : null,
-        mountedOn: isLoom ? mountedDate : null,
-        qualityId: null,
-      })
+      await Promise.resolve(
+        onAdd({
+          beamNo: trimmedNo,
+          swLot: composeLot(lotKind, swLot) || null,
+          beamRepeat: beamRepeat.trim() || null,
+          warp: warp.trim() || '20/1',
+          reed: numReed || 60,
+          width: numWidth || 66,
+          totalThreads: numThreads || calcTotalThreads(numReed || 60, numWidth || 66),
+          length: numLength || 1500,
+          loomType,
+          fillStatus: 'FULL',
+          location: placement,
+          usedInLoom: isLoom ? placement : null,
+          mountedOn: isLoom ? mountedDate : null,
+          qualityId: null,
+        })
+      )
     } catch {
       return
     }
@@ -229,7 +272,7 @@ export function AddBeamModal({
             />
           </div>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="sara-add-beam-form">
             <div className="modal-body p-4">
               {error && (
                 <div className="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3">
@@ -239,8 +282,8 @@ export function AddBeamModal({
               )}
 
               <div className="row g-3">
-                <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                <div className="col-4">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Beam ID
                   </label>
                   <input
@@ -259,24 +302,50 @@ export function AddBeamModal({
                   />
                 </div>
 
-                <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
-                    Sw #
+                <div className="col-4">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                    {lotKind} #
+                  </label>
+                  <div className="input-group">
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary sara-lot-kind-btn"
+                      aria-label="Lot kind — click to switch Sw / Wp"
+                      title="Click: Sw # ↔ Wp #"
+                      onClick={() => setLotKind((k) => (k === 'Sw' ? 'Wp' : 'Sw'))}
+                    >
+                      {lotKind} #
+                    </button>
+                    <input
+                      type="text"
+                      className="form-control"
+                      data-add-beam-field="swLot"
+                      placeholder="e.g. 331"
+                      value={swLot}
+                      onChange={(e) => setSwLot(e.target.value)}
+                      onKeyDown={(e) => handleFieldKeyDown(e, 'swLot')}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="col-4">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                    Beam Repeat
                   </label>
                   <input
                     type="text"
                     className="form-control"
-                    data-add-beam-field="swLot"
-                    placeholder="e.g. 331"
-                    value={swLot}
-                    onChange={(e) => setSwLot(e.target.value)}
-                    onKeyDown={(e) => handleFieldKeyDown(e, 'swLot')}
-                    required
+                    data-add-beam-field="beamRepeat"
+                    placeholder="optional"
+                    value={beamRepeat}
+                    onChange={(e) => setBeamRepeat(e.target.value)}
+                    onKeyDown={(e) => handleFieldKeyDown(e, 'beamRepeat')}
                   />
                 </div>
 
-                <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                <div className="col-12">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Location
                   </label>
                   <select
@@ -302,7 +371,7 @@ export function AddBeamModal({
 
                 {showMountDate && (
                   <div className="col-6">
-                    <label className="form-label small fw-semibold text-secondary mb-1">
+                    <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                       Mount Date
                     </label>
                     <input
@@ -317,14 +386,14 @@ export function AddBeamModal({
                 )}
 
                 <div className="col-12">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Yarn Warp
                   </label>
                   <input
                     type="text"
                     className="form-control"
                     data-add-beam-field="warp"
-                    placeholder="e.g. 20/1 Pv China"
+                    placeholder="e.g. 45/1 Pv White+46/1 Pv Silver"
                     value={warp}
                     onChange={(e) => setWarp(e.target.value)}
                     onKeyDown={(e) => handleFieldKeyDown(e, 'warp')}
@@ -332,7 +401,7 @@ export function AddBeamModal({
                 </div>
 
                 <div className="col-4">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Reed
                   </label>
                   <input
@@ -351,7 +420,7 @@ export function AddBeamModal({
                 </div>
 
                 <div className="col-4">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Width (in)
                   </label>
                   <input
@@ -370,7 +439,7 @@ export function AddBeamModal({
                 </div>
 
                 <div className="col-4">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Total Thread
                   </label>
                   <input
@@ -389,7 +458,7 @@ export function AddBeamModal({
                 </div>
 
                 <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Length (m)
                   </label>
                   <input
@@ -405,7 +474,7 @@ export function AddBeamModal({
                 </div>
 
                 <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Machine
                   </label>
                   <select
@@ -422,7 +491,7 @@ export function AddBeamModal({
                 </div>
               </div>
               <div className="form-text small mt-2 mb-0">
-                Enter / ↓ next · ↑ previous · Ctrl+Enter save · Esc close
+                Enter / → next · ← previous · Ctrl+Enter save · Esc close
               </div>
             </div>
 

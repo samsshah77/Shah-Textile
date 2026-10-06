@@ -1923,4 +1923,33 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   filter: brightness(0.55);
 }
 
+/* Add Beam modal — black labels + readable placeholders */
+.sara-add-beam-form .sara-add-beam-label {
+  color: #0f172a;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.sara-add-beam-form .form-control::placeholder,
+.sara-add-beam-form .form-select::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+.sara-add-beam-form .form-control::-webkit-input-placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+.sara-add-beam-form .form-control::-moz-placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+/* Sw # / Wp # kind — always show selected label (avoid clipped native select) */
+.sara-lot-kind-btn {
+  flex: 0 0 auto;
+  min-width: 3.75rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: #f8fafc;
+  white-space: nowrap;
+}
 

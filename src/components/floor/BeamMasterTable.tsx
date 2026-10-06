@@ -5,9 +5,12 @@ import {
   BeamMaster,
   LoomMaster,
   QualityMaster,
+  composeLot,
   formatSwLotForDailyEntry,
+  parseLotKind,
   preloadAllFloorSheets,
   productionMastersService,
+  type LotKind,
   type MountBeamResult,
 } from '@/services/productionMastersService'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -37,11 +40,15 @@ function SwLotCell({
   navCol: number
   onCommit: (swLot: string | null) => void
 }) {
-  const [draft, setDraft] = useState(value)
+  const parsed = parseLotKind(value)
+  const [kind, setKind] = useState<LotKind>(parsed.kind)
+  const [draft, setDraft] = useState(parsed.num)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    setDraft(value)
+    const next = parseLotKind(value)
+    setKind(next.kind)
+    setDraft(next.num)
   }, [value, beamNo])
 
   useEffect(() => {
@@ -50,8 +57,8 @@ function SwLotCell({
     }
   }, [])
 
-  const commit = (raw: string) => {
-    const next = raw.trim() || null
+  const commit = (nextKind: LotKind, rawNum: string) => {
+    const next = composeLot(nextKind, rawNum) || null
     const prev = (value || '').trim() || null
     if (next !== prev) onCommit(next)
   }
@@ -59,47 +66,64 @@ function SwLotCell({
   if (!enabled) {
     return (
       <span className="small px-1 fw-semibold">
-        {value ? formatSwLotForDailyEntry(value, '') : '—'}
+        {value?.trim() ? formatSwLotForDailyEntry(value) : '—'}
       </span>
     )
   }
 
   return (
-    <input
-      type="text"
-      className="form-control form-control-sm"
-      placeholder="e.g. 331"
-      autoComplete="off"
-      data-nav-row={navRow}
-      data-nav-col={navCol}
-      value={draft}
-      onChange={(e) => {
-        const v = e.target.value
-        setDraft(v)
-        if (timerRef.current) clearTimeout(timerRef.current)
-        timerRef.current = setTimeout(() => commit(v), 350)
-      }}
-      onBlur={() => {
-        if (timerRef.current) clearTimeout(timerRef.current)
-        commit(draft)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
+    <div className="input-group input-group-sm">
+      <button
+        type="button"
+        className="btn btn-outline-secondary btn-sm sara-lot-kind-btn"
+        aria-label="Lot kind — click to switch Sw / Wp"
+        title="Click: Sw # ↔ Wp #"
+        onClick={() => {
+          const nextKind: LotKind = kind === 'Sw' ? 'Wp' : 'Sw'
+          setKind(nextKind)
           if (timerRef.current) clearTimeout(timerRef.current)
-          commit(draft)
-          ;(e.target as HTMLInputElement).blur()
-        }
-      }}
-    />
+          commit(nextKind, draft)
+        }}
+      >
+        {kind} #
+      </button>
+      <input
+        type="text"
+        className="form-control"
+        placeholder="331"
+        autoComplete="off"
+        data-nav-row={navRow}
+        data-nav-col={navCol}
+        value={draft}
+        onChange={(e) => {
+          const v = e.target.value
+          setDraft(v)
+          if (timerRef.current) clearTimeout(timerRef.current)
+          timerRef.current = setTimeout(() => commit(kind, v), 350)
+        }}
+        onBlur={() => {
+          if (timerRef.current) clearTimeout(timerRef.current)
+          commit(kind, draft)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            if (timerRef.current) clearTimeout(timerRef.current)
+            commit(kind, draft)
+            ;(e.target as HTMLInputElement).blur()
+          }
+        }}
+      />
+    </div>
   )
 }
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 110,
   location: 165,
-  swLot: 100,
-  warp: 130,
+  swLot: 150,
+  beamRepeat: 110,
+  warp: 200,
   reed: 68,
   width: 68,
   threads: 95,
@@ -167,7 +191,7 @@ interface BeamMasterTableProps {
   qualities?: QualityMaster[]
   selectedDate: string
   onUpdate: (beamNo: string, patch: Partial<BeamMaster>) => void
-  onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void
+  onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void | Promise<void>
   onMount: (beamNo: string, loomNumber: number, dateStr?: string) => MountBeamResult
   onUnmount: (beamNo: string, location?: 'STORE' | 'SIZING', dateStr?: string) => void
   onReceiveFromSizing: (beamNo: string) => void
@@ -330,16 +354,33 @@ export function BeamMasterTable({
   const activeLooms = looms.filter((l) => l.isActive)
 
   const filteredBeams = useMemo(() => {
+    let list: BeamMaster[]
     if (filter === 'IN_STOCK') {
-      return beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE')
+      list = beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE')
+    } else if (filter === 'AT_SIZING') {
+      list = beams.filter((b) => !b.usedInLoom && b.location === 'SIZING')
+    } else if (filter === 'ON_LOOM') {
+      list = beams.filter((b) => Boolean(b.usedInLoom))
+    } else {
+      list = [...beams]
     }
-    if (filter === 'AT_SIZING') {
-      return beams.filter((b) => !b.usedInLoom && b.location === 'SIZING')
+
+    // Same Sw# together, ascending (334, 334, 335…). Empty Sw# last.
+    const swKey = (b: BeamMaster) => String(b.swLot || '').trim()
+    const swSort = (a: BeamMaster, b: BeamMaster) => {
+      const sa = swKey(a)
+      const sb = swKey(b)
+      if (!sa && !sb) return (a.beamNo || '').localeCompare(b.beamNo || '', undefined, { numeric: true })
+      if (!sa) return 1
+      if (!sb) return -1
+      const na = Number(sa)
+      const nb = Number(sb)
+      if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb
+      const cmp = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' })
+      if (cmp !== 0) return cmp
+      return (a.beamNo || '').localeCompare(b.beamNo || '', undefined, { numeric: true })
     }
-    if (filter === 'ON_LOOM') {
-      return beams.filter((b) => Boolean(b.usedInLoom))
-    }
-    return beams
+    return list.slice().sort(swSort)
   }, [beams, filter])
 
   const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
@@ -549,15 +590,39 @@ export function BeamMasterTable({
                   </div>
 
                   <div>
-                    <label className="form-label small mb-1 fw-semibold">Sw #</label>
-                    <SwLotCell
-                      beamNo={b.beamNo}
-                      value={b.swLot || ''}
-                      enabled={masterEdit}
-                      navRow={rowIdx}
-                      navCol={5}
-                      onCommit={(swLot) => patchBeam(b, { swLot })}
-                    />
+                    <label className="form-label small mb-1 fw-semibold">
+                      {parseLotKind(b.swLot).kind} #
+                    </label>
+                    {masterEdit ? (
+                      <SwLotCell
+                        beamNo={b.beamNo}
+                        value={b.swLot || ''}
+                        enabled
+                        navRow={rowIdx}
+                        navCol={5}
+                        onCommit={(swLot) => patchBeam(b, { swLot })}
+                      />
+                    ) : (
+                      <div className="small fw-semibold">
+                        {b.swLot?.trim() ? formatSwLotForDailyEntry(b.swLot) : '—'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="form-label small mb-1 fw-semibold">Beam Repeat</label>
+                    {masterEdit ? (
+                      <TextCellInput
+                        className="form-control form-control-sm"
+                        value={b.beamRepeat || ''}
+                        placeholder="optional"
+                        navRow={rowIdx}
+                        navCol={6}
+                        onValueChange={(v) => patchBeam(b, { beamRepeat: v.trim() || null })}
+                      />
+                    ) : (
+                      <div className="small">{b.beamRepeat || '—'}</div>
+                    )}
                   </div>
 
                   <div>
@@ -566,7 +631,7 @@ export function BeamMasterTable({
                       <TextCellInput
                         className="form-control form-control-sm"
                         value={b.warp || ''}
-                        placeholder="e.g. 20/1 Pv China"
+                        placeholder="e.g. 45/1 Pv White+46/1 Pv Silver"
                         navRow={rowIdx}
                         navCol={0}
                         onValueChange={(v) => patchBeam(b, { warp: v })}
@@ -688,7 +753,10 @@ export function BeamMasterTable({
                   Location / Loom
                 </ResizableTh>
                 <ResizableTh columnKey="swLot" width={widths.swLot} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Sw #
+                  Sw / Wp #
+                </ResizableTh>
+                <ResizableTh columnKey="beamRepeat" width={widths.beamRepeat} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Beam Repeat
                 </ResizableTh>
                 <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Yarn Warp
@@ -719,7 +787,7 @@ export function BeamMasterTable({
             <tbody>
               {filteredBeams.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-0 border-0">
+                  <td colSpan={12} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon="bi-bounding-box"
                       title="No beams in this category"
@@ -755,6 +823,20 @@ export function BeamMasterTable({
                           onCommit={(swLot) => patchBeam(b, { swLot })}
                         />
                       </td>
+                      <td className="px-1">
+                        {editActive ? (
+                          <TextCellInput
+                            className="form-control form-control-sm"
+                            value={b.beamRepeat || ''}
+                            placeholder="optional"
+                            navRow={rowIdx}
+                            navCol={1}
+                            onValueChange={(v) => patchBeam(b, { beamRepeat: v.trim() || null })}
+                          />
+                        ) : (
+                          <span className="small px-1">{b.beamRepeat || '—'}</span>
+                        )}
+                      </td>
                       <td
                         className="px-2 text-truncate"
                         style={{
@@ -769,9 +851,9 @@ export function BeamMasterTable({
                           <TextCellInput
                             className="form-control form-control-sm"
                             value={b.warp || ''}
-                            placeholder="e.g. 20/1"
+                            placeholder="e.g. 45/1 Pv White+46/1"
                             navRow={rowIdx}
-                            navCol={1}
+                            navCol={2}
                             onValueChange={(v) => patchBeam(b, { warp: v })}
                           />
                         ) : (
@@ -790,7 +872,7 @@ export function BeamMasterTable({
                             value={b.reed}
                             placeholder="60"
                             navRow={rowIdx}
-                            navCol={2}
+                            navCol={3}
                             onValueChange={(v) => patchBeam(b, { reed: v })}
                           />
                         ) : (
@@ -804,7 +886,7 @@ export function BeamMasterTable({
                             value={b.width}
                             placeholder="66"
                             navRow={rowIdx}
-                            navCol={3}
+                            navCol={4}
                             onValueChange={(v) => patchBeam(b, { width: v })}
                           />
                         ) : (
@@ -818,7 +900,7 @@ export function BeamMasterTable({
                             value={b.totalThreads}
                             placeholder="threads"
                             navRow={rowIdx}
-                            navCol={4}
+                            navCol={5}
                             onValueChange={(v) =>
                               patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })
                             }
@@ -879,8 +961,8 @@ export function BeamMasterTable({
       <AddBeamModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={(newBeam) => {
-          onAdd(newBeam)
+        onAdd={async (newBeam) => {
+          await Promise.resolve(onAdd(newBeam))
           showSuccessSoon({
             title: 'Beam Added',
             message: `Beam "${newBeam.beamNo}" add ho gaya.`,

@@ -56,7 +56,7 @@ async function main() {
     console.log(`✓ Role ready: ${roleRecord.label} (${roleRecord.key})`)
   }
 
-  // 2. Seed Default Pre-approved Users
+  // 2. Seed Default Pre-approved Users (create only — do not overwrite existing password hashes)
   const adminPassword = await bcrypt.hash('IVRmUTxljGWnf1uWNfOYZLV2MCcQPKV6', 10)
   const accountantPassword = await bcrypt.hash('rYVCEJjdXcvz88KyggaAQ0DLC4X2pCFx', 10)
   const qcPassword = await bcrypt.hash('1S2615J4Zkyh-xqdT32GAD6vBmJ61vR7', 10)
@@ -108,7 +108,7 @@ async function main() {
       where: { email: user.email },
       update: {
         name: user.name,
-        passwordHash: user.passwordHash,
+        // Keep existing passwordHash — never reset live/local passwords on re-seed.
         roleKey: user.roleKey,
         roleId: user.roleId,
         department: user.department,

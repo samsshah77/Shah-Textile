@@ -67,6 +67,7 @@ export function beamRowToMaster(row: {
   endedFromLoom: string | null
   qualityId?: string | null
   swLot?: string | null
+  beamRepeat?: string | null
 }): BeamMaster {
   const usedInLoom = row.usedInLoom
   const fillStatus = (row.fillStatus === 'EMPTY' ? 'EMPTY' : 'FULL') as BeamMaster['fillStatus']
@@ -87,6 +88,7 @@ export function beamRowToMaster(row: {
     endedFromLoom: row.endedFromLoom,
     qualityId: row.qualityId ?? null,
     swLot: row.swLot ?? null,
+    beamRepeat: row.beamRepeat ?? null,
   }
 }
 
@@ -144,69 +146,136 @@ export async function dbGetBeams(): Promise<BeamMaster[]> {
   return rows.map(beamRowToMaster)
 }
 
+function beamWriteData(b: BeamMaster, prev?: { swLot: string | null; qualityId: string | null; beamRepeat: string | null } | null) {
+  const swLotIncoming =
+    b.swLot != null && String(b.swLot).trim() !== '' ? String(b.swLot).trim() : undefined
+  const qualityIdIncoming =
+    b.qualityId != null && String(b.qualityId).trim() !== ''
+      ? String(b.qualityId).trim()
+      : undefined
+  const beamRepeatIncoming =
+    b.beamRepeat != null && String(b.beamRepeat).trim() !== ''
+      ? String(b.beamRepeat).trim()
+      : undefined
+  const base = {
+    warp: b.warp || '',
+    reed: b.reed ?? 60,
+    width: b.width ?? 66,
+    totalThreads: Math.round(Number(b.totalThreads) || 0),
+    length: b.length ?? 0,
+    loomType: b.loomType || 'G6200',
+    fillStatus: b.fillStatus === 'EMPTY' ? 'EMPTY' : 'FULL',
+    usedInLoom: b.usedInLoom ?? null,
+    location: b.location || 'STORE',
+    mountedOn: b.mountedOn ?? null,
+    beamEndedOn: b.beamEndedOn ?? null,
+    endedFromLoom: b.endedFromLoom ?? null,
+    swLot: swLotIncoming ?? prev?.swLot ?? null,
+    qualityId: qualityIdIncoming ?? prev?.qualityId ?? null,
+    beamRepeat: beamRepeatIncoming ?? prev?.beamRepeat ?? null,
+  }
+  return base
+}
+
+/** Upsert one beam — never deletes siblings (safe for Add Beam). */
+export async function dbUpsertBeam(beam: BeamMaster): Promise<BeamMaster> {
+  if (!beam?.beamNo) throw new Error('beamNo required')
+  const prev = await prisma.floorBeam.findUnique({
+    where: { beamNo: beam.beamNo },
+    select: { swLot: true, qualityId: true, beamRepeat: true },
+  })
+  const data = beamWriteData(beam, prev)
+  try {
+    const row = await prisma.floorBeam.upsert({
+      where: { beamNo: beam.beamNo },
+      create: { beamNo: beam.beamNo, ...data },
+      update: data,
+    })
+    return beamRowToMaster(row)
+  } catch (err) {
+    // Older Prisma client / lagging column: retry without beamRepeat.
+    console.warn('[floorDb] upsertBeam retry without beamRepeat', err)
+    const { beamRepeat: _drop, ...rest } = data
+    const row = await prisma.floorBeam.upsert({
+      where: { beamNo: beam.beamNo },
+      create: { beamNo: beam.beamNo, ...rest },
+      update: rest,
+    })
+    return beamRowToMaster(row)
+  }
+}
+
+export async function dbDeleteBeam(beamNo: string): Promise<void> {
+  if (!beamNo) return
+  await prisma.floorBeam.deleteMany({ where: { beamNo } })
+}
+
 export async function dbSaveBeams(beams: BeamMaster[]): Promise<void> {
-  const existing = await prisma.floorBeam.findMany({
-    select: { beamNo: true, swLot: true, qualityId: true },
-  })
+  if (!Array.isArray(beams)) throw new Error('beams must be an array')
+
+  let existing: Array<{
+    beamNo: string
+    swLot: string | null
+    qualityId: string | null
+    beamRepeat: string | null
+  }>
+  try {
+    existing = await prisma.floorBeam.findMany({
+      select: { beamNo: true, swLot: true, qualityId: true, beamRepeat: true },
+    })
+  } catch {
+    const rows = await prisma.floorBeam.findMany({
+      select: { beamNo: true, swLot: true, qualityId: true },
+    })
+    existing = rows.map((r) => ({ ...r, beamRepeat: null }))
+  }
+
   const prevByNo = new Map(existing.map((r) => [r.beamNo, r]))
-  const incomingNos = new Set(beams.map((b) => b.beamNo))
+  const incomingNos = new Set(beams.map((b) => b.beamNo).filter(Boolean))
+  const canDeleteStale = incomingNos.size > 0
 
-  await prisma.$transaction(async (tx) => {
-    // Remove beams deleted from the client inventory
-    const stale = existing.map((r) => r.beamNo).filter((no) => !incomingNos.has(no))
-    if (stale.length > 0) {
-      await tx.floorBeam.deleteMany({ where: { beamNo: { in: stale } } })
-    }
-
-    for (const b of beams) {
-      const prev = prevByNo.get(b.beamNo)
-      const swLotIncoming =
-        b.swLot != null && String(b.swLot).trim() !== ''
-          ? String(b.swLot).trim()
-          : undefined
-      const qualityIdIncoming =
-        b.qualityId != null && String(b.qualityId).trim() !== ''
-          ? String(b.qualityId).trim()
-          : undefined
-      const base = {
-        warp: b.warp,
-        reed: b.reed,
-        width: b.width,
-        totalThreads: b.totalThreads,
-        length: b.length,
-        loomType: b.loomType,
-        fillStatus: b.fillStatus,
-        usedInLoom: b.usedInLoom,
-        location: b.location || 'STORE',
-        mountedOn: b.mountedOn ?? null,
-        beamEndedOn: b.beamEndedOn,
-        endedFromLoom: b.endedFromLoom,
+  const run = async (withBeamRepeat: boolean) => {
+    await prisma.$transaction(async (tx) => {
+      if (canDeleteStale) {
+        const stale = existing.map((r) => r.beamNo).filter((no) => !incomingNos.has(no))
+        if (stale.length > 0) {
+          await tx.floorBeam.deleteMany({ where: { beamNo: { in: stale } } })
+        }
       }
-      // Create needs values; update must NOT null-out swLot/qualityId when client payload is stale/empty
-      // (race with patchBeam was wiping Sw# on refresh).
-      await tx.floorBeam.upsert({
-        where: { beamNo: b.beamNo },
-        create: {
-          beamNo: b.beamNo,
-          ...base,
-          swLot: swLotIncoming ?? prev?.swLot ?? null,
-          qualityId: qualityIdIncoming ?? prev?.qualityId ?? null,
-        },
-        update: {
-          ...base,
-          ...(swLotIncoming !== undefined ? { swLot: swLotIncoming } : {}),
-          ...(qualityIdIncoming !== undefined ? { qualityId: qualityIdIncoming } : {}),
-        },
-      })
-    }
-  })
+      for (const b of beams) {
+        if (!b?.beamNo) continue
+        const full = beamWriteData(b, prevByNo.get(b.beamNo))
+        const data = withBeamRepeat
+          ? full
+          : (() => {
+              const { beamRepeat: _d, ...rest } = full
+              return rest
+            })()
+        await tx.floorBeam.upsert({
+          where: { beamNo: b.beamNo },
+          create: { beamNo: b.beamNo, ...data },
+          update: data,
+        })
+      }
+    })
+  }
+
+  try {
+    await run(true)
+  } catch (err) {
+    console.warn('[floorDb] saveBeams retry without beamRepeat', err)
+    await run(false)
+  }
 }
 
 /** Patch one beam (Sw# etc.) without rewriting the whole inventory. */
 export async function dbPatchBeam(
   beamNo: string,
   patch: Partial<
-    Pick<BeamMaster, 'swLot' | 'qualityId' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'>
+    Pick<
+      BeamMaster,
+      'swLot' | 'qualityId' | 'beamRepeat' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'
+    >
   >
 ): Promise<BeamMaster | null> {
   if (!beamNo) return null
@@ -221,6 +290,12 @@ export async function dbPatchBeam(
     data.qualityId =
       patch.qualityId != null && String(patch.qualityId).trim() !== ''
         ? String(patch.qualityId).trim()
+        : null
+  }
+  if (patch.beamRepeat !== undefined) {
+    data.beamRepeat =
+      patch.beamRepeat != null && String(patch.beamRepeat).trim() !== ''
+        ? String(patch.beamRepeat).trim()
         : null
   }
   if (patch.warp !== undefined) data.warp = patch.warp

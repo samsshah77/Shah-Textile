@@ -23,8 +23,9 @@ import {
   type BeamTrackResult,
 } from '@/services/beamTrack'
 
-export { normalizeBeamLotKey, buildBeamTrackFromEntries, beamDailyEntryLot, formatSwLotForDailyEntry } from '@/services/beamTrack'
+export { normalizeBeamLotKey, buildBeamTrackFromEntries, beamDailyEntryLot, formatSwLotForDailyEntry, displaySwLotPlain, parseLotKind, composeLot } from '@/services/beamTrack'
 export type { BeamTrackResult, BeamTrackDay } from '@/services/beamTrack'
+export type { LotKind } from '@/services/beamTrack'
 
 /** 1 kg = 2.2046 lbs → kg = lbs / 2.2046 */
 export const LBS_PER_KG = 2.2046
@@ -87,6 +88,56 @@ function applyLocalBeamSwLots(beams: BeamMaster[]): BeamMaster[] {
   return changed ? next : beams
 }
 
+/** Browser backup for newly added beams until DB upsert confirms. */
+const KEY_BEAM_PENDING_LOCAL = 'sara_textile_beam_pending_v1'
+
+function readLocalPendingBeams(): BeamMaster[] {
+  if (!isClient()) return []
+  try {
+    const raw = localStorage.getItem(KEY_BEAM_PENDING_LOCAL)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((b) => b && typeof b === 'object' && typeof (b as BeamMaster).beamNo === 'string')
+      .map((b) => normalizeBeam(b as BeamMaster))
+  } catch {
+    return []
+  }
+}
+
+function writeLocalPendingBeam(beam: BeamMaster) {
+  if (!isClient() || !beam?.beamNo) return
+  try {
+    const list = readLocalPendingBeams().filter((b) => b.beamNo !== beam.beamNo)
+    list.push(normalizeBeam(beam))
+    localStorage.setItem(KEY_BEAM_PENDING_LOCAL, JSON.stringify(list))
+  } catch {
+    // ignore
+  }
+}
+
+function forgetLocalPendingBeam(beamNo: string) {
+  if (!isClient() || !beamNo) return
+  try {
+    const list = readLocalPendingBeams().filter((b) => b.beamNo !== beamNo)
+    if (list.length) localStorage.setItem(KEY_BEAM_PENDING_LOCAL, JSON.stringify(list))
+    else localStorage.removeItem(KEY_BEAM_PENDING_LOCAL)
+  } catch {
+    // ignore
+  }
+}
+
+function applyLocalPendingBeams(beams: BeamMaster[]): BeamMaster[] {
+  const pending = readLocalPendingBeams()
+  if (!pending.length) return beams
+  const byNo = new Map(beams.map((b) => [b.beamNo, b]))
+  for (const p of pending) {
+    if (!byNo.has(p.beamNo)) byNo.set(p.beamNo, p)
+  }
+  return [...byNo.values()]
+}
+
 
 export interface LoomMaster {
   loomNumber: number
@@ -131,6 +182,8 @@ export interface BeamMaster {
   qualityId?: string | null
   /** Sw# — links Daily Entry SW # column + Beam Track consumption (Excel). */
   swLot?: string | null
+  /** Optional beam repeat (empty = OK). */
+  beamRepeat?: string | null
 }
 
 export interface YarnMovementRecord {
@@ -1038,18 +1091,9 @@ export type MountBeamResult =
     }
 
 export function simplifyWarpName(name?: string | null): string {
+  // Keep free-form warp as entered (e.g. "45/1 Pv White+46/1 Pv Silver").
   if (!name) return ''
-  // Remove supplier bracket codes like (Sw#337), (Sw#339), (S66337)
-  let cleaned = name.replace(/\s*\([^)]*\)/g, '').trim()
-  // Remove secondary blend parts if excessively long (e.g. "+46/1 Pv China")
-  if (cleaned.includes('+')) {
-    cleaned = cleaned.split('+')[0].trim()
-  }
-  // Remove "China" country tag
-  cleaned = cleaned.replace(/\bChina\b/gi, '').trim()
-  // Standardize PV / PP casing
-  cleaned = cleaned.replace(/\bPv\b/gi, 'PV').replace(/\bPp\b/gi, 'PP')
-  return cleaned.replace(/\s+/g, ' ').trim()
+  return String(name).replace(/\s+/g, ' ').trim()
 }
 
 function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster {
@@ -1063,6 +1107,10 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
     b.qualityId != null && String(b.qualityId).trim() !== '' ? String(b.qualityId).trim() : null
   const swLot =
     b.swLot != null && String(b.swLot).trim() !== '' ? String(b.swLot).trim() : null
+  const beamRepeat =
+    b.beamRepeat != null && String(b.beamRepeat).trim() !== ''
+      ? String(b.beamRepeat).trim()
+      : null
   return {
     beamNo: b.beamNo,
     warp: simplifyWarpName(b.warp),
@@ -1083,6 +1131,7 @@ function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): BeamMaster 
     endedFromLoom: normalizeLoomRef(b.endedFromLoom as string | number | null | undefined),
     qualityId,
     swLot,
+    beamRepeat,
   }
 }
 
@@ -1790,7 +1839,10 @@ async function persistKey(key: string, value: unknown): Promise<boolean> {
 async function persistBeamPatch(
   beamNo: string,
   patch: Partial<
-    Pick<BeamMaster, 'swLot' | 'qualityId' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'>
+    Pick<
+      BeamMaster,
+      'swLot' | 'qualityId' | 'beamRepeat' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'
+    >
   >
 ): Promise<boolean> {
   if (!isClient() || !beamNo) return false
@@ -1809,6 +1861,56 @@ async function persistBeamPatch(
     return true
   } catch (err) {
     console.error('[floor] patchBeam failed', beamNo, err)
+    return false
+  }
+}
+
+/** Persist one full beam row (Add Beam) — does not rewrite/delete sibling beams. */
+async function persistBeamUpsert(beam: BeamMaster): Promise<boolean> {
+  if (!isClient() || !beam?.beamNo) return false
+  if (hydratePromise) {
+    try {
+      await hydratePromise
+    } catch {
+      // still try upsert
+    }
+  }
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upsertBeam', beam }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      console.error('[floor] upsertBeam failed', beam.beamNo, res.status, data)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[floor] upsertBeam failed', beam.beamNo, err)
+    return false
+  }
+}
+
+async function persistBeamDelete(beamNo: string): Promise<boolean> {
+  if (!isClient() || !beamNo) return false
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'deleteBeam', beamNo }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      console.error('[floor] deleteBeam failed', beamNo, res.status, data)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[floor] deleteBeam failed', beamNo, err)
     return false
   }
 }
@@ -2052,15 +2154,23 @@ export async function hydrateFloorFromDb(): Promise<void> {
           // ignore merge errors
         }
         clearLegacyFloorLocalStorage()
-        // Re-apply browser Sw# backup if DB row came back empty (patch race).
+        // Re-apply browser Sw# backup + pending new beams if DB lagged.
         try {
           const rawBeams = memoryStore.get(KEY_BEAMS)
           if (rawBeams) {
             const fromDb = (JSON.parse(rawBeams) as BeamMaster[]).map((b) => normalizeBeam(b))
-            const merged = applyLocalBeamSwLots(fromDb)
+            const withPending = applyLocalPendingBeams(fromDb)
+            const merged = applyLocalBeamSwLots(withPending)
             memoryStore.set(KEY_BEAMS, JSON.stringify(merged.map((b) => normalizeBeam(b))))
             for (const b of merged) {
               if (b.swLot) void persistBeamPatch(b.beamNo, { swLot: b.swLot })
+            }
+            // Flush any beams that only exist in browser pending backup.
+            for (const p of readLocalPendingBeams()) {
+              const alreadyInDb = fromDb.some((b) => b.beamNo === p.beamNo)
+              void persistBeamUpsert(p).then((ok) => {
+                if (ok || alreadyInDb) forgetLocalPendingBeam(p.beamNo)
+              })
             }
           }
         } catch {
@@ -2088,17 +2198,24 @@ export async function refreshFloorMastersFromDb(): Promise<void> {
     for (const key of [KEY_BEAMS, KEY_LOOMS, KEY_QUALITY, KEY_YARN, KEY_YARN_ISSUANCE, KEY_YARN_MOVEMENTS]) {
       if (key in store) memoryStore.set(key, JSON.stringify(store[key]))
     }
-    // Keep browser Sw# backup if server row is still empty.
+    // Keep browser Sw# + pending new beams if server row is still empty / missing.
     try {
       const rawBeams = memoryStore.get(KEY_BEAMS)
       if (rawBeams) {
         const fromDb = (JSON.parse(rawBeams) as BeamMaster[]).map((b) => normalizeBeam(b))
-        const merged = applyLocalBeamSwLots(fromDb)
+        const withPending = applyLocalPendingBeams(fromDb)
+        const merged = applyLocalBeamSwLots(withPending)
         memoryStore.set(KEY_BEAMS, JSON.stringify(merged.map((b) => normalizeBeam(b))))
         for (const b of merged) {
           if (b.swLot && !(fromDb.find((x) => x.beamNo === b.beamNo)?.swLot)) {
             void persistBeamPatch(b.beamNo, { swLot: b.swLot })
           }
+        }
+        for (const p of readLocalPendingBeams()) {
+          const alreadyInDb = fromDb.some((b) => b.beamNo === p.beamNo)
+          void persistBeamUpsert(p).then((ok) => {
+            if (ok || alreadyInDb) forgetLocalPendingBeam(p.beamNo)
+          })
         }
       }
     } catch {
@@ -2556,14 +2673,22 @@ class ProductionMastersService {
   }
 
   deleteBeam(beamNo: string): BeamMaster[] {
+    forgetLocalPendingBeam(beamNo)
     const beams = this.getBeams().filter((b) => b.beamNo !== beamNo)
-    this.saveBeams(beams)
+    // Memory first; DB delete is explicit (avoid full-list stale wipe races).
+    try {
+      memoryStore.set(KEY_BEAMS, JSON.stringify(beams.map((b) => normalizeBeam(b))))
+    } catch {
+      // ignore
+    }
+    void persistBeamDelete(beamNo)
+    void persistKey(KEY_BEAMS, beams)
     return beams
   }
 
   getBeams(): BeamMaster[] {
     const beams = loadJson(KEY_BEAMS, seedBeams).map((b) => normalizeBeam(b))
-    return applyLocalBeamSwLots(beams).map((b) => normalizeBeam(b))
+    return applyLocalBeamSwLots(applyLocalPendingBeams(beams)).map((b) => normalizeBeam(b))
   }
 
   saveBeams(beams: BeamMaster[]) {
@@ -2588,6 +2713,7 @@ class ProductionMastersService {
     if (
       patch.swLot !== undefined ||
       patch.qualityId !== undefined ||
+      patch.beamRepeat !== undefined ||
       patch.warp !== undefined ||
       patch.reed !== undefined ||
       patch.width !== undefined ||
@@ -2598,6 +2724,7 @@ class ProductionMastersService {
       void persistBeamPatch(beamNo, {
         ...(patch.swLot !== undefined ? { swLot: next?.swLot ?? null } : {}),
         ...(patch.qualityId !== undefined ? { qualityId: next?.qualityId ?? null } : {}),
+        ...(patch.beamRepeat !== undefined ? { beamRepeat: next?.beamRepeat ?? null } : {}),
         ...(patch.warp !== undefined ? { warp: next?.warp } : {}),
         ...(patch.reed !== undefined ? { reed: next?.reed } : {}),
         ...(patch.width !== undefined ? { width: next?.width } : {}),
@@ -2641,45 +2768,68 @@ class ProductionMastersService {
       }
     }
 
-    beams.push(
-      normalizeBeam({
-        beamNo: partial.beamNo,
-        warp: partial.warp || '',
-        reed: partial.reed ?? 60,
-        width: partial.width ?? 66,
-        totalThreads: partial.totalThreads,
-        length: partial.length ?? 0,
-        loomType: partial.loomType || 'G6200',
-        fillStatus: partial.fillStatus || 'FULL',
-        usedInLoom: partial.usedInLoom ?? null,
-        location: partial.location,
-        mountedOn: partial.mountedOn,
-        qualityId: partial.qualityId ?? null,
-        swLot: partial.swLot ?? null,
-      })
-    )
+    const added = normalizeBeam({
+      beamNo: partial.beamNo,
+      warp: partial.warp || '',
+      reed: partial.reed ?? 60,
+      width: partial.width ?? 66,
+      totalThreads: partial.totalThreads,
+      length: partial.length ?? 0,
+      loomType: partial.loomType || 'G6200',
+      fillStatus: partial.fillStatus || 'FULL',
+      usedInLoom: partial.usedInLoom ?? null,
+      location: partial.location,
+      mountedOn: partial.mountedOn,
+      qualityId: partial.qualityId ?? null,
+      swLot: partial.swLot ?? null,
+      beamRepeat: partial.beamRepeat ?? null,
+    })
+    beams.push(added)
     if (partial.swLot) writeLocalBeamSwLot(partial.beamNo, partial.swLot)
-    this.saveBeams(beams)
-    const added = this.getBeams().find((b) => b.beamNo === partial.beamNo)
-    // Ensure new beam + Sw# land in DB before a quick refresh can wipe memory-only state.
-    if (added) {
-      void persistKey(KEY_BEAMS, this.getBeams()).then((ok) => {
-        if (ok && (added.swLot || added.qualityId)) {
-          void persistBeamPatch(added.beamNo, {
-            swLot: added.swLot ?? null,
-            qualityId: added.qualityId ?? null,
-          })
-        }
-      })
+    // Browser backup until DB confirms — survives refresh if network/PUT fails.
+    writeLocalPendingBeam(added)
+    try {
+      memoryStore.set(KEY_BEAMS, JSON.stringify(beams.map((b) => normalizeBeam(b))))
+    } catch {
+      // ignore
     }
-    if (added?.usedInLoom) {
-      const loomNum = Number(added.usedInLoom)
-      if (Number.isFinite(loomNum) && loomNum > 0) {
+    // Fire upsert immediately; hydrate merge restores from pending if refresh wins the race.
+    void (async () => {
+      const ok = await persistBeamUpsert(added)
+      if (ok) {
+        forgetLocalPendingBeam(added.beamNo)
+        void persistKey(KEY_BEAMS, this.getBeams())
+      } else {
+        console.error('[floor] addBeam upsert failed — kept in pending local', added.beamNo)
+      }
+    })()
+    if (added.usedInLoom) {
+      const mountedLoom = Number(added.usedInLoom)
+      if (Number.isFinite(mountedLoom) && mountedLoom > 0) {
         const mountDay = String(added.mountedOn || getProductionToday()).slice(0, 10)
-        this.updateSheetEntry(mountDay, loomNum, { lot: beamDailyEntryLot(added) })
+        this.updateSheetEntry(mountDay, mountedLoom, { lot: beamDailyEntryLot(added) })
       }
     }
     return this.getBeams()
+  }
+
+  /** Wait until a pending beam is confirmed in DB (or timeout). */
+  async flushPendingBeam(beamNo: string, timeoutMs = 8000): Promise<boolean> {
+    const started = Date.now()
+    while (Date.now() - started < timeoutMs) {
+      const pending = readLocalPendingBeams().some((b) => b.beamNo === beamNo)
+      if (!pending) return true
+      const beam = this.getBeams().find((b) => b.beamNo === beamNo)
+      if (beam) {
+        const ok = await persistBeamUpsert(beam)
+        if (ok) {
+          forgetLocalPendingBeam(beamNo)
+          return true
+        }
+      }
+      await new Promise((r) => setTimeout(r, 250))
+    }
+    return !readLocalPendingBeams().some((b) => b.beamNo === beamNo)
   }
 
   /**

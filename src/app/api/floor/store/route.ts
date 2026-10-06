@@ -13,6 +13,8 @@ import {
   dbGetYarnIssuances,
   dbGetYarnMovements,
   dbSaveBeams,
+  dbUpsertBeam,
+  dbDeleteBeam,
   dbPatchBeam,
   dbSaveLooms,
   dbSaveQualities,
@@ -170,6 +172,26 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: 'Beam not found' }, { status: 404 })
       }
       return NextResponse.json({ ok: true, beam })
+    }
+
+    if (action === 'upsertBeam') {
+      await ensureFloorPayrollTables()
+      const beam = body?.beam
+      if (!beam?.beamNo) {
+        return NextResponse.json({ ok: false, error: 'beam with beamNo required' }, { status: 400 })
+      }
+      const saved = await dbUpsertBeam(beam)
+      return NextResponse.json({ ok: true, beam: saved })
+    }
+
+    if (action === 'deleteBeam') {
+      await ensureFloorPayrollTables()
+      const beamNo = String(body?.beamNo || '').trim()
+      if (!beamNo) {
+        return NextResponse.json({ ok: false, error: 'beamNo required' }, { status: 400 })
+      }
+      await dbDeleteBeam(beamNo)
+      return NextResponse.json({ ok: true })
     }
 
     if (action === 'updateLoomEntry') {

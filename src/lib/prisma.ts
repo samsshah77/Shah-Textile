@@ -6,7 +6,7 @@ const connectionString =
   process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/sara_textile?schema=public'
 
 /** Bump when Prisma models change so hot-reload drops stale PrismaClient. */
-const PRISMA_CLIENT_GEN = 4
+const PRISMA_CLIENT_GEN = 5
 
 const pool = new pg.Pool({ connectionString })
 const adapter = new PrismaPg(pool)

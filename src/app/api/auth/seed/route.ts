@@ -90,7 +90,7 @@ export async function ensureDatabaseSeeded() {
       where: { email: u.email },
       update: {
         name: u.name,
-        passwordHash: u.passwordHash,
+        // Never overwrite live passwords on seed — only fill identity/role fields.
         roleKey: u.roleKey,
         roleId: u.roleId,
         department: u.department,

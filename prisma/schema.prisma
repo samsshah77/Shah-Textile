@@ -229,6 +229,8 @@ model FloorBeam {
   qualityId      String?
   /** Sw# lot — Daily Entry “SW #” column; same quality name, different run id (Excel). */
   swLot          String?
+  /** Optional beam repeat label/value — empty allowed. */
+  beamRepeat     String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

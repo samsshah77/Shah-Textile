@@ -7,17 +7,46 @@ export function normalizeBeamLotKey(s: string): string {
   return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-/** Daily Entry SW # text from beam Sw# only (Beam Identity is separate — never used as lot). */
+export type LotKind = 'Sw' | 'Wp'
+
+export function parseLotKind(swLot: string | null | undefined): { kind: LotKind; num: string } {
+  const raw = (swLot || '').replace(/\s+/g, ' ').trim()
+  if (!raw) return { kind: 'Sw', num: '' }
+  if (/^wp\s*#/i.test(raw)) {
+    return { kind: 'Wp', num: raw.replace(/^wp\s*#\s*/i, '').trim() }
+  }
+  if (/^sw\s*#/i.test(raw)) {
+    return { kind: 'Sw', num: raw.replace(/^sw\s*#\s*/i, '').trim() }
+  }
+  return { kind: 'Sw', num: raw }
+}
+
+/** Build stored lot value from kind dropdown + number (e.g. "Wp # 200"). */
+export function composeLot(kind: LotKind, num: string): string {
+  const n = (num || '').replace(/\s+/g, ' ').trim()
+  if (!n) return ''
+  if (/^(sw|wp)\s*#/i.test(n)) return n
+  return `${kind} # ${n}`
+}
+
+/** Daily Entry / display: keep Sw # / Wp # prefix. */
 export function formatSwLotForDailyEntry(
   swLot: string | null | undefined,
   _fallbackBeamNo?: string
 ): string {
-  const raw = (swLot || '').trim()
+  const raw = (swLot || '').replace(/\s+/g, ' ').trim()
   if (!raw) return ''
-  if (/sw/i.test(raw)) return raw.replace(/\s+/g, ' ').trim()
+  if (/^(sw|wp)\s*#/i.test(raw)) return raw
   const digits = raw.replace(/\D/g, '')
-  if (digits) return `Sw # ${digits}`
+  if (digits && /^\d+$/.test(raw.replace(/\s/g, ''))) return `Sw # ${digits}`
+  if (digits && !/(sw|wp)/i.test(raw)) return `Sw # ${digits}`
   return raw
+}
+
+/** Number part only (for labeled UI / inputs). */
+export function displaySwLotPlain(swLot: string | null | undefined): string {
+  const { num } = parseLotKind(swLot)
+  return num
 }
 
 /** Daily Entry column follows beam.swLot only. */
@@ -155,12 +184,12 @@ export function buildBeamTrackFromEntries(
   const balance = length - consumed
 
   const swLotDisplay = beam.swLot?.trim()
-    ? formatSwLotForDailyEntry(beam.swLot, '')
+    ? formatSwLotForDailyEntry(beam.swLot)
     : null
 
   return {
     beamNo: beam.beamNo,
-    swLot: swLotDisplay || beam.swLot?.trim() || null,
+    swLot: swLotDisplay,
     warp: beam.warp || '',
     qualityId: beam.qualityId ?? null,
     qualityName: qualityName || null,

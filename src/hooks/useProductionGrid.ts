@@ -279,10 +279,21 @@ export function useProductionGrid() {
   )
 
   const addBeam = useCallback(
-    (partial: Partial<BeamMaster> & { beamNo: string }) => {
+    async (partial: Partial<BeamMaster> & { beamNo: string }) => {
       try {
         setBeams(productionMastersService.addBeam(partial))
         setEntries(productionMastersService.buildSheetForDate(selectedDate))
+        const ok = await productionMastersService.flushPendingBeam(partial.beamNo)
+        if (!ok) {
+          showError({
+            title: 'Beam DB save pending',
+            message:
+              'Beam list mein aa gaya, lekin server confirm slow hai. Refresh ke baad bhi dikhna chahiye — warna dubara Add try karo.',
+            confirmText: 'Theek hai',
+            type: 'warning',
+          })
+        }
+        setBeams(productionMastersService.getBeams())
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Beam add failed'
         showError({
