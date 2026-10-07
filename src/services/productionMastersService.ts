@@ -751,12 +751,18 @@ export function qualityIdOnLoomForDate(
   const day = String(sheetDate || '').slice(0, 10)
   const isPastDay = Boolean(day && day !== getProductionToday())
 
-  // Named sheet row for this date wins.
+  // Named sheet row for this date wins (run ownership, not live master).
   if (row) {
     const name = (row.qualityName || '').trim()
     if (name && name !== '—') {
       return (
-        matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ?? null
+        qualityRunThatOwnsSheetEntry(
+          { ...row, date: day || row.date },
+          qualities,
+          day || row.date
+        )?.id ??
+        matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ??
+        null
       )
     }
     // Past day empty/cleared stays empty — do not leak today's master.
@@ -2386,6 +2392,87 @@ class ProductionMastersService {
     )
   }
 
+  /** Last forward-fill days skipped because another quality was already on the loom. */
+  private lastForwardFillSkips: {
+    date: string
+    qualityName: string
+    loomNumber: number
+  }[] = []
+
+  consumeLastForwardFillSkips(): {
+    date: string
+    qualityName: string
+    loomNumber: number
+  }[] {
+    const out = this.lastForwardFillSkips
+    this.lastForwardFillSkips = []
+    return out
+  }
+
+  /**
+   * Quality pose from `fromDate` forward through today on one loom.
+   * Days before `fromDate` stay untouched.
+   * Start day always written. Later days: fill only if empty/cleared/same quality —
+   * never overwrite a day that already has a different quality (busy loom).
+   */
+  private applyQualityOnLoomFromDate(
+    loomNumber: number,
+    qualityId: string | null,
+    fromDate: string,
+    baseLoom: LoomMaster
+  ): void {
+    const from = String(fromDate || '').slice(0, 10)
+    const today = getProductionToday()
+    if (!from || from > today) return
+
+    this.lastForwardFillSkips = []
+    const catalog = this.getQualities()
+    const loomForRecipe: LoomMaster = { ...baseLoom, qualityId }
+    let cursor = from
+    while (cursor <= today) {
+      const sheet = this.peekSheetDay(cursor)
+      const hasSheet = sheet != null
+      // Always write the start day; later days only when a sheet already exists.
+      if (cursor === from || hasSheet) {
+        if (cursor !== from && qualityId && sheet) {
+          const row = sheet.find((e) => e.loomNumber === loomNumber)
+          const name = (row?.qualityName || '').trim()
+          if (name && name !== '—' && name !== '-') {
+            const owner = qualityRunThatOwnsSheetEntry(
+              { ...row!, date: cursor },
+              catalog,
+              cursor
+            )
+            if (owner && owner.id !== qualityId) {
+              this.lastForwardFillSkips.push({
+                date: cursor,
+                qualityName: owner.name,
+                loomNumber,
+              })
+              cursor = shiftProductionDate(cursor, 1)
+              continue
+            }
+          }
+        }
+        if (qualityId) {
+          this.updateSheetEntry(
+            cursor,
+            loomNumber,
+            this.recipeForLoom(loomForRecipe, cursor)
+          )
+        } else {
+          this.updateSheetEntry(cursor, loomNumber, {
+            qualityName: '—',
+            fabricType: '',
+            warpYarn: '',
+            weftYarn: '',
+          })
+        }
+      }
+      cursor = shiftProductionDate(cursor, 1)
+    }
+  }
+
   updateLoom(
     loomNumber: number,
     patch: Partial<LoomMaster>,
@@ -2403,31 +2490,15 @@ class ProductionMastersService {
       }
     }
 
-    const dayOnlyQuality = isPastProductionDay && workingPatch.qualityId !== undefined
+    const qualityAssign = workingPatch.qualityId !== undefined
     const dayOnlyRpm = isPastProductionDay && workingPatch.defaultRpm !== undefined
     const dayOnlyStatus = isPastProductionDay && workingPatch.status !== undefined
 
-    // Past days: quality / RPM / status stay on that day's sheet only —
-    // master + later dates (e.g. today) untouched. Backfill on 2 must not change 3.
-    if (dayOnlyQuality || dayOnlyRpm || dayOnlyStatus) {
+    // Past days: RPM / status stay on that day's sheet only (not forward-filled).
+    if (dayOnlyRpm || dayOnlyStatus) {
       const current = previousLoom
       if (current) {
         const sheetPatch: Partial<DailyLoomProductionEntry> = {}
-        if (dayOnlyQuality) {
-          if (workingPatch.qualityId) {
-            Object.assign(
-              sheetPatch,
-              this.recipeForLoom({ ...current, qualityId: workingPatch.qualityId }, dateStr)
-            )
-          } else {
-            Object.assign(sheetPatch, {
-              qualityName: '—',
-              fabricType: '',
-              warpYarn: '',
-              weftYarn: '',
-            })
-          }
-        }
         if (dayOnlyRpm) {
           sheetPatch.rpm = workingPatch.defaultRpm
         }
@@ -2453,10 +2524,43 @@ class ProductionMastersService {
       }
     }
 
+    // Quality: from selected date forward to today (sheets). Days before stay as-is.
+    // Later days that already have another quality are skipped (busy loom).
+    if (qualityAssign && previousLoom) {
+      this.applyQualityOnLoomFromDate(
+        loomNumber,
+        workingPatch.qualityId ?? null,
+        dateStr,
+        previousLoom
+      )
+    }
+
     const masterPatch: Partial<LoomMaster> = { ...workingPatch }
-    if (dayOnlyQuality) delete masterPatch.qualityId
     if (dayOnlyRpm) delete masterPatch.defaultRpm
     if (dayOnlyStatus) delete masterPatch.status
+    // If today still belongs to another quality (skipped forward-fill), do not steal live master.
+    if (qualityAssign && workingPatch.qualityId) {
+      const today = getProductionToday()
+      const todaySkipped = this.lastForwardFillSkips.some(
+        (s) => s.loomNumber === loomNumber && s.date === today
+      )
+      if (todaySkipped) {
+        delete masterPatch.qualityId
+      } else {
+        const todaySheet = this.peekSheetDay(today)
+        const todayRow = todaySheet?.find((e) => e.loomNumber === loomNumber)
+        if (todayRow) {
+          const owner = qualityRunThatOwnsSheetEntry(
+            { ...todayRow, date: today },
+            this.getQualities(),
+            today
+          )
+          if (owner && owner.id !== workingPatch.qualityId) {
+            delete masterPatch.qualityId
+          }
+        }
+      }
+    }
 
     const hasMasterChange = Object.keys(masterPatch).length > 0
     const looms = hasMasterChange
@@ -2508,30 +2612,20 @@ class ProductionMastersService {
       this.saveQualities(orderQualitiesByLoomAllotment(this.getQualities(), looms))
     }
 
-    // Production-today assignment updates the loom master and this day’s sheet.
-    if (masterPatch.qualityId !== undefined || masterPatch.defaultRpm !== undefined) {
+    // RPM on today (quality sheets already written by applyQualityOnLoomFromDate).
+    if (masterPatch.defaultRpm !== undefined && !qualityAssign) {
       const loom = looms.find((l) => l.loomNumber === loomNumber)
       if (loom) {
-        if (masterPatch.qualityId) {
-          this.updateSheetEntry(dateStr, loomNumber, this.recipeForLoom(loom, dateStr))
-        } else if (masterPatch.qualityId === null) {
-          this.updateSheetEntry(dateStr, loomNumber, {
-            qualityName: '—',
-            fabricType: '',
-            warpYarn: '',
-            weftYarn: '',
-          })
-        } else if (masterPatch.defaultRpm !== undefined) {
-          this.updateSheetEntry(dateStr, loomNumber, { rpm: masterPatch.defaultRpm })
-        } else if (this.peekSheetDay(dateStr)) {
-          this.updateSheetEntry(dateStr, loomNumber, this.recipeForLoom(loom, dateStr))
-        }
+        this.updateSheetEntry(dateStr, loomNumber, { rpm: masterPatch.defaultRpm })
       }
+    } else if (masterPatch.defaultRpm !== undefined && qualityAssign) {
+      this.updateSheetEntry(dateStr, loomNumber, { rpm: masterPatch.defaultRpm })
     }
 
     // Clear quality from loom → if no looms left on that quality, mark ENDED.
+    // Only on today assign — mid-month past pose must not end a run still on earlier days.
     // Assigning HOLD → resume same run. ENDED is forked above (Ends row stays).
-    if (masterPatch.qualityId !== undefined) {
+    if (masterPatch.qualityId !== undefined && !isPastProductionDay) {
       if (previousQualityId && previousQualityId !== masterPatch.qualityId) {
         const stillOn = looms.some((l) => l.qualityId === previousQualityId)
         if (!stillOn) {
@@ -2553,6 +2647,11 @@ class ProductionMastersService {
         if (nextQ && nextQ.status === 'HOLD') {
           this.updateQuality(masterPatch.qualityId, { status: 'ACTIVE', endedOn: null }, dateStr)
         }
+      }
+    } else if (masterPatch.qualityId && isPastProductionDay) {
+      const nextQ = this.getQualities().find((q) => q.id === masterPatch.qualityId)
+      if (nextQ && nextQ.status === 'HOLD') {
+        this.updateQuality(masterPatch.qualityId, { status: 'ACTIVE', endedOn: null }, dateStr)
       }
     }
 
@@ -3211,6 +3310,13 @@ class ProductionMastersService {
     const catalogBefore = this.getQualities()
     const nextPatch = { ...patch }
     const currentStatus = normalizeQualityStatus(current?.status)
+    // Hold only on production Today — past Hold would wipe / confuse that day's production.
+    if (nextPatch.status === 'HOLD') {
+      const day = String(fromDate || '').slice(0, 10)
+      if (day && day !== getProductionToday()) {
+        return catalogBefore
+      }
+    }
     // Already ended/hold: only allow explicit revive to ACTIVE (or re-stamp date).
     if (currentStatus === 'ENDED' || currentStatus === 'HOLD') {
       if (nextPatch.status === 'ACTIVE') {
@@ -3307,22 +3413,28 @@ class ProductionMastersService {
 
     if (reviving && restoreLoomNums.length > 0) {
       const looms = this.getLooms()
+      const restoredNums: number[] = []
       const nextLooms = looms.map((l) => {
         if (!restoreLoomNums.includes(l.loomNumber)) return l
         // Don't steal a loom already given to another quality after the close.
         if (l.qualityId && l.qualityId !== id) return l
+        restoredNums.push(l.loomNumber)
         return { ...l, qualityId: id }
       })
       this.saveLooms(nextLooms)
 
+      // Only restore the hold/end day + selected day sheets — no multi-day rewrite.
       const sheetDays = new Set<string>([reviveEndDay, String(fromDate).slice(0, 10)])
       for (const day of sheetDays) {
         if (!day || !this.peekSheetDay(day)) continue
-        for (const loomNumber of restoreLoomNums) {
+        for (const loomNumber of restoredNums) {
           const loom = nextLooms.find((l) => l.loomNumber === loomNumber)
           if (!loom || loom.qualityId !== id) continue
-          // Restore quality name on the cleared day — Actual A/B meters stay as-is.
-          this.updateSheetEntry(day, loomNumber, this.recipeForLoom({ ...loom, qualityId: id }, day))
+          this.updateSheetEntry(
+            day,
+            loomNumber,
+            this.recipeForLoom({ ...loom, qualityId: id }, day)
+          )
         }
       }
     }
@@ -4021,10 +4133,13 @@ class ProductionMastersService {
   /**
    * Loom × day matrix. meters / shiftA / shiftB sum. efficiency is actual ÷ target.
    * active is 1 when the loom was running that day. Empty days stay —.
+   * `ownsEntry` keeps a quality track on that quality only: a loom that switched
+   * quality mid-month does not carry the previous quality's meters.
    */
   buildMonthlyMatrix(
     monthStr: string = PRODUCTION_TODAY_MONTH,
-    metric: 'meters' | 'shiftA' | 'shiftB' | 'efficiency' | 'active' = 'meters'
+    metric: 'meters' | 'shiftA' | 'shiftB' | 'efficiency' | 'active' = 'meters',
+    ownsEntry?: (entry: DailyLoomProductionEntry, dateStr: string) => boolean
   ): {
     days: MonthlyMatrixDay[]
     loomTotals: Record<number, number>
@@ -4061,6 +4176,7 @@ class ProductionMastersService {
       const loomMeters: Record<number, number> = {}
       const dayLoomActual: Record<number, number> = {}
       const dayLoomTarget: Record<number, number> = {}
+      const loomCounted: Record<number, boolean> = {}
       loomNumbers.forEach((n) => {
         loomMeters[n] = 0
       })
@@ -4086,6 +4202,8 @@ class ProductionMastersService {
 
       if (hasSheet && entries) {
         for (const e of entries) {
+          if (ownsEntry && !ownsEntry(e, dateStr)) continue
+          if (ownsEntry) loomCounted[e.loomNumber] = true
           const meters =
             e.totalMeters != null
               ? Number(e.totalMeters) || 0
@@ -4126,6 +4244,7 @@ class ProductionMastersService {
         totalMeters,
         loomMeters,
         hasSheet,
+        loomCounted: ownsEntry ? loomCounted : undefined,
         loomActual: metric === 'efficiency' ? dayLoomActual : undefined,
         loomTarget: metric === 'efficiency' ? dayLoomTarget : undefined,
       })

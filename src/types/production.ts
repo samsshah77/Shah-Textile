@@ -87,6 +87,11 @@ export interface MonthlyMatrixDay {
   loomMeters: Record<number, number>;
   /** True when a floor production sheet exists for this date (show 0; else —). */
   hasSheet?: boolean;
+  /**
+   * Quality track only: loom was on this quality that day.
+   * Missing key means the loom ran a different quality — show —, not its meters.
+   */
+  loomCounted?: Record<number, boolean>;
   /** Filled for efficiency so a fortnight is actual ÷ target, not a sum of percents. */
   loomActual?: Record<number, number>;
   loomTarget?: Record<number, number>;

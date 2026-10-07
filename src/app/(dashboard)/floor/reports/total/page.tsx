@@ -19,7 +19,8 @@ import {
   getProductionTodayMonth,
   PRODUCTION_START,
 } from '@/constants/productionCalendar'
-import type { MonthlyMatrixDay } from '@/types/production'
+import type { DailyLoomProductionEntry, MonthlyMatrixDay } from '@/types/production'
+import type { QualityMaster } from '@/services/productionMastersService'
 
 function buildMonthOptions(): { value: string; label: string }[] {
   const end = getProductionTodayMonth()
@@ -90,6 +91,46 @@ function entryMeters(e: { totalMeters?: number | null; shiftAMeters?: number; sh
   return (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
 }
 
+function resolveTrackedQuality(
+  qualityId: string | null,
+  qualityNameParam: string | null,
+  qualityFromParam: string | null
+): { master: QualityMaster; catalog: QualityMaster[] } | null {
+  if (!qualityId && !qualityNameParam) return null
+  const masters = productionMastersService.getQualities()
+  const master = qualityId
+    ? masters.find((q) => q.id === qualityId)
+    : masters.find((q) => cleanQualityName(q.name) === cleanQualityName(qualityNameParam || ''))
+  if (!master) return null
+  const createdOn =
+    (master.createdOn ? String(master.createdOn).slice(0, 10) : null) ||
+    (qualityFromParam ? String(qualityFromParam).slice(0, 10) : null)
+  const masterForRun =
+    createdOn && !master.createdOn ? { ...master, createdOn } : master
+  const catalog = masters.map((q) =>
+    q.id === masterForRun.id && !q.createdOn && createdOn ? { ...q, createdOn } : q
+  )
+  return { master: masterForRun, catalog }
+}
+
+/** Quality track counts only rows this run owns. Mill track counts every loom. */
+function trackOwnsEntry(
+  qualityId: string | null,
+  qualityNameParam: string | null,
+  qualityFromParam: string | null
+): ((entry: DailyLoomProductionEntry, dateStr: string) => boolean) | undefined {
+  if (!qualityId && !qualityNameParam) return undefined
+  const tracked = resolveTrackedQuality(qualityId, qualityNameParam, qualityFromParam)
+  if (!tracked) return () => false
+  return (entry, dateStr) =>
+    qualityRunOwnsSheetEntry(
+      tracked.master,
+      { ...entry, date: dateStr },
+      tracked.catalog,
+      dateStr
+    )
+}
+
 function formatShortDate(dateStr?: string | null) {
   if (!dateStr) return ''
   try {
@@ -129,8 +170,11 @@ function ProductionTotalTrackingContent() {
         if (cancelled) return
         const primary =
           view === 'shifts' ? 'shiftA' : view === 'efficiency' ? 'efficiency' : view === 'active' ? 'active' : 'meters'
-        setMatrix(productionMastersService.buildMonthlyMatrix(month, primary))
-        if (view === 'shifts') setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB'))
+        const owns = trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
+        setMatrix(productionMastersService.buildMonthlyMatrix(month, primary, owns))
+        if (view === 'shifts') {
+          setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB', owns))
+        }
       } catch (err) {
         console.error('[total tracking] load failed', err)
         if (!cancelled) setMatrix(EMPTY_MATRIX)
@@ -141,7 +185,7 @@ function ProductionTotalTrackingContent() {
     return () => {
       cancelled = true
     }
-  }, [month, view])
+  }, [month, view, qualityId, qualityNameParam, qualityFromParam])
 
   const qualityFocus = useMemo(() => {
     if (!qualityId && !qualityNameParam) return null
@@ -274,7 +318,11 @@ function ProductionTotalTrackingContent() {
       const source =
         matrix.loomActual && Object.keys(matrix.loomActual).length > 0
           ? matrix
-          : productionMastersService.buildMonthlyMatrix(month, 'efficiency')
+          : productionMastersService.buildMonthlyMatrix(
+              month,
+              'efficiency',
+              trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
+            )
       const actual: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
       const target: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
       for (const [loomStr, meters] of Object.entries(source.loomActual || {})) {
@@ -294,7 +342,11 @@ function ProductionTotalTrackingContent() {
     const metersMatrix =
       view === 'meters'
         ? matrix
-        : productionMastersService.buildMonthlyMatrix(month, 'meters')
+        : productionMastersService.buildMonthlyMatrix(
+            month,
+            'meters',
+            trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
+          )
     const totals: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
     for (const [loomStr, meters] of Object.entries(metersMatrix.loomTotals || {})) {
       const loom = Number(loomStr)
@@ -307,7 +359,7 @@ function ProductionTotalTrackingContent() {
       value: totals[label] || 0,
       color: colors[label],
     }))
-  }, [matrix, month, view, qualityLoomSet, loading])
+  }, [matrix, month, view, qualityLoomSet, loading, qualityId, qualityNameParam, qualityFromParam])
 
   const modelBarSuffix = view === 'efficiency' ? '%' : ' m'
   const modelBarTitle = view === 'efficiency' ? 'By model — Efficiency' : 'By model — Production'
@@ -389,8 +441,14 @@ function ProductionTotalTrackingContent() {
     }
   })()
 
+  const cellOwned = (d: MonthlyMatrixDay, loom: number) => {
+    if (!d.hasSheet) return false
+    if (d.loomCounted && !d.loomCounted[loom]) return false
+    return true
+  }
+
   const cellText = (d: MonthlyMatrixDay, loom: number) => {
-    if (!d.hasSheet) return '—'
+    if (!cellOwned(d, loom)) return '—'
     const v = Number(d.loomMeters?.[loom]) || 0
     if (view === 'efficiency') return `${Math.round(v)}%`
     if (view === 'active') return v > 0 ? '1' : '0'
@@ -614,9 +672,10 @@ function ProductionTotalTrackingContent() {
               {loomNumbers.map((loom) => {
                 const monthly = Number(matrix.loomTotals?.[loom]) || 0
                 const daysWith = matrix.days.filter(
-                  (d) => d.hasSheet && (Number(d.loomMeters?.[loom]) || 0) > 0
+                  (d) =>
+                    cellOwned(d, loom) && (Number(d.loomMeters?.[loom]) || 0) > 0
                 ).length
-                const sheetDays = matrix.days.filter((d) => d.hasSheet).length
+                const sheetDays = matrix.days.filter((d) => cellOwned(d, loom)).length
                 const avg =
                   view === 'efficiency'
                     ? monthly
@@ -631,8 +690,9 @@ function ProductionTotalTrackingContent() {
                   <tr key={loom}>
                     <td className="fw-semibold px-2">{loom}</td>
                     {matrix.days.map((d) => {
+                      const owned = cellOwned(d, loom)
                       const v = Number(d.loomMeters?.[loom]) || 0
-                      const empty = !d.hasSheet
+                      const empty = !owned
                       return (
                         <td
                           key={`${loom}-${d.date || d.day}`}
@@ -737,6 +797,7 @@ function ProductionTotalTrackingContent() {
                     <tr key={loom}>
                       <td className="fw-semibold px-2">{loom}</td>
                       {shiftBMatrix.days.map((d) => {
+                        const owned = cellOwned(d, loom)
                         const v = Number(d.loomMeters?.[loom]) || 0
                         return (
                           <td
@@ -744,10 +805,10 @@ function ProductionTotalTrackingContent() {
                             className="text-end px-1"
                             style={{
                               fontSize: 11,
-                              backgroundColor: !d.hasSheet || v === 0 ? '#f8f9fa' : undefined,
+                              backgroundColor: !owned || v === 0 ? '#f8f9fa' : undefined,
                             }}
                           >
-                            {d.hasSheet ? formatNumber(v, 0) : '—'}
+                            {owned ? formatNumber(v, 0) : '—'}
                           </td>
                         )
                       })}

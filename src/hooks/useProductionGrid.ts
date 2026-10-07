@@ -189,7 +189,10 @@ export function useProductionGrid() {
   }, [selectedDate])
 
   const updateLoom = useCallback(
-    (loomNumber: number, patch: Partial<LoomMaster>) => {
+    (
+      loomNumber: number,
+      patch: Partial<LoomMaster>
+    ): { forwardFillSkipped: { date: string; qualityName: string; loomNumber: number }[] } => {
       const prevQualityId =
         productionMastersService.getLooms().find((l) => l.loomNumber === loomNumber)?.qualityId ??
         null
@@ -200,6 +203,7 @@ export function useProductionGrid() {
       const selectedWasEnded = (selectedBefore?.status ?? 'ACTIVE') === 'ENDED'
 
       const nextLooms = productionMastersService.updateLoom(loomNumber, patch, selectedDate)
+      const forwardFillSkipped = productionMastersService.consumeLastForwardFillSkips()
       setLooms(nextLooms)
       // Always re-read beams so Loom Status → Beam End appears without page refresh
       setBeams(productionMastersService.getBeams().map((b) => ({ ...b })))
@@ -237,6 +241,7 @@ export function useProductionGrid() {
         }
       }
       setEntries(productionMastersService.buildSheetForDate(selectedDate))
+      return { forwardFillSkipped }
     },
     [selectedDate]
   )

@@ -16,9 +16,10 @@ import {
   qualityEndedVisibleOnDate,
   qualityNameKey,
   qualityLoomEndsOnDate,
+  qualityIdOnLoomForDate,
   findLiveQualityByName,
 } from '@/services/productionMastersService'
-import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
+import { PRODUCTION_TODAY, getProductionToday } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
@@ -32,6 +33,26 @@ import {
   clearQualityAssignFlashIds,
 } from '@/lib/qualityAssignFlash'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
+
+/** Today only: looms from Hold that already carry another live quality. */
+function loomsBusyOnResumeToday(
+  q: QualityMaster,
+  looms: LoomMaster[],
+  qualities: QualityMaster[]
+): { loomNumber: number; qualityName: string }[] {
+  const holdDay = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
+  const loomNums = [
+    ...new Set([...qualityLoomEndsOnDate(q, holdDay), ...qualityLoomEndsOnDate(q)]),
+  ]
+  const out: { loomNumber: number; qualityName: string }[] = []
+  for (const n of loomNums) {
+    const loom = looms.find((l) => l.loomNumber === n)
+    if (!loom?.qualityId || loom.qualityId === q.id) continue
+    const other = qualities.find((x) => x.id === loom.qualityId)
+    out.push({ loomNumber: n, qualityName: other?.name || String(loom.qualityId) })
+  }
+  return out
+}
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   sr: 46,
@@ -349,15 +370,24 @@ export function QualityMasterTable({
 
   const assignedByQuality = useMemo(() => {
     const map = new Map<string, number[]>()
-    const day = (entries || []).filter((e) => !e.date || !sheetDate || e.date === sheetDate)
+    const dayKey = String(sheetDate || '').slice(0, 10)
+    const isToday = !dayKey || dayKey === getProductionToday()
     for (const q of qualities) {
       const status = q.status ?? 'ACTIVE'
-      // Active / Hold: only looms explicitly allotted to this quality id (new add = empty L#).
+      // Active / Hold: L# is day-wise. Past dates use that day's sheet (never leak
+      // today's loom master — e.g. Loom 4 on DUM DUM only from the day it started).
       if (status === 'ACTIVE' || status === 'HOLD') {
-        const fromLooms = looms
-          .filter((l) => l.qualityId === q.id)
-          .map((l) => l.loomNumber)
-        map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
+        if (isToday) {
+          const fromLooms = looms
+            .filter((l) => l.qualityId === q.id)
+            .map((l) => l.loomNumber)
+          map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
+        } else {
+          const fromDay = looms
+            .filter((l) => qualityIdOnLoomForDate(l, qualities, dayRows, sheetDate) === q.id)
+            .map((l) => l.loomNumber)
+          map.set(q.id, [...new Set(fromDay)].sort((a, b) => a - b))
+        }
         continue
       }
       // Ended: stamped loom ends for this close, else sheet rows this run owns (by id).
@@ -373,7 +403,7 @@ export function QualityMasterTable({
       }
       const fromSheet = [
         ...new Set(
-          day
+          dayRows
             .filter(
               (e) =>
                 qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
@@ -384,7 +414,7 @@ export function QualityMasterTable({
       map.set(q.id, fromSheet)
     }
     return map
-  }, [entries, qualities, sheetDate, looms])
+  }, [dayRows, qualities, sheetDate, looms])
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, number> = {}
@@ -524,10 +554,19 @@ export function QualityMasterTable({
     if (!canOps) return
     if ((q.status ?? 'ACTIVE') !== 'ACTIVE') return
     const holdDate = String(sheetDate || '').slice(0, 10)
+    const today = getProductionToday()
     const label = qualityDisplayName(q, qualities)
+    // Natural flow: past date Hold nahi — us din ki production / Track confuse ho jati.
+    if (holdDate !== today) {
+      showError({
+        title: 'Hold sirf aaj (Today)',
+        message: `Pichli date (${formatShortDate(holdDate)}) pe Hold nahi ho sakta. Us din ki production pehle se sheet pe hai — usko Hold se wipe / confuse nahi karna. Date picker se Today kholo, phir Hold karo.`,
+      })
+      return
+    }
     showConfirm({
       title: 'Quality Hold Karein?',
-      message: `"${label}" ko hold pe rakh dein? Loom se hata di jayegi; baad mein resume kar sakte ho.`,
+      message: `"${label}" ko aaj Hold pe rakh dein? Loom se hata di jayegi; baad mein Resume se wapas Active kar sakte ho. Pichli dates ki production Same rehti hai.`,
       type: 'confirm',
       confirmText: 'Hold',
       cancelText: 'Cancel',
@@ -535,7 +574,7 @@ export function QualityMasterTable({
         onUpdate(q.id, { status: 'HOLD', endedOn: holdDate })
         showSuccessSoon({
           title: 'Quality On Hold',
-          message: `"${label}" Hold pe chali gayi.`,
+          message: `"${label}" aaj Hold pe chali gayi.`,
         })
       },
     })
@@ -544,6 +583,16 @@ export function QualityMasterTable({
   const handleResume = (q: QualityMaster) => {
     if (!canArchiveOps) return
     const label = qualityDisplayName(q, qualities)
+    const resumeDate = String(sheetDate || '').slice(0, 10)
+    const today = getProductionToday()
+    const holdDate = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
+    if (resumeDate !== today) {
+      showError({
+        title: 'Resume sirf aaj (Today)',
+        message: `Resume bhi sirf Today pe. Date picker se aaj kholo, phir Resume karo. Hold thi: ${formatShortDate(holdDate)}.`,
+      })
+      return
+    }
     const liveSame = findLiveQualityByName(qualities, q.name, q.id)
     if (liveSame) {
       showError({
@@ -552,9 +601,20 @@ export function QualityMasterTable({
       })
       return
     }
+    const conflicts = loomsBusyOnResumeToday(q, looms, qualities)
+    if (conflicts.length > 0) {
+      const detail = conflicts
+        .map((c) => `L#${c.loomNumber} → "${c.qualityName}"`)
+        .join('; ')
+      showError({
+        title: 'Resume nahi ho sakta — loom busy',
+        message: `Ye looms ab doosri quality pe hain: ${detail}. Pehle free karo, phir Resume.`,
+      })
+      return
+    }
     showConfirm({
       title: 'Quality Resume?',
-      message: `"${label}" ko Active pe wapas laayein?`,
+      message: `"${label}" aaj Active pe wapas? Hold thi: ${formatShortDate(holdDate)}.`,
       type: 'confirm',
       confirmText: 'Resume',
       cancelText: 'Cancel',
@@ -572,7 +632,7 @@ export function QualityMasterTable({
         onStatusFilterChange?.('ACTIVE')
         showSuccessSoon({
           title: 'Quality Resumed',
-          message: `"${label}" Active pe wapas — thodi der highlight.`,
+          message: `"${label}" Active pe wapas.`,
         })
       },
     })
@@ -618,17 +678,29 @@ export function QualityMasterTable({
   const handleContinue = (q: QualityMaster) => {
     if (!canArchiveOps) return
     const label = qualityDisplayName(q, qualities)
+    const endDate = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
     const liveSame = findLiveQualityByName(qualities, q.name, q.id)
     if (liveSame) {
       showError({
         title: 'Continue nahi ho sakta',
-        message: `"${liveSame.name}" pehle se Active/Hold pe hai. Continue sirf tab jab galti se End hua ho aur Active pe same naam na ho. Agar zero se naya run chahiye to Reuse use karo (purana Ends pe rehta hai).`,
+        message: `"${liveSame.name}" pehle se Active/Hold pe hai. Continue sirf tab jab galti se End hua ho aur Active pe same naam na ho. Agar zero se naya run chahiye to Reuse use karo.`,
+      })
+      return
+    }
+    const conflicts = loomsBusyOnResumeToday(q, looms, qualities)
+    if (conflicts.length > 0) {
+      const detail = conflicts
+        .map((c) => `L#${c.loomNumber} → "${c.qualityName}"`)
+        .join('; ')
+      showError({
+        title: 'Continue nahi ho sakta — loom busy',
+        message: `Ye looms ab doosri quality pe hain: ${detail}. Pehle free karo, phir Continue.`,
       })
       return
     }
     showConfirm({
       title: 'Quality Continue?',
-      message: `"${label}" galti se end hui thi? Wapas Active pe aayegi — Ends se hat jayegi, purani production / Track zero se shuru nahi hogi.`,
+      message: `"${label}" galti se End hui thi? Active pe wapas — Ends se hat jayegi, purane meters same. Ended thi: ${formatShortDate(endDate)}.`,
       type: 'confirm',
       confirmText: 'Continue',
       cancelText: 'Cancel',
@@ -645,7 +717,7 @@ export function QualityMasterTable({
         onStatusFilterChange?.('ACTIVE')
         showSuccessSoon({
           title: 'Quality Continued',
-          message: `"${label}" Ends se hat kar Active pe aa gayi — purane meters same.`,
+          message: `"${label}" Active pe aa gayi — purane meters same.`,
         })
       },
     })

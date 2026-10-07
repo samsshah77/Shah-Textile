@@ -49,7 +49,10 @@ interface LoomMasterTableProps {
   qualities?: QualityMaster[]
   entries?: DailyLoomProductionEntry[]
   sheetDate?: string
-  onUpdate: (loomNumber: number, patch: Partial<LoomMaster>) => void
+  onUpdate: (
+    loomNumber: number,
+    patch: Partial<LoomMaster>
+  ) => void | { forwardFillSkipped?: { date: string; qualityName: string; loomNumber: number }[] }
   onAdd: (partial?: Partial<LoomMaster>) => void
   onDelete?: (loomNumber: number) => void
   readOnly?: boolean
@@ -80,7 +83,31 @@ export function LoomMasterTable({
   const [tableEditLocal, setTableEditLocal] = useState(false)
   const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const { canEditProduction } = useAuth()
-  const { showConfirm, showSuccessSoon } = useAlertDialog()
+  const { showConfirm, showSuccessSoon, showError } = useAlertDialog()
+
+  const formatShortDate = (dateStr?: string | null) => {
+    if (!dateStr) return '—'
+    try {
+      const d = new Date(`${dateStr}T12:00:00`)
+      return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+    } catch {
+      return dateStr
+    }
+  }
+
+  const assignQuality = (loomNumber: number, qualityId: string | null) => {
+    const result = onUpdate(loomNumber, { qualityId })
+    const skips = result && 'forwardFillSkipped' in result ? result.forwardFillSkipped : undefined
+    if (skips && skips.length > 0) {
+      const detail = skips
+        .map((s) => `${formatShortDate(s.date)} → "${s.qualityName}"`)
+        .join('; ')
+      showError({
+        title: 'Kuch din pehle se busy the',
+        message: `L#${loomNumber} pe ye din doosri quality pe pehle se lage hue the, is liye wahan nahi badla: ${detail}. Sirf khali / isi quality wale din update hue.`,
+      })
+    }
+  }
 
   const tableEdit = tableEditProp ?? tableEditLocal
   const setTableEdit = (next: boolean) => {
@@ -406,9 +433,7 @@ export function LoomMasterTable({
                     <select
                       className="form-select form-select-sm"
                       value={dayQualityId(l) || ''}
-                      onChange={(e) =>
-                        onUpdate(l.loomNumber, { qualityId: e.target.value || null })
-                      }
+                      onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
                     >
                       <option value="">—</option>
                       {qualityOptionsFor(l).map((q) => (
@@ -536,9 +561,7 @@ export function LoomMasterTable({
                           className="form-select form-select-sm"
                           style={{ width: '100%', minWidth: 0 }}
                           value={dayQualityId(l) || ''}
-                          onChange={(e) =>
-                            onUpdate(l.loomNumber, { qualityId: e.target.value || null })
-                          }
+                          onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
                         >
                           <option value="">—</option>
                           {qualityOptionsFor(l).map((q) => (
