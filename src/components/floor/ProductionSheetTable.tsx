@@ -675,18 +675,22 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
                   const remarkText =
                     e.remarks?.trim() ||
                     (condition !== 'RUNNING' ? LOOM_STATUS_LABEL[condition] : '—')
+                  const seg = Math.max(1, Math.floor(Number(e.segmentIndex) || 1))
+                  const loomLabel = seg > 1 ? `${e.loomNumber}·${seg}` : String(e.loomNumber)
                   return (
                     <tr
-                      key={e.loomNumber}
+                      key={e.id || `${e.loomNumber}-s${seg}`}
                       className={condition !== 'RUNNING' ? 'prod-sheet-row--issue' : undefined}
                       style={rowStyle}
                       title={
                         condition !== 'RUNNING'
                           ? `Condition: ${LOOM_STATUS_LABEL[condition]}`
+                          : seg > 1
+                            ? `Same-day part ${seg}: ${e.qualityName || '—'}`
                           : undefined
                       }
                     >
-                      <td className="fw-semibold text-nowrap px-2 text-truncate">{e.loomNumber}</td>
+                      <td className="fw-semibold text-nowrap px-2 text-truncate">{loomLabel}</td>
                       <td className="px-2 small text-truncate">{e.qualityName}</td>
                       <td className="px-2 small text-truncate">{e.fabricType || '—'}</td>
                       <td className="px-2 small text-truncate">{e.warpYarn || '—'}</td>
@@ -699,7 +703,7 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
                         {typeof e.gsm === 'number' && e.gsm > 0 ? e.gsm.toFixed(2) : e.gsm || '—'}
                       </td>
                       <td className="text-center px-1 fw-semibold" style={lSepStyle}>
-                        {e.loomNumber}
+                        {loomLabel}
                       </td>
                       <td className="text-end px-1">{num(e.rollerHours, 2)}</td>
                       <td className="text-end fw-semibold px-1">{num(e.runningTheoretical)}</td>
@@ -713,7 +717,7 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
                       <td className="text-end text-secondary px-1">{num(e.loss24h)}</td>
                       <td className="px-2 small text-truncate fw-semibold">{remarkText}</td>
                       <td className="text-center px-1 fw-semibold" style={lSepStyle}>
-                        {e.loomNumber}
+                        {loomLabel}
                       </td>
                       <td className="px-2 small text-truncate">{e.lot || '—'}</td>
                     </tr>

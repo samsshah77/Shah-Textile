@@ -182,7 +182,7 @@ export function ProductionTable({
           ) : (
             entries.map((entry) => (
               <LoomCard
-                key={entry.loomNumber}
+                key={entry.id || `${entry.loomNumber}-s${Math.max(1, Math.floor(Number(entry.segmentIndex) || 1))}`}
                 entry={entry}
                 onUpdate={onUpdateEntry}
                 isModified={modifiedLoomIds?.has(entry.loomNumber)}
@@ -229,7 +229,7 @@ export function ProductionTable({
                 ) : (
                   entries.map((entry) => (
                     <LoomDataRow
-                      key={entry.loomNumber}
+                      key={entry.id || `${entry.loomNumber}-s${Math.max(1, Math.floor(Number(entry.segmentIndex) || 1))}`}
                       entry={entry}
                       onUpdate={onUpdateEntry}
                       isModified={modifiedLoomIds?.has(entry.loomNumber)}

@@ -740,48 +740,103 @@ export function matchQualityByNameAndPick(
   })[0]
 }
 
-/** Day-wise quality on a loom: sheet row for that date, else master (today only). */
+/** Same-day dual quality segment (1 = primary). Legacy rows without the field = 1. */
+export function sheetSegmentIndex(entry?: { segmentIndex?: number | null } | null): number {
+  const n = Number(entry?.segmentIndex)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+}
+
+export function sheetRowKey(loomNumber: number, segmentIndex: number = 1): string {
+  return `${loomNumber}:${sheetSegmentIndex({ segmentIndex })}`
+}
+
+export function sheetEntryId(dateStr: string, loomNumber: number, segmentIndex: number = 1): string {
+  const seg = sheetSegmentIndex({ segmentIndex })
+  return seg <= 1 ? `PROD-${dateStr}-${loomNumber}` : `PROD-${dateStr}-${loomNumber}-s${seg}`
+}
+
+function namedQualityOnRow(name?: string | null): boolean {
+  const n = (name || '').trim()
+  return n !== '' && n !== '—' && n !== '-'
+}
+
+function sortSheetEntries(entries: DailyLoomProductionEntry[]): DailyLoomProductionEntry[] {
+  return [...entries].sort((a, b) =>
+    a.loomNumber === b.loomNumber
+      ? sheetSegmentIndex(a) - sheetSegmentIndex(b)
+      : a.loomNumber - b.loomNumber
+  )
+}
+
+function normalizeSheetEntry(entry: DailyLoomProductionEntry): DailyLoomProductionEntry {
+  const segmentIndex = sheetSegmentIndex(entry)
+  return {
+    ...entry,
+    segmentIndex,
+    id: entry.id || sheetEntryId(entry.date, entry.loomNumber, segmentIndex),
+  }
+}
+
+/** All quality run ids present on a loom for a day (every segment). */
+export function qualityIdsOnLoomForDate(
+  loom: LoomMaster,
+  qualities: QualityMaster[],
+  dayRows: DailyLoomProductionEntry[],
+  sheetDate?: string
+): string[] {
+  const day = String(sheetDate || '').slice(0, 10)
+  const isPastDay = Boolean(day && day !== getProductionToday())
+  const rows = dayRows.filter((e) => e.loomNumber === loom.loomNumber)
+  const ids: string[] = []
+  const seen = new Set<string>()
+
+  for (const row of rows) {
+    if (!namedQualityOnRow(row.qualityName)) continue
+    const id =
+      qualityRunThatOwnsSheetEntry({ ...row, date: day || row.date }, qualities, day || row.date)
+        ?.id ??
+      matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ??
+      null
+    if (id && !seen.has(id)) {
+      seen.add(id)
+      ids.push(id)
+    }
+  }
+
+  if (ids.length > 0) return ids
+  if (rows.length > 0 && isPastDay) return []
+  if (isPastDay) return []
+
+  if (loom.qualityId) {
+    const masterQ = qualities.find((q) => q.id === loom.qualityId)
+    const masterStatus = masterQ ? normalizeQualityStatus(masterQ.status) : null
+    if (masterQ && (masterStatus === 'ACTIVE' || masterStatus === 'HOLD')) {
+      return [loom.qualityId]
+    }
+  }
+  return loom.qualityId ? [loom.qualityId] : []
+}
+
+/** Day-wise primary quality on a loom: segment 1 sheet row, else master (today only). */
 export function qualityIdOnLoomForDate(
   loom: LoomMaster,
   qualities: QualityMaster[],
   dayRows: DailyLoomProductionEntry[],
   sheetDate?: string
 ): string | null {
-  const row = dayRows.find((e) => e.loomNumber === loom.loomNumber)
-  const day = String(sheetDate || '').slice(0, 10)
-  const isPastDay = Boolean(day && day !== getProductionToday())
+  const ids = qualityIdsOnLoomForDate(loom, qualities, dayRows, sheetDate)
+  return ids[0] ?? null
+}
 
-  // Named sheet row for this date wins (run ownership, not live master).
-  if (row) {
-    const name = (row.qualityName || '').trim()
-    if (name && name !== '—') {
-      return (
-        qualityRunThatOwnsSheetEntry(
-          { ...row, date: day || row.date },
-          qualities,
-          day || row.date
-        )?.id ??
-        matchQualityByNameAndPick(qualities, row.qualityName, row.pick)?.id ??
-        null
-      )
-    }
-    // Past day empty/cleared stays empty — do not leak today's master.
-    if (isPastDay) return null
-    // Today empty sheet: fall through to live master allotment.
-  }
-
-  // Past day with no sheet row yet: do not show today's master allotment.
-  if (isPastDay) return null
-
-  // Today / unknown date: live master allotment.
-  if (loom.qualityId) {
-    const masterQ = qualities.find((q) => q.id === loom.qualityId)
-    const masterStatus = masterQ ? normalizeQualityStatus(masterQ.status) : null
-    if (masterQ && (masterStatus === 'ACTIVE' || masterStatus === 'HOLD')) {
-      return loom.qualityId
-    }
-  }
-  return loom.qualityId ?? null
+/** True when any segment on that loom/day belongs to this quality. */
+export function loomHasQualityOnDate(
+  loom: LoomMaster,
+  qualityId: string,
+  qualities: QualityMaster[],
+  dayRows: DailyLoomProductionEntry[],
+  sheetDate?: string
+): boolean {
+  return qualityIdsOnLoomForDate(loom, qualities, dayRows, sheetDate).includes(qualityId)
 }
 
 /**
@@ -896,7 +951,25 @@ export function qualityRunOwnsSheetEntry(
   return Boolean(owner && owner.id === quality.id)
 }
 
-/** Active tab on `sheetDate`: running qualities only (HOLD / ENDED stay off Active). */
+/**
+ * True when a HOLD quality should still appear on Active for a *past* day
+ * (it was running that day; Hold day onward → Hold tab only).
+ * History rows are read-only (H badge + orange BG) — Resume only from Hold tab
+ * on hold date or any later day.
+ */
+export function qualityHeldButVisibleOnPastDay(
+  q: QualityMaster,
+  sheetDate: string
+): boolean {
+  if (normalizeQualityStatus(q.status) !== 'HOLD') return false
+  const day = String(sheetDate || '').slice(0, 10)
+  const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
+  if (!day || !stamp) return false
+  // Hold day and after → Hold tab only. Before hold → history on Active.
+  return day < stamp
+}
+
+/** Active tab on `sheetDate`: live Active, plus HOLD history on days before hold. */
 export function qualityActiveOnSheetDate(
   q: QualityMaster,
   sheetDate: string,
@@ -911,7 +984,10 @@ export function qualityActiveOnSheetDate(
     if (!dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))) return false
   }
   const status = normalizeQualityStatus(q.status)
-  if (status === 'HOLD' || status === 'ENDED') return false
+  if (status === 'ENDED') return false
+  if (status === 'HOLD') {
+    return qualityHeldButVisibleOnPastDay(q, day)
+  }
   return true
 }
 
@@ -2010,11 +2086,18 @@ async function persistLoomEntry(
   entry: DailyLoomProductionEntry
 ): Promise<void> {
   if (!isClient()) return
+  const stamped = normalizeSheetEntry({ ...entry, date: dateStr, loomNumber })
   try {
     await fetch('/api/floor/store', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateLoomEntry', date: dateStr, loomNumber, entry }),
+      body: JSON.stringify({
+        action: 'updateLoomEntry',
+        date: dateStr,
+        loomNumber,
+        segmentIndex: sheetSegmentIndex(stamped),
+        entry: stamped,
+      }),
     })
   } catch (err) {
     console.error('[floor] persist loom entry failed', loomNumber, err)
@@ -2273,12 +2356,17 @@ export async function preloadAllFloorSheets(): Promise<void> {
 }
 
 /** Prefetch one day's sheet into memory from DB (call after hydrate). */
-export async function preloadFloorSheet(dateStr: string): Promise<void> {
+export async function preloadFloorSheet(
+  dateStr: string,
+  opts?: { force?: boolean }
+): Promise<void> {
   if (!isClient()) return
   const key = `${KEY_SHEET}_${dateStr}`
-  if (memoryStore.has(key)) return
+  // Always prefer DB when forcing (date change / after seed) — stale memory was
+  // wiping named dual-quality rows (e.g. DUM DUM seg1 → "—") on rebuild+persist.
+  if (!opts?.force && memoryStore.has(key)) return
   const entries = await loadSheetFromDb(dateStr)
-  if (entries) memoryStore.set(key, JSON.stringify(entries))
+  if (entries) memoryStore.set(key, JSON.stringify(entries.map(normalizeSheetEntry)))
 }
 
 /** Dates that have a saved production sheet in memory (after hydrate). */
@@ -2309,20 +2397,24 @@ export function listPersistedSheetEntries(): DailyLoomProductionEntry[] {
   return rows
 }
 
-/** Saved sheet rows for one date with live editor rows overlaid by loom number. */
+/** Saved sheet rows for one date with live editor rows overlaid by loom + segment. */
 export function mergeSheetEntriesForDate(
   dateStr: string,
   live: DailyLoomProductionEntry[] = []
 ): DailyLoomProductionEntry[] {
-  const saved = listPersistedSheetEntries().filter((e) => e.date === dateStr)
-  const liveForDate = live.filter((e) => !e.date || e.date === dateStr)
-  if (liveForDate.length === 0) return saved
-  const byLoom = new Map<number, DailyLoomProductionEntry>()
-  for (const e of saved) byLoom.set(e.loomNumber, e)
+  const saved = listPersistedSheetEntries()
+    .filter((e) => e.date === dateStr)
+    .map(normalizeSheetEntry)
+  const liveForDate = live
+    .filter((e) => !e.date || e.date === dateStr)
+    .map((e) => normalizeSheetEntry({ ...e, date: dateStr }))
+  if (liveForDate.length === 0) return sortSheetEntries(saved)
+  const byKey = new Map<string, DailyLoomProductionEntry>()
+  for (const e of saved) byKey.set(sheetRowKey(e.loomNumber, sheetSegmentIndex(e)), e)
   for (const e of liveForDate) {
-    byLoom.set(e.loomNumber, { ...e, date: dateStr })
+    byKey.set(sheetRowKey(e.loomNumber, sheetSegmentIndex(e)), e)
   }
-  return [...byLoom.values()]
+  return sortSheetEntries([...byKey.values()])
 }
 
 /**
@@ -2412,8 +2504,10 @@ class ProductionMastersService {
   /**
    * Quality pose from `fromDate` forward through today on one loom.
    * Days before `fromDate` stay untouched.
-   * Start day always written. Later days: fill only if empty/cleared/same quality —
-   * never overwrite a day that already has a different quality (busy loom).
+   * Start day: same/empty quality updates segment 1; a *different* named quality
+   * with meters (or any named pose) gets a new same-day segment instead of wipe.
+   * Later days: fill only if empty/cleared/same quality — never overwrite a busy day
+   * (skip; dual-quality segments are only created on the change/start day).
    */
   private applyQualityOnLoomFromDate(
     loomNumber: number,
@@ -2434,43 +2528,110 @@ class ProductionMastersService {
       const hasSheet = sheet != null
       // Always write the start day; later days only when a sheet already exists.
       if (cursor === from || hasSheet) {
-        if (cursor !== from && qualityId && sheet) {
-          const row = sheet.find((e) => e.loomNumber === loomNumber)
-          const name = (row?.qualityName || '').trim()
-          if (name && name !== '—' && name !== '-') {
-            const owner = qualityRunThatOwnsSheetEntry(
-              { ...row!, date: cursor },
-              catalog,
-              cursor
-            )
-            if (owner && owner.id !== qualityId) {
-              this.lastForwardFillSkips.push({
-                date: cursor,
-                qualityName: owner.name,
-                loomNumber,
-              })
-              cursor = shiftProductionDate(cursor, 1)
-              continue
-            }
-          }
-        }
         if (qualityId) {
-          this.updateSheetEntry(
-            cursor,
-            loomNumber,
-            this.recipeForLoom(loomForRecipe, cursor)
-          )
+          this.writeQualityPoseOnDay(cursor, loomNumber, qualityId, loomForRecipe, catalog, {
+            allowNewSegment: cursor === from,
+          })
         } else {
-          this.updateSheetEntry(cursor, loomNumber, {
+          // Unassign: clear only segments that still show the *previous* loom quality.
+          // Never wipe a same-day dual primary (e.g. DUM DUM) while Bunny sits on part 2.
+          const sheet = this.peekSheetDay(cursor) || []
+          const prevQ = catalog.find((q) => q.id === baseLoom.qualityId) || null
+          const segs = sheet.filter((e) => e.loomNumber === loomNumber)
+          const clearPatch = {
             qualityName: '—',
             fabricType: '',
             warpYarn: '',
             weftYarn: '',
-          })
+            _clearQuality: true,
+          } as Partial<DailyLoomProductionEntry> & { _clearQuality?: boolean }
+          if (segs.length === 0) {
+            this.updateSheetEntry(cursor, loomNumber, clearPatch, undefined, 1)
+          } else {
+            for (const row of segs) {
+              if (prevQ && !sheetRowShowsQuality(row, prevQ, catalog)) continue
+              this.updateSheetEntry(
+                cursor,
+                loomNumber,
+                clearPatch,
+                undefined,
+                sheetSegmentIndex(row)
+              )
+            }
+          }
         }
       }
       cursor = shiftProductionDate(cursor, 1)
     }
+  }
+
+  /**
+   * Write a quality onto a loom for one day.
+   * - Matching / empty primary → update that segment.
+   * - Different named quality on start day → add/update a same-day segment (dual quality).
+   * - Different named quality on later days → skip (busy).
+   */
+  private writeQualityPoseOnDay(
+    dateStr: string,
+    loomNumber: number,
+    qualityId: string,
+    loomForRecipe: LoomMaster,
+    catalog: QualityMaster[],
+    opts: { allowNewSegment: boolean }
+  ): void {
+    const sheet = this.peekSheetDay(dateStr) || this.buildSheetForDate(dateStr, { skipPersist: true })
+    const rows = sheet.filter((e) => e.loomNumber === loomNumber)
+    const recipe = this.recipeForLoom(loomForRecipe, dateStr)
+
+    const existingForQuality = rows.find((row) => {
+      if (!namedQualityOnRow(row.qualityName)) return false
+      const owner = qualityRunThatOwnsSheetEntry({ ...row, date: dateStr }, catalog, dateStr)
+      return owner?.id === qualityId
+    })
+    if (existingForQuality) {
+      this.updateSheetEntry(
+        dateStr,
+        loomNumber,
+        recipe,
+        undefined,
+        sheetSegmentIndex(existingForQuality)
+      )
+      return
+    }
+
+    const primary =
+      rows.find((r) => sheetSegmentIndex(r) === 1) || rows[0] || null
+    const primaryNamed = primary && namedQualityOnRow(primary.qualityName)
+    const primaryOwner = primaryNamed
+      ? qualityRunThatOwnsSheetEntry({ ...primary!, date: dateStr }, catalog, dateStr)
+      : null
+    const primaryMeters =
+      (Number(primary?.shiftAMeters) || 0) +
+      (Number(primary?.shiftBMeters) || 0) +
+      (Number(primary?.totalMeters) || 0)
+
+    if (!primaryNamed || !primaryOwner || primaryOwner.id === qualityId) {
+      this.updateSheetEntry(dateStr, loomNumber, recipe, undefined, 1)
+      return
+    }
+
+    // Busy with another quality.
+    if (!opts.allowNewSegment) {
+      this.lastForwardFillSkips.push({
+        date: dateStr,
+        qualityName: primaryOwner.name,
+        loomNumber,
+      })
+      return
+    }
+
+    // Same-day dual quality: keep primary meters, add next segment for the new quality.
+    // Named different pose on the start day becomes a new segment so Resume / assign
+    // from that date does not steal the first quality's row (e.g. Dum Dum + Bunny).
+    const maxSeg = rows.reduce((m, r) => Math.max(m, sheetSegmentIndex(r)), 0)
+    const segmentIndex = Math.max(2, maxSeg + 1)
+    void primaryMeters
+    this.updateSheetEntry(dateStr, loomNumber, recipe, undefined, segmentIndex)
   }
 
   updateLoom(
@@ -3337,6 +3498,14 @@ class ProductionMastersService {
     if (reviving && current && findLiveQualityByName(catalogBefore, current.name, current.id)) {
       return catalogBefore
     }
+    // HOLD Resume: only from hold day or later — days before Hold are history-only (H badge).
+    if (reviving && currentStatus === 'HOLD') {
+      const holdStamp = current?.endedOn ? String(current.endedOn).slice(0, 10) : ''
+      const resumeDay = String(fromDate || '').slice(0, 10)
+      if (holdStamp && resumeDay && resumeDay < holdStamp) {
+        return catalogBefore
+      }
+    }
     const reviveEndDay = reviving
       ? String(current?.endedOn || fromDate).slice(0, 10)
       : ''
@@ -3390,13 +3559,36 @@ class ProductionMastersService {
     })
 
     if (clearing) {
+      const dayRows = this.peekSheetDay(fromDate) || []
       for (const loomNumber of clearLoomNums) {
-        this.updateSheetEntry(fromDate, loomNumber, {
+        const segs = dayRows.filter((e) => e.loomNumber === loomNumber)
+        const clearPatch = {
           qualityName: '—',
           fabricType: '',
           warpYarn: '',
           weftYarn: '',
-        })
+          _clearQuality: true,
+        } as Partial<DailyLoomProductionEntry> & { _clearQuality?: boolean }
+        if (segs.length === 0) {
+          this.updateSheetEntry(fromDate, loomNumber, clearPatch, undefined, 1)
+          continue
+        }
+        // Clear only segments owned by this quality; leave same-day dual segments intact.
+        let clearedAny = false
+        for (const row of segs) {
+          if (current && !sheetRowShowsQuality(row, current, catalogBefore)) continue
+          this.updateSheetEntry(
+            fromDate,
+            loomNumber,
+            clearPatch,
+            undefined,
+            sheetSegmentIndex(row)
+          )
+          clearedAny = true
+        }
+        if (!clearedAny && this.getLooms().some((l) => l.loomNumber === loomNumber && l.qualityId === id)) {
+          this.updateSheetEntry(fromDate, loomNumber, clearPatch, undefined, 1)
+        }
       }
       const looms = this.getLooms()
       if (looms.some((l) => l.qualityId === id)) {
@@ -3423,17 +3615,18 @@ class ProductionMastersService {
       })
       this.saveLooms(nextLooms)
 
-      // Only restore the hold/end day + selected day sheets — no multi-day rewrite.
-      const sheetDays = new Set<string>([reviveEndDay, String(fromDate).slice(0, 10)])
-      for (const day of sheetDays) {
-        if (!day || !this.peekSheetDay(day)) continue
-        for (const loomNumber of restoredNums) {
-          const loom = nextLooms.find((l) => l.loomNumber === loomNumber)
-          if (!loom || loom.qualityId !== id) continue
+      const resumeDay = String(fromDate).slice(0, 10)
+      for (const loomNumber of restoredNums) {
+        const loom = nextLooms.find((l) => l.loomNumber === loomNumber)
+        if (!loom) continue
+        // Resume from selected date → today (skips days that already have another quality).
+        if (resumeDay) {
+          this.applyQualityOnLoomFromDate(loomNumber, id, resumeDay, loom)
+        } else if (reviveEndDay && this.peekSheetDay(reviveEndDay)) {
           this.updateSheetEntry(
-            day,
+            reviveEndDay,
             loomNumber,
-            this.recipeForLoom({ ...loom, qualityId: id }, day)
+            this.recipeForLoom({ ...loom, qualityId: id }, reviveEndDay)
           )
         }
       }
@@ -3475,7 +3668,9 @@ class ProductionMastersService {
         this.updateSheetEntry(
           fromDate,
           row.loomNumber,
-          this.recipeForLoom({ ...loom, qualityId: id }, fromDate)
+          this.recipeForLoom({ ...loom, qualityId: id }, fromDate),
+          undefined,
+          sheetSegmentIndex(row)
         )
       }
     }
@@ -3718,7 +3913,8 @@ class ProductionMastersService {
         fabricType: '',
         warpYarn: '',
         weftYarn: '',
-      })
+        _clearQuality: true,
+      } as Partial<DailyLoomProductionEntry> & { _clearQuality?: boolean })
       const loom = this.getLooms().find((l) => l.loomNumber === loomNumber)
       if (loom?.qualityId === qualityId) {
         this.saveLooms(
@@ -3781,7 +3977,11 @@ class ProductionMastersService {
     const key = this.sheetKey(dateStr)
     try {
       const raw = memoryStore.get(key)
-      if (raw) return JSON.parse(raw) as DailyLoomProductionEntry[]
+      if (raw) {
+        const parsed = JSON.parse(raw) as DailyLoomProductionEntry[]
+        if (!Array.isArray(parsed)) return null
+        return sortSheetEntries(parsed.map(normalizeSheetEntry))
+      }
     } catch {
       // ignore
     }
@@ -3801,14 +4001,20 @@ class ProductionMastersService {
     return []
   }
 
-  /** Latest saved row for this loom before `dateStr`. */
+  /** Latest saved primary (segment 1) row for this loom before `dateStr`. */
   private priorSheetRow(dateStr: string, loomNumber: number): DailyLoomProductionEntry | null {
     const priorDates = listPersistedSheetDates().filter((d) => d < dateStr)
     const priorDate = priorDates.length ? priorDates[priorDates.length - 1] : shiftProductionDate(dateStr, -1)
     const rows =
       this.peekSheetDay(priorDate) ??
       (priorDate < getProductionToday() ? getExcelDailyLoomsForDate(priorDate) : null)
-    return rows?.find((e) => e.loomNumber === loomNumber) ?? null
+    if (!rows) return null
+    const forLoom = rows.filter((e) => e.loomNumber === loomNumber)
+    return (
+      forLoom.find((e) => sheetSegmentIndex(e) === 1) ||
+      forLoom[0] ||
+      null
+    )
   }
 
   /** Latest saved lot for this loom before `dateStr`. Empty string is kept; missing day returns null. */
@@ -3864,29 +4070,28 @@ class ProductionMastersService {
     const looms = this.getLooms()
     const beams = this.getBeams()
     const hadPersisted = this.peekSheetDay(dateStr) != null
-    const prevByLoom = new Map(this.loadSheetDay(dateStr).map((e) => [e.loomNumber, e]))
+    const loaded = this.loadSheetDay(dateStr).map(normalizeSheetEntry)
+    const prevByKey = new Map(
+      loaded.map((e) => [sheetRowKey(e.loomNumber, sheetSegmentIndex(e)), e])
+    )
 
-    const entries = looms.map((loom) => {
-      const prev = prevByLoom.get(loom.loomNumber)
+    const primaryEntries = looms.map((loom) => {
+      const prev = prevByKey.get(sheetRowKey(loom.loomNumber, 1))
       const beam = beams.find((b) => beamOnLoom(b, loom.loomNumber))
       const live = this.recipeForLoom(loom, dateStr)
       const prior = this.priorSheetRow(dateStr, loom.loomNumber)
       const isPastDay = dateStr !== getProductionToday()
-      const named = (name?: string | null) => {
-        const n = (name || '').trim()
-        return n !== '' && n !== '—' && n !== '-'
-      }
       // A saved row keeps the quality stored on that date, including a deliberate clear.
       // Past days must NOT fall back to today's live loom master — factory backfill
       // starts empty / from prior day only (e.g. set up 2 Oct without copying 3 Oct).
-      const cleared = prev ? !named(prev.qualityName) : false
+      const cleared = prev ? !namedQualityOnRow(prev.qualityName) : false
       const identity = cleared
         ? null
         : prev
           ? prev
-          : prior && named(prior.qualityName)
+          : prior && namedQualityOnRow(prior.qualityName)
             ? prior
-            : !isPastDay && named(live.qualityName)
+            : !isPastDay && namedQualityOnRow(live.qualityName)
               ? live
               : null
       const pick = identity?.pick || (!isPastDay ? live.pick : undefined) || 60
@@ -3937,10 +4142,11 @@ class ProductionMastersService {
       // Mounted beam owns SW # (read-only in Daily Entry). Beam Identity is never the lot.
       const lot = beam ? fromBeam : ''
 
-      return {
-        id: `PROD-${dateStr}-${loom.loomNumber}`,
+      const built: DailyLoomProductionEntry = {
+        id: sheetEntryId(dateStr, loom.loomNumber, 1),
         date: dateStr,
         loomNumber: loom.loomNumber,
+        segmentIndex: 1,
         category: prev?.category || loom.category,
         model: prev?.model || loom.model,
         qualityName: identity?.qualityName || '—',
@@ -3966,10 +4172,70 @@ class ProductionMastersService {
         status,
         remarks,
         lot,
-      } satisfies DailyLoomProductionEntry
+      }
+      // Guard: never demote a saved named primary to "—" on rebuild (dual-quality wipe).
+      if (
+        prev &&
+        namedQualityOnRow(prev.qualityName) &&
+        !namedQualityOnRow(built.qualityName)
+      ) {
+        built.qualityName = prev.qualityName
+        built.fabricType = prev.fabricType || built.fabricType
+        built.warpYarn = prev.warpYarn || built.warpYarn
+        built.weftYarn = prev.weftYarn || built.weftYarn
+        built.reed = prev.reed || built.reed
+        built.pick = prev.pick || built.pick
+        built.widthInch = prev.widthInch || built.widthInch
+        built.gsm = prev.gsm ?? built.gsm
+      }
+      return built
     })
 
-    entries.sort((a, b) => a.loomNumber - b.loomNumber)
+    // Preserve same-day dual-quality segments (2+) — never drop on rebuild.
+    const extraSegments = loaded
+      .filter((e) => sheetSegmentIndex(e) > 1)
+      .map((prev) => {
+        const loom =
+          looms.find((l) => l.loomNumber === prev.loomNumber) ||
+          ({
+            loomNumber: prev.loomNumber,
+            category: prev.category,
+            model: prev.model,
+            defaultRpm: prev.rpm,
+            status: prev.status,
+          } as LoomMaster)
+        const rollerHours = prev.rollerHours ?? prev.runningHours ?? 0
+        const shiftA = prev.shiftAMeters ?? 0
+        const shiftB = prev.shiftBMeters ?? 0
+        const metrics = calculateProductionMetrics({
+          rpm: prev.rpm || loom.defaultRpm || 340,
+          runningHours: rollerHours,
+          pick: prev.pick || 60,
+          shiftAMeters: shiftA,
+          shiftBMeters: shiftB,
+          loomNumber: prev.loomNumber,
+        })
+        const seg = sheetSegmentIndex(prev)
+        return normalizeSheetEntry({
+          ...prev,
+          id: sheetEntryId(dateStr, prev.loomNumber, seg),
+          date: dateStr,
+          segmentIndex: seg,
+          rollerHours,
+          runningHours: rollerHours,
+          runningTheoretical: metrics.theoreticalMeters,
+          shiftAMeters: shiftA,
+          shiftBMeters: shiftB,
+          totalMeters: metrics.totalMeters,
+          efficiencyPercentage: metrics.efficiencyPercentage,
+          stopLossMeters: metrics.stopLossMeters,
+          theoretical24h: metrics.theoretical24h,
+          efficiency24h: metrics.efficiency24h,
+          loss24h: metrics.loss24h,
+        })
+      })
+
+    const entries = sortSheetEntries([...primaryEntries, ...extraSegments])
     if (!opts?.skipPersist && (opts?.persist || hadPersisted)) {
       saveJson(this.sheetKey(dateStr), entries)
     }
@@ -3980,15 +4246,28 @@ class ProductionMastersService {
     dateStr: string,
     loomNumber: number,
     patch: Partial<DailyLoomProductionEntry>,
-    editorName?: string
+    editorName?: string,
+    segmentIndex: number = sheetSegmentIndex(patch)
   ): DailyLoomProductionEntry[] {
+    const seg = sheetSegmentIndex({ segmentIndex })
+    const forceClear = Boolean(
+      (patch as Partial<DailyLoomProductionEntry> & { _clearQuality?: boolean })._clearQuality
+    )
     const current = this.buildSheetForDate(dateStr, { skipPersist: true })
-    let updatedLoom: DailyLoomProductionEntry | null = null
+    let updatedLoom: (DailyLoomProductionEntry & { _clearQuality?: boolean }) | null = null
+    let found = false
     const next = current.map((e) => {
-      if (e.loomNumber !== loomNumber) return e
+      if (e.loomNumber !== loomNumber || sheetSegmentIndex(e) !== seg) return e
+      found = true
+      const { _clearQuality: _drop, ...patchRest } = patch as Partial<DailyLoomProductionEntry> & {
+        _clearQuality?: boolean
+      }
+      void _drop
       const merged = {
         ...e,
-        ...patch,
+        ...patchRest,
+        loomNumber,
+        segmentIndex: seg,
         lastEditedBy: editorName || e.lastEditedBy || 'Floor Operator',
         lastEditedAt: new Date().toISOString(),
       }
@@ -4001,8 +4280,10 @@ class ProductionMastersService {
         shiftBMeters: merged.shiftBMeters || 0,
         loomNumber,
       })
-      const result: DailyLoomProductionEntry = {
+      const result: DailyLoomProductionEntry = normalizeSheetEntry({
         ...merged,
+        id: sheetEntryId(dateStr, loomNumber, seg),
+        date: dateStr,
         rollerHours,
         runningHours: rollerHours,
         runningTheoretical: metrics.theoreticalMeters,
@@ -4012,20 +4293,105 @@ class ProductionMastersService {
         theoretical24h: metrics.theoretical24h,
         efficiency24h: metrics.efficiency24h,
         loss24h: metrics.loss24h,
-      }
-      updatedLoom = result
+      })
+      updatedLoom = forceClear ? { ...result, _clearQuality: true } : result
       return result
     })
 
-    // Save the patched day once, so an older rebuild cannot put today's quality onto another day.
-    saveJson(this.sheetKey(dateStr), next)
+    if (!found) {
+      const loom = this.getLooms().find((l) => l.loomNumber === loomNumber)
+      const base =
+        current.find((e) => e.loomNumber === loomNumber && sheetSegmentIndex(e) === 1) ||
+        current.find((e) => e.loomNumber === loomNumber)
+      const { _clearQuality: _drop2, ...patchRest2 } = patch as Partial<DailyLoomProductionEntry> & {
+        _clearQuality?: boolean
+      }
+      void _drop2
+      const seed: DailyLoomProductionEntry = normalizeSheetEntry({
+        id: sheetEntryId(dateStr, loomNumber, seg),
+        date: dateStr,
+        loomNumber,
+        segmentIndex: seg,
+        category: base?.category || loom?.category || 'G6200',
+        model: base?.model || loom?.model,
+        qualityName: '—',
+        fabricType: '',
+        warpYarn: '',
+        weftYarn: '',
+        rpm: base?.rpm || loom?.defaultRpm || 340,
+        reed: base?.reed || 60,
+        pick: base?.pick || 60,
+        widthInch: base?.widthInch || 66,
+        gsm: base?.gsm ?? 0,
+        rollerHours: 0,
+        runningHours: 0,
+        shiftAMeters: 0,
+        shiftBMeters: 0,
+        totalMeters: 0,
+        efficiencyPercentage: 0,
+        stopLossMeters: 0,
+        status: (base?.status || loom?.status || 'RUNNING') as LoomStatus,
+        remarks: '',
+        lot: base?.lot || '',
+        ...patchRest2,
+        lastEditedBy: editorName || 'Floor Operator',
+        lastEditedAt: new Date().toISOString(),
+      })
+      const rollerHours = seed.rollerHours ?? seed.runningHours ?? 0
+      const metrics = calculateProductionMetrics({
+        rpm: seed.rpm,
+        runningHours: rollerHours,
+        pick: seed.pick || 60,
+        shiftAMeters: seed.shiftAMeters || 0,
+        shiftBMeters: seed.shiftBMeters || 0,
+        loomNumber,
+      })
+      const seeded = normalizeSheetEntry({
+        ...seed,
+        rollerHours,
+        runningHours: rollerHours,
+        runningTheoretical: metrics.theoreticalMeters,
+        totalMeters: metrics.totalMeters,
+        efficiencyPercentage: metrics.efficiencyPercentage,
+        stopLossMeters: metrics.stopLossMeters,
+        theoretical24h: metrics.theoretical24h,
+        efficiency24h: metrics.efficiency24h,
+        loss24h: metrics.loss24h,
+      })
+      updatedLoom = forceClear ? { ...seeded, _clearQuality: true } : seeded
+      next.push(seeded)
+    }
 
-    // Row-level persist to DB (prevents overwriting other looms)
+    const sorted = sortSheetEntries(next)
+    // Save the patched day once, so an older rebuild cannot put today's quality onto another day.
+    saveJson(this.sheetKey(dateStr), sorted)
+
+    // Row-level persist to DB (prevents overwriting other looms / segments)
     if (updatedLoom) {
       void persistLoomEntry(dateStr, loomNumber, updatedLoom)
     }
 
-    return next
+    return sorted
+  }
+
+  /** Explicit same-day dual quality: add next segment for `qualityId` on this loom/date. */
+  addQualitySegmentOnDay(
+    dateStr: string,
+    loomNumber: number,
+    qualityId: string
+  ): DailyLoomProductionEntry[] {
+    const loom = this.getLooms().find((l) => l.loomNumber === loomNumber)
+    if (!loom) return this.buildSheetForDate(dateStr, { skipPersist: true })
+    const catalog = this.getQualities()
+    this.writeQualityPoseOnDay(
+      dateStr,
+      loomNumber,
+      qualityId,
+      { ...loom, qualityId },
+      catalog,
+      { allowNewSegment: true }
+    )
+    return this.buildSheetForDate(dateStr, { skipPersist: true })
   }
 
   /** Zero roller hours + Actual A/B for every loom on this day (after UI confirm). */
@@ -4213,22 +4579,39 @@ class ProductionMastersService {
           targetSum += target
           loomActual[e.loomNumber] = (loomActual[e.loomNumber] || 0) + meters
           loomTarget[e.loomNumber] = (loomTarget[e.loomNumber] || 0) + target
-          dayLoomActual[e.loomNumber] = meters
-          dayLoomTarget[e.loomNumber] = target
+          // Same-day dual segments: sum meters/target per loom (do not overwrite).
+          dayLoomActual[e.loomNumber] = (dayLoomActual[e.loomNumber] || 0) + meters
+          dayLoomTarget[e.loomNumber] = (dayLoomTarget[e.loomNumber] || 0) + target
 
           let value = meters
           if (metric === 'shiftA') value = Number(e.shiftAMeters) || 0
           else if (metric === 'shiftB') value = Number(e.shiftBMeters) || 0
           else if (metric === 'active') {
             value = resolveLoomCondition(e.status, e.remarks) === 'RUNNING' ? 1 : 0
+            loomMeters[e.loomNumber] = Math.max(loomMeters[e.loomNumber] || 0, value)
+            continue
           } else if (metric === 'efficiency') {
-            value = target > 0 ? Math.round((meters / target) * 100) : Number(e.efficiencyPercentage) || 0
+            // Defer % until dayLoomActual/Target are fully summed for the loom.
+            continue
           }
-          loomMeters[e.loomNumber] = value
-          if (metric !== 'efficiency') {
-            loomTotals[e.loomNumber] = (loomTotals[e.loomNumber] || 0) + value
+          loomMeters[e.loomNumber] = (loomMeters[e.loomNumber] || 0) + value
+          loomTotals[e.loomNumber] = (loomTotals[e.loomNumber] || 0) + value
+          totalMeters += value
+        }
+        if (metric === 'efficiency') {
+          for (const n of loomNumbers) {
+            const a = dayLoomActual[n] || 0
+            const t = dayLoomTarget[n] || 0
+            loomMeters[n] = t > 0 ? Math.round((a / t) * 100) : 0
           }
-          totalMeters += metric === 'efficiency' ? 0 : value
+        }
+        if (metric === 'active') {
+          totalMeters = 0
+          for (const n of loomNumbers) {
+            const v = loomMeters[n] || 0
+            loomTotals[n] = (loomTotals[n] || 0) + v
+            totalMeters += v
+          }
         }
       }
 

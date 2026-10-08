@@ -77,6 +77,7 @@ function ProductionWorkspaceContent() {
     selectedMonth,
     setSelectedMonth,
     updateLoom,
+    addQualitySegment,
     addLoom,
     deleteLoom,
     updateBeam,
@@ -373,6 +374,7 @@ function ProductionWorkspaceContent() {
             entries={entries}
             sheetDate={selectedDate}
             onUpdate={updateLoom}
+            onAddQualitySegment={addQualitySegment}
             onAdd={addLoom}
             onDelete={deleteLoom}
             readOnly={!canEditProduction}

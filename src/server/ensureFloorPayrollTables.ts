@@ -104,12 +104,17 @@ const STATEMENTS = [
     "id" TEXT NOT NULL,
     "date" TEXT NOT NULL,
     "loomNumber" INTEGER NOT NULL,
+    "segmentIndex" INTEGER NOT NULL DEFAULT 1,
     "payload" JSONB NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "floor_daily_sheets_pkey" PRIMARY KEY ("id")
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "floor_daily_sheets_date_loomNumber_key" ON "floor_daily_sheets"("date", "loomNumber")`,
+  // Same-day dual quality: unique (date, loom, segment). Migrate legacy (date, loom) index.
+  `ALTER TABLE "floor_daily_sheets" ADD COLUMN IF NOT EXISTS "segmentIndex" INTEGER NOT NULL DEFAULT 1`,
+  `UPDATE "floor_daily_sheets" SET "segmentIndex" = 1 WHERE "segmentIndex" IS NULL OR "segmentIndex" < 1`,
+  `DROP INDEX IF EXISTS "floor_daily_sheets_date_loomNumber_key"`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "floor_daily_sheets_date_loomNumber_segmentIndex_key" ON "floor_daily_sheets"("date", "loomNumber", "segmentIndex")`,
   `CREATE INDEX IF NOT EXISTS "floor_daily_sheets_date_idx" ON "floor_daily_sheets"("date")`,
   `CREATE TABLE IF NOT EXISTS "payroll_store" (
     "key" TEXT NOT NULL,

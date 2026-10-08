@@ -309,16 +309,17 @@ model FloorQuality {
   @@map("floor_qualities")
 }
 
-/** One row per loom per day — full sheet entry as JSON (matches DailyLoomProductionEntry). */
+/** Sheet entry per loom per day per segment (segment 1 = primary; 2+ = same-day dual quality). */
 model FloorDailySheet {
-  id         String   @id @default(uuid())
-  date       String // YYYY-MM-DD
-  loomNumber Int
-  payload    Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(uuid())
+  date         String // YYYY-MM-DD
+  loomNumber   Int
+  segmentIndex Int      @default(1)
+  payload      Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  @@unique([date, loomNumber])
+  @@unique([date, loomNumber, segmentIndex])
   @@index([date])
   @@map("floor_daily_sheets")
 }

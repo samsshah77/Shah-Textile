@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type FocusEvent } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type FocusEvent } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -121,16 +121,55 @@ export function FloorEntryTable({
     setActiveLoom((cur) => (cur === loomNumber ? null : cur))
   }
 
-  const patchEntry = (loomNumber: number, patch: Partial<DailyLoomProductionEntry>) => {
-    const current = entries.find((e) => e.loomNumber === loomNumber)
+  const segOf = (e: DailyLoomProductionEntry) =>
+    Math.max(1, Math.floor(Number(e.segmentIndex) || 1))
+
+  const loomHasParts = useMemo(() => {
+    const maxByLoom = new Map<number, number>()
+    for (const e of entries) {
+      const seg = segOf(e)
+      const prev = maxByLoom.get(e.loomNumber) || 1
+      if (seg > prev) maxByLoom.set(e.loomNumber, seg)
+    }
+    return maxByLoom
+  }, [entries])
+
+  const showPartBadge = (e: DailyLoomProductionEntry) =>
+    (loomHasParts.get(e.loomNumber) || 1) > 1
+
+  const partBadgeClass = (seg: number) =>
+    seg <= 1 ? 'text-bg-primary' : 'text-bg-warning'
+
+  const partRowBg = (seg: number): CSSProperties | undefined => {
+    if (seg <= 1) return { backgroundColor: 'rgba(13, 110, 253, 0.06)' }
+    return { backgroundColor: 'rgba(255, 193, 7, 0.12)' }
+  }
+
+  const rowStyleFor = (e: DailyLoomProductionEntry): CSSProperties | undefined => {
+    const base = canEdit ? undefined : loomConditionRowStyle(e.status, e.remarks)
+    const partBg = showPartBadge(e) ? partRowBg(segOf(e)) : undefined
+    if (!base && !partBg) return undefined
+    return { ...base, ...partBg }
+  }
+
+  const patchEntry = (
+    row: DailyLoomProductionEntry,
+    patch: Partial<DailyLoomProductionEntry>
+  ) => {
+    const segmentIndex = segOf(row)
+    const current =
+      entries.find(
+        (e) => e.loomNumber === row.loomNumber && segOf(e) === segmentIndex
+      ) || row
     const shiftA = patch.shiftAMeters ?? current?.shiftAMeters ?? 0
     const shiftB = patch.shiftBMeters ?? current?.shiftBMeters ?? 0
     const editor = user?.name || (isAdmin ? 'Javed Sir' : 'Ahmer')
     if (isApproved) setEditedSinceFinalize(true)
     onUpdateEntry(
-      loomNumber,
+      row.loomNumber,
       {
         ...patch,
+        segmentIndex,
         approvalStatus: isApproved ? 'APPROVED' : 'DRAFT',
         lastEditedBy: editor,
         totalMeters:
@@ -322,11 +361,11 @@ export function FloorEntryTable({
         <div className="master-grid">
           {entries.map((e, rowIdx) => (
             <div
-              key={e.loomNumber}
+              key={e.id || `${e.loomNumber}-s${segOf(e)}`}
               className={`master-grid-card${canEdit ? ' sara-edit-card' : ''}${
                 activeLoom === e.loomNumber ? ' sara-active-entry-card' : ''
               }`}
-              style={canEdit ? undefined : loomConditionRowStyle(e.status, e.remarks)}
+              style={rowStyleFor(e)}
               onFocusCapture={() => markRowActive(e.loomNumber)}
               onBlurCapture={(ev) => clearRowActiveIfLeaving(ev, e.loomNumber)}
             >
@@ -336,6 +375,14 @@ export function FloorEntryTable({
                 }`}
               >
                 Loom Number {e.loomNumber}
+                {showPartBadge(e) ? (
+                  <span
+                    className={`badge ${partBadgeClass(segOf(e))} ms-1`}
+                    style={{ fontSize: '0.65rem' }}
+                  >
+                    P{segOf(e)}
+                  </span>
+                ) : null}
               </div>
               <div className="small text-secondary text-truncate">
                 {e.qualityName || '—'} · {e.fabricType || '—'}
@@ -348,7 +395,7 @@ export function FloorEntryTable({
                   value={e.rollerHours ?? 0}
                   navRow={rowIdx}
                   navCol={0}
-                  onValueChange={(v) => patchEntry(e.loomNumber, { rollerHours: v })}
+                  onValueChange={(v) => patchEntry(e, { rollerHours: v })}
                 />
               ) : (
                 <div className="form-control form-control-sm bg-light text-end">
@@ -365,7 +412,7 @@ export function FloorEntryTable({
                       value={e.shiftAMeters ?? 0}
                       navRow={rowIdx}
                       navCol={1}
-                      onValueChange={(v) => patchEntry(e.loomNumber, { shiftAMeters: v })}
+                      onValueChange={(v) => patchEntry(e, { shiftAMeters: v })}
                     />
                   ) : (
                     <div className="form-control form-control-sm bg-light text-end">
@@ -381,7 +428,7 @@ export function FloorEntryTable({
                       value={e.shiftBMeters ?? 0}
                       navRow={rowIdx}
                       navCol={2}
-                      onValueChange={(v) => patchEntry(e.loomNumber, { shiftBMeters: v })}
+                      onValueChange={(v) => patchEntry(e, { shiftBMeters: v })}
                     />
                   ) : (
                     <div className="form-control form-control-sm bg-light text-end">
@@ -404,7 +451,7 @@ export function FloorEntryTable({
                   placeholder="Remarks"
                   navRow={rowIdx}
                   navCol={3}
-                  onValueChange={(v) => patchEntry(e.loomNumber, { remarks: v })}
+                  onValueChange={(v) => patchEntry(e, { remarks: v })}
                 />
               ) : (
                 <div className="small text-secondary">{e.remarks || '—'}</div>
@@ -469,14 +516,14 @@ export function FloorEntryTable({
             <tbody>
               {entries.map((e, rowIdx) => (
                 <tr
-                  key={e.loomNumber}
+                  key={e.id || `${e.loomNumber}-s${segOf(e)}`}
                   className={[
                     canEdit ? 'sara-edit-row' : undefined,
                     activeLoom === e.loomNumber ? 'sara-active-entry-row' : undefined,
                   ]
                     .filter(Boolean)
                     .join(' ') || undefined}
-                  style={canEdit ? undefined : loomConditionRowStyle(e.status, e.remarks)}
+                  style={rowStyleFor(e)}
                   onFocusCapture={() => markRowActive(e.loomNumber)}
                   onBlurCapture={(ev) => clearRowActiveIfLeaving(ev, e.loomNumber)}
                 >
@@ -486,6 +533,14 @@ export function FloorEntryTable({
                     }`}
                   >
                     {e.loomNumber}
+                    {showPartBadge(e) ? (
+                      <span
+                        className={`badge ${partBadgeClass(segOf(e))} ms-1`}
+                        style={{ fontSize: '0.65rem' }}
+                      >
+                        P{segOf(e)}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-2 text-truncate">{e.qualityName || '—'}</td>
                   <td className="small text-secondary px-2 text-truncate">
@@ -499,7 +554,7 @@ export function FloorEntryTable({
                         value={e.rollerHours ?? 0}
                         navRow={rowIdx}
                         navCol={0}
-                        onValueChange={(v) => patchEntry(e.loomNumber, { rollerHours: v })}
+                        onValueChange={(v) => patchEntry(e, { rollerHours: v })}
                       />
                     ) : (
                       <div className="text-end px-1">{e.rollerHours ?? 0}</div>
@@ -513,7 +568,7 @@ export function FloorEntryTable({
                         value={e.shiftAMeters ?? 0}
                         navRow={rowIdx}
                         navCol={1}
-                        onValueChange={(v) => patchEntry(e.loomNumber, { shiftAMeters: v })}
+                        onValueChange={(v) => patchEntry(e, { shiftAMeters: v })}
                       />
                     ) : (
                       <div className="text-end px-1">{(e.shiftAMeters ?? 0).toLocaleString()}</div>
@@ -527,7 +582,7 @@ export function FloorEntryTable({
                         value={e.shiftBMeters ?? 0}
                         navRow={rowIdx}
                         navCol={2}
-                        onValueChange={(v) => patchEntry(e.loomNumber, { shiftBMeters: v })}
+                        onValueChange={(v) => patchEntry(e, { shiftBMeters: v })}
                       />
                     ) : (
                       <div className="text-end px-1">{(e.shiftBMeters ?? 0).toLocaleString()}</div>
@@ -545,7 +600,7 @@ export function FloorEntryTable({
                         placeholder="Beam End, Fault…"
                         navRow={rowIdx}
                         navCol={3}
-                        onValueChange={(v) => patchEntry(e.loomNumber, { remarks: v })}
+                        onValueChange={(v) => patchEntry(e, { remarks: v })}
                       />
                     ) : (
                       <div className="px-1 text-truncate" title={e.remarks || ''}>

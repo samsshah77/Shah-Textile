@@ -5,6 +5,11 @@ export interface DailyLoomProductionEntry {
   id: string;
   date: string; // YYYY-MM-DD
   loomNumber: number;
+  /**
+   * Same-day dual quality: segment 1 = primary pose, 2+ = later qualities on the same loom/day.
+   * Omitted / unset means 1 (legacy rows).
+   */
+  segmentIndex?: number;
   category: LoomCategory;
   model?: string;
   qualityName: string;

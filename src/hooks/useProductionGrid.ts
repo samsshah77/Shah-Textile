@@ -77,7 +77,8 @@ export function useProductionGrid() {
         await hydrateFloorFromDb()
         await refreshFloorMastersFromDb()
         await preloadAllFloorSheets()
-        await preloadFloorSheet(selectedDate)
+        // Force DB refresh for the selected day so dual-quality seed / edits win over stale memory.
+        await preloadFloorSheet(selectedDate, { force: true })
         await preloadFloorSheet(today)
         if (cancelled) return
         refresh(selectedDate)
@@ -109,7 +110,16 @@ export function useProductionGrid() {
 
   const updateEntry = useCallback(
     (loomNumber: number, patch: Partial<DailyLoomProductionEntry>, editorName?: string) => {
-      setEntries(productionMastersService.updateSheetEntry(selectedDate, loomNumber, patch, editorName))
+      const segmentIndex = Number(patch.segmentIndex)
+      setEntries(
+        productionMastersService.updateSheetEntry(
+          selectedDate,
+          loomNumber,
+          patch,
+          editorName,
+          Number.isFinite(segmentIndex) && segmentIndex >= 1 ? Math.floor(segmentIndex) : undefined
+        )
+      )
     },
     [selectedDate]
   )
@@ -187,6 +197,28 @@ export function useProductionGrid() {
       window.removeEventListener('focus', handleFocus)
     }
   }, [selectedDate])
+
+  /** Same-day dual quality: add part 2+ on selected date, then set live master to that quality. */
+  const addQualitySegment = useCallback(
+    (loomNumber: number, qualityId: string): boolean => {
+      const before = productionMastersService.buildSheetForDate(selectedDate, { skipPersist: true })
+      const beforeSegs = before.filter((e) => e.loomNumber === loomNumber).length
+      productionMastersService.addQualitySegmentOnDay(selectedDate, loomNumber, qualityId)
+      // Point live loom master at the new part (no second forward-fill — segment already written).
+      const nextLooms = productionMastersService.getLooms().map((l) =>
+        l.loomNumber === loomNumber ? { ...l, qualityId } : l
+      )
+      productionMastersService.saveLooms(nextLooms)
+      const after = productionMastersService.buildSheetForDate(selectedDate)
+      const afterSegs = after.filter((e) => e.loomNumber === loomNumber).length
+      setLooms(nextLooms)
+      setQualities(productionMastersService.getQualities())
+      setEntries(after)
+      void productionMastersService.flushQualityStatus(qualityId)
+      return afterSegs > beforeSegs || afterSegs >= 2
+    },
+    [selectedDate]
+  )
 
   const updateLoom = useCallback(
     (
@@ -491,6 +523,7 @@ export function useProductionGrid() {
     updateEntry,
     resetDayMeters,
     updateLoom,
+    addQualitySegment,
     addLoom,
     deleteLoom,
     updateBeam,

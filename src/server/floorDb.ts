@@ -639,14 +639,42 @@ export async function dbReuseQuality(params: {
   return { ended, active: activePayload }
 }
 
+function sheetSegmentFromRow(row: {
+  segmentIndex?: number | null
+  payload?: unknown
+}): number {
+  const fromCol = Number(row.segmentIndex)
+  if (Number.isFinite(fromCol) && fromCol >= 1) return Math.floor(fromCol)
+  const payload = row.payload as { segmentIndex?: number } | null
+  const fromPayload = Number(payload?.segmentIndex)
+  if (Number.isFinite(fromPayload) && fromPayload >= 1) return Math.floor(fromPayload)
+  return 1
+}
+
+function sheetEntryFromDbRow(row: {
+  date: string
+  loomNumber: number
+  segmentIndex?: number | null
+  payload: unknown
+}): DailyLoomProductionEntry {
+  const segmentIndex = sheetSegmentFromRow(row)
+  const payload = (row.payload || {}) as DailyLoomProductionEntry
+  return {
+    ...payload,
+    date: payload.date || row.date,
+    loomNumber: payload.loomNumber || row.loomNumber,
+    segmentIndex,
+  }
+}
+
 export async function dbListAllSheets(): Promise<{ date: string; entries: DailyLoomProductionEntry[] }[]> {
   const rows = await prisma.floorDailySheet.findMany({
-    orderBy: [{ date: 'asc' }, { loomNumber: 'asc' }],
+    orderBy: [{ date: 'asc' }, { loomNumber: 'asc' }, { segmentIndex: 'asc' }],
   })
   const byDate = new Map<string, DailyLoomProductionEntry[]>()
   for (const row of rows) {
     const list = byDate.get(row.date) || []
-    list.push(row.payload as unknown as DailyLoomProductionEntry)
+    list.push(sheetEntryFromDbRow(row))
     byDate.set(row.date, list)
   }
   return [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
@@ -655,10 +683,10 @@ export async function dbListAllSheets(): Promise<{ date: string; entries: DailyL
 export async function dbGetSheet(dateStr: string): Promise<DailyLoomProductionEntry[] | null> {
   const rows = await prisma.floorDailySheet.findMany({
     where: { date: dateStr },
-    orderBy: { loomNumber: 'asc' },
+    orderBy: [{ loomNumber: 'asc' }, { segmentIndex: 'asc' }],
   })
   if (rows.length === 0) return null
-  return rows.map((r) => r.payload as unknown as DailyLoomProductionEntry)
+  return rows.map((r) => sheetEntryFromDbRow(r))
 }
 
 export async function dbUpdateLoomEntry(
@@ -666,20 +694,65 @@ export async function dbUpdateLoomEntry(
   loomNumber: number,
   entry: DailyLoomProductionEntry
 ): Promise<void> {
+  const segmentIndex = sheetSegmentFromRow({ segmentIndex: entry.segmentIndex, payload: entry })
+  let stamped: DailyLoomProductionEntry = { ...entry, segmentIndex }
+
+  // Guard accidental dual-quality wipe from sheet rebuild: do not replace a named
+  // segment with "—" unless the client marks an intentional Hold/End clear.
+  const forceClear = Boolean(
+    (entry as DailyLoomProductionEntry & { _clearQuality?: boolean })._clearQuality
+  )
+  const incomingName = String(stamped.qualityName || '').trim()
+  const incomingCleared = !incomingName || incomingName === '—' || incomingName === '-'
+  if (incomingCleared && !forceClear) {
+    const existing = await prisma.floorDailySheet.findUnique({
+      where: {
+        date_loomNumber_segmentIndex: {
+          date: dateStr,
+          loomNumber,
+          segmentIndex,
+        },
+      },
+    })
+    if (existing) {
+      const prev = sheetEntryFromDbRow(existing)
+      const prevName = String(prev.qualityName || '').trim()
+      const prevNamed = Boolean(prevName && prevName !== '—' && prevName !== '-')
+      if (prevNamed) {
+        stamped = {
+          ...stamped,
+          qualityName: prev.qualityName,
+          fabricType: stamped.fabricType || prev.fabricType,
+          warpYarn: stamped.warpYarn || prev.warpYarn,
+          weftYarn: stamped.weftYarn || prev.weftYarn,
+          reed: stamped.reed || prev.reed,
+          pick: stamped.pick || prev.pick,
+          widthInch: stamped.widthInch || prev.widthInch,
+          gsm: stamped.gsm ?? prev.gsm,
+        }
+      }
+    }
+  }
+  // Never persist the internal flag.
+  delete (stamped as { _clearQuality?: boolean })._clearQuality
+
   await prisma.floorDailySheet.upsert({
     where: {
-      date_loomNumber: {
+      date_loomNumber_segmentIndex: {
         date: dateStr,
         loomNumber,
+        segmentIndex,
       },
     },
     update: {
-      payload: entry as unknown as Prisma.InputJsonValue,
+      payload: stamped as unknown as Prisma.InputJsonValue,
+      segmentIndex,
     },
     create: {
       date: dateStr,
       loomNumber,
-      payload: entry as unknown as Prisma.InputJsonValue,
+      segmentIndex,
+      payload: stamped as unknown as Prisma.InputJsonValue,
     },
   })
 }
@@ -692,7 +765,7 @@ export async function dbSetSheetApproval(
   const now = new Date().toISOString()
   const rows = await prisma.floorDailySheet.findMany({
     where: { date: dateStr },
-    orderBy: { loomNumber: 'asc' },
+    orderBy: [{ loomNumber: 'asc' }, { segmentIndex: 'asc' }],
   })
   if (rows.length === 0) return []
 
@@ -700,7 +773,7 @@ export async function dbSetSheetApproval(
 
   await prisma.$transaction(async (tx) => {
     for (const row of rows) {
-      const current = row.payload as unknown as DailyLoomProductionEntry
+      const current = sheetEntryFromDbRow(row)
       const next: DailyLoomProductionEntry = {
         ...current,
         approvalStatus: status,
@@ -745,20 +818,25 @@ export async function dbSaveSheet(
   }
   await prisma.$transaction(async (tx) => {
     for (const e of list) {
+      const segmentIndex = sheetSegmentFromRow({ segmentIndex: e.segmentIndex, payload: e })
+      const stamped: DailyLoomProductionEntry = { ...e, segmentIndex }
       await tx.floorDailySheet.upsert({
         where: {
-          date_loomNumber: {
+          date_loomNumber_segmentIndex: {
             date: dateStr,
             loomNumber: e.loomNumber,
+            segmentIndex,
           },
         },
         update: {
-          payload: e as unknown as Prisma.InputJsonValue,
+          payload: stamped as unknown as Prisma.InputJsonValue,
+          segmentIndex,
         },
         create: {
           date: dateStr,
           loomNumber: e.loomNumber,
-          payload: e as unknown as Prisma.InputJsonValue,
+          segmentIndex,
+          payload: stamped as unknown as Prisma.InputJsonValue,
         },
       })
     }

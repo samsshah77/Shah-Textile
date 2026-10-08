@@ -53,9 +53,12 @@ export function LoomDataRow({
     loomNumber: entry.loomNumber,
   })
 
+  const segmentIndex = Math.max(1, Math.floor(Number(entry.segmentIndex) || 1))
+
   const handleBlurCommit = () => {
     if (readOnly) return
     onUpdate(entry.loomNumber, {
+      segmentIndex,
       shiftAMeters: numShiftA,
       shiftBMeters: numShiftB,
       rpm: numRpm,
@@ -68,6 +71,7 @@ export function LoomDataRow({
     if (readOnly) return
     setStatus(newStatus)
     onUpdate(entry.loomNumber, {
+      segmentIndex,
       status: newStatus,
     })
   }
@@ -75,6 +79,7 @@ export function LoomDataRow({
   const handleQualityChange = (newQuality: string) => {
     if (readOnly) return
     onUpdate(entry.loomNumber, {
+      segmentIndex,
       qualityName: newQuality,
     })
   }
@@ -94,6 +99,7 @@ export function LoomDataRow({
         <div className="flex items-center gap-2.5">
           <div className="flex size-9 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 font-extrabold text-sm text-[#0066cc] dark:text-sky-300 shadow-xs">
             {entry.loomNumber.toString().padStart(2, '0')}
+            {segmentIndex > 1 ? `·${segmentIndex}` : ''}
           </div>
           <span
             className={cn(

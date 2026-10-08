@@ -214,9 +214,15 @@ export async function POST(req: NextRequest) {
         )
       }
 
+      const segmentIndex = Math.max(
+        1,
+        Math.floor(Number(body?.segmentIndex ?? entry?.segmentIndex) || 1)
+      )
       // Track editor
       const stampedEntry = {
         ...entry,
+        loomNumber,
+        segmentIndex,
         lastEditedBy: user?.name || entry.lastEditedBy || 'Floor Operator',
         lastEditedAt: new Date().toISOString(),
       }

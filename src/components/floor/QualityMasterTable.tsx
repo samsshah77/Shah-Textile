@@ -16,7 +16,8 @@ import {
   qualityEndedVisibleOnDate,
   qualityNameKey,
   qualityLoomEndsOnDate,
-  qualityIdOnLoomForDate,
+  loomHasQualityOnDate,
+  qualityHeldButVisibleOnPastDay,
   findLiveQualityByName,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY, getProductionToday } from '@/constants/productionCalendar'
@@ -378,13 +379,18 @@ export function QualityMasterTable({
       // today's loom master — e.g. Loom 4 on DUM DUM only from the day it started).
       if (status === 'ACTIVE' || status === 'HOLD') {
         if (isToday) {
+          // Today: live master + any same-day dual segments still on the sheet.
           const fromLooms = looms
-            .filter((l) => l.qualityId === q.id)
+            .filter(
+              (l) =>
+                l.qualityId === q.id ||
+                loomHasQualityOnDate(l, q.id, qualities, dayRows, sheetDate)
+            )
             .map((l) => l.loomNumber)
           map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
         } else {
           const fromDay = looms
-            .filter((l) => qualityIdOnLoomForDate(l, qualities, dayRows, sheetDate) === q.id)
+            .filter((l) => loomHasQualityOnDate(l, q.id, qualities, dayRows, sheetDate))
             .map((l) => l.loomNumber)
           map.set(q.id, [...new Set(fromDay)].sort((a, b) => a - b))
         }
@@ -474,6 +480,7 @@ export function QualityMasterTable({
 
   const handleDelete = (q: QualityMaster) => {
     if (!masterEdit) return
+    if (qualityHeldButVisibleOnPastDay(q, sheetDate)) return
     showConfirm({
       title: 'Quality Delete Karein?',
       message: `Kya aap waqai quality "${q.name}" ko delete karna chahte hain? Ye permanent delete ho jayegi.`,
@@ -528,6 +535,15 @@ export function QualityMasterTable({
 
   const flashClassFor = (id: string) =>
     flashIds.has(id) ? FLASH_CLASS[flashTone] : undefined
+
+  /** HOLD quality on a past day (was running then) — show on Active with muted/amber bg. */
+  const heldHistoryClass = (q: QualityMaster) =>
+    !isHoldView && !isEndedView && qualityHeldButVisibleOnPastDay(q, sheetDate)
+      ? 'sara-quality-held-history'
+      : undefined
+
+  const rowClassFor = (q: QualityMaster) =>
+    [flashClassFor(q.id), heldHistoryClass(q)].filter(Boolean).join(' ') || undefined
 
   const handleEnd = (q: QualityMaster) => {
     if (!canOps) return
@@ -584,15 +600,7 @@ export function QualityMasterTable({
     if (!canArchiveOps) return
     const label = qualityDisplayName(q, qualities)
     const resumeDate = String(sheetDate || '').slice(0, 10)
-    const today = getProductionToday()
     const holdDate = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
-    if (resumeDate !== today) {
-      showError({
-        title: 'Resume sirf aaj (Today)',
-        message: `Resume bhi sirf Today pe. Date picker se aaj kholo, phir Resume karo. Hold thi: ${formatShortDate(holdDate)}.`,
-      })
-      return
-    }
     const liveSame = findLiveQualityByName(qualities, q.name, q.id)
     if (liveSame) {
       showError({
@@ -601,20 +609,25 @@ export function QualityMasterTable({
       })
       return
     }
-    const conflicts = loomsBusyOnResumeToday(q, looms, qualities)
-    if (conflicts.length > 0) {
-      const detail = conflicts
-        .map((c) => `L#${c.loomNumber} → "${c.qualityName}"`)
-        .join('; ')
+    // Resume only on hold day or any later day — not from days before Hold (those are history-only).
+    if (holdDate && resumeDate && resumeDate < holdDate) {
       showError({
-        title: 'Resume nahi ho sakta — loom busy',
-        message: `Ye looms ab doosri quality pe hain: ${detail}. Pehle free karo, phir Resume.`,
+        title: 'Resume hold se pehle nahi',
+        message: `"${label}" Hold thi ${formatShortDate(holdDate)}. Pichle din (${formatShortDate(resumeDate)}) sirf history hain (H badge) — wahan se Resume nahi. Date picker pe Hold wali date ya uske baad koi din kholo, phir Resume.`,
       })
       return
     }
+    // Busy looms are not stolen — Resume still goes Active; free looms restore from resumeDate.
+    const conflicts = loomsBusyOnResumeToday(q, looms, qualities)
+    const busyNote =
+      conflicts.length > 0
+        ? ` Busy looms skip: ${conflicts
+            .map((c) => `L#${c.loomNumber} → "${c.qualityName}"`)
+            .join('; ')}. Free loom assign / meters baad mein.`
+        : ''
     showConfirm({
       title: 'Quality Resume?',
-      message: `"${label}" aaj Active pe wapas? Hold thi: ${formatShortDate(holdDate)}.`,
+      message: `"${label}" ${formatShortDate(resumeDate)} se Active (aaj tak khali din). Hold thi: ${formatShortDate(holdDate)}. Busy din skip.${busyNote}`,
       type: 'confirm',
       confirmText: 'Resume',
       cancelText: 'Cancel',
@@ -632,7 +645,7 @@ export function QualityMasterTable({
         onStatusFilterChange?.('ACTIVE')
         showSuccessSoon({
           title: 'Quality Resumed',
-          message: `"${label}" Active pe wapas.`,
+          message: `"${label}" ${formatShortDate(resumeDate)} se Active. Hold thi ${formatShortDate(holdDate)}. Ab meters / loom assign kar sakte ho.${busyNote}`,
         })
       },
     })
@@ -725,6 +738,8 @@ export function QualityMasterTable({
 
   const rowMenu = (q: QualityMaster, compact?: boolean) => {
     if (!canOps) return null
+    // Past-day HOLD history is read-only on Active (Resume from Hold tab).
+    if (qualityHeldButVisibleOnPastDay(q, sheetDate)) return null
     return (
       <div className="dropdown">
         <button
@@ -982,6 +997,17 @@ export function QualityMasterTable({
           border-color: var(--bs-info-bg-subtle, #cff4fc) !important;
           box-shadow: none !important;
         }
+        /* HOLD on past Active days (was running then) — history only, not Resume. */
+        .sara-quality-held-history,
+        .sara-quality-held-history.master-grid-card,
+        li.sara-quality-held-history {
+          background-color: rgba(253, 126, 20, 0.22) !important;
+          box-shadow: inset 4px 0 0 #fd7e14 !important;
+          opacity: 0.92;
+        }
+        tr.sara-quality-held-history > td {
+          background-color: rgba(253, 126, 20, 0.2) !important;
+        }
       `}</style>
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
         <div className="min-w-0">
@@ -1052,7 +1078,7 @@ export function QualityMasterTable({
                   <li
                     key={q.id}
                     data-quality-row={q.id}
-                    className={`list-group-item d-flex flex-column gap-2 px-0 ${flashClassFor(q.id) || ''}`}
+                    className={`list-group-item d-flex flex-column gap-2 px-0 ${rowClassFor(q) || ''}`}
                   >
                     <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                       <div className="d-flex align-items-center gap-2 min-w-0">
@@ -1060,6 +1086,15 @@ export function QualityMasterTable({
                           #{rowIdx + 1}
                         </span>
                         <span className="fw-semibold text-truncate">{qualityDisplayName(q, qualities)}</span>
+                        {qualityHeldButVisibleOnPastDay(q, sheetDate) && (
+                          <span
+                            className="badge text-bg-warning"
+                            style={{ fontSize: '0.65rem' }}
+                            title="Hold — past history (Resume Hold tab se)"
+                          >
+                            H
+                          </span>
+                        )}
                       </div>
                       <div className="d-flex align-items-center gap-2">
                         <span className="small fw-bold text-success font-monospace">
@@ -1111,6 +1146,8 @@ export function QualityMasterTable({
           ) : (
           orderedForView.map((q, rowIdx) => {
             const overall = productionByQuality[q.id] || 0
+            const heldHistory = qualityHeldButVisibleOnPastDay(q, sheetDate)
+            const rowMasterEdit = masterEdit && !heldHistory
 
             return (
               <div
@@ -1118,8 +1155,8 @@ export function QualityMasterTable({
                 data-quality-row={q.id}
                 className={[
                   'master-grid-card',
-                  editActive ? 'sara-edit-card' : '',
-                  flashClassFor(q.id) || '',
+                  editActive && !heldHistory ? 'sara-edit-card' : '',
+                  rowClassFor(q) || '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -1130,8 +1167,17 @@ export function QualityMasterTable({
                       #{rowIdx + 1}
                     </span>
                     <span className="text-truncate">{q.name || '—'}</span>
+                    {heldHistory && (
+                      <span
+                        className="badge text-bg-warning"
+                        style={{ fontSize: '0.65rem' }}
+                        title="Hold — past history (Resume Hold tab se)"
+                      >
+                        H
+                      </span>
+                    )}
                   </div>
-                  {masterEdit && (
+                  {rowMasterEdit && (
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-danger p-0"
@@ -1154,7 +1200,7 @@ export function QualityMasterTable({
                 <label className="small mb-0">Looms</label>
                 <LoomListCell nums={assignedByQuality.get(q.id) || []} />
 
-                {masterEdit && (
+                {rowMasterEdit && (
                   <>
                     <label className="small mb-0">Quality Name</label>
                     <TextCellInput
@@ -1168,7 +1214,7 @@ export function QualityMasterTable({
                 )}
 
                 <label className="small mb-0">Fabric Type</label>
-                {masterEdit ? (
+                {rowMasterEdit ? (
                   <select
                     className="form-select form-select-sm"
                     value={normalizeFabricType(q.fabricType)}
@@ -1187,7 +1233,7 @@ export function QualityMasterTable({
                 <div className="d-flex gap-2">
                   <div className="flex-fill">
                     <label className="small mb-0">Warp Yarn</label>
-                    {masterEdit ? (
+                    {rowMasterEdit ? (
                       <TextCellInput
                         className="form-control form-control-sm"
                         list="quality-warp-stock"
@@ -1202,7 +1248,7 @@ export function QualityMasterTable({
                   </div>
                   <div className="flex-fill">
                     <label className="small mb-0">Weft Yarn</label>
-                    {masterEdit ? (
+                    {rowMasterEdit ? (
                       <TextCellInput
                         className="form-control form-control-sm"
                         list="quality-weft-stock"
@@ -1218,7 +1264,7 @@ export function QualityMasterTable({
                 </div>
 
                 <label className="small mb-0">Weave Plan</label>
-                {masterEdit ? (
+                {rowMasterEdit ? (
                   <TextCellInput
                     className="form-control form-control-sm"
                     value={q.weavePlan || ''}
@@ -1233,7 +1279,7 @@ export function QualityMasterTable({
                 <div className="d-flex gap-2">
                   <div className="flex-fill">
                     <label className="small mb-0">Reed</label>
-                    {masterEdit ? (
+                    {rowMasterEdit ? (
                       <NumericCellInput
                         className="form-control form-control-sm text-end"
                         value={q.reed}
@@ -1247,7 +1293,7 @@ export function QualityMasterTable({
                   </div>
                   <div className="flex-fill">
                     <label className="small mb-0">Pick</label>
-                    {masterEdit ? (
+                    {rowMasterEdit ? (
                       <NumericCellInput
                         className="form-control form-control-sm text-end"
                         value={q.pick}
@@ -1261,7 +1307,7 @@ export function QualityMasterTable({
                   </div>
                   <div className="flex-fill">
                     <label className="small mb-0">Width</label>
-                    {masterEdit ? (
+                    {rowMasterEdit ? (
                       <NumericCellInput
                         className="form-control form-control-sm text-end"
                         value={q.widthInch}
@@ -1276,7 +1322,7 @@ export function QualityMasterTable({
                 </div>
 
                 <label className="small mb-0">GSM</label>
-                {masterEdit ? (
+                {rowMasterEdit ? (
                   <NumericCellInput
                     className="form-control form-control-sm text-end"
                     value={q.gsm ?? 0}
@@ -1356,9 +1402,20 @@ export function QualityMasterTable({
                 orderedForView.map((q, rowIdx) => {
                   const overall = productionByQuality[q.id] || 0
                   return (
-                  <tr key={q.id} data-quality-row={q.id} className={flashClassFor(q.id) || undefined}>
+                  <tr key={q.id} data-quality-row={q.id} className={rowClassFor(q)}>
                     <td className="px-2 text-center text-muted fw-semibold font-monospace">{rowIdx + 1}</td>
-                    <td className="px-2 fw-semibold">{qualityDisplayName(q, qualities)}</td>
+                    <td className="px-2 fw-semibold">
+                      {qualityDisplayName(q, qualities)}
+                      {qualityHeldButVisibleOnPastDay(q, sheetDate) && (
+                        <span
+                          className="badge text-bg-warning ms-1"
+                          style={{ fontSize: '0.65rem' }}
+                          title="Hold — past history (Resume Hold tab se)"
+                        >
+                          H
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 text-secondary">{q.fabricType || '—'}</td>
                     <td className="px-2 small">{q.warpYarn || '—'}</td>
                     <td className="px-2 small">{q.weftYarn || '—'}</td>
@@ -1470,12 +1527,14 @@ export function QualityMasterTable({
               ) : (
               orderedForView.map((q, rowIdx) => {
                 const overall = productionByQuality[q.id] || 0
+                const heldHistory = qualityHeldButVisibleOnPastDay(q, sheetDate)
+                const rowOpsEdit = opsEdit && !heldHistory
 
                 return (
                   <tr
                     key={q.id}
                     data-quality-row={q.id}
-                    className={[editActive ? 'sara-edit-row' : '', flashClassFor(q.id) || '']
+                    className={[editActive && !heldHistory ? 'sara-edit-row' : '', rowClassFor(q) || '']
                       .filter(Boolean)
                       .join(' ') || undefined}
                   >
@@ -1487,9 +1546,18 @@ export function QualityMasterTable({
                     </td>
                     <td className="px-2">
                       <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>
+                      {heldHistory && (
+                        <span
+                          className="badge text-bg-warning ms-1"
+                          style={{ fontSize: '0.65rem' }}
+                          title="Hold — past history (Resume Hold tab se)"
+                        >
+                          H
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 text-truncate">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <select
                           className="form-select form-select-sm"
                           style={{ width: '100%', minWidth: 0 }}
@@ -1507,7 +1575,7 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-1">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <TextCellInput
                           className="form-control form-control-sm"
                           style={{ width: '100%', minWidth: 0 }}
@@ -1524,7 +1592,7 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-1">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <TextCellInput
                           className="form-control form-control-sm"
                           style={{ width: '100%', minWidth: 0 }}
@@ -1541,7 +1609,7 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-1">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <TextCellInput
                           className="form-control form-control-sm"
                           style={{ width: '100%', minWidth: 0 }}
@@ -1557,7 +1625,7 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-1">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           style={{ width: '100%', minWidth: 0 }}
@@ -1571,7 +1639,7 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-1">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           style={{ width: '100%', minWidth: 0 }}
@@ -1585,7 +1653,7 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-1">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           style={{ width: '100%', minWidth: 0 }}
@@ -1599,7 +1667,7 @@ export function QualityMasterTable({
                       )}
                     </td>
                     <td className="px-1">
-                      {opsEdit ? (
+                      {rowOpsEdit ? (
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           style={{ width: '100%', minWidth: 0 }}

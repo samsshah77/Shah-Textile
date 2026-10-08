@@ -10,11 +10,13 @@ import {
   qualityDisplayName,
   qualityNameKey,
   qualityIdOnLoomForDate,
+  qualityIdsOnLoomForDate,
   qualityActiveOnSheetDate,
   rpmOnLoomForDate,
   statusOnLoomForDate,
   mergeSheetEntriesForDate,
   normalizeQualityStatus,
+  sheetSegmentIndex,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { LoomCategory } from '@/types/loom'
@@ -53,6 +55,8 @@ interface LoomMasterTableProps {
     loomNumber: number,
     patch: Partial<LoomMaster>
   ) => void | { forwardFillSkipped?: { date: string; qualityName: string; loomNumber: number }[] }
+  /** Same-day dual quality: create part 2+ on sheetDate for this loom. */
+  onAddQualitySegment?: (loomNumber: number, qualityId: string) => boolean
   onAdd: (partial?: Partial<LoomMaster>) => void
   onDelete?: (loomNumber: number) => void
   readOnly?: boolean
@@ -69,6 +73,7 @@ export function LoomMasterTable({
   entries = [],
   sheetDate = PRODUCTION_TODAY,
   onUpdate,
+  onAddQualitySegment,
   onAdd,
   onDelete,
   readOnly,
@@ -82,6 +87,9 @@ export function LoomMasterTable({
   const [modelFilter, setModelFilter] = useState<'ALL' | LoomCategory>('ALL')
   const [tableEditLocal, setTableEditLocal] = useState(false)
   const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
+  /** Loom # whose Part 2 quality picker is open (edit mode only). */
+  const [part2ForLoom, setPart2ForLoom] = useState<number | null>(null)
+  const [part2QualityId, setPart2QualityId] = useState('')
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon, showError } = useAlertDialog()
 
@@ -104,7 +112,7 @@ export function LoomMasterTable({
         .join('; ')
       showError({
         title: 'Kuch din pehle se busy the',
-        message: `L#${loomNumber} pe ye din doosri quality pe pehle se lage hue the, is liye wahan nahi badla: ${detail}. Sirf khali / isi quality wale din update hue.`,
+        message: `L#${loomNumber} pe ye din doosri quality pe pehle se lage hue the, is liye wahan nahi badla: ${detail}. Selected date pe agar pehle se meters/quality thi to same-day part 2 ban sakti hai; baaki busy din skip.`,
       })
     }
   }
@@ -146,9 +154,181 @@ export function LoomMasterTable({
   const dayQualityId = (loom: LoomMaster) =>
     qualityIdOnLoomForDate(loom, qualities, dayRows, sheetDate)
 
+  const daySegmentCount = (loom: LoomMaster) => {
+    const rows = dayRows.filter((e) => e.loomNumber === loom.loomNumber)
+    if (rows.length === 0) return 0
+    return Math.max(...rows.map((e) => sheetSegmentIndex(e)), rows.length)
+  }
+
+  const dayHasNamedPose = (loom: LoomMaster) =>
+    dayRows.some((e) => {
+      if (e.loomNumber !== loom.loomNumber) return false
+      const n = (e.qualityName || '').trim()
+      return n !== '' && n !== '—' && n !== '-'
+    }) || Boolean(dayQualityId(loom))
+
   const dayRpm = (loom: LoomMaster) => rpmOnLoomForDate(loom, dayRows)
 
   const dayStatus = (loom: LoomMaster) => statusOnLoomForDate(loom, dayRows)
+
+  const openPart2Picker = (loom: LoomMaster) => {
+    if (!onAddQualitySegment || !editActive) return
+    if (!dayHasNamedPose(loom)) {
+      showError({
+        title: 'Pehle Part 1 quality lagao',
+        message: `Loom #${loom.loomNumber} pe is date (${formatShortDate(sheetDate)}) pe pehle quality assign karo, phir Part 2 banao.`,
+      })
+      return
+    }
+    setPart2ForLoom(loom.loomNumber)
+    setPart2QualityId('')
+  }
+
+  const part2OptionsFor = (loom: LoomMaster) => {
+    const onDay = new Set(qualityIdsOnLoomForDate(loom, qualities, dayRows, sheetDate))
+    return qualityOptionsFor(loom).filter((q) => !onDay.has(q.id))
+  }
+
+  const confirmPart2 = (loom: LoomMaster) => {
+    if (!onAddQualitySegment || !part2QualityId) return
+    const q = qualities.find((item) => item.id === part2QualityId)
+    const label = q ? qualityDisplayName(q, qualities) : part2QualityId
+    const nextPart = Math.max(2, daySegmentCount(loom) + 1)
+    showConfirm({
+      title: `Part ${nextPart} add karein?`,
+      message: `Loom #${loom.loomNumber} pe ${formatShortDate(sheetDate)} ko Part ${nextPart} → "${label}". Pehli quality / meters same rahengi.`,
+      type: 'confirm',
+      confirmText: `Part ${nextPart}`,
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        const ok = onAddQualitySegment(loom.loomNumber, part2QualityId)
+        setPart2ForLoom(null)
+        setPart2QualityId('')
+        if (ok) {
+          showSuccessSoon({
+            title: `Part ${nextPart} added`,
+            message: `Loom #${loom.loomNumber}: "${label}" — Daily Entry / Sheet pe part ${nextPart} dikhegi.`,
+          })
+        } else {
+          showError({
+            title: 'Part add nahi hua',
+            message: 'Dobara try karo, ya pehle loom pe Part 1 quality check karo.',
+          })
+        }
+      },
+    })
+  }
+
+  const loomNumberCell = (loom: LoomMaster) => {
+    const segs = daySegmentCount(loom)
+    const picking = part2ForLoom === loom.loomNumber
+    const canPart2 = Boolean(onAddQualitySegment) && editActive
+    const part2Opts = picking ? part2OptionsFor(loom) : []
+    const nextPart = Math.max(2, segs + 1)
+
+    return (
+      <div className="sara-loom-num-cell position-relative d-inline-flex align-items-center gap-1">
+        <span className="fw-semibold">{loom.loomNumber}</span>
+        {segs > 1 && (
+          <span
+            className="d-inline-flex align-items-center"
+            style={{ gap: 2 }}
+            title={`${segs} qualities on ${formatShortDate(sheetDate)}`}
+          >
+            {Array.from({ length: segs }, (_, i) => i + 1).map((seg) => (
+              <span
+                key={`loom-${loom.loomNumber}-badge-p${seg}`}
+                className={`badge ${seg <= 1 ? 'text-bg-primary' : 'text-bg-warning'}`}
+                style={{ fontSize: '0.58rem' }}
+              >
+                P{seg}
+              </span>
+            ))}
+          </span>
+        )}
+        {canPart2 && (
+          <button
+            type="button"
+            className={`btn btn-sm py-0 px-1 sara-loom-part2-btn ${
+              picking ? 'btn-warning' : 'btn-outline-warning'
+            }`}
+            style={{ fontSize: '0.65rem', lineHeight: 1.2, opacity: picking ? 1 : undefined }}
+            title={`Part ${nextPart} — same day dusri quality`}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (picking) {
+                setPart2ForLoom(null)
+                setPart2QualityId('')
+              } else {
+                openPart2Picker(loom)
+              }
+            }}
+          >
+            +P{nextPart}
+          </button>
+        )}
+        {picking && (
+          <div
+            className="sara-loom-part2-popover shadow border rounded bg-white p-2"
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: '100%',
+              zIndex: 30,
+              minWidth: 220,
+              marginTop: 4,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="small fw-semibold mb-1">
+              Loom #{loom.loomNumber} · Part {nextPart}
+            </div>
+            {part2Opts.length === 0 ? (
+              <div className="small text-muted mb-2">
+                Is din pe aur Active quality nahi — pehle Quality tab se nayi Active banao, ya dusri quality free karo.
+              </div>
+            ) : (
+              <select
+                className="form-select form-select-sm mb-2"
+                value={part2QualityId}
+                onChange={(e) => setPart2QualityId(e.target.value)}
+                autoFocus
+              >
+                <option value="">Quality choose…</option>
+                {part2Opts.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {qualityOptionLabel(q)}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="d-flex gap-1 justify-content-end">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary py-0 px-2"
+                style={{ fontSize: '0.72rem' }}
+                onClick={() => {
+                  setPart2ForLoom(null)
+                  setPart2QualityId('')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-warning py-0 px-2"
+                style={{ fontSize: '0.72rem' }}
+                disabled={!part2QualityId || part2Opts.length === 0}
+                onClick={() => confirmPart2(loom)}
+              >
+                Add Part {nextPart}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const qualityOptionsFor = (loom: LoomMaster) => {
     const currentId = dayQualityId(loom)
@@ -191,24 +371,83 @@ export function LoomMasterTable({
     return (q.name || '').replace(/\s*\(\s*pick\s*\d+\s*\)\s*$/i, '').trim() || q.name
   }
 
-  const qualityLabel = (loom: LoomMaster) => {
+  const namedPose = (name?: string | null) => {
+    const n = (name || '').trim()
+    return n !== '' && n !== '—' && n !== '-'
+  }
+
+  /** Same-day quality parts for loom (Part 1, Part 2, …) for display. */
+  const dayQualityParts = (loom: LoomMaster): { seg: number; name: string }[] => {
+    const rows = dayRows
+      .filter((e) => e.loomNumber === loom.loomNumber)
+      .sort((a, b) => sheetSegmentIndex(a) - sheetSegmentIndex(b))
+    const parts: { seg: number; name: string }[] = []
+    for (const row of rows) {
+      if (!namedPose(row.qualityName)) continue
+      parts.push({
+        seg: sheetSegmentIndex(row),
+        name: (row.qualityName || '').trim(),
+      })
+    }
+    if (parts.length > 0) return parts
     const id = dayQualityId(loom)
     if (id) {
       const q = qualities.find((item) => item.id === id)
       if (q && q.status !== 'ENDED' && q.status !== 'HOLD') {
-        return qualityDisplayName(q, qualities)
+        return [{ seg: 1, name: qualityDisplayName(q, qualities) }]
       }
     }
-    return '—'
+    return []
+  }
+
+  const qualityLabel = (loom: LoomMaster) => {
+    const parts = dayQualityParts(loom)
+    if (parts.length === 0) return '—'
+    if (parts.length === 1) return parts[0].name
+    return parts.map((p) => `P${p.seg}: ${p.name}`).join(' · ')
   }
 
   const qualityCellClass = (loom: LoomMaster) => {
-    const id = dayQualityId(loom)
-    if (id) {
-      const q = qualities.find((item) => item.id === id)
-      if (q && q.status !== 'ENDED' && q.status !== 'HOLD') return 'fw-semibold'
-    }
+    if (dayQualityParts(loom).length > 0) return 'fw-semibold'
     return 'fw-semibold text-muted'
+  }
+
+  const partChipClass = (seg: number) =>
+    seg <= 1
+      ? 'bg-primary-subtle text-primary-emphasis border border-primary-subtle'
+      : 'bg-warning-subtle text-warning-emphasis border border-warning-subtle'
+
+  const partBadgeClass = (seg: number) =>
+    seg <= 1 ? 'text-bg-primary' : 'text-bg-warning'
+
+  const qualityPartsView = (loom: LoomMaster) => {
+    const parts = dayQualityParts(loom)
+    if (parts.length === 0) {
+      return <span className="fw-semibold text-muted">—</span>
+    }
+    if (parts.length === 1) {
+      return (
+        <span className="text-truncate d-block fw-semibold" title={parts[0].name}>
+          {parts[0].name}
+        </span>
+      )
+    }
+    return (
+      <div className="d-flex flex-column gap-1" title={qualityLabel(loom)}>
+        {parts.map((p) => (
+          <div
+            key={`${loom.loomNumber}-p${p.seg}`}
+            className={`d-flex align-items-center gap-1 rounded px-1 py-0 small ${partChipClass(p.seg)}`}
+            style={{ lineHeight: 1.35 }}
+          >
+            <span className={`badge ${partBadgeClass(p.seg)}`} style={{ fontSize: '0.58rem' }}>
+              P{p.seg}
+            </span>
+            <span className="text-truncate fw-semibold">{p.name}</span>
+          </div>
+        ))}
+      </div>
+    )
   }
 
   const canManagePics = canEditProduction && !readOnly
@@ -270,14 +509,37 @@ export function LoomMasterTable({
 
   return (
     <div className="card">
+      <style>{`
+        .sara-loom-part2-btn {
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.12s ease;
+        }
+        .sara-loom-num-cell:hover .sara-loom-part2-btn,
+        .sara-loom-num-cell:focus-within .sara-loom-part2-btn,
+        tr:hover .sara-loom-part2-btn,
+        .master-grid-card:hover .sara-loom-part2-btn {
+          opacity: 1;
+          pointer-events: auto;
+        }
+        .sara-loom-num-cell .sara-loom-part2-btn.btn-warning {
+          opacity: 1;
+          pointer-events: auto;
+        }
+        td:has(.sara-loom-part2-popover) {
+          overflow: visible;
+          position: relative;
+          z-index: 5;
+        }
+      `}</style>
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
         <div className="min-w-0">
           <h3 className="card-title mb-0">Looms</h3>
           {tableEdit && (
             <div className="small text-warning mt-1 mb-0">
               {mode === 'table'
-                ? 'Table edit — sirf RPM, Quality, Status'
-                : 'Grid edit — full master fields + Delete'}
+                ? 'Table edit — RPM, Quality, Status · loom # pe hover → +P2 (same-day Part 2)'
+                : 'Grid edit — full master + Delete · loom # pe hover → +P2'}
             </div>
           )}
         </div>
@@ -342,7 +604,10 @@ export function LoomMasterTable({
                     ) : (
                       <div className="fw-bold">{l.name}</div>
                     )}
-                    <div className="small text-muted">Loom #{l.loomNumber}</div>
+                    <div className="small text-muted d-flex align-items-center gap-1">
+                      <span>Loom #</span>
+                      {loomNumberCell(l)}
+                    </div>
                   </div>
                   {masterEdit && onDelete && (
                     <button
@@ -430,22 +695,46 @@ export function LoomMasterTable({
                 <div>
                   <label className="form-label small mb-1 fw-semibold">Quality</label>
                   {masterEdit ? (
-                    <select
-                      className="form-select form-select-sm"
-                      value={dayQualityId(l) || ''}
-                      onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
-                    >
-                      <option value="">—</option>
-                      {qualityOptionsFor(l).map((q) => (
-                        <option key={q.id} value={q.id}>
-                          {qualityOptionLabel(q)}
-                        </option>
+                    <div className="d-flex flex-column gap-1">
+                      <div
+                        className={
+                          dayQualityParts(l).length > 1
+                            ? `rounded p-1 ${partChipClass(1)}`
+                            : undefined
+                        }
+                      >
+                        {dayQualityParts(l).length > 1 && (
+                          <span className={`badge ${partBadgeClass(1)} mb-1`} style={{ fontSize: '0.58rem' }}>
+                            P1
+                          </span>
+                        )}
+                        <select
+                          className="form-select form-select-sm"
+                          value={dayQualityId(l) || ''}
+                          onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
+                        >
+                          <option value="">—</option>
+                          {qualityOptionsFor(l).map((q) => (
+                            <option key={q.id} value={q.id}>
+                              {qualityOptionLabel(q)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {dayQualityParts(l).filter((p) => p.seg > 1).map((p) => (
+                        <div
+                          key={`grid-edit-p${p.seg}`}
+                          className={`d-flex align-items-center gap-1 rounded px-1 py-0 small ${partChipClass(p.seg)}`}
+                        >
+                          <span className={`badge ${partBadgeClass(p.seg)}`} style={{ fontSize: '0.58rem' }}>
+                            P{p.seg}
+                          </span>
+                          <span className="text-truncate fw-semibold">{p.name}</span>
+                        </div>
                       ))}
-                    </select>
-                  ) : (
-                    <div className={`small text-truncate ${qualityCellClass(l)}`} title={qualityLabel(l)}>
-                      {qualityLabel(l)}
                     </div>
+                  ) : (
+                    <div className={`small ${qualityCellClass(l)}`}>{qualityPartsView(l)}</div>
                   )}
                 </div>
 
@@ -520,7 +809,7 @@ export function LoomMasterTable({
                     key={l.loomNumber}
                     className={editActive ? 'sara-edit-row' : undefined}
                   >
-                    <td className="fw-semibold px-2">{l.loomNumber}</td>
+                    <td className="px-2">{loomNumberCell(l)}</td>
                     <td className="px-2 text-center">
                       <LoomPictureThumb
                         images={getLoomPictures(l)}
@@ -557,27 +846,49 @@ export function LoomMasterTable({
                     </td>
                     <td className="px-2 text-start">
                       {opsEdit ? (
-                        <select
-                          className="form-select form-select-sm"
-                          style={{ width: '100%', minWidth: 0 }}
-                          value={dayQualityId(l) || ''}
-                          onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
-                        >
-                          <option value="">—</option>
-                          {qualityOptionsFor(l).map((q) => (
-                            <option key={q.id} value={q.id}>
-                              {qualityOptionLabel(q)}
-                            </option>
+                        <div className="d-flex flex-column gap-1">
+                          <div
+                            className={
+                              dayQualityParts(l).length > 1
+                                ? `rounded p-1 ${partChipClass(1)}`
+                                : undefined
+                            }
+                          >
+                            {dayQualityParts(l).length > 1 && (
+                              <span className={`badge ${partBadgeClass(1)} mb-1`} style={{ fontSize: '0.58rem' }}>
+                                P1
+                              </span>
+                            )}
+                            <select
+                              className="form-select form-select-sm"
+                              style={{ width: '100%', minWidth: 0 }}
+                              value={dayQualityId(l) || ''}
+                              onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
+                            >
+                              <option value="">—</option>
+                              {qualityOptionsFor(l).map((q) => (
+                                <option key={q.id} value={q.id}>
+                                  {qualityOptionLabel(q)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          {dayQualityParts(l).filter((p) => p.seg > 1).map((p) => (
+                            <div
+                              key={`tbl-edit-p${p.seg}`}
+                              className={`d-flex align-items-center gap-1 rounded px-1 py-0 small ${partChipClass(p.seg)}`}
+                            >
+                              <span className={`badge ${partBadgeClass(p.seg)}`} style={{ fontSize: '0.58rem' }}>
+                                P{p.seg}
+                              </span>
+                              <span className="text-truncate fw-semibold">{p.name}</span>
+                            </div>
                           ))}
-                        </select>
+                        </div>
                       ) : (
-                        <span
-                          className={`text-truncate d-block text-start ${qualityCellClass(l)}`}
-                          style={{ maxWidth: '100%' }}
-                          title={qualityLabel(l)}
-                        >
-                          {qualityLabel(l)}
-                        </span>
+                        <div className={`text-start ${qualityCellClass(l)}`} style={{ maxWidth: '100%' }}>
+                          {qualityPartsView(l)}
+                        </div>
                       )}
                     </td>
                     <td className="px-2">
