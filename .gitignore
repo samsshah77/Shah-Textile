@@ -51,4 +51,5 @@ scripts/reset-*
 scripts/seed-*
 scripts/smoke-*
 scripts/verify-*
+scripts/sync-*
 scripts/local/
