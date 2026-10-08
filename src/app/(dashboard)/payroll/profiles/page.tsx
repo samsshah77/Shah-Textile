@@ -278,7 +278,7 @@ function EmployeeProfilesContent() {
     )
     setStatus(emp.status || 'Active')
     setResignedAt(resolveResignedAt(emp) || '')
-    setAdvanceEligible(Boolean(emp.advanceEligible))
+    setAdvanceEligible(Boolean(emp.advanceEligible || emp.advance))
     setRemarks(emp.remarks || '')
     setIsModalOpen(true)
   }
@@ -339,6 +339,7 @@ function EmployeeProfilesContent() {
       status,
       resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
       advanceEligible,
+      advance: advanceEligible,
       remarks,
     }
 
@@ -656,7 +657,7 @@ function EmployeeProfilesContent() {
                           >
                             {emp.status || 'Active'}
                           </span>
-                          {emp.advanceEligible && !isResigned && (
+                          {(emp.advanceEligible || emp.advance) && !isResigned && (
                             <span
                               className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
                               title="Eligible for salary advance"

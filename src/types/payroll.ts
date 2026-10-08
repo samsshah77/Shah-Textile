@@ -41,6 +41,7 @@ export interface EmployeeProfile {
   resignedAt?: string;
   /** When true, person appears in Advance (Peshgi) search — only a few staff get advances. */
   advanceEligible?: boolean;
+  advance?: boolean;
   remarks?: string; // e.g. "Resignation 31 Oct 2022" or "Rejoining 08 Jun-21"
   customFields?: Record<string, string | number>;
 }
