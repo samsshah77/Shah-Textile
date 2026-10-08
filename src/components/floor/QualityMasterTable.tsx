@@ -67,6 +67,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   pick: 65,
   width: 65,
   gsm: 80,
+  start: 118,
   production: 105,
   actions: 140,
   endedOn: 95,
@@ -258,9 +259,18 @@ export function QualityMasterTable({
   }, [isAddModalOpen])
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_quality_col_widths_v11',
+    'sara_quality_col_widths_v12',
     DEFAULT_WIDTHS
   )
+
+  const qualityStartDay = (q: QualityMaster) =>
+    q.createdOn ? String(q.createdOn).slice(0, 10) : ''
+
+  const patchQualityStart = (q: QualityMaster, next: string) => {
+    const day = String(next || '').slice(0, 10)
+    if (!day || day === qualityStartDay(q)) return
+    onUpdate(q.id, { createdOn: day })
+  }
 
   const isEndedView = statusFilter === 'ENDED'
   const isHoldView = statusFilter === 'HOLD'
@@ -1111,7 +1121,7 @@ export function QualityMasterTable({
                         {archiveAction(q)}
                       </div>
                     </div>
-                    <div className="small text-muted ps-4 d-flex flex-wrap gap-x-3 gap-y-1">
+                    <div className="small text-muted ps-4 d-flex flex-wrap gap-x-3 gap-y-1 align-items-center">
                       <span>{q.fabricType || '—'}</span>
                       <span>Warp: {q.warpYarn || '—'}</span>
                       <span>Weft: {q.weftYarn || '—'}</span>
@@ -1122,6 +1132,21 @@ export function QualityMasterTable({
                       <span>
                         GSM:{' '}
                         {q.gsm != null && q.gsm !== 0 ? Number(q.gsm).toFixed(2) : '—'}
+                      </span>
+                      <span className="d-inline-flex align-items-center gap-1">
+                        Start:
+                        {canArchiveOps && tableEdit ? (
+                          <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            style={{ width: 140 }}
+                            value={qualityStartDay(q)}
+                            title="Start date — is se pehle quality / Track nahi dikhegi"
+                            onChange={(e) => patchQualityStart(q, e.target.value)}
+                          />
+                        ) : (
+                          <span>{qualityStartDay(q) ? formatShortDate(qualityStartDay(q)) : '—'}</span>
+                        )}
                       </span>
                       <span>
                         {isHoldView ? 'Held' : 'Ended'}: {formatShortDate(q.endedOn || sheetDate)}
@@ -1228,6 +1253,21 @@ export function QualityMasterTable({
                   </select>
                 ) : (
                   <div className="small text-secondary">{q.fabricType || '—'}</div>
+                )}
+
+                <label className="small mb-0">Start</label>
+                {rowMasterEdit ? (
+                  <input
+                    type="date"
+                    className="form-control form-control-sm"
+                    value={qualityStartDay(q)}
+                    title="Start date — is se pehle quality / Track nahi dikhegi"
+                    onChange={(e) => patchQualityStart(q, e.target.value)}
+                  />
+                ) : (
+                  <div className="small text-secondary">
+                    {qualityStartDay(q) ? formatShortDate(qualityStartDay(q)) : '—'}
+                  </div>
                 )}
 
                 <div className="d-flex gap-2">
@@ -1377,6 +1417,7 @@ export function QualityMasterTable({
                 <th className="px-2 text-end">Pick</th>
                 <th className="px-2 text-end">Width</th>
                 <th className="px-2 text-end">GSM</th>
+                <th className="px-2">Start</th>
                 <th className="px-2 text-end">Overall</th>
                 <th className="px-2" style={{ width: 110 }}>
                   {isHoldView ? 'Held On' : 'Ended On'}
@@ -1389,7 +1430,7 @@ export function QualityMasterTable({
             <tbody>
               {orderedForView.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="p-0 border-0">
+                  <td colSpan={14} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon={emptyCopy.icon}
                       title={emptyCopy.title}
@@ -1425,6 +1466,22 @@ export function QualityMasterTable({
                     <td className="px-2 text-end font-monospace">{q.widthInch ? `${q.widthInch}"` : '—'}</td>
                     <td className="px-2 text-end font-monospace">
                       {q.gsm != null && q.gsm !== 0 ? Number(q.gsm).toFixed(2) : '—'}
+                    </td>
+                    <td className="px-2">
+                      {canArchiveOps && tableEdit ? (
+                        <input
+                          type="date"
+                          className="form-control form-control-sm"
+                          style={{ width: 140 }}
+                          value={qualityStartDay(q)}
+                          title="Start date — is se pehle quality / Track nahi dikhegi"
+                          onChange={(e) => patchQualityStart(q, e.target.value)}
+                        />
+                      ) : (
+                        <span className="small font-monospace">
+                          {qualityStartDay(q) ? formatShortDate(qualityStartDay(q)) : '—'}
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 text-end">
                       <span className="fw-bold text-success font-monospace">
@@ -1503,6 +1560,9 @@ export function QualityMasterTable({
                 <ResizableTh columnKey="gsm" width={widths.gsm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   GSM
                 </ResizableTh>
+                <ResizableTh columnKey="start" width={widths.start} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1">
+                  Start
+                </ResizableTh>
                 <ResizableTh columnKey="production" width={widths.production} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   Overall
                 </ResizableTh>
@@ -1515,7 +1575,7 @@ export function QualityMasterTable({
             <tbody>
               {orderedForView.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="p-0 border-0">
+                  <td colSpan={14} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon={emptyCopy.icon}
                       title={emptyCopy.title}
@@ -1680,6 +1740,22 @@ export function QualityMasterTable({
                         <div className="text-end px-1 fw-semibold font-monospace">
                           {q.gsm != null && q.gsm !== 0 ? Number(q.gsm).toFixed(2) : '—'}
                         </div>
+                      )}
+                    </td>
+                    <td className="px-1">
+                      {rowOpsEdit ? (
+                        <input
+                          type="date"
+                          className="form-control form-control-sm"
+                          style={{ width: '100%', minWidth: 0 }}
+                          value={qualityStartDay(q)}
+                          title="Start date — is se pehle quality / Track nahi dikhegi"
+                          onChange={(e) => patchQualityStart(q, e.target.value)}
+                        />
+                      ) : (
+                        <span className="small text-secondary font-monospace">
+                          {qualityStartDay(q) ? formatShortDate(qualityStartDay(q)) : '—'}
+                        </span>
                       )}
                     </td>
                     <td className="px-2 text-end">
