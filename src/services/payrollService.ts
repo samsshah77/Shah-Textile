@@ -4742,18 +4742,58 @@ class PayrollService {
     const lessAdvance = Number(row.lessAdvance) || 0
     const chequeAmount = Number(row.chequeAmount) || 0
 
-    const actualDays =
-      row.month && daysInMonth === 31 ? daysInCalendarMonth(row.month) : daysInMonth
+    const month = row.month || '2026-08'
+    const isHistorical = month !== this.getActiveSalariedMonth()
+    const calDays = daysInCalendarMonth(month)
+
+    let actualDays = calDays
+    if (!isHistorical && daysInMonth !== undefined && daysInMonth > 0) {
+      actualDays = daysInMonth
+    } else if (isHistorical && (daysInMonth === 28 || daysInMonth === calDays)) {
+      actualDays = daysInMonth
+    }
 
     // Excel: Rate Per Day = Salary / days; Basic = Attn × Rate Per Day
-    const ratePerDay = Math.round((salary / actualDays) * 100) / 100
-    const basicSalary = Math.round(attendance * ratePerDay)
+    const calculatedRatePerDay = Math.round((salary / actualDays) * 100) / 100
+    let ratePerDay = calculatedRatePerDay
+    let basicSalary = Math.round(attendance * ratePerDay)
+
+    if (
+      isHistorical &&
+      row.basicSalary !== undefined &&
+      row.salary === salary &&
+      row.attendanceDays === attendance
+    ) {
+      basicSalary = Number(row.basicSalary)
+      ratePerDay = row.ratePerDay !== undefined ? Number(row.ratePerDay) : calculatedRatePerDay
+    }
+
     const perHrRate = Number((salary / 240).toFixed(2))
     // Excel exact formula: OT Hrs * (Salary / 240) (e.g. 176 * 40000 / 240 = 29333)
-    const otAmount = Math.round(otHours * (salary / 240))
+    let otAmount = Math.round(otHours * (salary / 240))
+    if (
+      isHistorical &&
+      row.otAmount !== undefined &&
+      row.otHours === otHours &&
+      row.salary === salary
+    ) {
+      otAmount = Number(row.otAmount)
+    }
+
     const grossAmount = basicSalary + otAmount
     const synopsisAmount = grossAmount - lessAdvance
-    const netCashAmount = Math.max(0, synopsisAmount - chequeAmount)
+    let netCashAmount = Math.max(0, synopsisAmount - chequeAmount)
+    if (
+      isHistorical &&
+      row.netCashAmount !== undefined &&
+      row.salary === salary &&
+      row.attendanceDays === attendance &&
+      row.otHours === otHours &&
+      row.lessAdvance === lessAdvance &&
+      row.chequeAmount === chequeAmount
+    ) {
+      netCashAmount = Number(row.netCashAmount)
+    }
 
     return {
       id: row.id || `staff-${Date.now()}`,
@@ -4773,7 +4813,7 @@ class PayrollService {
       chequeAmount,
       synopsisAmount,
       netCashAmount,
-      month: row.month || '2026-08',
+      month,
       customFields: row.customFields,
     }
   }
@@ -4787,10 +4827,32 @@ class PayrollService {
     const ticketCharges = row.ticketCharges !== undefined ? Number(row.ticketCharges) : 5
     const lateHours = Number(row.lateHours) || 0
 
+    const month = row.month || '2026-08'
+    const isHistorical = month !== this.getActiveSalariedMonth()
+    const calDays = daysInCalendarMonth(month)
+
+    let actualDays = calDays
+    if (!isHistorical && daysInMonth !== undefined && daysInMonth > 0) {
+      actualDays = daysInMonth
+    } else if (isHistorical && (daysInMonth === 28 || daysInMonth === calDays)) {
+      actualDays = daysInMonth
+    }
+
     // Excel Contract Employees: Rate = Salary/days; Gross (H) = Attn × Rate
-    const ratePerDay = Math.round((salary / daysInMonth) * 100) / 100
-    const basicSalary = Math.round(attendance * ratePerDay)
-    
+    const calculatedRatePerDay = Math.round((salary / actualDays) * 100) / 100
+    let ratePerDay = calculatedRatePerDay
+    let basicSalary = Math.round(attendance * ratePerDay)
+
+    if (
+      isHistorical &&
+      row.basicSalary !== undefined &&
+      row.salary === salary &&
+      row.attendanceDays === attendance
+    ) {
+      basicSalary = Number(row.basicSalary)
+      ratePerDay = row.ratePerDay !== undefined ? Number(row.ratePerDay) : calculatedRatePerDay
+    }
+
     // Look up duty hours from live master roster (Sheet 1) or fall back to role defaults
     let dutyHrs = 10
     const roster = this.getEmployees()
@@ -4827,12 +4889,28 @@ class PayrollService {
       }
     }
 
-    // Excel: Rate Per Hr from General Wages 30-day column; fallback Salary/(30×dutyHrs)
-    const ratePerHr =
-      matchedEmp?.ratePerHr30 != null && matchedEmp.ratePerHr30 > 0
-        ? Number(matchedEmp.ratePerHr30)
-        : Number((salary / (30 * dutyHrs)).toFixed(2))
-    const otAmount = Math.round(otHours * ratePerHr)
+    // Excel: Rate Per Hr from row salary / (30×dutyHrs). NEVER leak master roster if salaries differ!
+    let ratePerHr = Number(row.ratePerHr) || 0
+    const calculatedRatePerHr = Number((salary / (30 * dutyHrs)).toFixed(2))
+
+    if (isHistorical) {
+      if (ratePerHr <= 0) {
+        ratePerHr = calculatedRatePerHr
+      }
+    } else {
+      ratePerHr = calculatedRatePerHr
+    }
+
+    let otAmount = Math.round(otHours * ratePerHr)
+    if (
+      isHistorical &&
+      row.otAmount !== undefined &&
+      row.otHours === otHours &&
+      row.salary === salary
+    ) {
+      otAmount = Number(row.otAmount)
+    }
+
     // Late Hrs Amount: keep manual value if set; else Late Hrs × Rate Per Hr
     const lateAmount =
       row.lateAmount !== undefined && row.lateAmount !== null && String(row.lateAmount) !== ''
@@ -4840,10 +4918,34 @@ class PayrollService {
         : lateHours > 0
           ? Math.round(lateHours * ratePerHr)
           : 0
+
     // Net Payment sheet: Gross = Basic (sheet4 H) + OT + Efficiency
-    const grossSalary = basicSalary + otAmount + efficiencyAmount
+    let grossSalary = basicSalary + otAmount + efficiencyAmount
+    if (
+      isHistorical &&
+      row.grossSalary !== undefined &&
+      row.salary === salary &&
+      row.attendanceDays === attendance &&
+      row.otHours === otHours &&
+      row.efficiencyAmount === efficiencyAmount
+    ) {
+      grossSalary = Number(row.grossSalary)
+    }
+
     // Excel: Net = Gross − Late − Advance − Ticket
-    const netAmount = grossSalary - lateAmount - advanceDeduction - ticketCharges
+    let netAmount = grossSalary - lateAmount - advanceDeduction - ticketCharges
+    if (
+      isHistorical &&
+      row.netAmount !== undefined &&
+      row.salary === salary &&
+      row.attendanceDays === attendance &&
+      row.otHours === otHours &&
+      row.advanceDeduction === advanceDeduction &&
+      row.efficiencyAmount === efficiencyAmount &&
+      row.ticketCharges === ticketCharges
+    ) {
+      netAmount = Number(row.netAmount)
+    }
 
     return {
       id: row.id || `cnt-${Date.now()}`,
@@ -4865,7 +4967,7 @@ class PayrollService {
       advanceDeduction,
       ticketCharges,
       netAmount,
-      month: row.month || '2026-08',
+      month,
       customFields: row.customFields,
     }
   }
@@ -7628,11 +7730,13 @@ class PayrollService {
 
   private syncContractBasicsToEfficiency(contractList: ContractSalaryRecord[]): void {
     if (contractList.length === 0) return
-    const month = contractList[0].month || '2026-08'
-    const efficiency = this.getEfficiencyIncentives(month)
+    const activeMonth = this.getActiveSalariedMonth()
+    const activeRows = contractList.filter((ct) => (ct.month || activeMonth) === activeMonth)
+    if (activeRows.length === 0) return
+    const efficiency = this.getEfficiencyIncentives(activeMonth)
     let changed = false
     const updated = efficiency.map((eff) => {
-      const contractRow = contractList.find(
+      const contractRow = activeRows.find(
         (ct) =>
           (eff.employeeId && ct.employeeId === eff.employeeId) ||
           namesMatch(ct.employeeName, eff.name)

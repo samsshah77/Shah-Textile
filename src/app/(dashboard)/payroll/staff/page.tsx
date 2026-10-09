@@ -66,14 +66,12 @@ export default function StaffSalariesPage() {
   )
 
   const reload = () => {
-    setStaffList(
-      payrollService
-        .getStaffSalaries(selectedMonth)
-        .map((row) => payrollService.calculateStaffSalaryRow(row, daysInMonth))
-    )
+    setStaffList(payrollService.getStaffSalaries(selectedMonth))
   }
 
   useEffect(() => {
+    const [y, m] = selectedMonth.split('-').map(Number)
+    if (y && m) setDaysInMonth(new Date(y, m, 0).getDate())
     reload()
     const handleSync = (e: Event) => {
       const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
@@ -83,15 +81,15 @@ export default function StaffSalariesPage() {
           : payrollService.getActiveSalariedMonth()
       if (next !== selectedMonth) {
         setSelectedMonth(next)
-        const [y, m] = next.split('-').map(Number)
-        if (y && m) setDaysInMonth(new Date(y, m, 0).getDate())
+        const [sy, sm] = next.split('-').map(Number)
+        if (sy && sm) setDaysInMonth(new Date(sy, sm, 0).getDate())
         return
       }
       reload()
     }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
-  }, [selectedMonth, daysInMonth])
+  }, [selectedMonth])
 
   // Handle cell edit with live reactive calculation
   const handleCellChange = (
