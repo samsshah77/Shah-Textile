@@ -1792,7 +1792,11 @@ export function QualityMasterTable({
           tabIndex={-1}
           role="dialog"
           aria-modal="true"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 1055 }}
+          style={{
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(3px)',
+            zIndex: 1055,
+          }}
         >
           <div
             className="modal-dialog modal-dialog-centered modal-dialog-scrollable mx-2 mx-sm-auto my-2"
@@ -1805,38 +1809,39 @@ export function QualityMasterTable({
             }}
           >
             <div
-              className="modal-content shadow-lg border-0 d-flex flex-column"
-              style={{ maxHeight: 'min(88dvh, 720px)', overflow: 'hidden' }}
+              className="modal-content border-0 shadow-lg d-flex flex-column"
+              style={{
+                borderRadius: '14px',
+                overflow: 'hidden',
+                maxHeight: 'min(88dvh, 720px)',
+              }}
             >
-              <div className="modal-header bg-success text-white py-2 px-3 flex-shrink-0">
-                <div>
-                  <h5 className="modal-title fs-6 fw-semibold mb-0">
-                    <i className="bi bi-plus-circle me-1" />
-                    Nayi Quality Shamil Karein
-                  </h5>
-                  <div className="small text-white-50" style={{ fontSize: '0.72rem' }}>
-                    Enter = next · Esc = close · Ctrl+Enter = save
-                  </div>
+              <div className="modal-header bg-light py-3 px-4 border-bottom flex-shrink-0">
+                <div className="d-flex align-items-center gap-2">
+                  <span className="badge bg-primary px-2.5 py-1.5 fs-7">
+                    <i className="bi bi-tags me-1" /> Quality
+                  </span>
+                  <h5 className="modal-title fs-6 fw-bold mb-0">Add Quality</h5>
                 </div>
                 <button
                   type="button"
-                  className="btn-close btn-close-white"
+                  className="btn-close"
                   aria-label="Close"
                   onClick={() => setIsAddModalOpen(false)}
                 />
               </div>
               <form
                 onSubmit={handleCreateQuality}
-                className="d-flex flex-column flex-grow-1"
+                className="sara-add-beam-form d-flex flex-column flex-grow-1"
                 style={{ minHeight: 0 }}
               >
                 <div
-                  className="modal-body p-3"
+                  className="modal-body p-4"
                   style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: '1 1 auto' }}
                 >
-                  <div className="row g-2">
+                  <div className="row g-3">
                     <div className="col-12">
-                      <label className="form-label small fw-semibold mb-1">
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                         Quality Name <span className="text-danger">*</span>
                       </label>
                       <input
@@ -1853,7 +1858,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-6">
-                      <label className="form-label small fw-semibold mb-1">Fabric Type</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Fabric Type
+                      </label>
                       <select
                         data-add-q-field="fabricType"
                         className="form-select"
@@ -1870,7 +1877,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-6">
-                      <label className="form-label small fw-semibold mb-1">Width (Inches)</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Width (Inches)
+                      </label>
                       <input
                         type="number"
                         data-add-q-field="widthInch"
@@ -1883,7 +1892,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-6">
-                      <label className="form-label small fw-semibold mb-1">Warp Yarn</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Warp Yarn
+                      </label>
                       <input
                         type="text"
                         list="quality-warp-stock"
@@ -1897,7 +1908,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-6">
-                      <label className="form-label small fw-semibold mb-1">Weft Yarn</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Weft Yarn
+                      </label>
                       <input
                         type="text"
                         list="quality-weft-stock"
@@ -1911,7 +1924,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-4">
-                      <label className="form-label small fw-semibold mb-1">Weave Plan</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Weave Plan
+                      </label>
                       <input
                         type="text"
                         data-add-q-field="weavePlan"
@@ -1924,7 +1939,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-4">
-                      <label className="form-label small fw-semibold mb-1">Reed</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Reed
+                      </label>
                       <input
                         type="number"
                         data-add-q-field="reed"
@@ -1937,7 +1954,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-4">
-                      <label className="form-label small fw-semibold mb-1">Pick</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Pick
+                      </label>
                       <input
                         type="number"
                         data-add-q-field="pick"
@@ -1950,7 +1969,9 @@ export function QualityMasterTable({
                     </div>
 
                     <div className="col-md-6">
-                      <label className="form-label small fw-semibold mb-1">GSM (2 Decimals)</label>
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        GSM (2 Decimals)
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -1963,12 +1984,12 @@ export function QualityMasterTable({
                       />
                     </div>
                   </div>
+                  <div className="form-text small mt-2 mb-0">
+                    Enter / → next · Ctrl+Enter save · Esc close
+                  </div>
                 </div>
 
-                <div className="modal-footer py-2 px-3 bg-light gap-2 flex-shrink-0">
-                  <span className="me-auto small text-muted d-none d-md-inline">
-                    Last field pe Enter = Save
-                  </span>
+                <div className="modal-footer bg-light px-4 py-3 border-top flex-shrink-0">
                   <button
                     type="button"
                     className="btn btn-sm btn-outline-secondary"
@@ -1977,7 +1998,7 @@ export function QualityMasterTable({
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-sm btn-primary px-3">
-                    <i className="bi bi-check-lg me-1" /> Quality Save Karein
+                    <i className="bi bi-plus-lg me-1" /> Add Quality
                   </button>
                 </div>
               </form>

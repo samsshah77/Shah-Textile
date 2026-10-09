@@ -14,6 +14,8 @@ interface FloorEntryTableProps {
   entries: DailyLoomProductionEntry[]
   onUpdateEntry: (loomNumber: number, patch: Partial<DailyLoomProductionEntry>, editorName?: string) => void
   onResetDayMeters?: (editorName?: string) => void
+  /** Remove same-day Part 2+ row. */
+  onRemoveQualitySegment?: (loomNumber: number, segmentIndex: number) => boolean
   canEdit?: boolean
   selectedDate?: string
   onSubmitForApproval?: () => Promise<{ success: boolean; error?: string }>
@@ -41,6 +43,7 @@ export function FloorEntryTable({
   entries,
   onUpdateEntry,
   onResetDayMeters,
+  onRemoveQualitySegment,
   selectedDate,
   onSubmitForApproval,
   onApproveSheet,
@@ -50,7 +53,7 @@ export function FloorEntryTable({
   onTableEditChange,
 }: FloorEntryTableProps) {
   const { user, isAdmin, isQualityController } = useAuth()
-  const { showConfirm, showSuccessSoon } = useAlertDialog()
+  const { showConfirm, showSuccessSoon, showError } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEditLocal, setTableEditLocal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -180,6 +183,35 @@ export function FloorEntryTable({
       },
       editor
     )
+  }
+
+  const handleRemovePart = (e: DailyLoomProductionEntry) => {
+    if (!onRemoveQualitySegment || !canEdit) return
+    const seg = segOf(e)
+    if (seg <= 1) return
+    const label = (e.qualityName || '').trim() || `Part ${seg}`
+    showConfirm({
+      title: `Part ${seg} delete?`,
+      message: `Loom #${e.loomNumber} se "${label}" (P${seg}) hata denge. Is part ke meters bhi delete ho jayenge.`,
+      type: 'confirm',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        const ok = onRemoveQualitySegment(e.loomNumber, seg)
+        if (ok) {
+          setFeedbackMsg({ type: 'success', text: `Loom #${e.loomNumber} Part ${seg} delete ho gaya.` })
+          showSuccessSoon({
+            title: `Part ${seg} deleted`,
+            message: `Loom #${e.loomNumber}: "${label}" hata diya.`,
+          })
+        } else {
+          showError({
+            title: 'Delete nahi hua',
+            message: 'Dobara try karo.',
+          })
+        }
+      },
+    })
   }
 
   const handleResetDay = () => {
@@ -383,6 +415,17 @@ export function FloorEntryTable({
                     P{segOf(e)}
                   </span>
                 ) : null}
+                {canEdit && onRemoveQualitySegment && segOf(e) > 1 ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger py-0 px-1 ms-1"
+                    style={{ fontSize: '0.65rem', lineHeight: 1.2 }}
+                    title={`Part ${segOf(e)} delete`}
+                    onClick={() => handleRemovePart(e)}
+                  >
+                    <i className="bi bi-trash" />
+                  </button>
+                ) : null}
               </div>
               <div className="small text-secondary text-truncate">
                 {e.qualityName || '—'} · {e.fabricType || '—'}
@@ -540,6 +583,17 @@ export function FloorEntryTable({
                       >
                         P{segOf(e)}
                       </span>
+                    ) : null}
+                    {canEdit && onRemoveQualitySegment && segOf(e) > 1 ? (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger py-0 px-1 ms-1"
+                        style={{ fontSize: '0.65rem', lineHeight: 1.2 }}
+                        title={`Part ${segOf(e)} delete`}
+                        onClick={() => handleRemovePart(e)}
+                      >
+                        <i className="bi bi-trash" />
+                      </button>
                     ) : null}
                   </td>
                   <td className="px-2 text-truncate">{e.qualityName || '—'}</td>

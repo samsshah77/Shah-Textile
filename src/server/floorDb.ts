@@ -847,6 +847,20 @@ export async function dbDeleteSheet(dateStr: string): Promise<void> {
   await prisma.floorDailySheet.deleteMany({ where: { date: dateStr } })
 }
 
+/** Delete a same-day Part 2+ sheet row. Part 1 cannot be deleted this way. */
+export async function dbDeleteLoomSegment(
+  dateStr: string,
+  loomNumber: number,
+  segmentIndex: number
+): Promise<boolean> {
+  const seg = Math.max(1, Math.floor(Number(segmentIndex) || 1))
+  if (seg <= 1) return false
+  const result = await prisma.floorDailySheet.deleteMany({
+    where: { date: dateStr, loomNumber, segmentIndex: seg },
+  })
+  return result.count > 0
+}
+
 
 export async function dbFloorIsEmpty(): Promise<boolean> {
   if (!prisma?.floorLoom) {

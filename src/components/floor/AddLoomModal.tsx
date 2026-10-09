@@ -83,7 +83,7 @@ export function AddLoomModal({
             <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
           </div>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="sara-add-beam-form">
             <div className="modal-body p-4">
               {error && (
                 <div className="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3">
@@ -94,7 +94,7 @@ export function AddLoomModal({
 
               <div className="row g-3">
                 <div className="col-12">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Machine Name
                   </label>
                   <input
@@ -112,7 +112,9 @@ export function AddLoomModal({
                 </div>
 
                 <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">Model</label>
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                    Model
+                  </label>
                   <select
                     className="form-select"
                     value={model}
@@ -127,7 +129,7 @@ export function AddLoomModal({
                 </div>
 
                 <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Manufacturing Year
                   </label>
                   <input
@@ -141,7 +143,7 @@ export function AddLoomModal({
                 </div>
 
                 <div className="col-12">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Shed / Department
                   </label>
                   <input
@@ -154,7 +156,7 @@ export function AddLoomModal({
                 </div>
 
                 <div className="col-6">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Default RPM
                   </label>
                   <input
@@ -168,7 +170,7 @@ export function AddLoomModal({
                 </div>
 
                 <div className="col-12">
-                  <label className="form-label small fw-semibold text-secondary mb-1">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Operational Status
                   </label>
                   <LoomStatusSelect value={status} onChange={setStatus} />

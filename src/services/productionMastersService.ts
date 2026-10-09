@@ -740,6 +740,9 @@ export function matchQualityByNameAndPick(
   })[0]
 }
 
+/** Max same-day quality parts per loom (Part 1 + Part 2). */
+export const MAX_SAME_DAY_QUALITY_SEGMENTS = 2
+
 /** Same-day dual quality segment (1 = primary). Legacy rows without the field = 1. */
 export function sheetSegmentIndex(entry?: { segmentIndex?: number | null } | null): number {
   const n = Number(entry?.segmentIndex)
@@ -2104,6 +2107,30 @@ async function persistLoomEntry(
   }
 }
 
+async function persistDeleteLoomSegment(
+  dateStr: string,
+  loomNumber: number,
+  segmentIndex: number
+): Promise<void> {
+  if (!isClient()) return
+  const seg = sheetSegmentIndex({ segmentIndex })
+  if (seg <= 1) return
+  try {
+    await fetch('/api/floor/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'deleteLoomSegment',
+        date: dateStr,
+        loomNumber,
+        segmentIndex: seg,
+      }),
+    })
+  } catch (err) {
+    console.error('[floor] delete loom segment failed', loomNumber, seg, err)
+  }
+}
+
 function clearLegacyFloorLocalStorage() {
   if (!isClient()) return
   const keys = [
@@ -2628,7 +2655,16 @@ class ProductionMastersService {
     // Same-day dual quality: keep primary meters, add next segment for the new quality.
     // Named different pose on the start day becomes a new segment so Resume / assign
     // from that date does not steal the first quality's row (e.g. Dum Dum + Bunny).
+    // Cap at Part 2 only (P1 + P2).
     const maxSeg = rows.reduce((m, r) => Math.max(m, sheetSegmentIndex(r)), 0)
+    if (maxSeg >= MAX_SAME_DAY_QUALITY_SEGMENTS) {
+      this.lastForwardFillSkips.push({
+        date: dateStr,
+        qualityName: primaryOwner.name,
+        loomNumber,
+      })
+      return
+    }
     const segmentIndex = Math.max(2, maxSeg + 1)
     void primaryMeters
     this.updateSheetEntry(dateStr, loomNumber, recipe, undefined, segmentIndex)
@@ -4382,6 +4418,13 @@ class ProductionMastersService {
   ): DailyLoomProductionEntry[] {
     const loom = this.getLooms().find((l) => l.loomNumber === loomNumber)
     if (!loom) return this.buildSheetForDate(dateStr, { skipPersist: true })
+    const before = this.buildSheetForDate(dateStr, { skipPersist: true })
+    const maxSeg = before
+      .filter((e) => e.loomNumber === loomNumber)
+      .reduce((m, r) => Math.max(m, sheetSegmentIndex(r)), 0)
+    if (maxSeg >= MAX_SAME_DAY_QUALITY_SEGMENTS) {
+      return before
+    }
     const catalog = this.getQualities()
     this.writeQualityPoseOnDay(
       dateStr,
@@ -4392,6 +4435,55 @@ class ProductionMastersService {
       { allowNewSegment: true }
     )
     return this.buildSheetForDate(dateStr, { skipPersist: true })
+  }
+
+  /** Remove same-day Part 2+ row (cannot delete Part 1). */
+  removeQualitySegmentOnDay(
+    dateStr: string,
+    loomNumber: number,
+    segmentIndex: number
+  ): DailyLoomProductionEntry[] {
+    const seg = sheetSegmentIndex({ segmentIndex })
+    const current = this.buildSheetForDate(dateStr, { skipPersist: true })
+    if (seg <= 1) return current
+
+    const removed = current.find(
+      (e) => e.loomNumber === loomNumber && sheetSegmentIndex(e) === seg
+    )
+    if (!removed) return current
+
+    const next = sortSheetEntries(
+      current.filter(
+        (e) => !(e.loomNumber === loomNumber && sheetSegmentIndex(e) === seg)
+      )
+    )
+    saveJson(this.sheetKey(dateStr), next)
+    void persistDeleteLoomSegment(dateStr, loomNumber, seg)
+
+    const catalog = this.getQualities()
+    const removedQ = qualityRunThatOwnsSheetEntry(
+      { ...removed, date: dateStr },
+      catalog,
+      dateStr
+    )
+    const loom = this.getLooms().find((l) => l.loomNumber === loomNumber)
+    if (loom && removedQ && loom.qualityId === removedQ.id) {
+      const p1 = next.find(
+        (e) => e.loomNumber === loomNumber && sheetSegmentIndex(e) === 1
+      )
+      const p1Q = p1
+        ? qualityRunThatOwnsSheetEntry({ ...p1, date: dateStr }, catalog, dateStr)
+        : null
+      if (p1Q) {
+        this.saveLooms(
+          this.getLooms().map((l) =>
+            l.loomNumber === loomNumber ? { ...l, qualityId: p1Q.id } : l
+          )
+        )
+      }
+    }
+
+    return next
   }
 
   /** Zero roller hours + Actual A/B for every loom on this day (after UI confirm). */

@@ -27,6 +27,7 @@ import {
   dbSaveYarnIssuances,
   dbSaveYarnMovements,
   dbUpdateLoomEntry,
+  dbDeleteLoomSegment,
   dbSetSheetApproval,
 } from '@/server/floorDb'
 import { buildFloorSeedPayload } from '@/server/floorSeed'
@@ -229,6 +230,37 @@ export async function POST(req: NextRequest) {
 
       await dbUpdateLoomEntry(dateStr, loomNumber, stampedEntry)
       return NextResponse.json({ ok: true, entry: stampedEntry })
+    }
+
+    if (action === 'deleteLoomSegment') {
+      const dateStr = String(body?.date || '')
+      const loomNumber = Number(body?.loomNumber)
+      const segmentIndex = Math.max(1, Math.floor(Number(body?.segmentIndex) || 1))
+      if (!dateStr || !loomNumber || segmentIndex <= 1) {
+        return NextResponse.json(
+          { ok: false, error: 'date, loomNumber, segmentIndex (>1) required' },
+          { status: 400 }
+        )
+      }
+
+      const user = await currentUser(req)
+      const currentSheet = await dbGetSheet(dateStr)
+      const isAlreadyApproved = currentSheet?.some((e) => e.approvalStatus === 'APPROVED')
+      const isAdmin = (user?.roleKey || '').toLowerCase() === 'admin'
+
+      if (isAlreadyApproved && !isAdmin) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              'This production sheet has been finalized & approved by Javed Sir. Changes are locked.',
+          },
+          { status: 403 }
+        )
+      }
+
+      const deleted = await dbDeleteLoomSegment(dateStr, loomNumber, segmentIndex)
+      return NextResponse.json({ ok: true, deleted })
     }
 
     if (action === 'patchQualityStatus') {

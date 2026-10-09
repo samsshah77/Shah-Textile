@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import {
+  LoomMaster,
+  QualityMaster,
   YarnMaster,
   YarnLoomIssuance,
   YarnMovementRecord,
@@ -74,6 +76,8 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 
 interface YarnStockTableProps {
   yarn: YarnMaster[]
+  looms?: LoomMaster[]
+  qualities?: QualityMaster[]
   onUpdate: (id: string, patch: Partial<YarnMaster>) => void
   onAdd: (
     yarn: Partial<YarnMaster>,
@@ -96,6 +100,8 @@ interface YarnStockTableProps {
 
 export function YarnStockTable({
   yarn,
+  looms = [],
+  qualities = [],
   onUpdate,
   onAdd,
   onIssue,
@@ -330,7 +336,7 @@ export function YarnStockTable({
       {/* 1. TOP SUMMARY CARDS (IN / OUT / BALANCE WITH ICONS) */}
       <div className="row g-3">
         <div className="col-12 col-md-4">
-          <div className="card border-0 border-start border-4 border-success h-100">
+          <div className="card h-100">
             <div className="card-body p-3 d-flex align-items-center justify-content-between">
               <div>
                 <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
@@ -359,7 +365,7 @@ export function YarnStockTable({
         </div>
 
         <div className="col-12 col-md-4">
-          <div className="card border-0 border-start border-4 border-danger h-100">
+          <div className="card h-100">
             <div className="card-body p-3 d-flex align-items-center justify-content-between">
               <div>
                 <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
@@ -388,7 +394,7 @@ export function YarnStockTable({
         </div>
 
         <div className="col-12 col-md-4">
-          <div className="card border-0 border-start border-4 border-primary h-100">
+          <div className="card h-100">
             <div className="card-body p-3 d-flex align-items-center justify-content-between">
               <div>
                 <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
@@ -1004,6 +1010,8 @@ export function YarnStockTable({
         <IssueYarnModal
           isOpen={true}
           yarn={issuingYarn}
+          looms={looms}
+          qualities={qualities}
           onClose={() => setIssuingYarn(null)}
           onIssue={(yarnId, loomNumber, issuedKg, pick, dateStr) => {
             if (onIssue) onIssue(yarnId, loomNumber, issuedKg, pick, dateStr)

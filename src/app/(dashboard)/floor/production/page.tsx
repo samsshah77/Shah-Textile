@@ -78,6 +78,7 @@ function ProductionWorkspaceContent() {
     setSelectedMonth,
     updateLoom,
     addQualitySegment,
+    removeQualitySegment,
     addLoom,
     deleteLoom,
     updateBeam,
@@ -351,6 +352,7 @@ function ProductionWorkspaceContent() {
             entries={entries}
             onUpdateEntry={updateEntry}
             onResetDayMeters={resetDayMeters}
+            onRemoveQualitySegment={removeQualitySegment}
             canEdit={canEditProduction}
             selectedDate={selectedDate}
             onSubmitForApproval={submitForApproval}
@@ -375,6 +377,7 @@ function ProductionWorkspaceContent() {
             sheetDate={selectedDate}
             onUpdate={updateLoom}
             onAddQualitySegment={addQualitySegment}
+            onRemoveQualitySegment={removeQualitySegment}
             onAdd={addLoom}
             onDelete={deleteLoom}
             readOnly={!canEditProduction}
@@ -413,6 +416,8 @@ function ProductionWorkspaceContent() {
         {currentTab === 'yarn' && (
           <YarnStockTable
             yarn={yarn}
+            looms={looms}
+            qualities={qualities}
             onUpdate={updateYarn}
             onAdd={(yarnData, arrival) => {
               if (arrival) {

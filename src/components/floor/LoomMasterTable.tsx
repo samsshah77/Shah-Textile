@@ -17,6 +17,7 @@ import {
   mergeSheetEntriesForDate,
   normalizeQualityStatus,
   sheetSegmentIndex,
+  MAX_SAME_DAY_QUALITY_SEGMENTS,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
 import { LoomCategory } from '@/types/loom'
@@ -55,8 +56,10 @@ interface LoomMasterTableProps {
     loomNumber: number,
     patch: Partial<LoomMaster>
   ) => void | { forwardFillSkipped?: { date: string; qualityName: string; loomNumber: number }[] }
-  /** Same-day dual quality: create part 2+ on sheetDate for this loom. */
+  /** Same-day dual quality: create Part 2 on sheetDate for this loom. */
   onAddQualitySegment?: (loomNumber: number, qualityId: string) => boolean
+  /** Remove same-day Part 2+ on sheetDate. */
+  onRemoveQualitySegment?: (loomNumber: number, segmentIndex: number) => boolean
   onAdd: (partial?: Partial<LoomMaster>) => void
   onDelete?: (loomNumber: number) => void
   readOnly?: boolean
@@ -74,6 +77,7 @@ export function LoomMasterTable({
   sheetDate = PRODUCTION_TODAY,
   onUpdate,
   onAddQualitySegment,
+  onRemoveQualitySegment,
   onAdd,
   onDelete,
   readOnly,
@@ -191,14 +195,20 @@ export function LoomMasterTable({
 
   const confirmPart2 = (loom: LoomMaster) => {
     if (!onAddQualitySegment || !part2QualityId) return
+    if (daySegmentCount(loom) >= MAX_SAME_DAY_QUALITY_SEGMENTS) {
+      showError({
+        title: 'Sirf Part 2 tak',
+        message: `Loom #${loom.loomNumber} pe pehle se Part 2 hai. Extra part delete karke phir try karo.`,
+      })
+      return
+    }
     const q = qualities.find((item) => item.id === part2QualityId)
     const label = q ? qualityDisplayName(q, qualities) : part2QualityId
-    const nextPart = Math.max(2, daySegmentCount(loom) + 1)
     showConfirm({
-      title: `Part ${nextPart} add karein?`,
-      message: `Loom #${loom.loomNumber} pe ${formatShortDate(sheetDate)} ko Part ${nextPart} → "${label}". Pehli quality / meters same rahengi.`,
+      title: 'Part 2 add karein?',
+      message: `Loom #${loom.loomNumber} pe ${formatShortDate(sheetDate)} ko Part 2 → "${label}". Pehli quality / meters same rahengi.`,
       type: 'confirm',
-      confirmText: `Part ${nextPart}`,
+      confirmText: 'Part 2',
       cancelText: 'Cancel',
       onConfirm: () => {
         const ok = onAddQualitySegment(loom.loomNumber, part2QualityId)
@@ -206,13 +216,40 @@ export function LoomMasterTable({
         setPart2QualityId('')
         if (ok) {
           showSuccessSoon({
-            title: `Part ${nextPart} added`,
-            message: `Loom #${loom.loomNumber}: "${label}" — Daily Entry / Sheet pe part ${nextPart} dikhegi.`,
+            title: 'Part 2 added',
+            message: `Loom #${loom.loomNumber}: "${label}" — Daily Entry / Sheet pe Part 2 dikhegi.`,
           })
         } else {
           showError({
             title: 'Part add nahi hua',
-            message: 'Dobara try karo, ya pehle loom pe Part 1 quality check karo.',
+            message:
+              'Sirf Part 2 tak allowed hai, ya pehle loom pe Part 1 quality check karo.',
+          })
+        }
+      },
+    })
+  }
+
+  const confirmRemovePart = (loom: LoomMaster, seg: number, qualityName?: string) => {
+    if (!onRemoveQualitySegment || seg <= 1) return
+    const label = (qualityName || '').trim() || `Part ${seg}`
+    showConfirm({
+      title: `Part ${seg} delete?`,
+      message: `Loom #${loom.loomNumber} pe ${formatShortDate(sheetDate)} se "${label}" (P${seg}) hata denge. Meters bhi delete ho jayenge.`,
+      type: 'confirm',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        const ok = onRemoveQualitySegment(loom.loomNumber, seg)
+        if (ok) {
+          showSuccessSoon({
+            title: `Part ${seg} deleted`,
+            message: `Loom #${loom.loomNumber}: "${label}" hata diya.`,
+          })
+        } else {
+          showError({
+            title: 'Delete nahi hua',
+            message: 'Dobara try karo.',
           })
         }
       },
@@ -222,9 +259,12 @@ export function LoomMasterTable({
   const loomNumberCell = (loom: LoomMaster) => {
     const segs = daySegmentCount(loom)
     const picking = part2ForLoom === loom.loomNumber
-    const canPart2 = Boolean(onAddQualitySegment) && editActive
+    const canPart2 =
+      Boolean(onAddQualitySegment) &&
+      editActive &&
+      segs < MAX_SAME_DAY_QUALITY_SEGMENTS
+    const canRemovePart = Boolean(onRemoveQualitySegment) && editActive
     const part2Opts = picking ? part2OptionsFor(loom) : []
-    const nextPart = Math.max(2, segs + 1)
 
     return (
       <div className="sara-loom-num-cell position-relative d-inline-flex align-items-center gap-1">
@@ -238,10 +278,29 @@ export function LoomMasterTable({
             {Array.from({ length: segs }, (_, i) => i + 1).map((seg) => (
               <span
                 key={`loom-${loom.loomNumber}-badge-p${seg}`}
-                className={`badge ${seg <= 1 ? 'text-bg-primary' : 'text-bg-warning'}`}
-                style={{ fontSize: '0.58rem' }}
+                className="d-inline-flex align-items-center"
+                style={{ gap: 1 }}
               >
-                P{seg}
+                <span
+                  className={`badge ${seg <= 1 ? 'text-bg-primary' : 'text-bg-warning'}`}
+                  style={{ fontSize: '0.58rem' }}
+                >
+                  P{seg}
+                </span>
+                {canRemovePart && seg > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-link text-danger p-0"
+                    style={{ fontSize: '0.65rem', lineHeight: 1 }}
+                    title={`Part ${seg} delete`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      confirmRemovePart(loom, seg)
+                    }}
+                  >
+                    <i className="bi bi-x-lg" />
+                  </button>
+                )}
               </span>
             ))}
           </span>
@@ -253,7 +312,7 @@ export function LoomMasterTable({
               picking ? 'btn-warning' : 'btn-outline-warning'
             }`}
             style={{ fontSize: '0.65rem', lineHeight: 1.2, opacity: picking ? 1 : undefined }}
-            title={`Part ${nextPart} — same day dusri quality`}
+            title="Part 2 — same day dusri quality"
             onClick={(e) => {
               e.stopPropagation()
               if (picking) {
@@ -264,7 +323,7 @@ export function LoomMasterTable({
               }
             }}
           >
-            +P{nextPart}
+            +P2
           </button>
         )}
         {picking && (
@@ -281,7 +340,7 @@ export function LoomMasterTable({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="small fw-semibold mb-1">
-              Loom #{loom.loomNumber} · Part {nextPart}
+              Loom #{loom.loomNumber} · Part 2
             </div>
             {part2Opts.length === 0 ? (
               <div className="small text-muted mb-2">
@@ -321,7 +380,7 @@ export function LoomMasterTable({
                 disabled={!part2QualityId || part2Opts.length === 0}
                 onClick={() => confirmPart2(loom)}
               >
-                Add Part {nextPart}
+                Add Part 2
               </button>
             </div>
           </div>
@@ -422,6 +481,7 @@ export function LoomMasterTable({
 
   const qualityPartsView = (loom: LoomMaster) => {
     const parts = dayQualityParts(loom)
+    const canRemovePart = Boolean(onRemoveQualitySegment) && editActive
     if (parts.length === 0) {
       return <span className="fw-semibold text-muted">—</span>
     }
@@ -443,7 +503,21 @@ export function LoomMasterTable({
             <span className={`badge ${partBadgeClass(p.seg)}`} style={{ fontSize: '0.58rem' }}>
               P{p.seg}
             </span>
-            <span className="text-truncate fw-semibold">{p.name}</span>
+            <span className="text-truncate fw-semibold flex-grow-1">{p.name}</span>
+            {canRemovePart && p.seg > 1 && (
+              <button
+                type="button"
+                className="btn btn-sm btn-link text-danger p-0"
+                style={{ fontSize: '0.7rem', lineHeight: 1 }}
+                title={`Part ${p.seg} delete`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  confirmRemovePart(loom, p.seg, p.name)
+                }}
+              >
+                <i className="bi bi-trash" />
+              </button>
+            )}
           </div>
         ))}
       </div>

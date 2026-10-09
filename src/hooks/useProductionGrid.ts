@@ -198,7 +198,7 @@ export function useProductionGrid() {
     }
   }, [selectedDate])
 
-  /** Same-day dual quality: add part 2+ on selected date, then set live master to that quality. */
+  /** Same-day dual quality: add part 2 on selected date, then set live master to that quality. */
   const addQualitySegment = useCallback(
     (loomNumber: number, qualityId: string): boolean => {
       const before = productionMastersService.buildSheetForDate(selectedDate, { skipPersist: true })
@@ -216,6 +216,25 @@ export function useProductionGrid() {
       setEntries(after)
       void productionMastersService.flushQualityStatus(qualityId)
       return afterSegs > beforeSegs || afterSegs >= 2
+    },
+    [selectedDate]
+  )
+
+  /** Remove same-day Part 2+ row on selected date. */
+  const removeQualitySegment = useCallback(
+    (loomNumber: number, segmentIndex: number): boolean => {
+      const before = productionMastersService.buildSheetForDate(selectedDate, { skipPersist: true })
+      const beforeSegs = before.filter((e) => e.loomNumber === loomNumber).length
+      const after = productionMastersService.removeQualitySegmentOnDay(
+        selectedDate,
+        loomNumber,
+        segmentIndex
+      )
+      const afterSegs = after.filter((e) => e.loomNumber === loomNumber).length
+      setLooms(productionMastersService.getLooms())
+      setQualities(productionMastersService.getQualities())
+      setEntries(after)
+      return afterSegs < beforeSegs
     },
     [selectedDate]
   )
@@ -524,6 +543,7 @@ export function useProductionGrid() {
     resetDayMeters,
     updateLoom,
     addQualitySegment,
+    removeQualitySegment,
     addLoom,
     deleteLoom,
     updateBeam,
