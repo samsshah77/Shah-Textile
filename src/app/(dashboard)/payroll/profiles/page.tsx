@@ -8,6 +8,8 @@ import {
   resolveResignedAt,
   inferEmployeeCategory,
   matchesHrCategoryFilter,
+  hydratePayrollFromDb,
+  formatPayrollMonthLabel,
 } from '@/services/payrollService'
 import { EmployeeProfile, EmployeeStatus } from '@/types/payroll'
 import { useAuth } from '@/context/AuthContext'
@@ -91,6 +93,7 @@ function EmployeeProfilesContent() {
   const initialTab = (searchParams.get('tab') || 'ALL').toUpperCase()
 
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
+  const [activeMonth, setActiveMonth] = useState<string>('2026-09')
   const [search, setSearch] = useState(initialSearch)
   const [filterCategory, setFilterCategory] = useState<string>(initialTab)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
@@ -168,10 +171,15 @@ function EmployeeProfilesContent() {
 
   const reload = () => {
     setEmployees(payrollService.getEmployees())
+    setActiveMonth(payrollService.getActiveSalariedMonth())
   }
 
   useEffect(() => {
-    reload()
+    const init = async () => {
+      await hydratePayrollFromDb()
+      reload()
+    }
+    void init()
     const handleSync = () => reload()
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
@@ -275,10 +283,11 @@ function EmployeeProfilesContent() {
     setDepartment(emp.department || 'Administration')
     setDutyHrs(emp.dutyHrs || (kind === 'salaried' ? 9 : 12))
     setShiftFromTo(emp.shiftFromTo || (kind === 'salaried' ? '9 to 6' : '8 to 8'))
-    setSalary(emp.salary || '')
+    const comp = payrollService.getEmployeeCompensationForMonth(emp, activeMonth)
+    setSalary(comp.salary || emp.salary || '')
     const isDaily = kind === 'weaver' || kind === 'helper'
     const resolvedDaily =
-      emp.ratePerDay30 || emp.ratePerDay31 || (isDaily && emp.salary ? Math.round(emp.salary / 30) : '')
+      comp.ratePerDay || emp.ratePerDay30 || emp.ratePerDay31 || (isDaily && comp.salary ? Math.round(comp.salary / 30) : '')
     setDailyWage(resolvedDaily || '')
     setDoj(emp.doj || '')
     setContractStatus(
@@ -295,7 +304,7 @@ function EmployeeProfilesContent() {
     setIsModalOpen(true)
   }
 
-  const handleSaveModal = (e: React.FormEvent) => {
+  const handleSaveModal = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name || !designation) return
 
@@ -357,9 +366,10 @@ function EmployeeProfilesContent() {
 
     setIsSaving(true)
     try {
+      const targetMonth = activeMonth || payrollService.getActiveSalariedMonth()
       if (editingEmployee) {
-        payrollService.updateEmployee(editingEmployee.id, payload)
-        setStatusNotice(`Profile for "${name}" updated successfully.`)
+        await payrollService.updateEmployeeAsync(editingEmployee.id, payload, targetMonth)
+        setStatusNotice(`Profile for "${name}" updated successfully for ${formatPayrollMonthLabel(targetMonth)}.`)
         setSuccessModal({
           isOpen: true,
           title: 'Profile & Salary Updated',
@@ -368,15 +378,15 @@ function EmployeeProfilesContent() {
           salary: numSalary,
           isDaily,
           dailyWage: isDaily ? numDailyWage : undefined,
-          message: `Salary (${isDaily ? `Daily Wage Rs. ${formatNumber(numDailyWage)}` : `Rs. ${formatNumber(numSalary)} / month`}) and profile details for "${name}" have been updated successfully and synced across all payroll sheets.`,
+          message: `Salary (${isDaily ? `Daily Wage Rs. ${formatNumber(numDailyWage)}` : `Rs. ${formatNumber(numSalary)} / month`}) updated for ${formatPayrollMonthLabel(targetMonth)}. Previous months (${formatPayrollMonthLabel('2026-08')}) historical records remain 100% preserved and untouched.`,
         })
       } else {
-        payrollService.addEmployee({
+        await payrollService.addEmployeeAsync({
           ...payload,
           doj: doj || new Date().toISOString().split('T')[0],
           remarks: remarks || undefined,
-        })
-        setStatusNotice(`Profile for "${name}" registered successfully.`)
+        }, undefined, targetMonth)
+        setStatusNotice(`Profile for "${name}" registered successfully for ${formatPayrollMonthLabel(targetMonth)}.`)
         setSuccessModal({
           isOpen: true,
           title: 'New Employee Registered',
@@ -385,7 +395,7 @@ function EmployeeProfilesContent() {
           salary: numSalary,
           isDaily,
           dailyWage: isDaily ? numDailyWage : undefined,
-          message: `New employee "${name}" has been registered into the Sara Textile master roster.`,
+          message: `New employee "${name}" registered into master roster for ${formatPayrollMonthLabel(targetMonth)}. Previous months (August) remain unaffected.`,
         })
       }
       reload()
@@ -396,9 +406,9 @@ function EmployeeProfilesContent() {
     }
   }
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (deleteConfirmState.employeeId) {
-      payrollService.deleteEmployee(deleteConfirmState.employeeId)
+      await payrollService.deleteEmployeeAsync(deleteConfirmState.employeeId)
       reload()
       setStatusNotice(`Employee "${deleteConfirmState.employeeName}" removed from records.`)
       setTimeout(() => setStatusNotice(null), 3000)
@@ -525,6 +535,44 @@ function EmployeeProfilesContent() {
         </div>
       )}
 
+
+      {/* Active Payroll Month Scope & Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-xs shadow-2xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 text-blue-900 dark:text-blue-200 font-semibold">
+            <Calendar className="h-4 w-4 text-[#0066cc] shrink-0" />
+            <span>Select Payroll Month:</span>
+          </div>
+          <select
+            value={activeMonth}
+            onChange={async (e) => {
+              const m = e.target.value
+              if (!canEditAccounts) return
+              await payrollService.setActiveSalariedMonthAsync(m)
+              setActiveMonth(m)
+              reload()
+              setStatusNotice(`Switched active payroll view to ${formatPayrollMonthLabel(m)}.`)
+              setTimeout(() => setStatusNotice(null), 3000)
+            }}
+            disabled={!canEditAccounts}
+            className="form-select form-select-sm font-bold text-[#0066cc] dark:text-sky-300 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-lg px-2.5 py-1 text-xs shadow-2xs cursor-pointer"
+            aria-label="Active Payroll Month"
+          >
+            {payrollService.listPayrollMonths().map((m) => (
+              <option key={m} value={m}>
+                {formatPayrollMonthLabel(m)} {m === '2026-08' ? '(Past Record - Locked)' : '(Active)'}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>
+            Viewing &amp; Editing for <strong>{formatPayrollMonthLabel(activeMonth)}</strong>. Past months (August) remain 100% locked &amp; preserved.
+          </span>
+        </div>
+      </div>
 
       {/* Search & Category Filter Controls */}
       <div className="erp-card p-3 flex flex-col md:flex-row gap-3 items-center justify-between">
@@ -759,26 +807,31 @@ function EmployeeProfilesContent() {
                     </div>
 
                     {/* Duty & Compensation */}
-                    <div className="mt-3 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block font-medium">
-                          {emp.contractStatus === 'Daily Wage' || cat === 'Weaver' || cat === 'Helper'
-                            ? 'Daily Wage Rate'
-                            : 'Monthly Base'}
-                        </span>
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                          {emp.contractStatus === 'Daily Wage' || cat === 'Weaver' || cat === 'Helper'
-                            ? formatCurrency(emp.ratePerDay30 || emp.ratePerDay31 || (emp.salary ? emp.salary / 30 : 0)) + ' /day'
-                            : formatCurrency(emp.salary)}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 block font-medium">Duty & Shift</span>
-                        <span className="font-medium text-slate-700 dark:text-slate-300">
-                          {emp.dutyHrs}h ({emp.shiftFromTo || '9 to 6'})
-                        </span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const comp = payrollService.getEmployeeCompensationForMonth(emp, activeMonth)
+                      return (
+                        <div className="mt-3 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-medium">
+                              {comp.isDaily
+                                ? 'Daily Wage Rate'
+                                : 'Monthly Base'}
+                            </span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                              {comp.isDaily
+                                ? formatCurrency(comp.ratePerDay || 0) + ' /day'
+                                : formatCurrency(comp.salary)}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-400 block font-medium">Duty & Shift</span>
+                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                              {comp.dutyHrs}h ({comp.shiftFromTo || '9 to 6'})
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Actions Footer */}
@@ -897,11 +950,16 @@ function EmployeeProfilesContent() {
                           {cat}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                        {isDaily
-                          ? formatCurrency(emp.ratePerDay30 || emp.ratePerDay31 || (emp.salary ? emp.salary / 30 : 0)) + '/d'
-                          : formatCurrency(emp.salary)}
-                      </td>
+                      {(() => {
+                        const comp = payrollService.getEmployeeCompensationForMonth(emp, activeMonth)
+                        return (
+                          <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {comp.isDaily
+                              ? formatCurrency(comp.ratePerDay || 0) + '/d'
+                              : formatCurrency(comp.salary)}
+                          </td>
+                        )
+                      })()}
                       <td className="py-2 px-3 text-center">
                         <span
                           className={cn(
@@ -1021,6 +1079,16 @@ function EmployeeProfilesContent() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Target Month Scope Notice */}
+            <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-blue-900 dark:text-blue-200">
+                Target Salary Month: <strong className="underline text-blue-800 dark:text-sky-300">{formatPayrollMonthLabel(activeMonth)}</strong>
+              </span>
+              <span className="text-[11px] text-blue-700 dark:text-blue-300">
+                Previous months (August 2026) historical records remain locked &amp; untouched.
+              </span>
             </div>
 
             <form onSubmit={handleSaveModal} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
@@ -1239,7 +1307,9 @@ function EmployeeProfilesContent() {
                 {(formKind === 'salaried' || formKind === 'contractor') && (
                   <div>
                     <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      {formKind === 'contractor' ? 'Contract Amount (PKR) *' : 'Monthly Base Salary (PKR) *'}
+                      {formKind === 'contractor'
+                        ? `Contract Amount for ${formatPayrollMonthLabel(activeMonth)} (PKR) *`
+                        : `Monthly Base Salary for ${formatPayrollMonthLabel(activeMonth)} (PKR) *`}
                     </label>
                     <input
                       type="number"
