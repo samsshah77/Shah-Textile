@@ -4513,13 +4513,13 @@ async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> 
   return persistPayrollKey(key, value)
 }
 
-/** Union salary-sheet rows by id so a local September isn't lost if DB still has only August. */
+/** Union salary-sheet rows by id so a local September isn't lost, while DB rows always take precedence over stale cache. */
 function mergeRowsById<T extends { id?: string }>(dbRows: T[], localRows: T[]): T[] {
   const map = new Map<string, T>()
-  for (const row of dbRows || []) {
+  for (const row of localRows || []) {
     if (row?.id) map.set(row.id, row)
   }
-  for (const row of localRows || []) {
+  for (const row of dbRows || []) {
     if (row?.id) map.set(row.id, row)
   }
   return [...map.values()]
@@ -6093,14 +6093,10 @@ class PayrollService {
   saveEmployees(list: EmployeeProfile[], triggerSync: boolean = true): void {
     if (!this.isClient()) return
 
-    const previous = this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
-    const removed = previous.filter((prev) => !list.some((emp) => emp.id === prev.id))
-
     writeStore(STORAGE_KEYS.EMPLOYEES, list)
-    removed.forEach((emp) => this.removeLinkedPayrollRows(emp))
 
     if (triggerSync) {
-      this.syncMasterRoster(list)
+      this.syncMasterRoster(list, this.getActiveSalariedMonth())
     } else {
       this.notifyDataChanged()
     }
@@ -6136,10 +6132,12 @@ class PayrollService {
 
     list.splice(insertIdx, 0, newEmp)
     const renumbered = list.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    this.saveEmployees(renumbered)
+    this.saveEmployees(renumbered, false)
     const saved = renumbered[insertIdx]
-    this.placeOnDailyWageSheets(saved)
-    this.placeOnSalariedSheets(saved)
+    const activeMonth = this.getActiveSalariedMonth()
+    this.placeOnDailyWageSheets(saved, activeMonth)
+    this.placeOnSalariedSheets(saved, activeMonth)
+    this.notifyDataChanged()
     return saved
   }
 
@@ -6191,9 +6189,8 @@ class PayrollService {
 
     list[idx] = merged
     this.profileAliases.set(id, current.name)
-    this.saveEmployees(list, true)
-    this.placeOnDailyWageSheets(merged)
-    this.placeOnSalariedSheets(merged)
+    writeStore(STORAGE_KEYS.EMPLOYEES, list)
+    this.syncSingleEmployeeAcrossSheets(current, merged)
     this.profileAliases.delete(id)
 
     if (nextStatus === 'Resigned') {
@@ -6201,6 +6198,149 @@ class PayrollService {
     }
     this.notifyDataChanged()
     return merged
+  }
+
+  syncSingleEmployeeAcrossSheets(oldEmp: EmployeeProfile, newEmp: EmployeeProfile): void {
+    const isEmpMatch = (name?: string, id?: string) => {
+      if (id && id === newEmp.id) return true
+      if (name && (namesMatch(name, oldEmp.name) || namesMatch(name, newEmp.name))) return true
+      return false
+    }
+
+    // 1. Staff Salary & OT
+    const staffList = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
+    let staffChanged = false
+    const updatedStaff = staffList.map((st) => {
+      if (!isEmpMatch(st.employeeName, st.employeeId)) return st
+      staffChanged = true
+      return this.calculateStaffSalaryRow(
+        {
+          ...st,
+          employeeId: newEmp.id,
+          employeeName: newEmp.name,
+          designation: newEmp.designation,
+          salary: newEmp.salary,
+        },
+        daysInCalendarMonth(st.month || '2026-09')
+      )
+    })
+    if (staffChanged) this.saveStaffSalaries(updatedStaff, false)
+
+    // 2. Contract Salaries (Employees, OverTime, Net Payment)
+    const contractList = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
+    let contractChanged = false
+    const updatedContract = contractList.map((ct) => {
+      if (!isEmpMatch(ct.employeeName, ct.employeeId)) return ct
+      contractChanged = true
+      return this.calculateContractSalaryRow(
+        {
+          ...ct,
+          employeeId: newEmp.id,
+          employeeName: newEmp.name,
+          designation: newEmp.designation,
+          salary: newEmp.salary,
+        },
+        daysInCalendarMonth(ct.month || '2026-09')
+      )
+    })
+    if (contractChanged) this.saveContractSalaries(updatedContract, false)
+
+    // 3. Efficiency
+    const efficiencyAll = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
+    let efficiencyChanged = false
+    const updatedEfficiency = efficiencyAll.map((eff) => {
+      if (!isEmpMatch(eff.name, eff.employeeId)) return eff
+      const linkedContract = updatedContract.find(
+        (ct) =>
+          isEmpMatch(ct.employeeName, ct.employeeId) &&
+          (ct.month || '2026-09') === (eff.month || '2026-09')
+      )
+      const salaryEarned = linkedContract ? linkedContract.basicSalary : eff.salaryEarned
+      const recalculated = this.calculateEfficiencyRow({
+        ...eff,
+        employeeId: newEmp.id,
+        name: newEmp.name,
+        designation: newEmp.designation,
+        salaryEarned,
+      })
+      efficiencyChanged = true
+      return recalculated
+    })
+    if (efficiencyChanged) {
+      this.saveEfficiencyIncentives(updatedEfficiency, false)
+      updatedEfficiency.forEach((eff) => {
+        if (isEmpMatch(eff.name, eff.employeeId)) {
+          this.syncEfficiencyToSalaries(eff.name, eff.month || '2026-09', eff.amount || 0, false)
+        }
+      })
+    }
+
+    // 4. Advances (identity only)
+    const advances = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
+    let advancesChanged = false
+    const updatedAdvances = advances.map((adv) => {
+      if (!isEmpMatch(adv.employeeName, adv.employeeId)) return adv
+      advancesChanged = true
+      return {
+        ...adv,
+        employeeId: newEmp.id,
+        employeeName: newEmp.name,
+        designation: newEmp.designation,
+      }
+    })
+    if (advancesChanged) this.saveAdvances(updatedAdvances, false)
+
+    // 5. Weavers (Daily Wage)
+    const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
+    let weaversChanged = false
+    const updatedWeavers = weavers.map((w) => {
+      if (!isEmpMatch(w.employeeName, w.employeeId)) return w
+      const pay = weaverSheetFields(newEmp)
+      weaversChanged = true
+      return this.calculateWeaverWageRow({
+        ...w,
+        employeeId: newEmp.id,
+        employeeName: newEmp.name,
+        designation: pay.designation,
+        wagePerDay: pay.wagePerDay,
+        holidayRate: pay.holidayRate,
+      })
+    })
+    if (weaversChanged) this.saveWeaversWages(updatedWeavers, false)
+
+    // 6. Helpers (Daily Wage)
+    const helpers = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
+    let helpersChanged = false
+    const updatedHelpers = helpers.map((h) => {
+      if (!isEmpMatch(h.employeeName, h.employeeId)) return h
+      const pay = helperSheetFields(newEmp)
+      helpersChanged = true
+      return this.calculateHelperWageRow({
+        ...h,
+        employeeId: newEmp.id,
+        employeeName: newEmp.name,
+        designation: pay.designation,
+        wagePerDay: pay.wagePerDay,
+        otRate: pay.otRate,
+      })
+    })
+    if (helpersChanged) this.saveHelpersWages(updatedHelpers, false)
+
+    // 7. Contractors
+    const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
+    let contractorsChanged = false
+    const updatedContractors = contractors.map((c) => {
+      if (!isEmpMatch(c.name, c.employeeId)) return c
+      contractorsChanged = true
+      return this.calculateContractorPaymentRow({
+        ...c,
+        employeeId: newEmp.id,
+        name: newEmp.name,
+        contractType: newEmp.designation || c.contractType,
+        contractualAmount: Number(newEmp.salary) > 0 ? Number(newEmp.salary) : c.contractualAmount,
+      })
+    })
+    if (contractorsChanged) this.saveContractorsPayments(updatedContractors, false)
   }
 
   rejoinEmployee(id: string, newDoj?: string): EmployeeProfile | null {
@@ -6277,21 +6417,30 @@ class PayrollService {
   }
 
   deleteEmployee(id: string): void {
-    let list = this.getEmployees()
-    list = list.filter((e) => e.id !== id)
-    list = list.map((e, i) => ({ ...e, serialNo: i + 1 }))
-    this.saveEmployees(list, true)
+    const list = this.getEmployees()
+    const target = list.find((e) => e.id === id)
+    const remaining = list.filter((e) => e.id !== id).map((e, i) => ({ ...e, serialNo: i + 1 }))
+    writeStore(STORAGE_KEYS.EMPLOYEES, remaining)
+    if (target) {
+      this.removeLinkedPayrollRows(target)
+    }
+    this.notifyDataChanged()
   }
 
   // Sheet 1 master → every sheet that already has the same person
-  syncEmployeeProfileUpdate(emp: EmployeeProfile, month: string = '2026-08'): void {
-    this.syncMasterRoster(this.getEmployees().map((row) => (row.id === emp.id ? emp : row)), month)
+  syncEmployeeProfileUpdate(emp: EmployeeProfile, month?: string): void {
+    this.syncMasterRoster(
+      this.getEmployees().map((row) => (row.id === emp.id ? emp : row)),
+      month || this.getActiveSalariedMonth()
+    )
   }
 
-  syncMasterRoster(roster?: EmployeeProfile[], month: string = '2026-08'): void {
+  syncMasterRoster(roster?: EmployeeProfile[], month?: string): void {
     // Client must not sync onto sheets until Postgres snapshot is loaded — otherwise
     // INITIAL August seed is written and September rows disappear after refresh.
     if (this.isClient() && !hydrated) return
+
+    const activeMonth = month || this.getActiveSalariedMonth()
 
     const employees = roster || this.getEmployees()
     const isLinked = (
@@ -6525,16 +6674,7 @@ class PayrollService {
     })
     if (contractorsChanged) this.saveContractorsPayments(updatedContractors, false)
 
-    // Add any Weaver / Helper from HR who is still missing on their wage sheet.
-    for (const emp of employees) {
-      if ((emp.status || 'Active') === 'Resigned') continue
-      const cat = inferEmployeeCategory(emp)
-      if (cat === 'Weaver' || cat === 'Helper') {
-        this.placeOnDailyWageSheets(emp, month)
-      }
-    }
-
-    this.notifyDataChanged(month)
+    this.notifyDataChanged(activeMonth)
   }
 
   private removeLinkedPayrollRows(emp: EmployeeProfile): void {
