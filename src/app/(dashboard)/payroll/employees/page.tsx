@@ -25,6 +25,8 @@ import {
   ChevronUp,
   ChevronDown,
   CalendarPlus,
+  Edit2,
+  ExternalLink,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
@@ -46,6 +48,7 @@ const DEFAULT_GW_WIDTHS: Record<string, number> = {
   doj: 95,
   contractStatus: 125,
   remarks: 140,
+  action: 65,
 }
 
 const COMMON_GW_DESIGNATIONS = [
@@ -346,10 +349,27 @@ export default function GeneralWagesPage() {
         <div className="flex items-center gap-2.5 p-3 rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 text-xs font-medium print:hidden">
           <Lock className="size-4 shrink-0 text-amber-600" />
           <span>
-            Edit Protection Active: Click <strong>&quot;Enable Editing&quot;</strong> in the top navigation bar to modify basic salaries, duty hours, shift timings, or move employee rows.
+            Edit Protection Active: Click <strong>&quot;Enable Editing&quot;</strong> in the top navigation bar to modify sheet remarks, custom columns, or move employee rows.
           </span>
         </div>
       )}
+
+      {/* Informative Banner about Profile-Managed Fields */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50/80 text-blue-900 text-xs print:hidden shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <IdCard className="size-4 shrink-0 text-[#0066cc]" />
+          <span>
+            <strong>HR Profile Managed:</strong> Employee Name, Designation, Duty Hours, Shift, Salary, aur D.O.J direct <strong>HR Profile Card</strong> se manage hotay hain taake sheet formulas aur past months disturb na hon. Edit karne ke liye row mein <strong>Edit</strong> button click karein.
+          </span>
+        </div>
+        <Link
+          href="/payroll/profiles"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#0066cc] text-white hover:bg-[#0052a3] text-xs font-medium shrink-0 transition-colors w-fit"
+        >
+          <ExternalLink className="size-3.5" />
+          <span>Open HR Profiles</span>
+        </Link>
+      </div>
 
       {saveSuccess && (
         <div className="flex items-center gap-2 rounded-md bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-900 print:hidden animate-in fade-in">
@@ -442,7 +462,12 @@ export default function GeneralWagesPage() {
                       {col.label}
                     </th>
                   ))}
-
+                  <th
+                    rowSpan={2}
+                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-center align-middle print:hidden"
+                  >
+                    Action
+                  </th>
                 </tr>
 
                 {/* Row 2: Sub Column Headers */}
@@ -623,78 +648,44 @@ export default function GeneralWagesPage() {
                         </div>
                       </td>
 
-                      {/* Name */}
-                      <td className="border-r border-slate-300 py-1 px-2 font-sans font-medium text-slate-900">
-                        {canEditAccounts ? (
-                          <input
-                            type="text"
-                            value={emp.name}
-                            onChange={(e) => handleCellChange(idx, 'name', e.target.value)}
-                            className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                          />
-                        ) : (
-                          emp.name
-                        )}
+                      {/* Name — Managed via HR Profile Card */}
+                      <td
+                        className="border-r border-slate-300 py-1.5 px-2 font-sans font-medium text-slate-900 bg-slate-50/40"
+                        title="Managed in HR Profile Card"
+                      >
+                        <span className="truncate block font-semibold">{emp.name}</span>
                       </td>
 
-                      {/* Designation */}
-                      <td className="border-r border-slate-300 py-1 px-2 font-sans text-slate-800">
-                        {canEditAccounts ? (
-                          <input
-                            type="text"
-                            value={emp.designation}
-                            onChange={(e) => handleCellChange(idx, 'designation', e.target.value)}
-                            className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                          />
-                        ) : (
-                          emp.designation
-                        )}
+                      {/* Designation — Managed via HR Profile Card */}
+                      <td
+                        className="border-r border-slate-300 py-1.5 px-2 font-sans text-slate-700 bg-slate-50/40"
+                        title="Managed in HR Profile Card"
+                      >
+                        <span className="truncate block">{emp.designation}</span>
                       </td>
 
-                      {/* Duty Hrs (Formatted like 9:00, 10:00, 12:00) */}
-                      <td className="border-r border-slate-300 py-1 px-1 text-center font-mono text-slate-700">
-                        {canEditAccounts ? (
-                          <input
-                            type="text"
-                            value={emp.dutyHrs ? `${emp.dutyHrs}:00` : '9:00'}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 9
-                              handleCellChange(idx, 'dutyHrs', val)
-                            }}
-                            className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                          />
-                        ) : (
-                          emp.dutyHrs ? `${emp.dutyHrs}:00` : '9:00'
-                        )}
+                      {/* Duty Hrs — Managed via HR Profile Card */}
+                      <td
+                        className="border-r border-slate-300 py-1.5 px-1 text-center font-mono text-slate-700 bg-slate-50/40"
+                        title="Managed in HR Profile Card"
+                      >
+                        {emp.dutyHrs ? `${emp.dutyHrs}:00` : '9:00'}
                       </td>
 
-                      {/* From to (e.g. 9 to 6, 8 to 8) */}
-                      <td className="border-r border-slate-300 py-1 px-1 text-center font-sans text-slate-700 whitespace-nowrap">
-                        {canEditAccounts ? (
-                          <input
-                            type="text"
-                            value={emp.shiftFromTo || '9 to 6'}
-                            onChange={(e) => handleCellChange(idx, 'shiftFromTo', e.target.value)}
-                            className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                          />
-                        ) : (
-                          emp.shiftFromTo || '9 to 6'
-                        )}
+                      {/* From to — Managed via HR Profile Card */}
+                      <td
+                        className="border-r border-slate-300 py-1.5 px-1 text-center font-sans text-slate-700 whitespace-nowrap bg-slate-50/40"
+                        title="Managed in HR Profile Card"
+                      >
+                        {emp.shiftFromTo || '9 to 6'}
                       </td>
 
-                      {/* Salary */}
-                      <td className="border-r border-slate-300 py-1 px-2 text-right font-mono font-medium text-slate-900">
-                        {canEditAccounts ? (
-                          <NumericCellInput
-                            value={emp.salary || 0}
-                            navRow={idx}
-                            navCol={1}
-                            onValueChange={(v) => handleCellChange(idx, 'salary', v)}
-                            className="w-full text-right bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                          />
-                        ) : (
-                          formatNumber(emp.salary)
-                        )}
+                      {/* Salary — Managed via HR Profile Card */}
+                      <td
+                        className="border-r border-slate-300 py-1.5 px-2 text-right font-mono font-bold text-slate-900 bg-slate-50/40"
+                        title="Managed in HR Profile Card"
+                      >
+                        {formatNumber(emp.salary)}
                       </td>
 
                       {/* 31 days - Per day */}
@@ -731,18 +722,12 @@ export default function GeneralWagesPage() {
                         —
                       </td>
 
-                      {/* D.O.J */}
-                      <td className="border-r border-slate-300 py-1 px-2 text-center font-sans text-[11px] text-slate-700 whitespace-nowrap">
-                        {canEditAccounts ? (
-                          <input
-                            type="text"
-                            value={emp.doj || ''}
-                            onChange={(e) => handleCellChange(idx, 'doj', e.target.value)}
-                            className="w-full text-center bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
-                          />
-                        ) : (
-                          emp.doj || '—'
-                        )}
+                      {/* D.O.J — Managed via HR Profile Card */}
+                      <td
+                        className="border-r border-slate-300 py-1.5 px-2 text-center font-sans text-[11px] text-slate-700 whitespace-nowrap bg-slate-50/40"
+                        title="Managed in HR Profile Card"
+                      >
+                        {emp.doj || '—'}
                       </td>
 
                       {/* Contract Status (Read-only in General Wages) */}
@@ -779,6 +764,18 @@ export default function GeneralWagesPage() {
                           )}
                         </td>
                       ))}
+
+                      {/* Action: Quick Link to HR Profile Card for editing */}
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-center print:hidden bg-slate-50/20">
+                        <Link
+                          href={`/payroll/profiles?search=${encodeURIComponent(emp.name)}`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-[#0066cc] hover:bg-blue-100 hover:text-blue-800 border border-blue-200 transition-colors"
+                          title={`Edit ${emp.name} in HR Profiles`}
+                        >
+                          <Edit2 className="size-3" />
+                          <span>Edit</span>
+                        </Link>
+                      </td>
 
                     </tr>
                   )
@@ -823,6 +820,7 @@ export default function GeneralWagesPage() {
                   >
                     Sara Textile Mill Roster
                   </td>
+                  <td className="border-l border-slate-400 py-2 px-1 print:hidden" />
                 </tr>
               </tfoot>
             </table>

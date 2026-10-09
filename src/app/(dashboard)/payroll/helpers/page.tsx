@@ -437,19 +437,15 @@ function HelpersPayrollContent() {
                     {h.designation}
                   </td>
 
-                  {/* Wage Per Day (Editable) */}
+                  {/* Wage Per Day — From HR Profile Card */}
                   <td
                     style={{ width: `${widths.wagePerDay}px`, minWidth: `${widths.wagePerDay}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right bg-slate-50/50"
+                    title="Set in HR Profile Card"
                   >
-                    <NumericCellInput
-                      value={h.wagePerDay || 0}
-                      disabled={!canEditAccounts}
-                      navRow={idx}
-                      navCol={0}
-                      onValueChange={(v) => handleCellChange(idx, 'wagePerDay', v)}
-                      className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
-                    />
+                    <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      {formatNumber(h.wagePerDay || 0, 0)}
+                    </span>
                   </td>
 
                   {/* Attendance Days (Editable) */}

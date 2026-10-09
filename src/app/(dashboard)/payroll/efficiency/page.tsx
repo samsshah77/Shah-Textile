@@ -447,19 +447,15 @@ export default function TechnicalEfficiencyPage() {
                     />
                   </td>
 
-                  {/* Salary Earned (Editable) */}
+                  {/* Salary Earned — Synced from Contract/Staff Profile */}
                   <td
                     style={{ width: `${widths.salaryEarned}px`, minWidth: `${widths.salaryEarned}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right bg-slate-50/50"
+                    title="Synced from Contract / Staff Sheet"
                   >
-                    <NumericCellInput
-                      value={e.salaryEarned || 0}
-                      disabled={!canEditAccounts}
-                      navRow={idx}
-                      navCol={1}
-                      onValueChange={(v) => handleCellChange(idx, 'salaryEarned', v)}
-                      className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
-                    />
+                    <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      {formatNumber(e.salaryEarned || 0, 0)}
+                    </span>
                   </td>
 
                   {/* Calculated Avail % */}

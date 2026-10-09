@@ -623,19 +623,15 @@ function WeaversPayrollContent() {
                       <span className="font-sans text-xs text-slate-500">{w.designation}</span>
                     </td>
 
-                    {/* Wage Per Day Input */}
+                    {/* Wage Per Day — From HR Profile Card */}
                     <td
                       style={{ width: `${wageWidths.wagePerDay}px`, minWidth: `${wageWidths.wagePerDay}px` }}
-                      className="border-r border-slate-100 py-1 px-1"
+                      className="border-r border-slate-100 py-1.5 px-2 text-right bg-slate-50/50"
+                      title="Set in HR Profile Card"
                     >
-                      <NumericCellInput
-                        value={w.wagePerDay || 0}
-                        disabled={!canEditAccounts}
-                        navRow={idx}
-                        navCol={0}
-                        onValueChange={(v) => handleCellChange(idx, 'wagePerDay', v)}
-                        className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
-                      />
+                      <span className="font-mono text-xs font-semibold text-slate-800">
+                        {formatNumber(w.wagePerDay || 0, 0)}
+                      </span>
                     </td>
 
                     {/* Attendance Days */}
