@@ -499,17 +499,17 @@ const INITIAL_STAFF_SALARIES: StaffSalaryRecord[] = [
     "employeeName": "Muhammad Javed",
     "designation": "Incharge",
     "salary": 80000,
-    "attendanceDays": 0,
+    "attendanceDays": 30,
     "ratePerDay": 2666.67,
-    "basicSalary": 0,
+    "basicSalary": 80000,
     "perHrRate": 333.33,
-    "otHours": 0,
-    "otAmount": 0,
-    "grossAmount": 0,
+    "otHours": 60,
+    "otAmount": 20000,
+    "grossAmount": 100000,
     "lessAdvance": 20000,
-    "chequeAmount": -20000,
-    "synopsisAmount": -20000,
-    "netCashAmount": 0,
+    "chequeAmount": 60000,
+    "synopsisAmount": 80000,
+    "netCashAmount": 20000,
     "month": "2026-09"
   },
   {
@@ -519,17 +519,17 @@ const INITIAL_STAFF_SALARIES: StaffSalaryRecord[] = [
     "employeeName": "Liaquat Ali",
     "designation": "Supervisor",
     "salary": 40000,
-    "attendanceDays": 0,
+    "attendanceDays": 30,
     "ratePerDay": 1333.33,
-    "basicSalary": 0,
+    "basicSalary": 40000,
     "perHrRate": 166.67,
-    "otHours": 0,
-    "otAmount": 0,
-    "grossAmount": 0,
+    "otHours": 176,
+    "otAmount": 29333,
+    "grossAmount": 69333,
     "lessAdvance": 10000,
-    "chequeAmount": -10000,
-    "synopsisAmount": -10000,
-    "netCashAmount": 0,
+    "chequeAmount": 0,
+    "synopsisAmount": 59333,
+    "netCashAmount": 59333,
     "month": "2026-09"
   }
 ]
@@ -4735,11 +4735,15 @@ class PayrollService {
     const lessAdvance = Number(row.lessAdvance) || 0
     const chequeAmount = Number(row.chequeAmount) || 0
 
+    const actualDays =
+      row.month && daysInMonth === 31 ? daysInCalendarMonth(row.month) : daysInMonth
+
     // Excel: Rate Per Day = Salary / days; Basic = Attn × Rate Per Day
-    const ratePerDay = Math.round((salary / daysInMonth) * 100) / 100
+    const ratePerDay = Math.round((salary / actualDays) * 100) / 100
     const basicSalary = Math.round(attendance * ratePerDay)
     const perHrRate = Number((salary / 240).toFixed(2))
-    const otAmount = Math.round(otHours * perHrRate)
+    // Excel exact formula: OT Hrs * (Salary / 240) (e.g. 176 * 40000 / 240 = 29333)
+    const otAmount = Math.round(otHours * (salary / 240))
     const grossAmount = basicSalary + otAmount
     const synopsisAmount = grossAmount - lessAdvance
     const netCashAmount = Math.max(0, synopsisAmount - chequeAmount)
