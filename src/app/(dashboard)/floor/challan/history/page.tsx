@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 export default function ChallanHistoryRegisterPage() {
   const [challans, setChallans] = useState<DeliveryChallan[]>([])
@@ -106,7 +107,7 @@ export default function ChallanHistoryRegisterPage() {
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-          <div className="overflow-x-auto">
+          <TablePanScroll>
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
@@ -166,7 +167,7 @@ export default function ChallanHistoryRegisterPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </TablePanScroll>
         </div>
       </div>
     </div>

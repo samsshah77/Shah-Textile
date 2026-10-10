@@ -138,6 +138,7 @@ export default function PettyCashPage() {
       <div className="print:hidden">
         <PageHeader
           title="Petty Cash Statement"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Accounts', href: '/accounts/petty-cash' },
@@ -145,27 +146,42 @@ export default function PettyCashPage() {
           ]}
           actions={
             <>
-              <button
-                type="button"
-                onClick={handleReset}
-                title="Reset to Excel authentic data"
-                className="erp-btn-secondary"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button type="button" onClick={exportCSV} className="erp-btn-secondary">
-                <Download className="size-3.5 text-emerald-600" />
-                <span>Export CSV</span>
-              </button>
-              <button type="button" onClick={handlePrint} className="erp-btn-primary">
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
-              <Link href="/accounts/petty-cash/monthly" className="erp-btn-secondary">
-                <FileSpreadsheet className="size-3.5 text-[#0066cc]" />
-                <span>Monthly View</span>
-              </Link>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <Link
+                  href="/accounts/petty-cash/monthly"
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <FileSpreadsheet className="size-3.5" />
+                  <span>Monthly</span>
+                </Link>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  title="Reset to Excel authentic data"
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={exportCSV}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Download className="size-3.5" />
+                  <span>Export</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+              </div>
             </>
           }
         />

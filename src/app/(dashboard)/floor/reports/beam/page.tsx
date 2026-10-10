@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { SimpleBarChart, SimpleLineChart } from '@/components/shared/MiniCharts'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import {
   hydrateFloorFromDb,
   preloadAllFloorSheets,
@@ -249,10 +250,7 @@ function BeamTrackContent() {
                 Open Daily Entry
               </Link>
             </div>
-            <div
-              className="card-body p-0"
-              style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-            >
+            <TablePanScroll className="card-body p-0">
               <table className="table table-sm table-bordered mb-0 align-middle text-nowrap">
                 <thead className="table-light">
                   <tr>
@@ -307,7 +305,7 @@ function BeamTrackContent() {
                   </tfoot>
                 )}
               </table>
-            </div>
+            </TablePanScroll>
           </div>
         </>
       )}

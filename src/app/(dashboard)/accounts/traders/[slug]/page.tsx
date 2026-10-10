@@ -236,6 +236,7 @@ export default function TraderSpecificLedgerPage() {
       <div className="print:hidden">
         <PageHeader
           title={trader.partyName}
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Accounts', href: '/accounts/traders' },
@@ -244,49 +245,50 @@ export default function TraderSpecificLedgerPage() {
           ]}
           actions={
             <>
-              <Link
-                href="/accounts/traders"
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-              >
-                <ArrowLeft className="size-4" />
-                <span>All Traders</span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => setIsEditing(!isEditing)}
-                className={cn(
-                  'btn btn-sm d-inline-flex align-items-center gap-1',
-                  isEditing ? 'btn-warning' : 'btn-outline-secondary'
-                )}
-              >
-                {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
-                <span>{isEditing ? 'View Mode' : 'Edit'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-                title="Reset to official Excel default records"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className="btn btn-sm btn-success d-inline-flex align-items-center gap-1"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
-              >
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <Link href="/accounts/traders" className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800">
+                  <ArrowLeft className="size-3.5" />
+                  <span>All Traders</span>
+                </Link>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className={cn(
+                    'erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800',
+                    isEditing && '!border-amber-400 !bg-amber-50 !text-amber-900'
+                  )}
+                >
+                  {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
+                  <span>{isEditing ? 'View' : 'Edit'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                  title="Reset to official Excel default records"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="erp-btn-success text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+              </div>
             </>
           }
         />

@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/shared/MiniCharts'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import {
   hydrateFloorFromDb,
   preloadMonthSheets,
@@ -153,6 +154,7 @@ function ProductionTotalTrackingContent() {
   const [month, setMonth] = useState(() => initialTrackMonth(qualityFromParam))
   const [matrix, setMatrix] = useState<MatrixState>(EMPTY_MATRIX)
   const [shiftBMatrix, setShiftBMatrix] = useState<MatrixState>(EMPTY_MATRIX)
+  const [shiftChartMode, setShiftChartMode] = useState<'COMBINED' | 'SHIFT_A' | 'SHIFT_B'>('COMBINED')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -258,6 +260,19 @@ function ProductionTotalTrackingContent() {
         matrix.days.map((d) => ({ label: String(d.day), value: 0 }))
       )
     }
+    if (view === 'shifts') {
+      return matrix.days.map((d, i) => {
+        const a = d.totalMeters || 0
+        const b = shiftBMatrix.days[i]?.totalMeters || 0
+        const value =
+          shiftChartMode === 'SHIFT_A'
+            ? a
+            : shiftChartMode === 'SHIFT_B'
+              ? b
+              : a + b
+        return { label: String(d.day), value }
+      })
+    }
     return (
       qualityDaySeries ??
       matrix.days.map((d) => ({
@@ -265,7 +280,7 @@ function ProductionTotalTrackingContent() {
         value: d.totalMeters || 0,
       }))
     )
-  }, [matrix.days, qualityDaySeries, isQualityDeepLink])
+  }, [matrix.days, shiftBMatrix.days, qualityDaySeries, isQualityDeepLink, view, shiftChartMode])
 
   const qualityLoomSet = useMemo(() => {
     if (isQualityDeepLink && !qualityFocus?.master) return new Set<number>()
@@ -288,7 +303,29 @@ function ProductionTotalTrackingContent() {
   }, [matrix.days, qualityFocus, qualityCatalog, isQualityDeepLink])
 
   const loomSeries = useMemo(() => {
-    const entries = Object.entries(matrix.loomTotals || {}).map(([loom, meters]) => ({
+    const loomMap: Record<number, number> = {}
+    if (view === 'shifts') {
+      const allLooms = new Set([
+        ...Object.keys(matrix.loomTotals || {}).map(Number),
+        ...Object.keys(shiftBMatrix.loomTotals || {}).map(Number),
+      ])
+      allLooms.forEach((loom) => {
+        const a = Number(matrix.loomTotals?.[loom]) || 0
+        const b = Number(shiftBMatrix.loomTotals?.[loom]) || 0
+        loomMap[loom] =
+          shiftChartMode === 'SHIFT_A'
+            ? a
+            : shiftChartMode === 'SHIFT_B'
+              ? b
+              : a + b
+      })
+    } else {
+      Object.entries(matrix.loomTotals || {}).forEach(([loom, meters]) => {
+        loomMap[Number(loom)] = Number(meters) || 0
+      })
+    }
+
+    const entries = Object.entries(loomMap).map(([loom, meters]) => ({
       label: `Loom ${loom}`,
       value: Number(meters) || 0,
       loom: Number(loom),
@@ -298,7 +335,7 @@ function ProductionTotalTrackingContent() {
       : entries
     filtered.sort((a, b) => b.value - a.value)
     return filtered.map(({ label, value }) => ({ label, value }))
-  }, [matrix.loomTotals, qualityLoomSet])
+  }, [matrix.loomTotals, shiftBMatrix.loomTotals, qualityLoomSet, view, shiftChartMode])
 
   /** By model: meters on Production tracking, sheet-weighted efficiency on Efficiency tracking. */
   const modelBars = useMemo(() => {
@@ -339,6 +376,32 @@ function ProductionTotalTrackingContent() {
       }))
     }
 
+    if (view === 'shifts') {
+      const totals: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+      const allLooms = new Set([
+        ...Object.keys(matrix.loomTotals || {}).map(Number),
+        ...Object.keys(shiftBMatrix.loomTotals || {}).map(Number),
+      ])
+      allLooms.forEach((loom) => {
+        if (qualityLoomSet && !qualityLoomSet.has(loom)) return
+        const cat = catOf(loom)
+        const a = Number(matrix.loomTotals?.[loom]) || 0
+        const b = Number(shiftBMatrix.loomTotals?.[loom]) || 0
+        const val =
+          shiftChartMode === 'SHIFT_A'
+            ? a
+            : shiftChartMode === 'SHIFT_B'
+              ? b
+              : a + b
+        totals[cat] = (totals[cat] || 0) + val
+      })
+      return (['G6200', 'G6300', 'PU'] as const).map((label) => ({
+        label,
+        value: totals[label] || 0,
+        color: colors[label],
+      }))
+    }
+
     const metersMatrix =
       view === 'meters'
         ? matrix
@@ -359,10 +422,19 @@ function ProductionTotalTrackingContent() {
       value: totals[label] || 0,
       color: colors[label],
     }))
-  }, [matrix, month, view, qualityLoomSet, loading, qualityId, qualityNameParam, qualityFromParam])
+  }, [matrix, shiftBMatrix, month, view, shiftChartMode, qualityLoomSet, loading, qualityId, qualityNameParam, qualityFromParam])
 
   const modelBarSuffix = view === 'efficiency' ? '%' : ' m'
-  const modelBarTitle = view === 'efficiency' ? 'By model — Efficiency' : 'By model — Production'
+  const modelBarTitle =
+    view === 'efficiency'
+      ? 'By model — Efficiency'
+      : view === 'shifts'
+        ? shiftChartMode === 'SHIFT_A'
+          ? 'By model — Shift A'
+          : shiftChartMode === 'SHIFT_B'
+            ? 'By model — Shift B'
+            : 'By model — Production (A+B)'
+        : 'By model — Production'
 
   const loomNumbers = useMemo(() => {
     const set = new Set<number>()
@@ -377,16 +449,18 @@ function ProductionTotalTrackingContent() {
     return list
   }, [matrix, qualityLoomSet])
 
-  /** Calendar fortnights: 1–15 vs 16–end. Never split by “half of days entered so far”
-   * (that wrongly put days 4–5 into 2nd FN early in the month). */
-  const FN1_LAST_DAY = 15
+  /** Mill calendar fortnights:
+   * 1st Fortnight = Days 2 to 16 (15 days: 2nd through 16th).
+   * 2nd Fortnight = Days 17 to end of month, plus Day 1 of the month (16 se 1 cycle: 15/16 days).
+   * Sum of 1st FN + 2nd FN perfectly equals Monthly Total without overlap or omission.
+   */
   const dayNum = (d: { day?: number | string }, fallbackIndex: number) => {
     const n = Number(d.day)
     return Number.isFinite(n) && n > 0 ? n : fallbackIndex + 1
   }
   const inFortnight = (d: { day?: number | string }, index: number, half: 1 | 2) => {
     const n = dayNum(d, index)
-    return half === 1 ? n <= FN1_LAST_DAY : n > FN1_LAST_DAY
+    return half === 1 ? (n >= 2 && n <= 16) : (n === 1 || n > 16)
   }
   const weightedFortnight = (half: 1 | 2, source: MatrixState = matrix) => {
     let actual = 0
@@ -398,22 +472,36 @@ function ProductionTotalTrackingContent() {
     })
     return target > 0 ? Math.round((actual / target) * 100) : 0
   }
-  const sumFortnightMeters = (half: 1 | 2) => {
+  const sumFortnightMeters = (half: 1 | 2, source: MatrixState = matrix) => {
     if (isQualityDeepLink) {
-      return daySeries.reduce((s, d) => {
-        const n = Number(d.label)
-        if (!Number.isFinite(n)) return s
-        if (half === 1 ? n > FN1_LAST_DAY : n <= FN1_LAST_DAY) return s
+      return daySeries.reduce((s, d, i) => {
+        if (!inFortnight({ day: d.label }, i, half)) return s
         return s + (d.value || 0)
       }, 0)
     }
-    return matrix.days.reduce((s, d, i) => {
+    return source.days.reduce((s, d, i) => {
       if (!inFortnight(d, i, half)) return s
       return s + (d.totalMeters || 0)
     }, 0)
   }
-  const fortnight1 = view === 'efficiency' ? weightedFortnight(1) : sumFortnightMeters(1)
-  const fortnight2 = view === 'efficiency' ? weightedFortnight(2) : sumFortnightMeters(2)
+
+  const shiftAFortnight1 = sumFortnightMeters(1, matrix)
+  const shiftAFortnight2 = sumFortnightMeters(2, matrix)
+  const shiftBFortnight1 = sumFortnightMeters(1, shiftBMatrix)
+  const shiftBFortnight2 = sumFortnightMeters(2, shiftBMatrix)
+
+  const fortnight1 =
+    view === 'efficiency'
+      ? weightedFortnight(1)
+      : view === 'shifts'
+        ? shiftAFortnight1 + shiftBFortnight1
+        : sumFortnightMeters(1, matrix)
+  const fortnight2 =
+    view === 'efficiency'
+      ? weightedFortnight(2)
+      : view === 'shifts'
+        ? shiftAFortnight2 + shiftBFortnight2
+        : sumFortnightMeters(2, matrix)
 
   const loomFortnight = (loom: number, half: 1 | 2, source: MatrixState = matrix) => {
     if (view === 'efficiency') {
@@ -571,7 +659,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title="1st Fortnight"
             value={formatTotal(fortnight1)}
-            subValue="Days 1–15"
+            subValue={view === 'shifts' ? 'Days 2–16 · Shift A + B' : 'Days 2–16'}
             biIcon="bi-1-circle"
             colorVariant="info"
           />
@@ -580,7 +668,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title="2nd Fortnight"
             value={formatTotal(fortnight2)}
-            subValue="Days 16+"
+            subValue={view === 'shifts' ? 'Days 16–1 · Shift A + B' : 'Days 16–1'}
             biIcon="bi-2-circle"
             colorVariant="warning"
           />
@@ -590,10 +678,14 @@ function ProductionTotalTrackingContent() {
       <div className="row g-3 mb-3">
         <div className="col-lg-7">
           <div className="card h-100">
-            <div className="card-header">
+            <div className="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
               <h3 className="card-title mb-0">
                 {view === 'shifts'
-                  ? 'Shift A daily meters'
+                  ? shiftChartMode === 'SHIFT_A'
+                    ? 'Shift A daily meters (m)'
+                    : shiftChartMode === 'SHIFT_B'
+                      ? 'Shift B daily meters (m)'
+                      : 'Daily mill output — Shift A + B (m)'
                   : view === 'efficiency'
                     ? 'Daily efficiency (%)'
                     : view === 'active'
@@ -602,11 +694,60 @@ function ProductionTotalTrackingContent() {
                         ? `Daily output — ${qualityFocus.name} (m)`
                         : 'Daily mill output (m)'}
               </h3>
+              {view === 'shifts' && (
+                <div className="btn-group btn-group-sm" role="group" aria-label="Shift graph selector">
+                  <button
+                    type="button"
+                    className={`btn ${shiftChartMode === 'COMBINED' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setShiftChartMode('COMBINED')}
+                  >
+                    Combined (A+B)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${shiftChartMode === 'SHIFT_A' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setShiftChartMode('SHIFT_A')}
+                  >
+                    Shift A
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${shiftChartMode === 'SHIFT_B' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setShiftChartMode('SHIFT_B')}
+                  >
+                    Shift B
+                  </button>
+                </div>
+              )}
             </div>
             <div className="card-body">
-              <SimpleBarChart data={daySeries} height={180} />
+              <SimpleBarChart
+                data={daySeries}
+                height={180}
+                barColor={
+                  view === 'shifts'
+                    ? shiftChartMode === 'SHIFT_A'
+                      ? '#0d6efd'
+                      : shiftChartMode === 'SHIFT_B'
+                        ? '#198754'
+                        : '#0284c7'
+                    : '#0d6efd'
+                }
+              />
               <div className="mt-3">
-                <SimpleLineChart data={daySeries} height={120} stroke="#0d6efd" />
+                <SimpleLineChart
+                  data={daySeries}
+                  height={120}
+                  stroke={
+                    view === 'shifts'
+                      ? shiftChartMode === 'SHIFT_A'
+                        ? '#0d6efd'
+                        : shiftChartMode === 'SHIFT_B'
+                          ? '#198754'
+                          : '#0284c7'
+                      : '#0d6efd'
+                  }
+                />
               </div>
             </div>
           </div>
@@ -623,7 +764,15 @@ function ProductionTotalTrackingContent() {
           <div className="card">
             <div className="card-header">
               <h3 className="card-title mb-0">
-                {qualityFocus ? 'Looms — this quality' : 'Top looms this month'}
+                {qualityFocus
+                  ? 'Looms — this quality'
+                  : view === 'shifts'
+                    ? shiftChartMode === 'SHIFT_A'
+                      ? 'Top looms — Shift A'
+                      : shiftChartMode === 'SHIFT_B'
+                        ? 'Top looms — Shift B'
+                        : 'Top looms this month (A+B)'
+                    : 'Top looms this month'}
               </h3>
             </div>
             <div className="card-body">
@@ -652,7 +801,7 @@ function ProductionTotalTrackingContent() {
             Open Production Sheet
           </Link>
         </div>
-        <div className="card-body p-0" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <TablePanScroll className="card-body p-0">
           <table className="table table-sm table-bordered mb-0 align-middle text-nowrap">
             <thead className="table-light">
               <tr>
@@ -662,8 +811,8 @@ function ProductionTotalTrackingContent() {
                     {d.day}
                   </th>
                 ))}
-                <th className="px-2 text-end">1st FN</th>
-                <th className="px-2 text-end">2nd FN</th>
+                <th className="px-2 text-end" title="1st Fortnight (Days 2–16)">1st FN (2–16)</th>
+                <th className="px-2 text-end" title="2nd Fortnight (Days 16–1)">2nd FN (16–1)</th>
                 <th className="px-2 text-end">Monthly</th>
                 <th className="px-2 text-end">Avg/Day</th>
               </tr>
@@ -744,10 +893,18 @@ function ProductionTotalTrackingContent() {
                   </td>
                 ))}
                 <td className="text-end px-2">
-                  {view === 'efficiency' ? `${fortnight1}%` : formatNumber(fortnight1, 0)}
+                  {view === 'efficiency'
+                    ? `${fortnight1}%`
+                    : view === 'shifts'
+                      ? formatNumber(shiftAFortnight1, 0)
+                      : formatNumber(fortnight1, 0)}
                 </td>
                 <td className="text-end px-2">
-                  {view === 'efficiency' ? `${fortnight2}%` : formatNumber(fortnight2, 0)}
+                  {view === 'efficiency'
+                    ? `${fortnight2}%`
+                    : view === 'shifts'
+                      ? formatNumber(shiftAFortnight2, 0)
+                      : formatNumber(fortnight2, 0)}
                 </td>
                 <td className="text-end px-2">
                   {view === 'efficiency'
@@ -762,7 +919,7 @@ function ProductionTotalTrackingContent() {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TablePanScroll>
       </div>
 
       {view === 'shifts' && (
@@ -770,7 +927,7 @@ function ProductionTotalTrackingContent() {
           <div className="card-header">
             <h3 className="card-title mb-0">Shift B — Loom × Day (meters)</h3>
           </div>
-          <div className="card-body p-0" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <TablePanScroll className="card-body p-0">
             <table className="table table-sm table-bordered mb-0 align-middle text-nowrap">
               <thead className="table-light">
                 <tr>
@@ -780,8 +937,8 @@ function ProductionTotalTrackingContent() {
                       {d.day}
                     </th>
                   ))}
-                  <th className="px-2 text-end">1st FN</th>
-                  <th className="px-2 text-end">2nd FN</th>
+                  <th className="px-2 text-end" title="1st Fortnight (Days 2–16)">1st FN (2–16)</th>
+                  <th className="px-2 text-end" title="2nd Fortnight (Days 16–1)">2nd FN (16–1)</th>
                   <th className="px-2 text-end">Monthly</th>
                   <th className="px-2 text-end">Avg/Day</th>
                 </tr>
@@ -855,7 +1012,7 @@ function ProductionTotalTrackingContent() {
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </TablePanScroll>
         </div>
       )}
         </>

@@ -28,6 +28,7 @@ import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
 import { LoomStatusSelect } from '@/components/floor/LoomStatusSelect'
 import { AddLoomModal } from '@/components/floor/AddLoomModal'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
@@ -832,10 +833,7 @@ export function LoomMasterTable({
           })}
         </div>
       ) : (
-        <div
-          className="card-body p-0"
-          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-        >
+        <TablePanScroll className="card-body p-0">
           <table
             className="table table-sm table-hover mb-0 align-middle text-nowrap"
             style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
@@ -989,7 +987,7 @@ export function LoomMasterTable({
               })}
             </tbody>
           </table>
-        </div>
+        </TablePanScroll>
       )}
 
       <AddLoomModal

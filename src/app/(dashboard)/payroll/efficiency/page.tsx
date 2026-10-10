@@ -14,7 +14,6 @@ import {
   Printer,
   DollarSign,
   Percent,
-  Plus,
   Trash2,
   RotateCcw,
   Save,
@@ -25,6 +24,8 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_EFFICIENCY_WIDTHS = {
   serialNo: 56,
@@ -39,11 +40,11 @@ const DEFAULT_EFFICIENCY_WIDTHS = {
 }
 
 export default function TechnicalEfficiencyPage() {
+  const { askConfirm, showSuccess, modals } = usePayrollModals()
   const { canEditAccounts } = useAuth()
   const [incentiveList, setIncentiveList] = useState<EfficiencyIncentiveRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   // Resizable columns hook
   const {
@@ -163,19 +164,32 @@ export default function TechnicalEfficiencyPage() {
 
   const handleReset = () => {
     if (!canEditAccounts) return
-    if (confirm('Reset Technical Staff Efficiency to default template values?')) {
-      payrollService.resetAllToDefault()
-      setIncentiveList(payrollService.getEfficiencyIncentives(selectedMonth))
-      setCustomColumns([])
-      resetAllWidths()
-    }
+    askConfirm({
+      title: 'Reset efficiency sheet?',
+      message: 'Default template values pe reset ho jayega. Undo nahi hoga.',
+      confirmText: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        payrollService.resetAllToDefault()
+        setIncentiveList(payrollService.getEfficiencyIncentives(selectedMonth))
+        setCustomColumns([])
+        resetAllWidths()
+        showSuccess('Reset complete', 'Efficiency sheet template pe restore ho gaya.')
+      },
+    })
   }
 
   const handleSave = () => {
     if (!canEditAccounts) return
-    payrollService.saveEfficiencyIncentives(incentiveList)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 3000)
+    askConfirm({
+      title: 'Save efficiency sheet?',
+      message: 'Efficiency incentives save ho jayengi.',
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.saveEfficiencyIncentives(incentiveList)
+        showSuccess('Saved', 'Efficiency incentives successfully saved.')
+      },
+    })
   }
 
   const handlePrint = () => {
@@ -193,6 +207,7 @@ export default function TechnicalEfficiencyPage() {
       <div className="print:hidden">
         <PageHeader
           title="Efficiency Incentive"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/efficiency' },
@@ -200,44 +215,51 @@ export default function TechnicalEfficiencyPage() {
           ]}
           actions={
             <>
-              <button
-                type="button"
-                onClick={() => handleInsertRow()}
-                disabled={!canEditAccounts}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="size-3.5 text-[#0066cc]" />
-                <span>Add Row</span>
-              </button>
-              <AddColumnButton onAddColumn={handleAddCustomColumn} />
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!canEditAccounts}
-                title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="size-3.5 text-slate-500" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canEditAccounts}
-                className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="size-3.5 text-slate-500" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename={`Efficiency-${selectedMonth}`} />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={selectedMonth}
+                  disabled={!canEditAccounts}
+                  onChange={
+                    canEditAccounts
+                      ? async (m) => {
+                          await payrollService.setActiveSalariedMonthAsync(m)
+                          setSelectedMonth(m)
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <AddColumnButton onAddColumn={handleAddCustomColumn} />
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!canEditAccounts}
+                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!canEditAccounts}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton filename={`Efficiency-${selectedMonth}`} className="!min-h-9 !h-9" />
+              </div>
             </>
           }
         />
@@ -253,12 +275,7 @@ export default function TechnicalEfficiencyPage() {
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>Efficiency calculations and bonuses successfully saved!</span>
-        </div>
-      )}
+      {modals}
 
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">

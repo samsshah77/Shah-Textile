@@ -20,6 +20,7 @@ import {
   Factory,
 } from 'lucide-react'
 import Link from 'next/link'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 interface ChalanFoiTableProps {
   items: ChalanFoiItem[]
@@ -381,7 +382,7 @@ export function ChalanFoiTable({
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-[600px]">
+        <TablePanScroll className="max-h-[600px]">
           <table className="w-full text-left border-collapse font-sans text-xs">
             {/* Table Header: S.No, Name, Type, Beam, SWL #, Thaan, Total Meter, Total KG */}
             <thead className="sticky top-0 z-20 bg-muted/95 backdrop-blur-xs shadow-xs">
@@ -589,7 +590,7 @@ export function ChalanFoiTable({
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TablePanScroll>
       </div>
     </div>
   )

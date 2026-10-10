@@ -1,25 +1,31 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { FortnightSynopsis, MonthlyGrandSalarySynopsis } from '@/types/payroll'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { useAuth } from '@/context/AuthContext'
+import { cn, formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
 import {
   FileSpreadsheet,
   Printer,
   DollarSign,
   Building,
   CheckCircle2,
-  Calendar,
   Layers,
   Banknote,
   RotateCcw,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { fortnightDisplayLabel, secondHalfLabel } from '@/components/payroll/FortnightSelect'
 
 function DisbursementSynopsisContent() {
+  const { canEditAccounts } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const initialFn = searchParams.get('fortnight')
   const [activeTab, setActiveTab] = useState<'grand' | 'f1' | 'f2'>(
@@ -32,11 +38,18 @@ function DisbursementSynopsisContent() {
   const [f2, setF2] = useState<FortnightSynopsis | null>(null)
   const [grand, setGrand] = useState<MonthlyGrandSalarySynopsis | null>(null)
 
+  const pushView = (tab: 'grand' | 'f1' | 'f2') => {
+    const params = new URLSearchParams(searchParams.toString())
+    const fn = tab === 'f1' ? '1-15' : tab === 'f2' ? '16-31' : 'grand'
+    params.set('fortnight', fn)
+    router.replace(`${pathname}?${params.toString()}`)
+  }
+
   useEffect(() => {
     const fn = searchParams.get('fortnight')
     if (fn === '1-15') setActiveTab('f1')
     else if (fn === '16-31') setActiveTab('f2')
-    else if (fn === 'grand') setActiveTab('grand')
+    else if (fn === 'grand' || !fn) setActiveTab('grand')
   }, [searchParams])
 
   const reloadData = () => {
@@ -45,14 +58,16 @@ function DisbursementSynopsisContent() {
     setGrand(payrollService.getMonthlyGrandSummary(selectedMonth))
   }
 
+  const savePettyInflow = async (fortnight: '1-15' | '16-31', amount: number) => {
+    if (!canEditAccounts) return
+    await payrollService.setPettyCashInflowAsync(selectedMonth, fortnight, amount)
+    reloadData()
+  }
+
   useEffect(() => {
     reloadData()
     const handleSync = () => {
-      const month = payrollService.getActiveSalariedMonth()
-      if (month !== selectedMonth) {
-        setSelectedMonth(month)
-        return
-      }
+      // Keep user's month + view (1–15 / 16–xx / Monthly); only refresh totals.
       reloadData()
     }
     window.addEventListener('payroll_synced', handleSync)
@@ -70,6 +85,7 @@ function DisbursementSynopsisContent() {
       <div className="print:hidden">
         <PageHeader
           title="Disbursement Synopsis"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/synopsis' },
@@ -77,15 +93,53 @@ function DisbursementSynopsisContent() {
           ]}
           actions={
             <>
-              <button type="button" onClick={reloadData} title="Refresh calculated numbers" className="erp-btn-secondary">
-                <RotateCcw className="size-3.5" />
-                <span>Recalculate</span>
-              </button>
-              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename={`Synopsis-${selectedMonth || 'month'}`} />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={selectedMonth}
+                  onChange={(m) => setSelectedMonth(m)}
+                />
+                <select
+                  value={activeTab}
+                  onChange={(e) => {
+                    const tab = e.target.value as 'grand' | 'f1' | 'f2'
+                    setActiveTab(tab)
+                    pushView(tab)
+                  }}
+                  className={cn(
+                    'h-9 appearance-none rounded-md border border-slate-200 bg-white px-2.5 pr-7 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40'
+                  )}
+                  aria-label="Synopsis view"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%33475569' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.55rem center',
+                  }}
+                >
+                  <option value="f1">1–15</option>
+                  <option value="f2">{secondHalfLabel(selectedMonth)}</option>
+                  <option value="grand">Monthly</option>
+                </select>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={reloadData}
+                  title="Refresh calculated numbers"
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Recalculate</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton filename={`Synopsis-${selectedMonth || 'month'}`} className="!min-h-9 !h-9" />
+              </div>
             </>
           }
         />
@@ -173,14 +227,22 @@ function DisbursementSynopsisContent() {
           {/* Bank Cheque Summary Box */}
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="p-3 border border-slate-200 rounded-md bg-white">
-              <div className="text-[11px] text-slate-500 font-semibold uppercase">1st Half Cheque (Aug 01-15):</div>
+              <div className="text-[11px] text-slate-500 font-semibold uppercase">
+                1st Half Cheque ({fortnightDisplayLabel(selectedMonth, '1-15')}):
+              </div>
               <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(grand.fortnight1Cheque)}</div>
-              <div className="text-[10px] text-slate-500 font-medium mt-0.5">Cash: 983,070 + Petty: 86,930</div>
+              <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                Cash: {formatNumber(grand.fortnight1Total, 0)} + Petty: {formatNumber(grand.fortnight1PettyCash, 0)}
+              </div>
             </div>
             <div className="p-3 border border-slate-200 rounded-md bg-white">
-              <div className="text-[11px] text-slate-500 font-semibold uppercase">2nd Half Cheque (Aug 16-31):</div>
+              <div className="text-[11px] text-slate-500 font-semibold uppercase">
+                2nd Half Cheque ({secondHalfLabel(selectedMonth)}):
+              </div>
               <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(grand.fortnight2Cheque)}</div>
-              <div className="text-[10px] text-slate-500 font-medium mt-0.5">Cash: 1,533,430 + Petty: 86,570</div>
+              <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                Cash: {formatNumber(grand.fortnight2Total, 0)} + Petty: {formatNumber(grand.fortnight2PettyCash, 0)}
+              </div>
             </div>
             <div className="bg-blue-50/60 p-3 rounded-md border border-blue-200">
               <div className="text-[11px] text-[#0066cc] font-semibold uppercase">Grand Monthly Cheque Total:</div>
@@ -197,9 +259,12 @@ function DisbursementSynopsisContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">
-              WEAVERS, HELPER, ADVANCE, CONTRACTOR BILL PAYMENT SYNOPSIS (AUG 01 TO 15, 2026)
+              WEAVERS, HELPER, ADVANCE, CONTRACTOR BILL PAYMENT SYNOPSIS (
+              {formatPayrollMonthLabel(selectedMonth)} · {fortnightDisplayLabel(selectedMonth, '1-15')})
             </h2>
-            <p className="text-[11px] text-slate-500 font-mono">1st Fortnight Bank Disbursal Voucher</p>
+            <p className="text-[11px] text-slate-500 font-mono">
+              {fortnightDisplayLabel(selectedMonth, '1-15')} Bank Disbursal Voucher
+            </p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
@@ -234,9 +299,21 @@ function DisbursementSynopsisContent() {
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
                     + Petty Cash Transfer Inflow (Factory Floor Operational):
+                    {canEditAccounts && (
+                      <span className="ml-2 text-[10px] font-normal text-[#0066cc] print:hidden">editable</span>
+                    )}
                   </td>
                   <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
-                    {formatNumber(f1.pettyCashInflow, 0)}
+                    {canEditAccounts ? (
+                      <NumericCellInput
+                        value={f1.pettyCashInflow}
+                        disabled={!canEditAccounts}
+                        onValueChange={(v) => void savePettyInflow('1-15', v)}
+                        className="w-full text-right bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-semibold text-slate-900 focus:bg-white focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono print:border-0 print:bg-transparent"
+                      />
+                    ) : (
+                      formatNumber(f1.pettyCashInflow, 0)
+                    )}
                   </td>
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">
@@ -271,9 +348,11 @@ function DisbursementSynopsisContent() {
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
             <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
             <h2 className="text-xs font-semibold text-slate-600 mt-0.5">
-              SALARY EXPENSE 1 TO 31 & 16 TO 31 (2ND FORTNIGHT & MONTH-END SETTLEMENT)
+              SALARY EXPENSE ({formatPayrollMonthLabel(selectedMonth)} · {secondHalfLabel(selectedMonth)})
             </h2>
-            <p className="text-[11px] text-slate-500 font-mono">2nd Fortnight Bank Disbursal Voucher</p>
+            <p className="text-[11px] text-slate-500 font-mono">
+              {secondHalfLabel(selectedMonth)} Bank Disbursal Voucher
+            </p>
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
@@ -308,9 +387,21 @@ function DisbursementSynopsisContent() {
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
                     + Petty Cash Transfer Inflow (Factory Floor Operational):
+                    {canEditAccounts && (
+                      <span className="ml-2 text-[10px] font-normal text-[#0066cc] print:hidden">editable</span>
+                    )}
                   </td>
                   <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
-                    {formatNumber(f2.pettyCashInflow, 0)}
+                    {canEditAccounts ? (
+                      <NumericCellInput
+                        value={f2.pettyCashInflow}
+                        disabled={!canEditAccounts}
+                        onValueChange={(v) => void savePettyInflow('16-31', v)}
+                        className="w-full text-right bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-semibold text-slate-900 focus:bg-white focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono print:border-0 print:bg-transparent"
+                      />
+                    ) : (
+                      formatNumber(f2.pettyCashInflow, 0)
+                    )}
                   </td>
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">

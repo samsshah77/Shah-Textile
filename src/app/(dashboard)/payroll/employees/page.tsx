@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
 import {
   payrollService,
   isGeneralWagesEmployee,
@@ -22,16 +21,16 @@ import {
   Save,
   CheckCircle2,
   Lock,
-  IdCard,
   ChevronUp,
   ChevronDown,
   CalendarPlus,
-  Edit2,
-  ExternalLink,
+  X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_GW_WIDTHS: Record<string, number> = {
   serial: 48,
@@ -49,7 +48,6 @@ const DEFAULT_GW_WIDTHS: Record<string, number> = {
   doj: 95,
   contractStatus: 125,
   remarks: 140,
-  action: 65,
 }
 
 const COMMON_GW_DESIGNATIONS = [
@@ -67,10 +65,11 @@ const COMMON_GW_DESIGNATIONS = [
 
 export default function GeneralWagesPage() {
   const { canEditAccounts } = useAuth()
+  const { askConfirm, showSuccess, showError, modals } = usePayrollModals()
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
-  const [saveSuccess, setSaveSuccess] = useState(false)
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [newMonth, setNewMonth] = useState(() => {
     const months = payrollService.listPayrollMonths()
     const last = months[months.length - 1] || '2026-08'
@@ -122,24 +121,45 @@ export default function GeneralWagesPage() {
     if (!canEditAccounts) return
     await payrollService.setActiveSalariedMonthAsync(month)
     setActiveMonth(month)
-    setStatusNotice(`Active month: ${formatPayrollMonthLabel(month)} — Advances / Staff / Contract / Net Payment isi pe khulenge.`)
-    setTimeout(() => setStatusNotice(null), 4000)
+    reload()
+    setStatusNotice(`Active month: ${formatPayrollMonthLabel(month)}`)
+    setTimeout(() => setStatusNotice(null), 2500)
   }
 
-  const handleGenerateMonth = async () => {
+  const openGenerateDialog = () => {
     if (!canEditAccounts) return
-    setStatusNotice('Month save ho raha hai…')
-    const result = await payrollService.generateSalariedMonth(newMonth)
-    setStatusNotice(result.message)
-    if (result.ok) {
-      setActiveMonth(payrollService.getActiveSalariedMonth())
-      const months = payrollService.listPayrollMonths()
-      const last = months[months.length - 1] || newMonth
-      const [y, m] = last.split('-').map(Number)
-      const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
-      setNewMonth(next)
-    }
-    setTimeout(() => setStatusNotice(null), 6000)
+    setShowGenerateDialog(true)
+  }
+
+  const confirmGenerateMonth = () => {
+    if (!canEditAccounts) return
+    const monthToGenerate = newMonth
+    const label = formatPayrollMonthLabel(monthToGenerate)
+    setShowGenerateDialog(false)
+    askConfirm({
+      title: 'Generate salary month?',
+      message: (
+        <>
+          <strong>{label}</strong> generate hoga — Staff / Contract / Advances / Net Payment isi month pe shift ho jayenge.
+        </>
+      ),
+      confirmText: 'Generate',
+      onConfirm: async () => {
+        const result = await payrollService.generateSalariedMonth(monthToGenerate)
+        if (result.ok) {
+          setActiveMonth(payrollService.getActiveSalariedMonth())
+          reload()
+          const months = payrollService.listPayrollMonths()
+          const last = months[months.length - 1] || monthToGenerate
+          const [y, m] = last.split('-').map(Number)
+          const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+          setNewMonth(next)
+          showSuccess('Month generated', result.message)
+        } else {
+          showError('Generate failed', result.message)
+        }
+      },
+    })
   }
 
   // Move employee up/down and permanently persist the new order
@@ -225,24 +245,38 @@ export default function GeneralWagesPage() {
   }
 
   const handleSave = () => {
-    if (crossSheetSyncTimer.current) {
-      clearTimeout(crossSheetSyncTimer.current)
-      crossSheetSyncTimer.current = null
-    }
-    persistRoster(employees)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 2500)
+    if (!canEditAccounts) return
+    askConfirm({
+      title: 'Save General Wages?',
+      message: 'Employee roster save hoga aur related sheets sync ho jayengi.',
+      confirmText: 'Save',
+      onConfirm: () => {
+        if (crossSheetSyncTimer.current) {
+          clearTimeout(crossSheetSyncTimer.current)
+          crossSheetSyncTimer.current = null
+        }
+        persistRoster(employees)
+        showSuccess('Saved', 'General Wages successfully saved and synchronized.')
+      },
+    })
   }
 
   const handleReset = () => {
     if (!canEditAccounts) return
-    if (confirm('Reset General Wages to default Excel roster template from August 2026?')) {
-      localStorage.removeItem('sara_payroll_employees_v9')
-      localStorage.removeItem('sara_payroll_employees_v8')
-      localStorage.removeItem('sara_payroll_employees_v7')
-      setCustomColumns([])
-      reload()
-    }
+    askConfirm({
+      title: 'Reset General Wages?',
+      message: 'Default Excel roster template se reset ho jayega. Yeh undo nahi hoga.',
+      confirmText: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        localStorage.removeItem('sara_payroll_employees_v9')
+        localStorage.removeItem('sara_payroll_employees_v8')
+        localStorage.removeItem('sara_payroll_employees_v7')
+        setCustomColumns([])
+        reload()
+        showSuccess('Reset complete', 'General Wages roster default template pe restore ho gaya.')
+      },
+    })
   }
 
   const handlePrint = () => {
@@ -270,6 +304,7 @@ export default function GeneralWagesPage() {
       <div className="print:hidden">
         <PageHeader
           title="General Wages Register"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/employees' },
@@ -277,123 +312,65 @@ export default function GeneralWagesPage() {
           ]}
           actions={
             <>
-              <Link href="/payroll/profiles" className="erp-btn-secondary text-xs flex items-center gap-1.5">
-                <IdCard className="size-3.5 text-[#0066cc]" />
-                <span>HR Profiles</span>
-              </Link>
-              {canEditAccounts && <AddColumnButton onAddColumn={handleAddCustomColumn} />}
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!canEditAccounts}
-                title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                className="erp-btn-secondary"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canEditAccounts}
-                className="erp-btn-primary"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename="General-Wages" />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={activeMonth}
+                  onChange={canEditAccounts ? handleActiveMonthChange : undefined}
+                  disabled={!canEditAccounts}
+                />
+                {canEditAccounts && (
+                  <button
+                    type="button"
+                    onClick={openGenerateDialog}
+                    className="erp-btn-primary text-xs !min-h-9 !h-9"
+                  >
+                    <CalendarPlus className="size-3.5" />
+                    <span>Generate</span>
+                  </button>
+                )}
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                {canEditAccounts && <AddColumnButton onAddColumn={handleAddCustomColumn} />}
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!canEditAccounts}
+                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!canEditAccounts}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton filename="General-Wages" className="!min-h-9 !h-9" />
+              </div>
             </>
           }
         />
       </div>
 
-      {canEditAccounts && (
-        <div className="print:hidden erp-card p-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-              Active salary month
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Active month ki salary yahan dikhegi. Name/designation har month same; salary har month alag ho sakti hai (profile card se us month ke liye change).
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={activeMonth}
-              onChange={(e) => handleActiveMonthChange(e.target.value)}
-              className="form-select form-select-sm"
-              aria-label="Active payroll month"
-            >
-              {payrollService.listPayrollMonths().map((m) => (
-                <option key={m} value={m}>
-                  {formatPayrollMonthLabel(m)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="month"
-              value={newMonth}
-              onChange={(e) => setNewMonth(e.target.value)}
-              className="form-control form-control-sm"
-              style={{ width: 'auto' }}
-              aria-label="New payroll month"
-            />
-            <button
-              type="button"
-              onClick={handleGenerateMonth}
-              className="erp-btn-primary text-xs flex items-center gap-1.5"
-            >
-              <CalendarPlus className="size-3.5" />
-              <span>Generate Month</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!canEditAccounts && (
-        <div className="print:hidden erp-card p-3 flex items-center gap-2 text-xs text-slate-600">
-          <CalendarPlus className="size-3.5 text-[#0066cc]" />
-          <span>
-            Active month: <strong>{formatPayrollMonthLabel(activeMonth)}</strong>
-          </span>
-        </div>
-      )}
-
-      {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
         <div className="flex items-center gap-2.5 p-3 rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 text-xs font-medium print:hidden">
           <Lock className="size-4 shrink-0 text-amber-600" />
           <span>
             Edit Protection Active: Click <strong>&quot;Enable Editing&quot;</strong> in the top navigation bar to modify sheet remarks, custom columns, or move employee rows.
           </span>
-        </div>
-      )}
-
-      {/* Informative Banner about Profile-Managed Fields */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50/80 text-blue-900 text-xs print:hidden shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <IdCard className="size-4 shrink-0 text-[#0066cc]" />
-          <span>
-            <strong>HR Profile Managed:</strong> Employee Name, Designation, Duty Hours, Shift, Salary, aur D.O.J direct <strong>HR Profile Card</strong> se manage hotay hain taake sheet formulas aur past months disturb na hon. Edit karne ke liye row mein <strong>Edit</strong> button click karein.
-          </span>
-        </div>
-        <Link
-          href="/payroll/profiles"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#0066cc] text-white hover:bg-[#0052a3] text-xs font-medium shrink-0 transition-colors w-fit"
-        >
-          <ExternalLink className="size-3.5" />
-          <span>Open HR Profiles</span>
-        </Link>
-      </div>
-
-      {saveSuccess && (
-        <div className="flex items-center gap-2 rounded-md bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-900 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>General Wages employee records successfully saved and synchronized across all sheets!</span>
         </div>
       )}
 
@@ -404,6 +381,64 @@ export default function GeneralWagesPage() {
         </div>
       )}
 
+      {modals}
+
+      {showGenerateDialog && (
+        <div
+          className="fixed inset-0 z-[1080] flex items-center justify-center p-4 print:hidden"
+          style={{ background: 'rgba(15, 23, 42, 0.48)' }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowGenerateDialog(false)
+          }}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-black/5"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gw-generate-title"
+          >
+            <div className="relative px-5 pt-5 pb-4">
+              <button
+                type="button"
+                onClick={() => setShowGenerateDialog(false)}
+                className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                <X className="size-4" />
+              </button>
+              <h3 id="gw-generate-title" className="text-[15px] font-semibold text-slate-900 pr-8">
+                Generate salary month
+              </h3>
+              <p className="mt-1.5 text-[13px] text-slate-600">
+                Naya month select karo, phir Generate confirm karo.
+              </p>
+              <label className="mt-4 block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Month</span>
+                <input
+                  type="month"
+                  value={newMonth}
+                  onChange={(e) => setNewMonth(e.target.value)}
+                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-[#0066cc] outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                  aria-label="New payroll month"
+                />
+              </label>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/80 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setShowGenerateDialog(false)}
+                className="erp-btn-secondary text-xs"
+              >
+                Cancel
+              </button>
+              <button type="button" onClick={confirmGenerateMonth} className="erp-btn-primary text-xs">
+                <CalendarPlus className="size-3.5" />
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* EXACT EXCEL SPREADSHEET TABLE (Print-Friendly) */}
       <div className="rounded-lg border border-slate-300 bg-white text-slate-900 p-4 shadow-xs print:border-none print:p-0 print:shadow-none overflow-hidden">
@@ -481,12 +516,6 @@ export default function GeneralWagesPage() {
                       {col.label}
                     </th>
                   ))}
-                  <th
-                    rowSpan={2}
-                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-center align-middle print:hidden"
-                  >
-                    Action
-                  </th>
                 </tr>
 
                 {/* Row 2: Sub Column Headers */}
@@ -784,19 +813,6 @@ export default function GeneralWagesPage() {
                           )}
                         </td>
                       ))}
-
-                      {/* Action: Quick Link to HR Profile Card for editing */}
-                      <td className="border-r border-slate-300 py-1 px-1.5 text-center print:hidden bg-slate-50/20">
-                        <Link
-                          href={`/payroll/profiles?search=${encodeURIComponent(emp.name)}`}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-[#0066cc] hover:bg-blue-100 hover:text-blue-800 border border-blue-200 transition-colors"
-                          title={`Edit ${emp.name} in HR Profiles`}
-                        >
-                          <Edit2 className="size-3" />
-                          <span>Edit</span>
-                        </Link>
-                      </td>
-
                     </tr>
                   )
                 })}
@@ -843,7 +859,6 @@ export default function GeneralWagesPage() {
                   >
                     Sara Textile Mill Roster
                   </td>
-                  <td className="border-l border-slate-400 py-2 px-1 print:hidden" />
                 </tr>
               </tfoot>
             </table>

@@ -16,7 +16,6 @@ import {
   DollarSign,
   Clock,
   Zap,
-  Plus,
   Trash2,
   RotateCcw,
   Save,
@@ -27,6 +26,8 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_CONTRACT_SALARY_WIDTHS = {
   serialNo: 56,
@@ -74,6 +75,7 @@ const DEFAULT_CONTRACT_NET_WIDTHS = {
 
 function ContractPayrollContent() {
   const { canEditAccounts } = useAuth()
+  const { askConfirm, showSuccess, modals } = usePayrollModals()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<'employees' | 'overtime' | 'net-payment'>('employees')
@@ -92,7 +94,6 @@ function ContractPayrollContent() {
     const [y, m] = month.split('-').map(Number)
     return y && m ? new Date(y, m, 0).getDate() : 31
   })
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   // Resizable column width hooks for all 3 views
   const {
@@ -227,22 +228,35 @@ function ContractPayrollContent() {
 
   const handleReset = () => {
     if (!canEditAccounts) return
-    if (confirm('Reset Contract Salaries back to template default values?')) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('sara_payroll_contract_v7')
-        localStorage.removeItem('sara_payroll_contract_v6')
-      }
-      payrollService.resetAllToDefault()
-      setContractList(payrollService.getContractSalaries(selectedMonth))
-      setCustomColumns([])
-    }
+    askConfirm({
+      title: 'Reset contract sheet?',
+      message: 'Template default values pe reset ho jayega. Undo nahi hoga.',
+      confirmText: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('sara_payroll_contract_v7')
+          localStorage.removeItem('sara_payroll_contract_v6')
+        }
+        payrollService.resetAllToDefault()
+        setContractList(payrollService.getContractSalaries(selectedMonth))
+        setCustomColumns([])
+        showSuccess('Reset complete', 'Contract sheet template pe restore ho gaya.')
+      },
+    })
   }
 
   const handleSave = () => {
     if (!canEditAccounts) return
-    payrollService.saveContractSalaries(selectedMonth, contractList)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 3000)
+    askConfirm({
+      title: 'Save contract sheet?',
+      message: 'Contract salaries save ho jayengi.',
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.saveContractSalaries(selectedMonth, contractList)
+        showSuccess('Saved', 'Contract salaries successfully saved.')
+      },
+    })
   }
 
   const handlePrint = () => {
@@ -283,6 +297,7 @@ function ContractPayrollContent() {
                 ? 'Net Payment Contract 1 to 31'
                 : 'Contract Employees'
           }
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/contract' },
@@ -297,63 +312,68 @@ function ContractPayrollContent() {
           ]}
           actions={
             <>
-              <span
-                className="inline-flex items-center px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700"
-                title="Month General Wages se set hota hai"
-              >
-                {formatPayrollMonthLabel(selectedMonth)}
-              </span>
-              <select
-                value={daysInMonth}
-                disabled={!canEditAccounts}
-                onChange={(e) => {
-                  const days = Number(e.target.value)
-                  setDaysInMonth(days)
-                  setContractList((prev) =>
-                    prev.map((row) => payrollService.calculateContractSalaryRow(row, days))
-                  )
-                }}
-                className="form-select form-select-sm"
-                aria-label="Days in month"
-              >
-                <option value={31}>31 Days</option>
-                <option value={30}>30 Days</option>
-                <option value={28}>28 Days</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => handleInsertRow()}
-                disabled={!canEditAccounts}
-                className="erp-btn-secondary"
-              >
-                <Plus className="size-3.5 text-[#0066cc]" />
-                <span>Add Worker</span>
-              </button>
-              <AddColumnButton onAddColumn={handleAddCustomColumn} />
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!canEditAccounts}
-                title={canEditAccounts ? 'Reset to template default values' : 'Enable Editing to reset'}
-                className="erp-btn-secondary"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canEditAccounts}
-                className="erp-btn-primary"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename={`Contract-${activeTab}-${selectedMonth}`} />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={selectedMonth}
+                  disabled={!canEditAccounts}
+                  onChange={
+                    canEditAccounts
+                      ? async (m) => {
+                          await payrollService.setActiveSalariedMonthAsync(m)
+                          setSelectedMonth(m)
+                        }
+                      : undefined
+                  }
+                />
+                <select
+                  value={daysInMonth}
+                  disabled={!canEditAccounts}
+                  onChange={(e) => {
+                    const days = Number(e.target.value)
+                    setDaysInMonth(days)
+                    setContractList((prev) =>
+                      prev.map((row) => payrollService.calculateContractSalaryRow(row, days))
+                    )
+                  }}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                  aria-label="Days in month"
+                >
+                  <option value={31}>31 Days</option>
+                  <option value={30}>30 Days</option>
+                  <option value={28}>28 Days</option>
+                </select>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <AddColumnButton onAddColumn={handleAddCustomColumn} />
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!canEditAccounts}
+                  title={canEditAccounts ? 'Reset to template default values' : 'Enable Editing to reset'}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!canEditAccounts}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton filename={`Contract-${activeTab}-${selectedMonth}`} className="!min-h-9 !h-9" />
+              </div>
             </>
           }
         />
@@ -369,12 +389,7 @@ function ContractPayrollContent() {
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="flex items-center gap-2 rounded-md bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-900 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>Contract employee records and live calculations saved successfully!</span>
-        </div>
-      )}
+      {modals}
 
       {/* VIEW 1: Sheet 4 - Contract Salaries */}
       {activeTab === 'employees' && (

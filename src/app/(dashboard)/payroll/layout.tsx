@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export default async function PayrollLayout({ children }: { children: React.ReactNode }) {
   await requirePagePermission('payroll', 'payroll_runs')
   return (
-    <div className="sara-module-content">
+    <div className="sara-module-content sara-payroll">
       <PayrollHydrate />
       <FinanceReadonly>{children}</FinanceReadonly>
     </div>

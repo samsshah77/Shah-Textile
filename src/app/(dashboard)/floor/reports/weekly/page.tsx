@@ -7,6 +7,7 @@ import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import { CalendarRange, Layers, Gauge, DollarSign, ArrowUpRight, BarChart3 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 export default function WeeklyProductionReportsPage() {
   const [reports, setReports] = useState<FloorWeeklyReport[]>([])
@@ -168,7 +169,7 @@ export default function WeeklyProductionReportsPage() {
               <span className="text-xs text-muted-foreground font-mono">All 4 Weeks</span>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-border">
+            <TablePanScroll className="rounded-xl border border-border">
               <table className="w-full min-w-[760px] text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/60 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -213,7 +214,7 @@ export default function WeeklyProductionReportsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TablePanScroll>
           </div>
         </>
       )}

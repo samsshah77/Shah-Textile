@@ -185,6 +185,7 @@ export default function CostStatementPage() {
       <div className="print:hidden">
         <PageHeader
           title="Cost Statement"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Accounts', href: '/accounts/cost-statement' },
@@ -192,42 +193,45 @@ export default function CostStatementPage() {
           ]}
           actions={
             <>
-          <button
-                type="button"
-            onClick={() => setIsEditing(!isEditing)}
-            className={cn(
-                  'btn btn-sm d-inline-flex align-items-center gap-1',
-                  isEditing ? 'btn-warning' : 'btn-outline-secondary'
-                )}
-              >
-                {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
-                <span>{isEditing ? 'View Mode' : 'Edit'}</span>
-          </button>
-          <button
-                type="button"
-            onClick={handleReset}
-            title="Reset to Authentic Excel Defaults"
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-          >
-            <RotateCcw className="size-3.5" />
-            <span>Reset</span>
-          </button>
-          <button
-                type="button"
-            onClick={handleSave}
-                className="btn btn-sm btn-success d-inline-flex align-items-center gap-1"
-          >
-                <Save className="size-3.5" />
-                <span>{isSaved ? 'Saved!' : 'Save'}</span>
-          </button>
-          <button
-                type="button"
-            onClick={handlePrint}
-                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
-          >
-            <Printer className="size-3.5" />
-                <span>Print</span>
-          </button>
+              <div className="inline-flex shrink-0 items-center gap-1.5" />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className={cn(
+                    'erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800',
+                    isEditing && '!border-amber-400 !bg-amber-50 !text-amber-900'
+                  )}
+                >
+                  {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
+                  <span>{isEditing ? 'View' : 'Edit'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  title="Reset to Authentic Excel Defaults"
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="erp-btn-success text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>{isSaved ? 'Saved!' : 'Save'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+              </div>
             </>
           }
         />

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { ContractorPaymentRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
@@ -16,7 +16,6 @@ import {
   DollarSign,
   Briefcase,
   FileCheck,
-  Plus,
   Trash2,
   RotateCcw,
   Save,
@@ -27,6 +26,9 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
+import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_CONTRACTOR_WIDTHS = {
   serialNo: 56,
@@ -43,16 +45,29 @@ const DEFAULT_CONTRACTOR_WIDTHS = {
 
 function ContractorsPayrollContent() {
   const { canEditAccounts } = useAuth()
+  const { askConfirm, showSuccess, modals } = usePayrollModals()
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
-  const period = payrollService.getActiveFortnightPeriod()
   const urlFn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+  const urlMonth = searchParams.get('month')
   const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(
-    urlFn === '1-15' || urlFn === '16-31' ? urlFn : period.fortnight
+    urlFn === '1-15' || urlFn === '16-31' ? urlFn : '1-15'
   )
-  const [selectedMonth, setSelectedMonth] = useState(period.month)
+  const [selectedMonth, setSelectedMonth] = useState(
+    () =>
+      (urlMonth && /^\d{4}-\d{2}$/.test(urlMonth) && urlMonth) ||
+      payrollService.getActiveSalariedMonth()
+  )
+
+  const pushFilters = (next: { fortnight?: '1-15' | '16-31'; month?: string }) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (next.fortnight) params.set('fortnight', next.fortnight)
+    if (next.month) params.set('month', next.month)
+    router.replace(`${pathname}?${params.toString()}`)
+  }
   const [contractorsList, setContractorsList] = useState<ContractorPaymentRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   // Resizable columns hook
   const {
@@ -63,10 +78,10 @@ function ContractorsPayrollContent() {
   } = useResizableColumns('contractors_payroll', DEFAULT_CONTRACTOR_WIDTHS)
 
   useEffect(() => {
-    const fn = searchParams.get('fortnight') as '1-15' | '16-31'
-    if (fn === '1-15' || fn === '16-31') {
-      setActiveFortnight(fn)
-    }
+    const fn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+    const m = searchParams.get('month')
+    if (fn === '1-15' || fn === '16-31') setActiveFortnight(fn)
+    if (m && /^\d{4}-\d{2}$/.test(m)) setSelectedMonth(m)
   }, [searchParams])
 
   const reload = () => {
@@ -76,12 +91,7 @@ function ContractorsPayrollContent() {
   useEffect(() => {
     reload()
     const handleSync = () => {
-      const p = payrollService.getActiveFortnightPeriod()
-      if (p.month !== selectedMonth || p.fortnight !== activeFortnight) {
-        setSelectedMonth(p.month)
-        setActiveFortnight(p.fortnight)
-        return
-      }
+      // Contractors period is independent of Weaver fortnight — only refresh rows.
       reload()
     }
     window.addEventListener('payroll_synced', handleSync)
@@ -162,19 +172,32 @@ function ContractorsPayrollContent() {
 
   const handleReset = () => {
     if (!canEditAccounts) return
-    if (confirm('Reset this Contractors sheet back to template values?')) {
-      payrollService.resetAllToDefault()
-      setContractorsList(payrollService.getContractorsPayments(selectedMonth, activeFortnight))
-      setCustomColumns([])
-      resetAllWidths()
-    }
+    askConfirm({
+      title: 'Reset contractors sheet?',
+      message: 'Yeh sheet template values pe reset ho jayegi. Undo nahi hoga.',
+      confirmText: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        payrollService.resetAllToDefault()
+        setContractorsList(payrollService.getContractorsPayments(selectedMonth, activeFortnight))
+        setCustomColumns([])
+        resetAllWidths()
+        showSuccess('Reset complete', 'Contractors sheet template pe restore ho gaya.')
+      },
+    })
   }
 
   const handleSave = () => {
     if (!canEditAccounts) return
-    payrollService.saveContractorsPayments(selectedMonth, activeFortnight, contractorsList)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 3000)
+    askConfirm({
+      title: 'Save contractors sheet?',
+      message: `Save ${formatPayrollMonthLabel(selectedMonth)} (${fortnightDisplayLabel(selectedMonth, activeFortnight)})?`,
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.saveContractorsPayments(selectedMonth, activeFortnight, contractorsList)
+        showSuccess('Saved', 'Contractors payments successfully saved.')
+      },
+    })
   }
 
   const handlePrint = () => {
@@ -205,6 +228,7 @@ function ContractorsPayrollContent() {
       <div className="print:hidden">
         <PageHeader
           title="Contractors Register"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/contractors' },
@@ -212,44 +236,59 @@ function ContractorsPayrollContent() {
           ]}
           actions={
             <>
-              <button
-                type="button"
-                onClick={() => handleInsertRow()}
-                disabled={!canEditAccounts}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="size-3.5 text-[#0066cc]" />
-                <span>Add Contractor</span>
-              </button>
-              <AddColumnButton onAddColumn={handleAddCustomColumn} />
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!canEditAccounts}
-                title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="size-3.5 text-slate-500" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canEditAccounts}
-                className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="size-3.5 text-slate-500" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename={`Contractors-${selectedMonth}-${activeFortnight || '1-15'}`} />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={selectedMonth}
+                  months={payrollService.listContractorsMonths()}
+                  onChange={(m) => {
+                    setSelectedMonth(m)
+                    pushFilters({ month: m, fortnight: activeFortnight })
+                  }}
+                />
+                <FortnightSelect
+                  month={selectedMonth}
+                  value={activeFortnight}
+                  onlyGenerated={false}
+                  onChange={(fn) => {
+                    setActiveFortnight(fn)
+                    pushFilters({ fortnight: fn, month: selectedMonth })
+                  }}
+                />
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <AddColumnButton onAddColumn={handleAddCustomColumn} />
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!canEditAccounts}
+                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!canEditAccounts}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton
+                  filename={`Contractors-${selectedMonth}-${activeFortnight || '1-15'}`}
+                  className="!min-h-9 !h-9"
+                />
+              </div>
             </>
           }
         />
@@ -265,12 +304,7 @@ function ContractorsPayrollContent() {
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>Contractor bills successfully calculated and saved!</span>
-        </div>
-      )}
+      {modals}
 
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
@@ -278,11 +312,10 @@ function ContractorsPayrollContent() {
           <h1 className="text-xl font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
           <h2 className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
             CONTRACTORS & OUTSOURCED SERVICES BILL PAYMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '}
-            {activeFortnight})
+            {fortnightDisplayLabel(selectedMonth, activeFortnight)})
           </h2>
           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Cycle: {activeFortnight === '1-15' ? '1st Half' : '2nd Half / Month-End'} (Weavers se
-            generate)
+            Cycle: {fortnightDisplayLabel(selectedMonth, activeFortnight)}
           </p>
         </div>
 
@@ -567,7 +600,7 @@ function ContractorsPayrollContent() {
             <tfoot>
               <tr className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white text-xs">
                 <td colSpan={3} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 font-sans uppercase text-[11px] text-slate-600 dark:text-slate-300">
-                  Totals & Live Aggregates ({activeFortnight === '1-15' ? '1st Half' : '2nd Half'}):
+                  Totals & Live Aggregates ({fortnightDisplayLabel(selectedMonth, activeFortnight)}):
                 </td>
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
                   {formatNumber(totalContractual, 0)}

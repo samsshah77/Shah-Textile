@@ -2,12 +2,13 @@
 
 import { useState, useEffect, Suspense, useRef, useMemo } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
 import { UserRole } from '@/types/auth'
 import { toggleSidebar } from '@/lib/sidebarToggle'
 import { getCalendarToday } from '@/constants/productionCalendar'
+import { hydratePayrollFromDb, payrollService } from '@/services/payrollService'
 
 function formatHeaderDate(dateStr: string) {
   try {
@@ -22,10 +23,80 @@ function formatHeaderDate(dateStr: string) {
   }
 }
 
+function resolvePayrollPage(pathname: string, sp: URLSearchParams): string | null {
+  if (pathname === '/payroll/profiles') return 'HR Profiles'
+  if (pathname === '/payroll/profiles/new') return 'Register'
+  if (pathname.startsWith('/payroll/profiles/')) return null // loaded async
+  if (pathname === '/payroll/employees') return 'General Wages Register'
+  if (pathname === '/payroll/advances') return 'Advance (Peshgi)'
+  if (pathname === '/payroll/staff') return 'Staff Salary & OT'
+  if (pathname === '/payroll/efficiency') return 'Efficiency'
+  if (pathname === '/payroll/helpers') return 'Helpers'
+  if (pathname === '/payroll/contractors') return 'Contractors'
+  if (pathname === '/payroll/petty-cash') return 'Petty Cash'
+  if (pathname === '/payroll/synopsis') {
+    const fn = sp.get('fortnight')
+    if (fn === '1-15') return 'Synopsis 1–15'
+    if (fn === '16-31') return 'Synopsis 16–End'
+    if (fn === 'grand') return 'Synopsis Monthly'
+    return 'Synopsis'
+  }
+  if (pathname === '/payroll/contract') {
+    const tab = sp.get('tab')
+    if (tab === 'overtime') return 'Contract OverTime'
+    if (tab === 'net-payment') return 'Net Payment Contract'
+    return 'Contract Employees'
+  }
+  if (pathname === '/payroll/weavers') {
+    const tab = sp.get('tab')
+    if (tab === 'overtime') return 'Weavers OT'
+    if (tab === 'net-payment') return 'Weavers Net Payment'
+    return 'Weavers'
+  }
+  return 'Payroll'
+}
+
+function resolveAccountsPage(pathname: string): string {
+  if (pathname.startsWith('/accounts/trader-ledger') || pathname.match(/^\/accounts\/traders\/.+/)) {
+    return 'Trader Ledger'
+  }
+  if (pathname.startsWith('/accounts/traders')) return 'Traders Synopsis'
+  if (pathname === '/accounts/cost-statement') return 'Cost Statement'
+  if (pathname === '/accounts/daily-expense') return 'Daily Inward Expenses'
+  if (pathname.startsWith('/accounts/petty-cash')) return 'Petty Cash Journal'
+  if (pathname === '/accounts/inventory-inward') return 'Store Inventory Control'
+  if (pathname.startsWith('/accounts/reports')) return 'Monthly Purchases'
+  return 'Accounts'
+}
+
+function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
+  if (pathname.startsWith('/floor/reports')) return 'Reports'
+  if (pathname.startsWith('/floor/challan')) return 'Challan'
+  if (pathname === '/floor/production' || pathname.startsWith('/floor/production')) {
+    const tab = sp.get('tab')
+    if (tab === 'looms') return 'Looms'
+    if (tab === 'beams') return 'Beams'
+    if (tab === 'yarn') return 'Yarn'
+    if (tab === 'quality') return 'Quality'
+    if (tab === 'entry') return 'Production Entry'
+    return 'Production'
+  }
+  return 'Floor'
+}
+
+function resolveAdminPage(pathname: string): string {
+  if (pathname.startsWith('/admin/approvals')) return 'Approvals'
+  if (pathname.startsWith('/admin/roles')) return 'Roles'
+  if (pathname.startsWith('/admin/permissions')) return 'Permissions'
+  return 'Admin'
+}
+
 function HeaderContent() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [timeStr, setTimeStr] = useState('')
   const [pendingCount, setPendingCount] = useState(0)
+  const [profilePageLabel, setProfilePageLabel] = useState<string | null>(null)
   const menuRef = useRef<HTMLLIElement>(null)
   const { dateLabel: floorDateLabel } = useFloorDateLabel()
 
@@ -40,6 +111,51 @@ function HeaderContent() {
     () => floorDateLabel || formatHeaderDate(getCalendarToday()),
     [floorDateLabel]
   )
+
+  useEffect(() => {
+    if (!pathname.startsWith('/payroll/profiles/') || pathname === '/payroll/profiles/new') {
+      setProfilePageLabel(null)
+      return
+    }
+    const id = pathname.replace(/^\/payroll\/profiles\//, '').split('/')[0]
+    if (!id) {
+      setProfilePageLabel(null)
+      return
+    }
+    let active = true
+    void (async () => {
+      await hydratePayrollFromDb()
+      if (!active) return
+      const emp = payrollService.getEmployees().find((e) => e.id === id)
+      setProfilePageLabel(emp?.name || 'Profile')
+    })()
+    return () => {
+      active = false
+    }
+  }, [pathname])
+
+  const headerTrail = useMemo(() => {
+    if (pathname.startsWith('/payroll')) {
+      const page =
+        pathname.startsWith('/payroll/profiles/') && pathname !== '/payroll/profiles/new'
+          ? profilePageLabel || 'Profile'
+          : resolvePayrollPage(pathname, searchParams)
+      return { section: 'Salary & Wages', page }
+    }
+    if (pathname.startsWith('/accounts')) {
+      return { section: 'Accounts', page: resolveAccountsPage(pathname) }
+    }
+    if (pathname.startsWith('/admin')) {
+      return { section: 'Administration', page: resolveAdminPage(pathname) }
+    }
+    if (pathname.startsWith('/dashboard')) {
+      return { section: 'Dashboard', page: null as string | null }
+    }
+    if (pathname.startsWith('/floor')) {
+      return { section: 'Floor Operations', page: resolveFloorPage(pathname, searchParams) }
+    }
+    return { section: 'Sara Textile', page: null as string | null }
+  }, [pathname, searchParams, profilePageLabel])
 
   useEffect(() => {
     const updateTime = () => {
@@ -107,16 +223,14 @@ function HeaderContent() {
             </button>
           </li>
           <li className="nav-item d-none d-md-block">
-            <span className="nav-link text-body-secondary small">
-              {pathname.startsWith('/admin')
-                ? 'Administration'
-                : pathname.startsWith('/accounts')
-                  ? 'Accounts'
-                  : pathname.startsWith('/payroll')
-                    ? 'Salary & Wages'
-                    : pathname.startsWith('/dashboard')
-                      ? 'Dashboard'
-                      : 'Floor Operations'}
+            <span className="nav-link small d-inline-flex align-items-center flex-wrap gap-1">
+              <span className="text-body-secondary">{headerTrail.section}</span>
+              {headerTrail.page ? (
+                <>
+                  <span className="text-body-secondary opacity-50">/</span>
+                  <span className="text-body fw-semibold">{headerTrail.page}</span>
+                </>
+              ) : null}
             </span>
           </li>
         </ul>

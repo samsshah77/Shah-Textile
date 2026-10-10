@@ -28,6 +28,7 @@ import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import {
   rememberQualityAssignFlash,
   peekQualityAssignFlashIds,
@@ -1401,7 +1402,7 @@ export function QualityMasterTable({
         </div>
         )
       ) : isArchiveView ? (
-        <div className="card-body p-0">
+        <TablePanScroll className="card-body p-0">
           <table className="table table-sm table-hover mb-0 align-middle">
             <thead className="table-light">
               <tr>
@@ -1508,12 +1509,9 @@ export function QualityMasterTable({
               )}
             </tbody>
           </table>
-        </div>
+        </TablePanScroll>
       ) : (
-        <div
-          className="card-body p-0"
-          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-        >
+        <TablePanScroll className="card-body p-0">
           <table
             className="table table-sm table-hover mb-0 align-middle text-nowrap"
             style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
@@ -1782,7 +1780,7 @@ export function QualityMasterTable({
               )}
             </tbody>
           </table>
-        </div>
+        </TablePanScroll>
       )}
 
       {/* Add Quality Modal Dialog */}

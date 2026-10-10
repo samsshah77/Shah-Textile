@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { PageHeader } from '@/components/shared/PageHeader'
+import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/shared/MiniCharts'
 import {
@@ -209,7 +209,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageHeader title="Dashboard" showBreadcrumbs={false} />
+      <PrintBrandHeader sheetTitle="Dashboard" />
 
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <h2 className="h6 mb-0 text-secondary text-uppercase">Production overview</h2>

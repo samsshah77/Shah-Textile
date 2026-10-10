@@ -9,6 +9,7 @@ import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { loomConditionRowStyle } from '@/constants/loomConditions'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 interface FloorEntryTableProps {
   entries: DailyLoomProductionEntry[]
@@ -508,10 +509,7 @@ export function FloorEntryTable({
           ))}
         </div>
       ) : (
-        <div
-          className="card-body p-0"
-          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-        >
+        <TablePanScroll className="card-body p-0">
           <table
             className="table table-sm table-bordered table-hover mb-0 align-middle text-nowrap"
             style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
@@ -674,7 +672,7 @@ export function FloorEntryTable({
               ))}
             </tbody>
           </table>
-        </div>
+        </TablePanScroll>
       )}
     </div>
   )

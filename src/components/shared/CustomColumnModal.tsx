@@ -25,7 +25,15 @@ interface AddColumnButtonProps {
   existingColumns?: CustomColumn[]
 }
 
-export function AddColumnButton({ onAddColumn }: AddColumnButtonProps) {
+/** Temporarily off — flip to true when "+ Add Column" should show again. */
+const SHOW_ADD_COLUMN = false
+
+export function AddColumnButton(props: AddColumnButtonProps) {
+  if (!SHOW_ADD_COLUMN) return null
+  return <AddColumnButtonActive {...props} />
+}
+
+function AddColumnButtonActive({ onAddColumn }: AddColumnButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [columnLabel, setColumnLabel] = useState('')
   const [selectedColor, setSelectedColor] = useState<CustomColumn['color']>('blue')

@@ -23,6 +23,7 @@ import { AddBeamModal } from '@/components/floor/AddBeamModal'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 
 function SwLotCell({
@@ -731,10 +732,7 @@ export function BeamMasterTable({
           )}
         </div>
       ) : (
-        <div
-          className="card-body p-0"
-          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-        >
+        <TablePanScroll className="card-body p-0">
           <table
             className="table table-sm table-hover mb-0 align-middle text-nowrap"
             style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
@@ -954,7 +952,7 @@ export function BeamMasterTable({
               )}
             </tbody>
           </table>
-        </div>
+        </TablePanScroll>
       )}
 
       {/* Add Beam Modal Dialog */}

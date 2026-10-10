@@ -4,29 +4,26 @@ import { useState, useEffect } from 'react'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { AdvanceRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
-import { SerialCellWithInsert } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { AlertModal } from '@/components/ui/AlertModal'
 import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
 import {
-  DollarSign,
   Printer,
   PlusCircle,
-  CheckCircle2,
-  Calendar,
-  Building,
-  Plus,
   Trash2,
   RotateCcw,
   Save,
   Lock,
   Search,
+  X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_ADVANCE_WIDTHS = {
   serialNo: 50,
@@ -40,12 +37,12 @@ const DEFAULT_ADVANCE_WIDTHS = {
 
 export default function SalaryAdvancesPage() {
   const { canEditAccounts } = useAuth()
+  const { askConfirm, showSuccess, showError, modals } = usePayrollModals()
   const [advances, setAdvances] = useState<AdvanceRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   const [search, setSearch] = useState('')
-  const [saveSuccess, setSaveSuccess] = useState(false)
-  const [dedupeNotice, setDedupeNotice] = useState<string | null>(null)
+  const [showAddDialog, setShowAddDialog] = useState(false)
 
   // Delete confirmation modal state
   const [deleteConfirmState, setDeleteConfirmState] = useState<{
@@ -78,28 +75,18 @@ export default function SalaryAdvancesPage() {
     { id: string; name: string; designation: string; salary: number }[]
   >([])
 
-  const reload = () => {
-    const { removed } = payrollService.repairDuplicatePayrollRows()
-    if (removed > 0) {
-      setDedupeNotice(
-        `${removed} duplicate row(s) hata di — same person ek month me ek hi advance rakha gaya.`
-      )
-      setTimeout(() => setDedupeNotice(null), 5000)
-    }
-    setAdvances(payrollService.getAdvances(selectedMonth, 'all'))
-    setMasterEmployees(payrollService.getAdvanceEligibleEmployees())
+  const resetAddForm = () => {
+    setEmployeeName('')
+    setDesignation('')
+    setSelectedEmployeeId('')
+    setAmount('')
+    setFormRemarks('')
+    setFormDate(`${selectedMonth}-05`)
   }
 
-  const handleCleanDuplicates = () => {
-    if (!canEditAccounts) return
-    const { removed } = payrollService.repairDuplicatePayrollRows()
-    reload()
-    setDedupeNotice(
-      removed > 0
-        ? `${removed} duplicate row(s) clean ho gayi.`
-        : 'Koi duplicate nahi mila — table pehle se clean hai.'
-    )
-    setTimeout(() => setDedupeNotice(null), 4000)
+  const reload = () => {
+    setAdvances(payrollService.getAdvances(selectedMonth, 'all'))
+    setMasterEmployees(payrollService.getAdvanceEligibleEmployees())
   }
 
   useEffect(() => {
@@ -165,7 +152,10 @@ export default function SalaryAdvancesPage() {
     const numAmt = parseFloat(amount as string)
     if (!employeeName || isNaN(numAmt)) return
     if (!selectedEmployeeId) {
-      alert('Select an Advance-eligible employee from Profiles (enable Advance Eligible on their HR profile).')
+      showError(
+        'Employee required',
+        'Advance-eligible employee Profiles se select karo (Advance Eligible enable hona chahiye).'
+      )
       return
     }
 
@@ -175,8 +165,9 @@ export default function SalaryAdvancesPage() {
       employeeName
     )
     if (existing) {
-      alert(
-        `"${employeeName}" ka advance is month (${formatMonthName(selectedMonth)}) me pehle se maujood hai (Rs. ${formatNumber(existing.amount || 0)}). Duplicate row nahi add hogi — amount table me edit karo.`
+      showError(
+        'Already exists',
+        `"${employeeName}" ka advance ${formatMonthName(selectedMonth)} me pehle se hai (Rs. ${formatNumber(existing.amount || 0)}). Amount table me edit karo.`
       )
       return
     }
@@ -197,56 +188,9 @@ export default function SalaryAdvancesPage() {
     const updated = [...advances, newRecord]
     setAdvances(updated)
     payrollService.saveAdvances(updated, true, selectedMonth)
-    setEmployeeName('')
-    setDesignation('')
-    setSelectedEmployeeId('')
-    setAmount('')
-    setFormRemarks('')
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 2500)
-  }
-
-  // Insert row anywhere
-  const handleInsertRow = (insertIdx?: number) => {
-    if (!canEditAccounts) return
-    const newRecord: AdvanceRecord = {
-      id: `adv-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      serialNo: insertIdx !== undefined ? insertIdx + 2 : advances.length + 1,
-      employeeName: 'New Staff',
-      designation: 'Staff',
-      amount: 5000,
-      date: `${selectedMonth}-05`,
-      month: selectedMonth,
-      fortnight: 'all',
-      remarks: '',
-    }
-
-    const updated = [...advances]
-    if (insertIdx !== undefined) {
-      updated.splice(insertIdx + 1, 0, newRecord)
-    } else {
-      updated.push(newRecord)
-    }
-
-    const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setAdvances(renumbered)
-    payrollService.saveAdvances(renumbered, true, selectedMonth)
-  }
-
-  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
-    if (!canEditAccounts) return
-    const current = filtered[index]
-    const neighbor = filtered[direction === 'up' ? index - 1 : index + 1]
-    if (!current || !neighbor) return
-    const from = advances.findIndex((row) => row.id === current.id)
-    const to = advances.findIndex((row) => row.id === neighbor.id)
-    if (from < 0 || to < 0) return
-    const next = [...advances]
-    const [row] = next.splice(from, 1)
-    next.splice(to, 0, row)
-    const renumbered = next.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setAdvances(renumbered)
-    payrollService.saveAdvances(renumbered, true, selectedMonth)
+    setShowAddDialog(false)
+    resetAddForm()
+    showSuccess('Advance saved', `"${employeeName}" ka advance record ho gaya.`)
   }
 
   const requestDeleteAdvance = (id: string, empName: string) => {
@@ -273,20 +217,33 @@ export default function SalaryAdvancesPage() {
 
   const handleReset = () => {
     if (!canEditAccounts) return
-    if (confirm('Reset Advances to default Excel template values?')) {
-      localStorage.removeItem('sara_payroll_advances_v7')
-      localStorage.removeItem('sara_payroll_advances_v6')
-      reload()
-      setCustomColumns([])
-      resetAllWidths()
-    }
+    askConfirm({
+      title: 'Reset advances?',
+      message: 'Default Excel template values pe reset ho jayega. Undo nahi hoga.',
+      confirmText: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        localStorage.removeItem('sara_payroll_advances_v7')
+        localStorage.removeItem('sara_payroll_advances_v6')
+        reload()
+        setCustomColumns([])
+        resetAllWidths()
+        showSuccess('Reset complete', 'Advances template pe restore ho gaye.')
+      },
+    })
   }
 
   const handleSave = () => {
     if (!canEditAccounts) return
-    payrollService.saveAdvances(advances, true, selectedMonth)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 3000)
+    askConfirm({
+      title: 'Save advances?',
+      message: `Save advances for ${formatMonthName(selectedMonth)}?`,
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.saveAdvances(advances, true, selectedMonth)
+        showSuccess('Saved', 'Advances successfully saved.')
+      },
+    })
   }
 
   const handlePrint = () => {
@@ -332,6 +289,7 @@ export default function SalaryAdvancesPage() {
       <div className="print:hidden">
         <PageHeader
           title="Salary Advances (Peshgi)"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/advances' },
@@ -339,146 +297,139 @@ export default function SalaryAdvancesPage() {
           ]}
           actions={
             <>
-              <button
-                type="button"
-                onClick={() => handleInsertRow()}
-                disabled={!canEditAccounts}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="size-3.5 text-[#0066cc]" />
-                <span>Add Row</span>
-              </button>
-              <AddColumnButton onAddColumn={handleAddCustomColumn} />
-              <button
-                type="button"
-                onClick={handleCleanDuplicates}
-                disabled={!canEditAccounts}
-                title="Same person / same month ki double rows hatao"
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <CheckCircle2 className="size-3.5 text-emerald-600" />
-                <span>Clean Duplicates</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!canEditAccounts}
-                title={canEditAccounts ? 'Reset to default template values' : 'Enable Editing to reset'}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="size-3.5 text-slate-500" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canEditAccounts}
-                className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="size-3.5 text-slate-500" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename={`Advances-${selectedMonth}`} />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={selectedMonth}
+                  disabled={!canEditAccounts}
+                  onChange={
+                    canEditAccounts
+                      ? async (m) => {
+                          await payrollService.setActiveSalariedMonthAsync(m)
+                          setSelectedMonth(m)
+                          setFormDate(`${m}-05`)
+                        }
+                      : undefined
+                  }
+                />
+                {canEditAccounts && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetAddForm()
+                      setShowAddDialog(true)
+                    }}
+                    className="erp-btn-primary text-xs !min-h-9 !h-9"
+                  >
+                    <PlusCircle className="size-3.5" />
+                    <span>Add Advance</span>
+                  </button>
+                )}
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <AddColumnButton onAddColumn={handleAddCustomColumn} />
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!canEditAccounts}
+                  title={canEditAccounts ? 'Reset to default template values' : 'Enable Editing to reset'}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!canEditAccounts}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton filename={`Advances-${selectedMonth}`} className="!min-h-9 !h-9" />
+              </div>
             </>
           }
         />
       </div>
 
-      {dedupeNotice && (
-        <div className="print:hidden flex items-center gap-2 p-3 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs font-medium">
-          <CheckCircle2 className="size-3.5 shrink-0" />
-          <span>{dedupeNotice}</span>
+      <div className="flex flex-wrap items-center gap-2.5 print:hidden">
+        <div className="relative min-w-[200px] flex-1 max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search name, designation…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+          />
         </div>
-      )}
-
-      {/* Month & Search Filter Bar */}
-      <div className="erp-card p-3 flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Month (locked — set from General Wages) */}
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-md border border-slate-200 dark:border-slate-700">
-            <Calendar className="size-3.5 text-[#0066cc]" />
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Month:</label>
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-              {formatMonthName(selectedMonth)}
-            </span>
-            <span className="text-[10px] text-slate-400">(General Wages se)</span>
-          </div>
-        </div>
-
-        {/* Search Input & Total Badge */}
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="size-3.5 absolute left-2.5 top-2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search name, designation..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1 text-xs rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none w-52"
-            />
-          </div>
-
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-md bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300">
-            <span>Total:</span>
-            <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(totalAdvances)}</span>
-            <span className="text-[11px] text-slate-400 font-normal">({filtered.length} entries)</span>
-          </div>
+        <div className="ml-auto flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 h-[38px] text-xs font-medium text-slate-700">
+          <span>Total:</span>
+          <span className="font-bold text-slate-900">{formatCurrency(totalAdvances)}</span>
+          <span className="text-[11px] text-slate-400 font-normal">({filtered.length})</span>
         </div>
       </div>
 
-      {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
-        <div className="flex items-center gap-2.5 p-3 rounded-lg border border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300 text-xs font-medium print:hidden">
-          <Lock className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="flex items-center gap-2.5 p-3 rounded-lg border border-amber-200 bg-amber-50/70 text-amber-900 text-xs font-medium print:hidden">
+          <Lock className="size-4 shrink-0 text-amber-600" />
           <span>
-            Edit Protection Active: Click <strong>&quot;Enable Editing&quot;</strong> in the top navigation bar to issue advances, modify amounts, or insert rows.
+            Edit Protection Active: Click <strong>&quot;Enable Editing&quot;</strong> in the top navigation bar to issue advances or modify amounts.
           </span>
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>Advance salary vouchers and deductions synchronized with staff sheets!</span>
-        </div>
-      )}
+      {modals}
 
-      {/* New Advance Entry Form */}
-      {canEditAccounts && (
-        <div className="erp-card p-4 print:hidden">
-          <h2 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider mb-3 flex items-center justify-between">
-            <span>Issue New Advance (Peshgi Voucher)</span>
-            <span className="text-[11px] font-normal text-slate-500 normal-case">
-              For {formatMonthName(selectedMonth)}
-            </span>
-          </h2>
-
-          <form onSubmit={handleAddAdvance} className="grid grid-cols-1 gap-3 sm:grid-cols-6">
-            <div className="sm:col-span-2">
-                <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                  Employee Name{' '}
-                  <span className="font-normal text-slate-400">(Advance-eligible only)</span>
-                </label>
+      {showAddDialog && (
+        <div
+          className="fixed inset-0 z-[1080] flex items-center justify-center p-4 print:hidden"
+          style={{ background: 'rgba(15, 23, 42, 0.48)' }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddDialog(false)
+          }}
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-black/5">
+            <div className="relative border-b border-slate-100 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowAddDialog(false)}
+                className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                <X className="size-4" />
+              </button>
+              <h3 className="text-[15px] font-semibold text-slate-900 pr-8">Add Advance</h3>
+              <p className="mt-1 text-[12px] text-slate-500">
+                For {formatMonthName(selectedMonth)}
+              </p>
+            </div>
+            <form onSubmit={handleAddAdvance} className="space-y-3 px-5 py-4">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-700">
+                  Employee <span className="font-normal text-slate-400">(eligible only)</span>
+                </span>
                 <input
                   type="text"
                   required
                   list="advance-employees-list"
                   placeholder={
                     masterEmployees.length
-                      ? 'Type or select eligible name…'
-                      : 'No one marked Advance Eligible in Profiles'
+                      ? 'Type or select name…'
+                      : 'No Advance Eligible employee'
                   }
                   value={employeeName}
                   onChange={(e) => handleSelectMasterEmployee(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                 />
                 <datalist id="advance-employees-list">
                   {masterEmployees.map((emp) => (
@@ -487,57 +438,62 @@ export default function SalaryAdvancesPage() {
                     </option>
                   ))}
                 </datalist>
-                {masterEmployees.length === 0 && (
-                  <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
-                    HR Profiles me employee edit karke &quot;Advance Eligible&quot; enable karo.
-                  </p>
-                )}
-            </div>
-
-            <div>
-              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Designation</label>
-              <input
-                type="text"
-                placeholder="e.g. Incharge / Electrician"
-                value={designation}
-                onChange={(e) => setDesignation(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-900 dark:text-white focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Advance Amount (PKR)</label>
-              <input
-                type="number"
-                required
-                min="1"
-                placeholder="e.g. 20000"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Date</label>
-              <input
-                type="date"
-                value={formDate}
-                onChange={(e) => setFormDate(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-white focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc] focus:outline-none cursor-pointer"
-              />
-            </div>
-
-            <div className="flex items-end">
-              <button
-                type="submit"
-                className="w-full erp-btn-primary flex items-center justify-center gap-1.5 text-xs py-1.5 cursor-pointer"
-              >
-                <PlusCircle className="size-3.5" />
-                <span>Record Advance</span>
-              </button>
-            </div>
-          </form>
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-700">Designation</span>
+                <input
+                  type="text"
+                  value={designation}
+                  onChange={(e) => setDesignation(e.target.value)}
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-slate-700">Amount (PKR)</span>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-mono font-semibold text-slate-900 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-slate-700">Date</span>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                  />
+                </label>
+              </div>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-700">Remarks</span>
+                <input
+                  type="text"
+                  value={formRemarks}
+                  onChange={(e) => setFormRemarks(e.target.value)}
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                />
+              </label>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddDialog(false)}
+                  className="erp-btn-secondary text-xs"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="erp-btn-primary text-xs">
+                  <PlusCircle className="size-3.5" />
+                  Save Advance
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -565,7 +521,6 @@ export default function SalaryAdvancesPage() {
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center"
-                  title="Hover row serial to insert row at position"
                 >
                   S.#
                 </ResizableTh>
@@ -650,21 +605,19 @@ export default function SalaryAdvancesPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7 + customColumns.length} className="py-8 text-center text-slate-400 font-sans text-xs">
-                    No advance records found for {formatMonthName(selectedMonth)}. Click <strong>&quot;+ Add Advance Row&quot;</strong> or issue a new advance above.
+                    No advance records for {formatMonthName(selectedMonth)}. Click <strong>Add Advance</strong> to issue one.
                   </td>
                 </tr>
               ) : (
                 filtered.map((adv, idx) => (
                   <tr key={adv.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                    <SerialCellWithInsert
-                      serialNo={adv.serialNo || idx + 1}
-                      index={idx}
-                      onMoveUp={canEditAccounts ? (i) => handleMoveRow(i, 'up') : undefined}
-                      onMoveDown={canEditAccounts ? (i) => handleMoveRow(i, 'down') : undefined}
-                      canMoveUp={idx > 0}
-                      canMoveDown={idx < filtered.length - 1}
-                    />
-                    
+                    <td
+                      style={{ width: `${widths.serialNo}px`, minWidth: `${widths.serialNo}px` }}
+                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center font-mono text-slate-700"
+                    >
+                      {adv.serialNo || idx + 1}
+                    </td>
+
                     {/* Date / Period */}
                     <td
                       style={{ width: `${widths.date}px`, minWidth: `${widths.date}px` }}

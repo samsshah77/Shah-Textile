@@ -96,6 +96,7 @@ export default function TradersDirectoryPage() {
       <div className="print:hidden">
         <PageHeader
           title="Traders & Workshops Ledger"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Accounts', href: '/accounts/traders' },
@@ -103,14 +104,25 @@ export default function TradersDirectoryPage() {
           ]}
           actions={
             <>
-              <button type="button" onClick={exportCSV} className="erp-btn-secondary">
-                <Download className="size-3.5 text-emerald-600" />
-                <span>Export CSV</span>
-              </button>
-              <button type="button" onClick={handlePrint} className="erp-btn-primary">
-                <Printer className="size-3.5" />
-                <span>Print Synopsis</span>
-              </button>
+              <div className="inline-flex shrink-0 items-center gap-1.5" />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={exportCSV}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Download className="size-3.5" />
+                  <span>Export</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+              </div>
             </>
           }
         />

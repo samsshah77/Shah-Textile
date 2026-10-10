@@ -232,6 +232,7 @@ export default function DailyExpensePage() {
       <div className="print:hidden">
         <PageHeader
           title="Daily Expense & Inward Record"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Accounts', href: '/accounts/daily-expense' },
@@ -239,27 +240,43 @@ export default function DailyExpensePage() {
           ]}
           actions={
             <>
-              <button type="button" onClick={() => setShowAddModal(true)} className="erp-btn-primary">
-                <PlusCircle className="size-3.5" />
-                <span>Add Inward Bill / Item</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                title="Reset to Excel authentic data"
-                className="erp-btn-secondary"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button type="button" onClick={exportCSV} className="erp-btn-secondary">
-                <Download className="size-3.5 text-emerald-600" />
-                <span>Export CSV</span>
-              </button>
-              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
-                <Printer className="size-3.5" />
-                <span>Print Register</span>
-              </button>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <PlusCircle className="size-3.5" />
+                  <span>Add Entry</span>
+                </button>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  title="Reset to Excel authentic data"
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={exportCSV}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Download className="size-3.5" />
+                  <span>Export</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+              </div>
             </>
           }
         />

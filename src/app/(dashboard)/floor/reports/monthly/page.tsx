@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 export default function MonthlyProductionReportsPage() {
   const [monthRollup, setMonthRollup] = useState<{
@@ -152,7 +153,7 @@ export default function MonthlyProductionReportsPage() {
             </div>
 
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-              <div className="overflow-x-auto">
+              <TablePanScroll>
                 <table className="w-full min-w-[1100px] text-left border-collapse font-mono text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/60 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans">
@@ -269,7 +270,7 @@ export default function MonthlyProductionReportsPage() {
                     </tr>
                   </tfoot>
                 </table>
-              </div>
+              </TablePanScroll>
             </div>
           </div>
         </>

@@ -34,6 +34,7 @@ export default function MonthlyPettyCashStatementPage() {
       <div className="print:hidden">
         <PageHeader
           title="Petty Cash Statement"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Accounts', href: '/accounts/petty-cash' },
@@ -42,31 +43,35 @@ export default function MonthlyPettyCashStatementPage() {
           ]}
           actions={
             <>
-              <Link
-                href="/accounts/petty-cash"
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-              >
-                <ArrowLeft className="size-3.5" />
-                <span>Daily Journal</span>
-              </Link>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="form-select form-select-sm"
-                aria-label="Statement month"
-              >
-                <option value="2026-08">August-2026</option>
-                <option value="2026-07">July-2026</option>
-                <option value="2026-09">September-2026</option>
-              </select>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
-              >
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <Link
+                  href="/accounts/petty-cash"
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <ArrowLeft className="size-3.5" />
+                  <span>Daily Journal</span>
+                </Link>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="h-9 appearance-none rounded-md border border-slate-200 bg-white px-2.5 pr-7 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                  aria-label="Statement month"
+                >
+                  <option value="2026-08">August-2026</option>
+                  <option value="2026-07">July-2026</option>
+                  <option value="2026-09">September-2026</option>
+                </select>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+              </div>
             </>
           }
         />

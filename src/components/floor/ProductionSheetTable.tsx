@@ -354,7 +354,7 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
       <div
         ref={panRef}
         className="card-body p-0 sara-prod-sheet-print__body sara-hscroll-pane"
-        title="Click and drag (hand) to scroll sideways"
+        title="Click and drag (hand) to scroll horizontally & vertically"
       >
         <table
           className="table table-sm table-bordered table-hover mb-0 align-middle sara-prod-sheet-print__table"

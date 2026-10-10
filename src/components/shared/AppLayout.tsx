@@ -120,14 +120,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <div className="app-wrapper">
             <Sidebar />
             <MainContent>{children}</MainContent>
-            <footer className="app-footer">
-              <div className="float-end d-none d-sm-inline">Sara Textile ERP</div>
-              <strong>
-                Copyright &copy; {new Date().getFullYear()}{' '}
-                <a href="/dashboard">Sara Textile</a>.
-              </strong>{' '}
-              All rights reserved.
-            </footer>
           </div>
         </SidebarProvider>
       )}

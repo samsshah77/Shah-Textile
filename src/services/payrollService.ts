@@ -4669,14 +4669,29 @@ function fortnightPersonMonthKey(row: {
   return `${base}|${row.fortnight || '1-15'}`
 }
 
+/** Default Excel petty-cash transfer amounts (accountant can override per month/fortnight). */
+function defaultPettyCashInflow(fortnight: '1-15' | '16-31'): number {
+  return fortnight === '1-15' ? 86930 : 86570
+}
+
+function pettyCashInflowMetaKey(month: string, fortnight: '1-15' | '16-31'): string {
+  return `${month}|${fortnight}`
+}
+
 function writeHrMeta(custom: {
   categories: string[]
   designations: string[]
   activeSalariedMonth?: string
   activeFortnightMonth?: string
   activeFortnight?: '1-15' | '16-31'
+  pettyCashInflowOverrides?: Record<string, number>
 }): void {
-  writeStore(STORAGE_KEYS.HR_META, custom)
+  const raw = readHrMetaRaw()
+  writeStore(STORAGE_KEYS.HR_META, {
+    ...custom,
+    pettyCashInflowOverrides:
+      custom.pettyCashInflowOverrides ?? raw.pettyCashInflowOverrides,
+  })
 }
 
 function readHrMetaRaw(): {
@@ -4685,6 +4700,7 @@ function readHrMetaRaw(): {
   activeSalariedMonth?: string
   activeFortnightMonth?: string
   activeFortnight?: '1-15' | '16-31'
+  pettyCashInflowOverrides?: Record<string, number>
 } {
   try {
     const raw = memoryStore.get(STORAGE_KEYS.HR_META)
@@ -5936,6 +5952,7 @@ class PayrollService {
       activeSalariedMonth: month,
       activeFortnightMonth: raw.activeFortnightMonth,
       activeFortnight: raw.activeFortnight,
+      pettyCashInflowOverrides: raw.pettyCashInflowOverrides,
     }
     const savedMeta = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
 
@@ -6015,6 +6032,7 @@ class PayrollService {
       activeSalariedMonth: m,
       activeFortnightMonth: raw.activeFortnightMonth,
       activeFortnight: raw.activeFortnight,
+      pettyCashInflowOverrides: raw.pettyCashInflowOverrides,
     }
     const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
     this.notifyDataChanged(m)
@@ -6059,6 +6077,34 @@ class PayrollService {
     return [...months].sort()
   }
 
+  /**
+   * Fortnight halves that already have generated sheet rows for a month.
+   * Always includes active half so the filter never goes empty.
+   */
+  listAvailableFortnightsForMonth(month: string): Array<'1-15' | '16-31'> {
+    const m = (month || '').trim()
+    const found = new Set<'1-15' | '16-31'>()
+    const sources: Array<[string, { month?: string; fortnight?: string }[]]> = [
+      [STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES],
+      [STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES],
+      [STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS],
+    ]
+    for (const [storeKey, fallback] of sources) {
+      const rows = this.readStore(storeKey, fallback)
+      for (const row of rows) {
+        if ((row.month || '') !== m) continue
+        const fn = row.fortnight === '16-31' ? '16-31' : '1-15'
+        found.add(fn)
+      }
+    }
+    if (found.size === 0) {
+      const active = this.getActiveFortnightPeriod()
+      if (active.month === m) found.add(active.fortnight)
+      else found.add('1-15')
+    }
+    return (['1-15', '16-31'] as const).filter((fn) => found.has(fn))
+  }
+
   async setActiveFortnightPeriodAsync(
     month: string,
     fortnight: '1-15' | '16-31'
@@ -6074,6 +6120,7 @@ class PayrollService {
       activeSalariedMonth: raw.activeSalariedMonth,
       activeFortnightMonth: m,
       activeFortnight: fortnight,
+      pettyCashInflowOverrides: raw.pettyCashInflowOverrides,
     }
     const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
     this.notifyDataChanged(m)
@@ -6221,6 +6268,7 @@ class PayrollService {
       activeSalariedMonth: raw.activeSalariedMonth,
       activeFortnightMonth: month,
       activeFortnight: fortnight,
+      pettyCashInflowOverrides: raw.pettyCashInflowOverrides,
     }
     const savedMeta = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
 
@@ -8389,6 +8437,58 @@ class PayrollService {
   // DYNAMIC SYNOPSIS & ROLLUPS (EXACT EXCEL LIVE MATH)
   // ==========================================
 
+  /** Petty Cash Transfer Inflow — editable by accountant; defaults 86,930 / 86,570. */
+  getPettyCashInflow(month: string, fortnight: '1-15' | '16-31'): number {
+    const key = pettyCashInflowMetaKey(month, fortnight)
+    const raw = readHrMetaRaw()
+    const override = raw.pettyCashInflowOverrides?.[key]
+    if (typeof override === 'number' && Number.isFinite(override)) return Math.round(override)
+    return defaultPettyCashInflow(fortnight)
+  }
+
+  setPettyCashInflow(month: string, fortnight: '1-15' | '16-31', amount: number): void {
+    const key = pettyCashInflowMetaKey(month, fortnight)
+    const n = Math.max(0, Math.round(Number(amount) || 0))
+    const raw = readHrMetaRaw()
+    writeHrMeta({
+      categories: raw.categories || [],
+      designations: raw.designations || [],
+      activeSalariedMonth: raw.activeSalariedMonth,
+      activeFortnightMonth: raw.activeFortnightMonth,
+      activeFortnight: raw.activeFortnight,
+      pettyCashInflowOverrides: {
+        ...(raw.pettyCashInflowOverrides || {}),
+        [key]: n,
+      },
+    })
+    this.notifyDataChanged(month)
+  }
+
+  async setPettyCashInflowAsync(
+    month: string,
+    fortnight: '1-15' | '16-31',
+    amount: number
+  ): Promise<boolean> {
+    const key = pettyCashInflowMetaKey(month, fortnight)
+    const n = Math.max(0, Math.round(Number(amount) || 0))
+    await hydratePayrollFromDb()
+    const raw = readHrMetaRaw()
+    const meta = {
+      categories: raw.categories || [],
+      designations: raw.designations || [],
+      activeSalariedMonth: raw.activeSalariedMonth,
+      activeFortnightMonth: raw.activeFortnightMonth,
+      activeFortnight: raw.activeFortnight,
+      pettyCashInflowOverrides: {
+        ...(raw.pettyCashInflowOverrides || {}),
+        [key]: n,
+      },
+    }
+    const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
+    this.notifyDataChanged(month)
+    return ok
+  }
+
   getFortnightSynopsis(month: string = '2026-08', fortnight: '1-15' | '16-31'): FortnightSynopsis {
     if (fortnight === '1-15') {
       const advances = this.getAdvances(month)
@@ -8406,7 +8506,7 @@ class PayrollService {
       const totalContractor1 = contractors1.reduce((s, c) => s + (c.netPayment || 0), 0)
 
       const totalPayrollCash = totalAdvance + totalWeaverWages + totalWeaverHol + totalWeaverEff + totalHelperWages + totalContractor1
-      const pettyCashInflow = 86930
+      const pettyCashInflow = this.getPettyCashInflow(month, '1-15')
       const totalBankCheque = totalPayrollCash + pettyCashInflow
 
       return {
@@ -8464,7 +8564,7 @@ class PayrollService {
       totalContractor2 -
       totalTicket
     )
-    const pettyCashInflow = 86570
+    const pettyCashInflow = this.getPettyCashInflow(month, '16-31')
     const totalBankCheque = totalPayrollCash + pettyCashInflow
 
     return {
@@ -8543,7 +8643,57 @@ class PayrollService {
     }
   }
 
-  // Petty Cash Register (Sheets 13 & 20)
+  /** Months that have Helper rows (independent of Weaver active period). */
+  listHelpersMonths(): string[] {
+    const months = new Set<string>(this.listPayrollMonths())
+    for (const row of this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)) {
+      if (row.month) months.add(row.month)
+    }
+    if (isPayrollClient()) {
+      const mirrored = readLocalMirror(STORAGE_KEYS.HELPERS)
+      if (Array.isArray(mirrored)) {
+        for (const row of mirrored as { month?: string }[]) {
+          if (row.month) months.add(row.month)
+        }
+      }
+    }
+    return [...months].sort()
+  }
+
+  /** Months that have Contractor rows (independent of Weaver active period). */
+  listContractorsMonths(): string[] {
+    const months = new Set<string>(this.listPayrollMonths())
+    for (const row of this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)) {
+      if (row.month) months.add(row.month)
+    }
+    if (isPayrollClient()) {
+      const mirrored = readLocalMirror(STORAGE_KEYS.CONTRACTORS)
+      if (Array.isArray(mirrored)) {
+        for (const row of mirrored as { month?: string }[]) {
+          if (row.month) months.add(row.month)
+        }
+      }
+    }
+    return [...months].sort()
+  }
+
+  // Petty Cash Register (Sheets 13 & 20) — own month list, not Weaver-driven
+  listPettyCashMonths(): string[] {
+    const months = new Set<string>(this.listPayrollMonths())
+    for (const row of this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH)) {
+      if (row.month) months.add(row.month)
+    }
+    if (isPayrollClient()) {
+      const mirrored = readLocalMirror(STORAGE_KEYS.PETTY_CASH)
+      if (Array.isArray(mirrored)) {
+        for (const row of mirrored as { month?: string }[]) {
+          if (row.month) months.add(row.month)
+        }
+      }
+    }
+    return [...months].sort()
+  }
+
   getPettyCashEntries(month: string = '2026-08', fortnight: '1-15' | '16-31'): PettyCashRecord[] {
     const list = this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH)
     const filtered = list.filter(
@@ -8739,6 +8889,7 @@ export function applySalariedMonthGenerateToStore(
           activeSalariedMonth?: string
           activeFortnightMonth?: string
           activeFortnight?: '1-15' | '16-31'
+          pettyCashInflowOverrides?: Record<string, number>
         }
       } catch {
         return {}
@@ -8752,6 +8903,7 @@ export function applySalariedMonthGenerateToStore(
         activeSalariedMonth: m,
         activeFortnightMonth: rawMeta.activeFortnightMonth,
         activeFortnight: rawMeta.activeFortnight,
+        pettyCashInflowOverrides: rawMeta.pettyCashInflowOverrides,
       }
       return {
         ok: true,
@@ -8870,6 +9022,7 @@ export function applySalariedMonthGenerateToStore(
       activeSalariedMonth: m,
       activeFortnightMonth: rawMeta.activeFortnightMonth,
       activeFortnight: rawMeta.activeFortnight,
+      pettyCashInflowOverrides: rawMeta.pettyCashInflowOverrides,
     }
 
     const patch: Record<string, unknown> = {

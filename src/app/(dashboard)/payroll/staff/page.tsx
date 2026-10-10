@@ -15,7 +15,6 @@ import {
   DollarSign,
   Clock,
   Building,
-  Plus,
   Trash2,
   RotateCcw,
   Save,
@@ -28,6 +27,8 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
   serial: 56,
@@ -50,6 +51,7 @@ const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
 
 export default function StaffSalariesPage() {
   const { canEditAccounts } = useAuth()
+  const { askConfirm, showSuccess, modals } = usePayrollModals()
   const [staffList, setStaffList] = useState<StaffSalaryRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
@@ -58,7 +60,6 @@ export default function StaffSalariesPage() {
     const [y, m] = month.split('-').map(Number)
     return y && m ? new Date(y, m, 0).getDate() : 31
   })
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
     'staff_salaries_v1',
@@ -184,23 +185,34 @@ export default function StaffSalariesPage() {
     setCustomColumns((prev) => prev.filter((c) => c.id !== colId))
   }
 
-  // Save changes
   const handleSave = () => {
     if (!canEditAccounts) return
-    payrollService.saveStaffSalaries(staffList)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 2500)
+    askConfirm({
+      title: 'Save staff salaries?',
+      message: 'Staff salary calculations save ho jayengi.',
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.saveStaffSalaries(staffList)
+        showSuccess('Saved', 'Staff salaries successfully saved.')
+      },
+    })
   }
 
-  // Reset to original Excel template
   const handleReset = () => {
     if (!canEditAccounts) return
-    if (confirm('Reset staff salary sheet to default values from August 2026?')) {
-      localStorage.removeItem('sara_payroll_staff_v6')
-      localStorage.removeItem('sara_payroll_staff_v2')
-      setCustomColumns([])
-      setStaffList(payrollService.getStaffSalaries(selectedMonth))
-    }
+    askConfirm({
+      title: 'Reset staff sheet?',
+      message: 'Default template values pe reset ho jayega. Undo nahi hoga.',
+      confirmText: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        localStorage.removeItem('sara_payroll_staff_v6')
+        localStorage.removeItem('sara_payroll_staff_v2')
+        setCustomColumns([])
+        setStaffList(payrollService.getStaffSalaries(selectedMonth))
+        showSuccess('Reset complete', 'Staff sheet template pe restore ho gaya.')
+      },
+    })
   }
 
   const totalBasic = staffList.reduce((s, st) => s + (st.basicSalary || 0), 0)
@@ -220,6 +232,7 @@ export default function StaffSalariesPage() {
       <div className="print:hidden">
         <PageHeader
           title="Staff Salaries"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/staff' },
@@ -227,63 +240,68 @@ export default function StaffSalariesPage() {
           ]}
           actions={
             <>
-              <span
-                className="inline-flex items-center px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700"
-                title="Month General Wages se set hota hai"
-              >
-                {formatPayrollMonthLabel(selectedMonth)}
-              </span>
-              <select
-                value={daysInMonth}
-                disabled={!canEditAccounts}
-                onChange={(e) => {
-                  const days = Number(e.target.value)
-                  setDaysInMonth(days)
-                  setStaffList((prev) =>
-                    prev.map((row) => payrollService.calculateStaffSalaryRow(row, days))
-                  )
-                }}
-                className="form-select form-select-sm"
-                aria-label="Days in month"
-              >
-                <option value={31}>31 Days</option>
-                <option value={30}>30 Days</option>
-                <option value={28}>28 Days</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => handleInsertRow()}
-                disabled={!canEditAccounts}
-                className="erp-btn-secondary"
-              >
-                <Plus className="size-3.5 text-[#0066cc]" />
-                <span>Add Row</span>
-              </button>
-              <AddColumnButton onAddColumn={handleAddCustomColumn} />
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!canEditAccounts}
-                title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                className="erp-btn-secondary"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canEditAccounts}
-                className="erp-btn-primary"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button type="button" onClick={handlePrint} className="erp-btn-secondary">
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename={`Staff-Salary-${selectedMonth}`} />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={selectedMonth}
+                  disabled={!canEditAccounts}
+                  onChange={
+                    canEditAccounts
+                      ? async (m) => {
+                          await payrollService.setActiveSalariedMonthAsync(m)
+                          setSelectedMonth(m)
+                        }
+                      : undefined
+                  }
+                />
+                <select
+                  value={daysInMonth}
+                  disabled={!canEditAccounts}
+                  onChange={(e) => {
+                    const days = Number(e.target.value)
+                    setDaysInMonth(days)
+                    setStaffList((prev) =>
+                      prev.map((row) => payrollService.calculateStaffSalaryRow(row, days))
+                    )
+                  }}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
+                  aria-label="Days in month"
+                >
+                  <option value={31}>31 Days</option>
+                  <option value={30}>30 Days</option>
+                  <option value={28}>28 Days</option>
+                </select>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <AddColumnButton onAddColumn={handleAddCustomColumn} />
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!canEditAccounts}
+                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!canEditAccounts}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton filename={`Staff-Salary-${selectedMonth}`} className="!min-h-9 !h-9" />
+              </div>
             </>
           }
         />
@@ -299,12 +317,7 @@ export default function StaffSalariesPage() {
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="flex items-center gap-2 rounded-md bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-900 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>Staff salary calculations successfully saved and synchronized!</span>
-        </div>
-      )}
+      {modals}
 
       {/* Interactive Live Spreadsheet Table */}
       <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">

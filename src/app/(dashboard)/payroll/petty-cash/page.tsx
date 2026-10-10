@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { PettyCashRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
@@ -9,7 +9,7 @@ import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/Inl
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Wallet,
   Printer,
@@ -26,6 +26,9 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
+import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
+import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_PETTY_CASH_WIDTHS = {
   serialNo: 56,
@@ -39,16 +42,31 @@ const DEFAULT_PETTY_CASH_WIDTHS = {
 
 function PettyCashContent() {
   const { canEditAccounts } = useAuth()
+  const { askConfirm, showSuccess, modals } = usePayrollModals()
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
-  const period = payrollService.getActiveFortnightPeriod()
   const urlFn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+  const urlMonth = searchParams.get('month')
   const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(
-    urlFn === '1-15' || urlFn === '16-31' ? urlFn : period.fortnight
+    urlFn === '1-15' || urlFn === '16-31' ? urlFn : '1-15'
   )
-  const [selectedMonth, setSelectedMonth] = useState(period.month)
+  const [selectedMonth, setSelectedMonth] = useState(
+    () =>
+      (urlMonth && /^\d{4}-\d{2}$/.test(urlMonth) && urlMonth) ||
+      payrollService.getActiveSalariedMonth()
+  )
+
+  const pushFilters = (next: { fortnight?: '1-15' | '16-31'; month?: string }) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (next.fortnight) params.set('fortnight', next.fortnight)
+    if (next.month) params.set('month', next.month)
+    router.replace(`${pathname}?${params.toString()}`)
+  }
   const [entries, setEntries] = useState<PettyCashRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
-  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [flashRowId, setFlashRowId] = useState<string | null>(null)
+  const flashClearRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Resizable columns hook
   const {
@@ -59,21 +77,16 @@ function PettyCashContent() {
   } = useResizableColumns('petty_cash', DEFAULT_PETTY_CASH_WIDTHS)
 
   useEffect(() => {
-    const fn = searchParams.get('fortnight') as '1-15' | '16-31'
-    if (fn && (fn === '1-15' || fn === '16-31')) {
-      setActiveFortnight(fn)
-    }
+    const fn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+    const m = searchParams.get('month')
+    if (fn === '1-15' || fn === '16-31') setActiveFortnight(fn)
+    if (m && /^\d{4}-\d{2}$/.test(m)) setSelectedMonth(m)
   }, [searchParams])
 
   useEffect(() => {
     setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
     const handleSync = () => {
-      const p = payrollService.getActiveFortnightPeriod()
-      if (p.month !== selectedMonth || p.fortnight !== activeFortnight) {
-        setSelectedMonth(p.month)
-        setActiveFortnight(p.fortnight)
-        return
-      }
+      // Petty Cash period is independent of Weaver fortnight — only refresh rows.
       setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
     }
     window.addEventListener('payroll_synced', handleSync)
@@ -124,13 +137,14 @@ function PettyCashContent() {
   // Insert row anywhere with auto-renumber (inserts BELOW selected row)
   const handleInsertRow = (insertIdx?: number) => {
     if (!canEditAccounts) return
+    const newId = `pc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
     const newRecord: PettyCashRecord = {
-      id: `pc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: newId,
       serialNo: insertIdx !== undefined ? insertIdx + 2 : entries.length + 1,
       date: `${selectedMonth}-${activeFortnight === '1-15' ? '10' : '25'}`,
       description: 'New Expense Entry',
       drAmount: null,
-      crAmount: 1000,
+      crAmount: null,
       balance: 0,
       fortnight: activeFortnight,
       month: selectedMonth,
@@ -145,7 +159,28 @@ function PettyCashContent() {
 
     const renumbered = updated.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setEntries(recalculateBalances(renumbered))
+
+    if (flashClearRef.current) clearTimeout(flashClearRef.current)
+    setFlashRowId(newId)
+    flashClearRef.current = setTimeout(() => setFlashRowId(null), 3500)
+
+    // Scroll to new row + focus description after paint
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const row = document.getElementById(`petty-row-${newId}`)
+        row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        const desc = row?.querySelector<HTMLInputElement>('input[data-petty-desc]')
+        desc?.focus()
+        desc?.select()
+      })
+    })
   }
+
+  useEffect(() => {
+    return () => {
+      if (flashClearRef.current) clearTimeout(flashClearRef.current)
+    }
+  }, [])
 
   const handleMoveRow = (index: number, direction: 'up' | 'down') => {
     if (!canEditAccounts) return
@@ -156,25 +191,51 @@ function PettyCashContent() {
 
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
-    const updated = entries.filter((e) => e.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setEntries(recalculateBalances(updated))
+    const row = entries.find((e) => e.id === id)
+    askConfirm({
+      title: 'Delete entry?',
+      message: row?.description
+        ? `“${row.description}” delete ho jayegi. Undo nahi hoga.`
+        : 'Yeh entry delete ho jayegi. Undo nahi hoga.',
+      confirmText: 'Delete',
+      danger: true,
+      onConfirm: () => {
+        const updated = entries
+          .filter((e) => e.id !== id)
+          .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+        setEntries(recalculateBalances(updated))
+      },
+    })
   }
 
   const handleReset = () => {
     if (!canEditAccounts) return
-    if (confirm('Reset Petty Cash register back to template values?')) {
-      payrollService.resetAllToDefault()
-      setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
-      setCustomColumns([])
-      resetAllWidths()
-    }
+    askConfirm({
+      title: 'Reset petty cash?',
+      message: 'Template values pe reset ho jayega. Undo nahi hoga.',
+      confirmText: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        payrollService.resetAllToDefault()
+        setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
+        setCustomColumns([])
+        resetAllWidths()
+        showSuccess('Reset complete', 'Petty cash template pe restore ho gaya.')
+      },
+    })
   }
 
   const handleSave = () => {
     if (!canEditAccounts) return
-    payrollService.savePettyCashEntries(selectedMonth, activeFortnight, entries)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 3000)
+    askConfirm({
+      title: 'Save petty cash?',
+      message: `Save ${formatPayrollMonthLabel(selectedMonth)} (${fortnightDisplayLabel(selectedMonth, activeFortnight)})?`,
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.savePettyCashEntries(selectedMonth, activeFortnight, entries)
+        showSuccess('Saved', 'Petty cash successfully saved.')
+      },
+    })
   }
 
   const handlePrint = () => {
@@ -208,6 +269,7 @@ function PettyCashContent() {
       <div className="print:hidden">
         <PageHeader
           title="Petty Cash Ledger"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Payroll', href: '/payroll/petty-cash' },
@@ -215,44 +277,69 @@ function PettyCashContent() {
           ]}
           actions={
             <>
-              <button
-                type="button"
-                onClick={() => handleInsertRow()}
-                disabled={!canEditAccounts}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="size-3.5 text-[#0066cc]" />
-                <span>Add Entry</span>
-              </button>
-              <AddColumnButton onAddColumn={handleAddCustomColumn} />
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!canEditAccounts}
-                title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="size-3.5 text-slate-500" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canEditAccounts}
-                className="erp-btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="size-3.5" />
-                <span>Save</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="size-3.5 text-slate-500" />
-                <span>Print</span>
-              </button>
-              <ExportPdfButton filename={`Petty-Cash-${selectedMonth}-${activeFortnight}`} />
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <PayrollMonthSelect
+                  value={selectedMonth}
+                  months={payrollService.listPettyCashMonths()}
+                  onChange={(m) => {
+                    setSelectedMonth(m)
+                    pushFilters({ month: m, fortnight: activeFortnight })
+                  }}
+                />
+                <FortnightSelect
+                  month={selectedMonth}
+                  value={activeFortnight}
+                  onlyGenerated={false}
+                  onChange={(fn) => {
+                    setActiveFortnight(fn)
+                    pushFilters({ fortnight: fn, month: selectedMonth })
+                  }}
+                />
+                {canEditAccounts && (
+                  <button
+                    type="button"
+                    onClick={() => handleInsertRow()}
+                    className="erp-btn-primary text-xs !min-h-9 !h-9"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>Add Entry</span>
+                  </button>
+                )}
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <AddColumnButton onAddColumn={handleAddCustomColumn} />
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!canEditAccounts}
+                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!canEditAccounts}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Save className="size-3.5" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+                <ExportPdfButton
+                  filename={`Petty-Cash-${selectedMonth}-${activeFortnight}`}
+                  className="!min-h-9 !h-9"
+                />
+              </div>
             </>
           }
         />
@@ -268,22 +355,18 @@ function PettyCashContent() {
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>Petty Cash transactions & running balance successfully stored!</span>
-        </div>
-      )}
+      {modals}
 
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
         <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
           <h1 className="text-xl font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
           <h2 className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
-            PETTY CASH STATEMENT ({formatPayrollMonthLabel(selectedMonth)} · {activeFortnight})
+            PETTY CASH STATEMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '}
+            {fortnightDisplayLabel(selectedMonth, activeFortnight)})
           </h2>
           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Cycle: {activeFortnight === '1-15' ? '1st Half' : '2nd Half'} (Weavers cycle se)
+            Cycle: {fortnightDisplayLabel(selectedMonth, activeFortnight)}
           </p>
         </div>
 
@@ -383,7 +466,13 @@ function PettyCashContent() {
               {entries.map((entry, idx) => (
                 <tr
                   key={entry.id}
-                  className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
+                  id={`petty-row-${entry.id}`}
+                  className={cn(
+                    'text-slate-800 dark:text-slate-200 transition-colors',
+                    flashRowId === entry.id
+                      ? 'petty-flash-row'
+                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50'
+                  )}
                 >
                   <SerialCellWithInsert
                     serialNo={entry.serialNo ?? idx + 1}
@@ -413,6 +502,7 @@ function PettyCashContent() {
                   >
                     <input
                       type="text"
+                      data-petty-desc
                       value={entry.description}
                       disabled={!canEditAccounts}
                       onChange={(e) => handleCellChange(idx, 'description', e.target.value)}

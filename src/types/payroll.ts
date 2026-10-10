@@ -47,6 +47,8 @@ export interface EmployeeProfile {
   /** Overtime shifts worked (H/Day attendance shifts). */
   overtimeShifts?: number;
   remarks?: string; // e.g. "Resignation 31 Oct 2022" or "Rejoining 08 Jun-21"
+  /** Profile photo URL — optional; UI shows initials avatar until set. */
+  photoUrl?: string;
   customFields?: Record<string, string | number>;
 }
 

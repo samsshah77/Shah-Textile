@@ -20,6 +20,7 @@ import { IssueYarnModal } from '@/components/floor/IssueYarnModal'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 export type WeightUnit = 'KG' | 'LBS'
 export type YarnViewMode = 'STOCK' | 'LEDGER'
@@ -635,10 +636,7 @@ export function YarnStockTable({
                 )}
               </div>
             ) : (
-              <div
-                className="card-body p-0"
-                style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
-              >
+              <TablePanScroll className="card-body p-0">
                 <table
                   className="table table-sm table-hover mb-0 align-middle text-nowrap"
                   style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
@@ -797,7 +795,7 @@ export function YarnStockTable({
                     )}
                   </tbody>
                 </table>
-              </div>
+              </TablePanScroll>
             )}
           </>
         )}
@@ -901,7 +899,7 @@ export function YarnStockTable({
             </div>
 
             {/* Ledger Table */}
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <TablePanScroll>
               <table className="table table-sm table-hover mb-0 align-middle text-nowrap">
                 <thead className="table-light">
                   <tr>
@@ -986,7 +984,7 @@ export function YarnStockTable({
                   )}
                 </tbody>
               </table>
-            </div>
+            </TablePanScroll>
           </div>
         )}
       </div>

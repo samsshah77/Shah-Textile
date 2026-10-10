@@ -296,6 +296,7 @@ export default function InventoryInwardPage() {
       <div className="print:hidden">
         <PageHeader
           title="Store Inventory Control"
+          showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
             { label: 'Accounts', href: '/accounts/inventory-inward' },
@@ -303,39 +304,43 @@ export default function InventoryInwardPage() {
           ]}
           actions={
             <>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
-              >
-                <PlusCircle className="size-4" />
-                <span>Add Purchase Item</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                title="Reset to Excel authentic data"
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Reset</span>
-              </button>
-              <button
-                type="button"
-                onClick={exportCSV}
-                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-              >
-                <Download className="size-4 text-emerald-600" />
-                <span>Export CSV</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1"
-              >
-                <Printer className="size-4" />
-                <span>Print</span>
-              </button>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <PlusCircle className="size-3.5" />
+                  <span>Add Item</span>
+                </button>
+              </div>
+              <div className="inline-flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  title="Reset to Excel authentic data"
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={exportCSV}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
+                >
+                  <Download className="size-3.5" />
+                  <span>Export</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print</span>
+                </button>
+              </div>
             </>
           }
         />

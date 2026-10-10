@@ -8,6 +8,7 @@ import { LoomCard } from './LoomCard'
 import { formatNumber, cn } from '@/lib/utils'
 import { Download, RotateCcw, Search, LayoutGrid, Table as TableIcon } from 'lucide-react'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
+import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 interface ProductionTableProps {
   entries: DailyLoomProductionEntry[]
@@ -195,7 +196,7 @@ export function ProductionTable({
       ) : (
         /* Manager / Desktop Clear Large Table */
         <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-          <div className="overflow-x-auto w-full max-w-full touch-pan-x custom-scrollbar">
+          <TablePanScroll className="touch-pan-x custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-[1100px]">
               <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800 shadow-xs">
                 <tr className="border-b border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
@@ -272,7 +273,7 @@ export function ProductionTable({
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </TablePanScroll>
         </div>
       )}
     </div>
