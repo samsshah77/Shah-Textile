@@ -4865,6 +4865,12 @@ export async function hydratePayrollFromDb(): Promise<void> {
       } catch (chequeErr) {
         console.error('[payroll] staff cheque repair skipped', chequeErr)
       }
+      // Sep joiners (e.g. Israr DOJ 26-Sep) must not remain on August sheets.
+      try {
+        payrollService.purgeAllJoinersFromPastMonths()
+      } catch (joinErr) {
+        console.error('[payroll] joiner purge skipped', joinErr)
+      }
       // Drop same-person duplicates (local mirror + DB often keep two ids for one advance).
       try {
         payrollService.repairDuplicatePayrollRows()
@@ -6305,7 +6311,11 @@ class PayrollService {
     const roster = this.getEmployees()
     return rows.filter((row) => {
       const rowName = nameKey === 'name' ? row.name : row.employeeName
-      const emp = findLinkedEmployee(roster, rowName, row.designation || row.contractType, row.employeeId)
+      let emp = findLinkedEmployee(roster, rowName, row.designation || row.contractType, row.employeeId)
+      // Fallback: name-only match so DOJ still hides Sep joiners even if designation drifted.
+      if (!emp && rowName) {
+        emp = roster.find((e) => namesMatch(e.name, rowName))
+      }
       return employeeBelongsInMonth(emp, month)
     })
   }
@@ -6340,8 +6350,11 @@ class PayrollService {
   purgeJoinerFromPastMonths(emp: EmployeeProfile): void {
     const start = joiningMonth(emp)
     if (!start) return
-    const unlink = (name?: string, designation?: string, employeeId?: string) =>
-      Boolean(findLinkedEmployee([emp], name, designation, employeeId))
+    const unlink = (name?: string, designation?: string, employeeId?: string) => {
+      if (emp.id && employeeId && emp.id === employeeId) return true
+      if (namesMatch(name, emp.name)) return true
+      return Boolean(findLinkedEmployee([emp], name, designation, employeeId))
+    }
 
     const dropPast = <T extends { month: string; employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
       list: T[]
@@ -6358,6 +6371,18 @@ class PayrollService {
     this.saveWeaversWages(dropPast(this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)), false)
     this.saveHelpersWages(dropPast(this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)), false)
     this.saveContractorsPayments(dropPast(this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)), false)
+  }
+
+  /** Run DOJ purge for every roster person (fixes live Israr-still-in-August without re-saving profile). */
+  purgeAllJoinersFromPastMonths(): number {
+    if (this.isClient() && !hydrated) return 0
+    let count = 0
+    for (const emp of this.getEmployees()) {
+      if (!joiningMonth(emp)) continue
+      this.purgeJoinerFromPastMonths(emp)
+      count += 1
+    }
+    return count
   }
 
   private readStore<T>(key: string, fallback: T[]): T[] {
@@ -8905,6 +8930,7 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
   allowServerSheetWrite = true
   try {
     payrollService.repairCorruptedStaffChequeAmounts()
+    payrollService.purgeAllJoinersFromPastMonths()
     payrollService.repairDuplicatePayrollRows()
   } finally {
     allowServerSheetWrite = false

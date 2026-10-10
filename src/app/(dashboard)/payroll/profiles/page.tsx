@@ -8,6 +8,7 @@ import {
   resolveResignedAt,
   inferEmployeeCategory,
   matchesHrCategoryFilter,
+  employeeBelongsInMonth,
   hydratePayrollFromDb,
   formatPayrollMonthLabel,
 } from '@/services/payrollService'
@@ -172,8 +173,13 @@ function EmployeeProfilesContent() {
   })
 
   const reload = () => {
-    setEmployees(payrollService.getEmployees())
-    setActiveMonth(payrollService.getActiveSalariedMonth())
+    const month = payrollService.getActiveSalariedMonth()
+    payrollService.purgeAllJoinersFromPastMonths()
+    // Hide people whose DOJ is after this month (e.g. Israr 26-Sep not in August view).
+    setEmployees(
+      payrollService.getEmployees().filter((e) => employeeBelongsInMonth(e, month))
+    )
+    setActiveMonth(month)
   }
 
   useEffect(() => {

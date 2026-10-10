@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   payrollService,
   isGeneralWagesEmployee,
+  employeeBelongsInMonth,
   resolveResignedAt,
   formatPayrollMonthLabel,
   hydratePayrollFromDb,
@@ -104,13 +105,17 @@ export default function GeneralWagesPage() {
 
   const reload = () => {
     payrollService.renumberGeneralWages()
+    // Drop Sep joiners (etc.) from any sheet month before their DOJ.
+    payrollService.purgeAllJoinersFromPastMonths()
+    const month = payrollService.getActiveSalariedMonth()
     const all = payrollService.getEmployees()
     const activeGw = all
       .filter(isGeneralWagesEmployee)
+      .filter((e) => employeeBelongsInMonth(e, month))
       .sort((a, b) => a.serialNo - b.serialNo)
       .map((e, i) => ({ ...e, serialNo: i + 1 }))
     setEmployees(activeGw)
-    setActiveMonth(payrollService.getActiveSalariedMonth())
+    setActiveMonth(month)
   }
 
   const handleActiveMonthChange = async (month: string) => {
