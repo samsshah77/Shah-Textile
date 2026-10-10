@@ -8,7 +8,6 @@ import {
   resolveResignedAt,
   inferEmployeeCategory,
   matchesHrCategoryFilter,
-  employeeBelongsInMonth,
   hydratePayrollFromDb,
   formatPayrollMonthLabel,
 } from '@/services/payrollService'
@@ -173,13 +172,10 @@ function EmployeeProfilesContent() {
   })
 
   const reload = () => {
-    const month = payrollService.getActiveSalariedMonth()
-    payrollService.purgeAllJoinersFromPastMonths()
-    // Hide people whose DOJ is after this month (e.g. Israr 26-Sep not in August view).
-    setEmployees(
-      payrollService.getEmployees().filter((e) => employeeBelongsInMonth(e, month))
-    )
-    setActiveMonth(month)
+    // Full roster always listed so you can open anyone and fix DOJ;
+    // salary tables follow DOJ after profile Save.
+    setEmployees(payrollService.getEmployees())
+    setActiveMonth(payrollService.getActiveSalariedMonth())
   }
 
   useEffect(() => {
@@ -397,7 +393,7 @@ function EmployeeProfilesContent() {
       const targetMonth = activeMonth || payrollService.getActiveSalariedMonth()
       if (editingEmployee) {
         await payrollService.updateEmployeeAsync(editingEmployee.id, payload, targetMonth)
-        setStatusNotice(`Profile for "${name}" updated successfully for ${formatPayrollMonthLabel(targetMonth)}.`)
+        setStatusNotice(`Profile for "${name}" updated — tables DOJ ke mutabiq sync ho gayi.`)
         setSuccessModal({
           isOpen: true,
           title: 'Profile & Salary Updated',
@@ -406,9 +402,11 @@ function EmployeeProfilesContent() {
           salary: numSalary,
           isDaily,
           dailyWage: isDaily ? numDailyWage : undefined,
-          message: isDaily
-            ? `Daily Wage Rs. ${formatNumber(numDailyWage)} | Overtime: ${numOtShifts} shifts (@ Rs. ${formatNumber(numOtRate)}) = Rs. ${formatNumber(numOtShifts * numOtRate)} updated for ${formatPayrollMonthLabel(targetMonth)}. Previous months (${formatPayrollMonthLabel('2026-08')}) historical records remain 100% preserved and untouched.`
-            : `Salary (${formatCurrency(numSalary)} / month) updated for ${formatPayrollMonthLabel(targetMonth)}. Previous months (${formatPayrollMonthLabel('2026-08')}) historical records remain 100% preserved and untouched.`,
+          message: doj
+            ? `DOJ ${doj} save ho gaya. Is bande ko joining month se pehle ki tables (jaise August) se hata diya / us ke baad ki sheets pe rakha. Salary ${formatPayrollMonthLabel(targetMonth)} pe update.`
+            : isDaily
+              ? `Daily Wage Rs. ${formatNumber(numDailyWage)} updated for ${formatPayrollMonthLabel(targetMonth)}.`
+              : `Salary (${formatCurrency(numSalary)} / month) updated for ${formatPayrollMonthLabel(targetMonth)}.`,
         })
       } else {
         await payrollService.addEmployeeAsync({
@@ -1488,7 +1486,7 @@ function EmployeeProfilesContent() {
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                   <p className="mt-1 text-[11px] text-slate-500">
-                    September joining? DOJ me Sep date likho — August salary / advance sheets se auto hata jayega.
+                    DOJ theek karke Save karo — us ke baad ye bandey joining se pehle ki months (e.g. August) ki salary tables se khud hat jayega.
                   </p>
                 </div>
 

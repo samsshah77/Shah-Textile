@@ -6832,8 +6832,16 @@ class PayrollService {
     if (nextStatus === 'Resigned') {
       this.purgeResignedFromFutureMonths(merged)
     }
-    if (joiningMonth(merged)) {
+    // DOJ save → drop from months before join; ensure row exists from join month / target month.
+    const joinM = joiningMonth(merged)
+    if (joinM) {
       this.purgeJoinerFromPastMonths(merged)
+      const placeMonth =
+        targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) && targetMonth >= joinM
+          ? targetMonth
+          : joinM
+      this.placeOnDailyWageSheets(merged, placeMonth)
+      this.placeOnSalariedSheets(merged, placeMonth)
     }
     this.notifyDataChanged(targetMonth)
     return merged
@@ -6926,8 +6934,15 @@ class PayrollService {
     if (nextStatus === 'Resigned') {
       this.purgeResignedFromFutureMonths(merged)
     }
-    if (joiningMonth(merged)) {
+    const joinM = joiningMonth(merged)
+    if (joinM) {
       this.purgeJoinerFromPastMonths(merged)
+      const placeMonth =
+        targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) && targetMonth >= joinM
+          ? targetMonth
+          : joinM
+      this.placeOnDailyWageSheets(merged, placeMonth)
+      this.placeOnSalariedSheets(merged, placeMonth)
     }
     this.notifyDataChanged(targetMonth)
     return merged
