@@ -4865,12 +4865,6 @@ export async function hydratePayrollFromDb(): Promise<void> {
       } catch (chequeErr) {
         console.error('[payroll] staff cheque repair skipped', chequeErr)
       }
-      // Sep joiners (e.g. Israr DOJ 26-Sep) must not remain on August sheets.
-      try {
-        payrollService.purgeAllJoinersFromPastMonths()
-      } catch (joinErr) {
-        console.error('[payroll] joiner purge skipped', joinErr)
-      }
       // Drop same-person duplicates (local mirror + DB often keep two ids for one advance).
       try {
         payrollService.repairDuplicatePayrollRows()
@@ -6832,14 +6826,12 @@ class PayrollService {
     if (nextStatus === 'Resigned') {
       this.purgeResignedFromFutureMonths(merged)
     }
-    // DOJ save → drop from months before join; ensure row exists from join month / target month.
-    const joinM = joiningMonth(merged)
-    if (joinM) {
+    // User edits DOJ on profile → drop from earlier month tables, keep on join month onward.
+    if (joiningMonth(merged)) {
       this.purgeJoinerFromPastMonths(merged)
-      const placeMonth =
-        targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) && targetMonth >= joinM
-          ? targetMonth
-          : joinM
+    }
+    const placeMonth = targetMonth || this.getActiveSalariedMonth()
+    if (employeeBelongsInMonth(merged, placeMonth)) {
       this.placeOnDailyWageSheets(merged, placeMonth)
       this.placeOnSalariedSheets(merged, placeMonth)
     }
@@ -6934,13 +6926,12 @@ class PayrollService {
     if (nextStatus === 'Resigned') {
       this.purgeResignedFromFutureMonths(merged)
     }
-    const joinM = joiningMonth(merged)
-    if (joinM) {
+    // User edits DOJ on profile → drop from earlier month tables, keep on join month onward.
+    if (joiningMonth(merged)) {
       this.purgeJoinerFromPastMonths(merged)
-      const placeMonth =
-        targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) && targetMonth >= joinM
-          ? targetMonth
-          : joinM
+    }
+    const placeMonth = targetMonth || this.getActiveSalariedMonth()
+    if (employeeBelongsInMonth(merged, placeMonth)) {
       this.placeOnDailyWageSheets(merged, placeMonth)
       this.placeOnSalariedSheets(merged, placeMonth)
     }
@@ -8945,7 +8936,6 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
   allowServerSheetWrite = true
   try {
     payrollService.repairCorruptedStaffChequeAmounts()
-    payrollService.purgeAllJoinersFromPastMonths()
     payrollService.repairDuplicatePayrollRows()
   } finally {
     allowServerSheetWrite = false

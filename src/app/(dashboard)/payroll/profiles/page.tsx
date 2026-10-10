@@ -172,8 +172,8 @@ function EmployeeProfilesContent() {
   })
 
   const reload = () => {
-    // Full roster always listed so you can open anyone and fix DOJ;
-    // salary tables follow DOJ after profile Save.
+    // Full roster always — so you can open Israr and fix DOJ even while August is active.
+    // Tables (Staff/Contract/GW) hide him from months before DOJ after you Save the profile.
     setEmployees(payrollService.getEmployees())
     setActiveMonth(payrollService.getActiveSalariedMonth())
   }
@@ -393,20 +393,21 @@ function EmployeeProfilesContent() {
       const targetMonth = activeMonth || payrollService.getActiveSalariedMonth()
       if (editingEmployee) {
         await payrollService.updateEmployeeAsync(editingEmployee.id, payload, targetMonth)
-        setStatusNotice(`Profile for "${name}" updated — tables DOJ ke mutabiq sync ho gayi.`)
+        const dojNote = doj
+          ? ` DOJ ${doj}: is date se pehle ke months (jaise August) ki tables se hata diya / join month se rakh diya.`
+          : ''
+        setStatusNotice(`Profile "${name}" save — tables DOJ logic se update.${dojNote}`)
         setSuccessModal({
           isOpen: true,
-          title: 'Profile & Salary Updated',
+          title: 'Profile & Tables Updated',
           employeeName: name,
           designation,
           salary: numSalary,
           isDaily,
           dailyWage: isDaily ? numDailyWage : undefined,
-          message: doj
-            ? `DOJ ${doj} save ho gaya. Is bande ko joining month se pehle ki tables (jaise August) se hata diya / us ke baad ki sheets pe rakha. Salary ${formatPayrollMonthLabel(targetMonth)} pe update.`
-            : isDaily
-              ? `Daily Wage Rs. ${formatNumber(numDailyWage)} updated for ${formatPayrollMonthLabel(targetMonth)}.`
-              : `Salary (${formatCurrency(numSalary)} / month) updated for ${formatPayrollMonthLabel(targetMonth)}.`,
+          message: isDaily
+            ? `Daily Wage Rs. ${formatNumber(numDailyWage)} | Overtime updated for ${formatPayrollMonthLabel(targetMonth)}.${dojNote}`
+            : `Salary (${formatCurrency(numSalary)} / month) for ${formatPayrollMonthLabel(targetMonth)}.${dojNote}`,
         })
       } else {
         await payrollService.addEmployeeAsync({
@@ -1486,7 +1487,7 @@ function EmployeeProfilesContent() {
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                   <p className="mt-1 text-[11px] text-slate-500">
-                    DOJ theek karke Save karo — us ke baad ye bandey joining se pehle ki months (e.g. August) ki salary tables se khud hat jayega.
+                    DOJ theek karke Save karo — tables usi logic se update hongi (Sep joining = August sheets se hat jayega).
                   </p>
                 </div>
 
