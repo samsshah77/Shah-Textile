@@ -42,6 +42,10 @@ export interface EmployeeProfile {
   /** When true, person appears in Advance (Peshgi) search — only a few staff get advances. */
   advanceEligible?: boolean;
   advance?: boolean;
+  /** Overtime rate per shift for Weavers (e.g. 1750/2100) and Helpers (e.g. 1200/1400). */
+  overtimeRate?: number;
+  /** Overtime shifts worked (H/Day attendance shifts). */
+  overtimeShifts?: number;
   remarks?: string; // e.g. "Resignation 31 Oct 2022" or "Rejoining 08 Jun-21"
   customFields?: Record<string, string | number>;
 }

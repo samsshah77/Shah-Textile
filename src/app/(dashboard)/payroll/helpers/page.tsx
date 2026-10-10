@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { HelperWageRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
@@ -22,6 +23,7 @@ import {
   CheckCircle2,
   Calculator,
   Lock,
+  Edit2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
@@ -471,19 +473,15 @@ function HelpersPayrollContent() {
                     {formatNumber(h.wagesAmount, 0)}
                   </td>
 
-                  {/* Holiday Shifts (Editable) */}
+                  {/* Holiday Shifts — From HR Profile Card */}
                   <td
                     style={{ width: `${widths.holidayAttendance}px`, minWidth: `${widths.holidayAttendance}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center bg-slate-50/50"
+                    title="Set in HR Profile Card"
                   >
-                    <NumericCellInput
-                      value={h.holidayAttendance || 0}
-                      disabled={!canEditAccounts}
-                      navRow={idx}
-                      navCol={2}
-                      onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
-                      className="w-full text-center bg-transparent px-1 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
-                    />
+                    <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      {h.holidayAttendance || 0}
+                    </span>
                   </td>
 
                   {/* Calculated Holiday OT */}
@@ -528,14 +526,23 @@ function HelpersPayrollContent() {
                     style={{ width: `${widths.action}px`, minWidth: `${widths.action}px` }}
                     className="py-1 px-1 text-center print:hidden"
                   >
-                    <button
-                      onClick={() => handleDeleteRow(h.id)}
-                      disabled={!canEditAccounts}
-                      title={canEditAccounts ? 'Delete row' : 'Enable Editing to delete'}
-                      className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <Link
+                        href={`/payroll/profiles?search=${encodeURIComponent(h.employeeName)}`}
+                        className="p-1 text-[#0066cc] hover:text-blue-800 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                        title={`Edit Overtime for ${h.employeeName} in HR Profile`}
+                      >
+                        <Edit2 className="size-3.5" />
+                      </Link>
+                      <button
+                        onClick={() => handleDeleteRow(h.id)}
+                        disabled={!canEditAccounts}
+                        title={canEditAccounts ? 'Delete row' : 'Enable Editing to delete'}
+                        className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

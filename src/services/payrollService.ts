@@ -390,7 +390,7 @@ export function findSmartInsertionIndex(
   return list.length
 }
 
-function weaverSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' | 'ratePerDay30'>): {
+function weaverSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' | 'ratePerDay30'> & { overtimeRate?: number }): {
   designation: 'Spare Weaver' | 'Weaver'
   wagePerDay: number
   holidayRate: number
@@ -398,14 +398,15 @@ function weaverSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' |
   const isSpare = (emp.designation || '').toLowerCase().includes('spare')
   const wage =
     Number(emp.ratePerDay30) || Math.round((Number(emp.salary) || 0) / 30) || (isSpare ? 1800 : 1450)
+  const holidayRate = Number(emp.overtimeRate) || (isSpare ? 2100 : 1750)
   return {
     designation: isSpare ? 'Spare Weaver' : 'Weaver',
     wagePerDay: wage,
-    holidayRate: isSpare ? 2100 : 1750,
+    holidayRate,
   }
 }
 
-function helperSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' | 'ratePerDay30'>): {
+function helperSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' | 'ratePerDay30'> & { overtimeRate?: number }): {
   designation: 'Helper' | 'Winder'
   wagePerDay: number
   otRate: number
@@ -413,10 +414,11 @@ function helperSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' |
   const isWinder = (emp.designation || '').toLowerCase().includes('winder')
   const wage =
     Number(emp.ratePerDay30) || Math.round((Number(emp.salary) || 0) / 30) || (isWinder ? 1150 : 1050)
+  const otRate = Number(emp.overtimeRate) || (isWinder ? 1400 : 1200)
   return {
     designation: isWinder ? 'Winder' : 'Helper',
     wagePerDay: wage,
-    otRate: isWinder ? 1400 : 1200,
+    otRate,
   }
 }
 
@@ -5344,12 +5346,14 @@ class PayrollService {
           )
           if (idx >= 0) {
             const row = next[idx]
+            const nextOt = emp.overtimeShifts !== undefined ? Number(emp.overtimeShifts) : row.holidayAttendance
             if (
               row.employeeId === emp.id &&
               row.employeeName === emp.name &&
               row.designation === pay.designation &&
               row.wagePerDay === pay.wagePerDay &&
-              row.holidayRate === pay.holidayRate
+              row.holidayRate === pay.holidayRate &&
+              row.holidayAttendance === nextOt
             ) {
               continue
             }
@@ -5360,6 +5364,7 @@ class PayrollService {
               designation: pay.designation,
               wagePerDay: pay.wagePerDay,
               holidayRate: pay.holidayRate,
+              holidayAttendance: nextOt,
             })
             changed = true
             continue
@@ -5376,7 +5381,7 @@ class PayrollService {
               attendanceDays: 0,
               rateLoom: 150,
               extraLooms: 0,
-              holidayAttendance: 0,
+              holidayAttendance: Number(emp.overtimeShifts) || 0,
               holidayRate: pay.holidayRate,
               efficiencyAmount: 0,
               fortnight,
@@ -5407,11 +5412,14 @@ class PayrollService {
         )
         if (idx >= 0) {
           const row = next[idx]
+          const nextOt = emp.overtimeShifts !== undefined ? Number(emp.overtimeShifts) : row.holidayAttendance
           if (
             row.employeeId === emp.id &&
             row.employeeName === emp.name &&
             row.designation === pay.designation &&
-            row.wagePerDay === pay.wagePerDay
+            row.wagePerDay === pay.wagePerDay &&
+            row.otRate === pay.otRate &&
+            row.holidayAttendance === nextOt
           ) {
             continue
           }
@@ -5422,6 +5430,7 @@ class PayrollService {
             designation: pay.designation,
             wagePerDay: pay.wagePerDay,
             otRate: pay.otRate,
+            holidayAttendance: nextOt,
           })
           changed = true
           continue
@@ -5437,12 +5446,11 @@ class PayrollService {
             wagePerDay: pay.wagePerDay,
             attendanceDays: 0,
             otRate: pay.otRate,
-            holidayAttendance: 0,
+            holidayAttendance: Number(emp.overtimeShifts) || 0,
             fortnight,
             month: m,
           })
         )
-        changed = true
       }
     }
     if (changed) this.saveHelpersWages(next, false)
@@ -6584,6 +6592,7 @@ class PayrollService {
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
         holidayRate: pay.holidayRate,
+        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
       })
     })
     if (weaversChanged) this.saveWeaversWages(updatedWeavers, false)
@@ -6619,6 +6628,7 @@ class PayrollService {
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
         otRate: pay.otRate,
+        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
       })
     })
     if (helpersChanged) this.saveHelpersWages(updatedHelpers, false)
@@ -6840,6 +6850,7 @@ class PayrollService {
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
         holidayRate: pay.holidayRate,
+        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
       })
     })
     if (weaversChanged) {
@@ -6876,6 +6887,8 @@ class PayrollService {
         employeeName: newEmp.name,
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
+        otRate: pay.otRate,
+        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
       })
     })
     if (helpersChanged) {
@@ -6924,6 +6937,8 @@ class PayrollService {
     isDaily: boolean
     dutyHrs: number
     shiftFromTo: string
+    overtimeRate?: number
+    overtimeShifts?: number
   } {
     const activeMonth = month || this.getActiveSalariedMonth()
     const cat = inferEmployeeCategory(emp)
@@ -6941,12 +6956,17 @@ class PayrollService {
           isEmpMatch(w.employeeName, w.employeeId)
       )
       const daily = row ? row.wagePerDay : (emp.ratePerDay30 || (emp.salary ? Math.round(emp.salary / 30) : 1450))
+      const isSpare = (emp.designation || '').toLowerCase().includes('spare')
+      const overtimeRate = row?.holidayRate ?? emp.overtimeRate ?? (isSpare ? 2100 : 1750)
+      const overtimeShifts = row?.holidayAttendance ?? emp.overtimeShifts ?? 0
       return {
         salary: daily * 30,
         ratePerDay: daily,
         isDaily: true,
         dutyHrs: emp.dutyHrs || 12,
         shiftFromTo: emp.shiftFromTo || '8 to 8',
+        overtimeRate,
+        overtimeShifts,
       }
     }
 
@@ -6958,12 +6978,17 @@ class PayrollService {
           isEmpMatch(h.employeeName, h.employeeId)
       )
       const daily = row ? row.wagePerDay : (emp.ratePerDay30 || (emp.salary ? Math.round(emp.salary / 30) : 1050))
+      const isWinder = (emp.designation || '').toLowerCase().includes('winder')
+      const overtimeRate = row?.otRate ?? emp.overtimeRate ?? (isWinder ? 1400 : 1200)
+      const overtimeShifts = row?.holidayAttendance ?? emp.overtimeShifts ?? 0
       return {
         salary: daily * 30,
         ratePerDay: daily,
         isDaily: true,
         dutyHrs: emp.dutyHrs || 12,
         shiftFromTo: emp.shiftFromTo || '8 to 8',
+        overtimeRate,
+        overtimeShifts,
       }
     }
 

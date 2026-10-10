@@ -126,6 +126,8 @@ function EmployeeProfilesContent() {
   const [shiftFromTo, setShiftFromTo] = useState('9 to 6')
   const [salary, setSalary] = useState<number | string>('')
   const [dailyWage, setDailyWage] = useState<number | string>('')
+  const [overtimeRate, setOvertimeRate] = useState<number | string>('')
+  const [overtimeShifts, setOvertimeShifts] = useState<number | string>('0')
   const [doj, setDoj] = useState('')
   const [contractStatus, setContractStatus] = useState<string>('Company Contract')
   const [formKind, setFormKind] = useState<FormKind>('salaried')
@@ -212,6 +214,8 @@ function EmployeeProfilesContent() {
     setShiftFromTo('9 to 6')
     setSalary('')
     setDailyWage('')
+    setOvertimeRate('')
+    setOvertimeShifts('0')
     setDoj(new Date().toISOString().split('T')[0])
     setContractStatus('Company Contract')
     setStatus('Active')
@@ -229,6 +233,8 @@ function EmployeeProfilesContent() {
       setShiftFromTo('9 to 6')
       setContractStatus('Company Contract')
       setDailyWage('')
+      setOvertimeRate('')
+      setOvertimeShifts('0')
       if (!editingEmployee) {
         setDesignation('')
         setSalary('')
@@ -244,6 +250,8 @@ function EmployeeProfilesContent() {
         setDesignation('Weaver')
         setDailyWage(1450)
         setSalary(1450 * 30)
+        setOvertimeRate(1750)
+        setOvertimeShifts('0')
       }
       return
     }
@@ -256,6 +264,8 @@ function EmployeeProfilesContent() {
         setDesignation('Helper')
         setDailyWage(1050)
         setSalary(1050 * 30)
+        setOvertimeRate(1200)
+        setOvertimeShifts('0')
       }
       return
     }
@@ -264,6 +274,8 @@ function EmployeeProfilesContent() {
     setShiftFromTo('8 to 8')
     setContractStatus('Contractor')
     setDailyWage('')
+    setOvertimeRate('')
+    setOvertimeShifts('0')
     if (!editingEmployee) {
       setDesignation('Contractor')
       setSalary('')
@@ -289,6 +301,11 @@ function EmployeeProfilesContent() {
     const resolvedDaily =
       comp.ratePerDay || emp.ratePerDay30 || emp.ratePerDay31 || (isDaily && comp.salary ? Math.round(comp.salary / 30) : '')
     setDailyWage(resolvedDaily || '')
+    const defaultOt = kind === 'weaver'
+      ? ((emp.designation || '').toLowerCase().includes('spare') ? 2100 : 1750)
+      : ((emp.designation || '').toLowerCase().includes('winder') ? 1400 : 1200)
+    setOvertimeRate(comp.overtimeRate ?? emp.overtimeRate ?? (isDaily ? defaultOt : ''))
+    setOvertimeShifts(comp.overtimeShifts ?? emp.overtimeShifts ?? '0')
     setDoj(emp.doj || '')
     setContractStatus(
       kind === 'weaver' || kind === 'helper'
@@ -340,6 +357,9 @@ function EmployeeProfilesContent() {
               : editingEmployee?.employeeCategory,
     })
 
+    const numOtRate = parseFloat(overtimeRate as string) || (formKind === 'weaver' ? (designation === 'Spare Weaver' ? 2100 : 1750) : (designation === 'Winder' ? 1400 : 1200))
+    const numOtShifts = parseFloat(overtimeShifts as string) || 0
+
     const payload = {
       name,
       fatherName,
@@ -355,6 +375,8 @@ function EmployeeProfilesContent() {
       ratePerDay30: isDaily ? numDailyWage : undefined,
       ratePerDay31: isDaily ? numDailyWage : undefined,
       ratePerDay28: isDaily ? numDailyWage : undefined,
+      overtimeRate: isDaily ? numOtRate : undefined,
+      overtimeShifts: isDaily ? numOtShifts : undefined,
       doj,
       contractStatus: nextContract,
       status,
@@ -378,7 +400,9 @@ function EmployeeProfilesContent() {
           salary: numSalary,
           isDaily,
           dailyWage: isDaily ? numDailyWage : undefined,
-          message: `Salary (${isDaily ? `Daily Wage Rs. ${formatNumber(numDailyWage)}` : `Rs. ${formatNumber(numSalary)} / month`}) updated for ${formatPayrollMonthLabel(targetMonth)}. Previous months (${formatPayrollMonthLabel('2026-08')}) historical records remain 100% preserved and untouched.`,
+          message: isDaily
+            ? `Daily Wage Rs. ${formatNumber(numDailyWage)} | Overtime: ${numOtShifts} shifts (@ Rs. ${formatNumber(numOtRate)}) = Rs. ${formatNumber(numOtShifts * numOtRate)} updated for ${formatPayrollMonthLabel(targetMonth)}. Previous months (${formatPayrollMonthLabel('2026-08')}) historical records remain 100% preserved and untouched.`
+            : `Salary (${formatCurrency(numSalary)} / month) updated for ${formatPayrollMonthLabel(targetMonth)}. Previous months (${formatPayrollMonthLabel('2026-08')}) historical records remain 100% preserved and untouched.`,
         })
       } else {
         await payrollService.addEmployeeAsync({
@@ -395,7 +419,9 @@ function EmployeeProfilesContent() {
           salary: numSalary,
           isDaily,
           dailyWage: isDaily ? numDailyWage : undefined,
-          message: `New employee "${name}" registered into master roster for ${formatPayrollMonthLabel(targetMonth)}. Previous months (August) remain unaffected.`,
+          message: isDaily
+            ? `New employee "${name}" registered with Daily Wage Rs. ${formatNumber(numDailyWage)} & Overtime Rate Rs. ${formatNumber(numOtRate)} for ${formatPayrollMonthLabel(targetMonth)}. Previous months remain unaffected.`
+            : `New employee "${name}" registered into master roster for ${formatPayrollMonthLabel(targetMonth)}. Previous months (August) remain unaffected.`,
         })
       }
       reload()
@@ -809,26 +835,42 @@ function EmployeeProfilesContent() {
                     {/* Duty & Compensation */}
                     {(() => {
                       const comp = payrollService.getEmployeeCompensationForMonth(emp, activeMonth)
+                      const isWeaverOrHelper = inferEmployeeCategory(emp) === 'Weaver' || inferEmployeeCategory(emp) === 'Helper'
                       return (
-                        <div className="mt-3 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="text-[10px] text-slate-400 block font-medium">
-                              {comp.isDaily
-                                ? 'Daily Wage Rate'
-                                : 'Monthly Base'}
-                            </span>
-                            <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                              {comp.isDaily
-                                ? formatCurrency(comp.ratePerDay || 0) + ' /day'
-                                : formatCurrency(comp.salary)}
-                            </span>
+                        <div className="mt-3 space-y-1.5">
+                          <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-medium">
+                                {comp.isDaily
+                                  ? 'Daily Wage Rate'
+                                  : 'Monthly Base'}
+                              </span>
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                                {comp.isDaily
+                                  ? formatCurrency(comp.ratePerDay || 0) + ' /day'
+                                  : formatCurrency(comp.salary)}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 block font-medium">Duty & Shift</span>
+                              <span className="font-medium text-slate-700 dark:text-slate-300">
+                                {comp.dutyHrs}h ({comp.shiftFromTo || '9 to 6'})
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-slate-400 block font-medium">Duty & Shift</span>
-                            <span className="font-medium text-slate-700 dark:text-slate-300">
-                              {comp.dutyHrs}h ({comp.shiftFromTo || '9 to 6'})
-                            </span>
-                          </div>
+
+                          {/* Overtime Info Badge for Weaver / Helper */}
+                          {isWeaverOrHelper && (
+                            <div className="bg-amber-50/70 dark:bg-amber-950/30 px-2.5 py-1.5 rounded-lg border border-amber-200/60 dark:border-amber-800/50 flex items-center justify-between text-[11px]">
+                              <span className="text-amber-800 dark:text-amber-300 font-medium flex items-center gap-1">
+                                <Clock className="size-3 text-amber-600" />
+                                OT: {comp.overtimeShifts || 0} shifts
+                              </span>
+                              <span className="font-mono font-bold text-amber-900 dark:text-amber-200">
+                                @ Rs. {formatNumber(comp.overtimeRate || 0)} = Rs. {formatNumber((comp.overtimeShifts || 0) * (comp.overtimeRate || 0))}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )
                     })()}
@@ -952,11 +994,19 @@ function EmployeeProfilesContent() {
                       </td>
                       {(() => {
                         const comp = payrollService.getEmployeeCompensationForMonth(emp, activeMonth)
+                        const isWeaverOrHelper = cat === 'Weaver' || cat === 'Helper'
                         return (
                           <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                            {comp.isDaily
-                              ? formatCurrency(comp.ratePerDay || 0) + '/d'
-                              : formatCurrency(comp.salary)}
+                            <div>
+                              {comp.isDaily
+                                ? formatCurrency(comp.ratePerDay || 0) + '/d'
+                                : formatCurrency(comp.salary)}
+                            </div>
+                            {isWeaverOrHelper && (
+                              <div className="text-[10px] text-amber-700 dark:text-amber-300 font-normal">
+                                OT: {comp.overtimeShifts || 0} shifts (@ Rs. {formatNumber(comp.overtimeRate || 0)})
+                              </div>
+                            )}
                           </td>
                         )
                       })()}
@@ -1300,6 +1350,74 @@ function EmployeeProfilesContent() {
                         ? 'Weaver Rs. 1,450 · Spare Weaver Rs. 1,800'
                         : 'Helper Rs. 1,050 · Winder Rs. 1,150'}
                     </p>
+                  </div>
+                )}
+
+                {/* Overtime Settings — Weaver & Helper */}
+                {(formKind === 'weaver' || formKind === 'helper') && (
+                  <div className="sm:col-span-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                        <Clock className="size-4 text-amber-600" />
+                        Holiday &amp; Overtime Settings ({formatPayrollMonthLabel(activeMonth)})
+                      </span>
+                      <span className="text-[10px] text-amber-700 dark:text-amber-300 font-medium bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded">
+                        HR Profile Managed
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Overtime Rate */}
+                      <div>
+                        <label className="block font-medium text-amber-900 dark:text-amber-200 mb-1 text-[11px]">
+                          Overtime Rate (PKR / Shift) *
+                        </label>
+                        <input
+                          type="number"
+                          value={overtimeRate}
+                          onChange={(e) => setOvertimeRate(e.target.value)}
+                          placeholder={formKind === 'weaver' ? '1750 / 2100' : '1200 / 1400'}
+                          className="w-full px-3 py-1.5 font-mono font-bold text-amber-900 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        />
+                        <p className="mt-0.5 text-[10px] text-amber-700">
+                          {formKind === 'weaver'
+                            ? 'Weaver Rs. 1,750 · Spare Rs. 2,100'
+                            : 'Helper Rs. 1,200 · Winder Rs. 1,400'}
+                        </p>
+                      </div>
+
+                      {/* Overtime Shifts */}
+                      <div>
+                        <label className="block font-medium text-amber-900 dark:text-amber-200 mb-1 text-[11px]">
+                          Overtime Shifts Worked (H/Day Shifts)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={overtimeShifts}
+                          onChange={(e) => setOvertimeShifts(e.target.value)}
+                          placeholder="0, 1, 2..."
+                          className="w-full px-3 py-1.5 font-mono font-bold text-amber-900 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        />
+                        <p className="mt-0.5 text-[10px] text-amber-700">
+                          Gazetted / Weekly holidays shifts
+                        </p>
+                      </div>
+
+                      {/* Overtime Amount Preview */}
+                      <div className="bg-amber-100/70 dark:bg-amber-900/40 rounded-lg p-2.5 flex flex-col justify-center">
+                        <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                          Total Overtime Amount
+                        </span>
+                        <span className="text-base font-bold font-mono text-amber-950 dark:text-amber-100 mt-0.5">
+                          Rs. {formatNumber((Number(overtimeShifts) || 0) * (Number(overtimeRate) || 0))}
+                        </span>
+                        <span className="text-[10px] text-amber-700 mt-0.5">
+                          {Number(overtimeShifts) || 0} shifts × Rs. {formatNumber(Number(overtimeRate) || 0)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 )}
 

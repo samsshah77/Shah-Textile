@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { WeaverWageRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
@@ -23,6 +24,8 @@ import {
   Printer,
   Lock,
   CalendarPlus,
+  Edit2,
+  ExternalLink,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
@@ -904,23 +907,21 @@ function WeaversPayrollContent() {
                       {w.designation}
                     </td>
 
+                    {/* H/Day Attendance — From HR Profile Card */}
                     <td
                       style={{ width: `${otWidths.holidayAttendance}px`, minWidth: `${otWidths.holidayAttendance}px` }}
-                      className="border-r border-slate-100 py-1 px-2 text-center"
+                      className="border-r border-slate-100 py-1.5 px-2 text-center bg-slate-50/50"
+                      title="Set in HR Profile Card"
                     >
-                      <NumericCellInput
-                        value={w.holidayAttendance || 0}
-                        disabled={!canEditAccounts}
-                        navRow={idx}
-                        navCol={0}
-                        onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
-                        className="w-20 text-center bg-transparent px-1 py-0.5 font-semibold text-xs text-slate-900 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded mx-auto"
-                      />
+                      <span className="font-mono text-xs font-semibold text-slate-800">
+                        {w.holidayAttendance || 0}
+                      </span>
                     </td>
 
                     <td
                       style={{ width: `${otWidths.holidayRate}px`, minWidth: `${otWidths.holidayRate}px` }}
-                      className="border-r border-slate-100 py-1.5 px-3 text-right text-slate-600 font-mono whitespace-nowrap"
+                      className="border-r border-slate-100 py-1.5 px-3 text-right text-slate-600 font-mono whitespace-nowrap bg-slate-50/30"
+                      title="Set in HR Profile Card"
                     >
                       {formatNumber(w.holidayRate, 0)}
                     </td>
@@ -957,13 +958,22 @@ function WeaversPayrollContent() {
                       style={{ width: `${otWidths.action}px`, minWidth: `${otWidths.action}px` }}
                       className="py-1 px-1 text-center print:hidden"
                     >
-                      <button
-                        onClick={() => handleDeleteRow(w.id)}
-                        disabled={!canEditAccounts}
-                        className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <Link
+                          href={`/payroll/profiles?search=${encodeURIComponent(w.employeeName)}`}
+                          className="p-1 text-[#0066cc] hover:text-blue-800 rounded hover:bg-blue-50 transition-colors"
+                          title={`Edit Overtime for ${w.employeeName} in HR Profile`}
+                        >
+                          <Edit2 className="size-3.5" />
+                        </Link>
+                        <button
+                          onClick={() => handleDeleteRow(w.id)}
+                          disabled={!canEditAccounts}
+                          className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
