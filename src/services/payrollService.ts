@@ -4859,6 +4859,12 @@ export async function hydratePayrollFromDb(): Promise<void> {
       } catch (repairErr) {
         console.error('[payroll] historical pay repair skipped', repairErr)
       }
+      // Fix Sep Staff cheque = -advance corruption (Net Cash wrongly = Gross).
+      try {
+        payrollService.repairCorruptedStaffChequeAmounts()
+      } catch (chequeErr) {
+        console.error('[payroll] staff cheque repair skipped', chequeErr)
+      }
       // Drop same-person duplicates (local mirror + DB often keep two ids for one advance).
       try {
         payrollService.repairDuplicatePayrollRows()
@@ -4896,8 +4902,9 @@ class PayrollService {
     const salary = Number(row.salary) || 0
     const attendance = Number(row.attendanceDays) || 0
     const otHours = Number(row.otHours) || 0
-    const lessAdvance = Number(row.lessAdvance) || 0
-    const chequeAmount = Number(row.chequeAmount) || 0
+    // Advances / cheques are never negative (live had cheque = -advance, which inflated Net Cash).
+    const lessAdvance = Math.max(0, Number(row.lessAdvance) || 0)
+    const chequeAmount = Math.max(0, Number(row.chequeAmount) || 0)
 
     const month = row.month || '2026-08'
     const isHistorical = month !== this.getActiveSalariedMonth()
@@ -6491,6 +6498,57 @@ class PayrollService {
     const latest = months[months.length - 1] || target
     const active = this.getActiveSalariedMonth()
     return target === latest || target === active || target >= latest
+  }
+
+  /**
+   * Fix Staff rows where CHEQUE was corrupted to -LESS ADV (Net Cash became = Gross).
+   * Restores cheque / OT / net from Excel seed for that person+month (Liaquat cheque stays 0).
+   */
+  repairCorruptedStaffChequeAmounts(): number {
+    if (this.isClient() && !hydrated) return 0
+    const staff = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
+    let fixed = 0
+    const next = staff.map((st) => {
+      const cheque = Number(st.chequeAmount) || 0
+      const adv = Number(st.lessAdvance) || 0
+      const corrupted = cheque < 0 || (adv > 0 && cheque === -adv)
+      if (!corrupted) return st
+
+      const m = sheetMonthKey(st.month)
+      const seed = INITIAL_STAFF_SALARIES.find(
+        (s) =>
+          sheetMonthKey(s.month) === m &&
+          (namesMatch(s.employeeName, st.employeeName) ||
+            (s.employeeId && st.employeeId && s.employeeId === st.employeeId))
+      )
+
+      fixed += 1
+      if (seed) {
+        return this.calculateStaffSalaryRow(
+          {
+            ...st,
+            attendanceDays: seed.attendanceDays,
+            otHours: seed.otHours,
+            otAmount: seed.otAmount,
+            lessAdvance: Math.max(0, Number(seed.lessAdvance) || 0),
+            chequeAmount: Math.max(0, Number(seed.chequeAmount) || 0),
+            basicSalary: seed.basicSalary,
+            ratePerDay: seed.ratePerDay,
+            grossAmount: seed.grossAmount,
+            synopsisAmount: seed.synopsisAmount,
+            netCashAmount: seed.netCashAmount,
+          },
+          daysInCalendarMonth(m)
+        )
+      }
+      // No seed match — at least clear negative cheque and recalc.
+      return this.calculateStaffSalaryRow(
+        { ...st, chequeAmount: 0, lessAdvance: Math.max(0, adv) },
+        daysInCalendarMonth(m)
+      )
+    })
+    if (fixed > 0) this.saveStaffSalaries(next, false)
+    return fixed
   }
 
   /**
@@ -8846,6 +8904,7 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
   hydrated = true
   allowServerSheetWrite = true
   try {
+    payrollService.repairCorruptedStaffChequeAmounts()
     payrollService.repairDuplicatePayrollRows()
   } finally {
     allowServerSheetWrite = false
