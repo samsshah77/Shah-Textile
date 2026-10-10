@@ -5,7 +5,13 @@ import {
   dbPayrollIsEmpty,
   dbPayrollSave,
 } from '@/server/payrollDb'
-import { getPayrollSeedStore, payrollService, projectProfilesOntoSheets, STORAGE_KEYS } from '@/services/payrollService'
+import {
+  getPayrollSeedStore,
+  payrollService,
+  projectProfilesOntoSheets,
+  dedupePayrollStore,
+  STORAGE_KEYS,
+} from '@/services/payrollService'
 import { currentUser } from '@/server/current-user'
 import { isAccountsController } from '@/lib/accountsAccess'
 
@@ -50,6 +56,15 @@ export async function GET() {
       Object.entries(projected).map(([key, value]) => dbPayrollSave(key, value))
     )
     for (const [key, value] of Object.entries(projected)) store[key] = value
+
+    // Live self-heal: drop same person twice in one month (mirror ∪ DB merge by id).
+    const deduped = dedupePayrollStore(store)
+    if (Object.keys(deduped).length > 0) {
+      await Promise.all(
+        Object.entries(deduped).map(([key, value]) => dbPayrollSave(key, value))
+      )
+      for (const [key, value] of Object.entries(deduped)) store[key] = value
+    }
 
     return NextResponse.json({ ok: true, store })
   } catch (err) {

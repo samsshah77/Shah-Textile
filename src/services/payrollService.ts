@@ -63,6 +63,17 @@ function daysInCalendarMonth(month: string = '2026-08'): number {
   return new Date(year, mon, 0).getDate()
 }
 
+/** Normalize sheet month; never fall back to "active" month (that overwrote Aug with Sep pay). */
+function sheetMonthKey(rowMonth?: string | null, fallback = '2026-08'): string {
+  const m = (rowMonth || '').trim()
+  return /^\d{4}-\d{2}$/.test(m) ? m : fallback
+}
+
+/** Pay / wage fields apply only to the month being edited from the profile card. */
+function isTargetPayMonth(rowMonth: string | undefined | null, targetMonth: string): boolean {
+  return sheetMonthKey(rowMonth) === sheetMonthKey(targetMonth)
+}
+
 /** Active / On Leave count as working roster; Resigned does not. */
 export function isActiveEmployee(emp?: EmployeeProfile | null): boolean {
   if (!emp) return false
@@ -4527,6 +4538,88 @@ function mergeRowsById<T extends { id?: string }>(baseRows: T[], overrides: T[])
   return [...map.values()]
 }
 
+/**
+ * Prefer the "better" duplicate row: has employeeId, stable/seed id, higher amount, lower serial.
+ * Used when local mirror + Postgres both kept the same person under different ids.
+ */
+function preferPayrollDuplicateRow<T extends { id?: string; employeeId?: string; amount?: number; salary?: number; serialNo?: number }>(
+  a: T,
+  b: T
+): T {
+  const score = (r: T) => {
+    let s = 0
+    if (r.employeeId) s += 40
+    const id = r.id || ''
+    if (/^(adv-sep-|adv-\d+$|st-|ct-|staff-|cnt-)/.test(id)) s += 25
+    if (!id.includes('Date.now') && !/-\d{13}-/.test(id)) s += 5
+    s += Math.min(20, Math.abs(Number(r.amount ?? r.salary) || 0) / 5000)
+    s += Math.max(0, 15 - (Number(r.serialNo) || 99))
+    return s
+  }
+  return score(a) >= score(b) ? a : b
+}
+
+function dedupeRowsByKey<T extends { id?: string }>(
+  rows: T[],
+  keyOf: (row: T) => string,
+  prefer: (a: T, b: T) => T = preferPayrollDuplicateRow
+): { list: T[]; removed: number } {
+  const map = new Map<string, T>()
+  let removed = 0
+  for (const row of rows || []) {
+    const key = keyOf(row)
+    if (!key) {
+      map.set(`__noid__${row.id || Math.random()}`, row)
+      continue
+    }
+    const prev = map.get(key)
+    if (!prev) {
+      map.set(key, row)
+      continue
+    }
+    removed += 1
+    map.set(key, prefer(prev, row))
+  }
+  return { list: [...map.values()], removed }
+}
+
+function advancePersonMonthKey(a: {
+  month?: string
+  employeeId?: string
+  employeeName?: string
+}): string {
+  const month = sheetMonthKey(a.month)
+  const person = (a.employeeId || '').trim() || normalizeName(a.employeeName)
+  if (!person) return ''
+  return `${month}|${person}`
+}
+
+function salariedPersonMonthKey(row: {
+  month?: string
+  employeeId?: string
+  employeeName?: string
+  name?: string
+}): string {
+  const month = sheetMonthKey(row.month)
+  const person =
+    (row.employeeId || '').trim() ||
+    normalizeName(row.employeeName || row.name)
+  if (!person) return ''
+  return `${month}|${person}`
+}
+
+function fortnightPersonMonthKey(row: {
+  month?: string
+  fortnight?: string
+  employeeId?: string
+  employeeName?: string
+  name?: string
+}): string {
+  const base = salariedPersonMonthKey(row)
+  if (!base) return ''
+  return `${base}|${row.fortnight || '1-15'}`
+}
+
 function writeHrMeta(custom: {
   categories: string[]
   designations: string[]
@@ -4710,6 +4803,19 @@ export async function hydratePayrollFromDb(): Promise<void> {
           return persistPayrollKey(key, value)
         })
       )
+
+      // After mirror flush: restore Aug (etc.) pay if profile sync had overwritten it to 40000.
+      try {
+        payrollService.repairHistoricalPayClobberedByProfile()
+      } catch (repairErr) {
+        console.error('[payroll] historical pay repair skipped', repairErr)
+      }
+      // Drop same-person duplicates (local mirror + DB often keep two ids for one advance).
+      try {
+        payrollService.repairDuplicatePayrollRows()
+      } catch (dupErr) {
+        console.error('[payroll] duplicate repair skipped', dupErr)
+      }
     } catch (err) {
       console.error('[payroll] hydrate failed — falling back to seed/local', err)
       hydrated = true
@@ -6286,6 +6392,186 @@ class PayrollService {
     return saved
   }
 
+  /**
+   * Profile.salary is the "current going rate" (newest / active month).
+   * Editing an older month must update that month's sheet only — not clobber profile pay.
+   */
+  private shouldWritePayOntoProfile(targetMonth?: string): boolean {
+    const target = sheetMonthKey(targetMonth || this.getActiveSalariedMonth())
+    const months = this.listPayrollMonths()
+    const latest = months[months.length - 1] || target
+    const active = this.getActiveSalariedMonth()
+    return target === latest || target === active || target >= latest
+  }
+
+  /**
+   * Restore seed pay on older months when row salary was clobbered to match profile.salary
+   * (e.g. Aug 36000 → 40000 after Sep profile edit + General Wages save).
+   */
+  repairHistoricalPayClobberedByProfile(): void {
+    if (this.isClient() && !hydrated) return
+    const employees = this.getEmployees()
+    const months = this.listPayrollMonths()
+    const latest = months[months.length - 1] || this.getActiveSalariedMonth()
+
+    const staff = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
+    let staffChanged = false
+    const nextStaff = staff.map((st) => {
+      const m = sheetMonthKey(st.month)
+      if (m >= latest) return st
+      const seed = INITIAL_STAFF_SALARIES.find(
+        (s) =>
+          sheetMonthKey(s.month) === m &&
+          (namesMatch(s.employeeName, st.employeeName) ||
+            (s.employeeId && st.employeeId && s.employeeId === st.employeeId))
+      )
+      if (!seed || Number(seed.salary) === Number(st.salary)) return st
+      const emp = findLinkedEmployee(employees, st.employeeName, st.designation, st.employeeId)
+      if (!emp || Number(st.salary) !== Number(emp.salary)) return st
+      if (Number(seed.salary) === Number(emp.salary)) return st
+      staffChanged = true
+      return this.calculateStaffSalaryRow({ ...st, salary: seed.salary }, daysInCalendarMonth(m))
+    })
+    if (staffChanged) this.saveStaffSalaries(nextStaff, false)
+
+    const contract = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
+    let contractChanged = false
+    const nextContract = contract.map((ct) => {
+      const m = sheetMonthKey(ct.month)
+      if (m >= latest) return ct
+      const seed = INITIAL_CONTRACT_SALARIES.find(
+        (s) =>
+          sheetMonthKey(s.month) === m &&
+          (namesMatch(s.employeeName, ct.employeeName) ||
+            (s.employeeId && ct.employeeId && s.employeeId === ct.employeeId))
+      )
+      if (!seed || Number(seed.salary) === Number(ct.salary)) return ct
+      const emp = findLinkedEmployee(employees, ct.employeeName, ct.designation, ct.employeeId)
+      if (!emp || Number(ct.salary) !== Number(emp.salary)) return ct
+      if (Number(seed.salary) === Number(emp.salary)) return ct
+      contractChanged = true
+      return this.calculateContractSalaryRow({ ...ct, salary: seed.salary }, daysInCalendarMonth(m))
+    })
+    if (contractChanged) this.saveContractSalaries(nextContract, false)
+  }
+
+  /**
+   * Remove duplicate people within the same month (and fortnight for daily-wage sheets).
+   * Live often has two copies after localStorage mirror ∪ Postgres merge by id.
+   */
+  repairDuplicatePayrollRows(): { removed: number } {
+    if (this.isClient() && !hydrated) return { removed: 0 }
+    let removed = 0
+
+    const advances = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
+    const adv = dedupeRowsByKey(advances, advancePersonMonthKey)
+    if (adv.removed > 0) {
+      removed += adv.removed
+      const renumbered = this.renumberByMonth(adv.list)
+      writeStore(STORAGE_KEYS.ADVANCES, renumbered)
+    }
+
+    const staff = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
+    const st = dedupeRowsByKey(staff, salariedPersonMonthKey)
+    if (st.removed > 0) {
+      removed += st.removed
+      writeStore(STORAGE_KEYS.STAFF, this.renumberByMonth(st.list))
+    }
+
+    const contract = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
+    const ct = dedupeRowsByKey(contract, salariedPersonMonthKey)
+    if (ct.removed > 0) {
+      removed += ct.removed
+      writeStore(STORAGE_KEYS.CONTRACT, this.renumberByMonth(ct.list))
+    }
+
+    const efficiency = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
+    const eff = dedupeRowsByKey(efficiency, (row) =>
+      salariedPersonMonthKey({
+        month: row.month,
+        employeeId: row.employeeId,
+        name: row.name,
+      })
+    )
+    if (eff.removed > 0) {
+      removed += eff.removed
+      writeStore(STORAGE_KEYS.EFFICIENCY, this.renumberByMonth(eff.list))
+    }
+
+    const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
+    const wv = dedupeRowsByKey(weavers, fortnightPersonMonthKey)
+    if (wv.removed > 0) {
+      removed += wv.removed
+      writeStore(STORAGE_KEYS.WEAVERS, this.renumberByMonthFortnight(wv.list))
+    }
+
+    const helpers = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
+    const hp = dedupeRowsByKey(helpers, fortnightPersonMonthKey)
+    if (hp.removed > 0) {
+      removed += hp.removed
+      writeStore(STORAGE_KEYS.HELPERS, this.renumberByMonthFortnight(hp.list))
+    }
+
+    const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
+    const cr = dedupeRowsByKey(contractors, fortnightPersonMonthKey)
+    if (cr.removed > 0) {
+      removed += cr.removed
+      writeStore(STORAGE_KEYS.CONTRACTORS, this.renumberByMonthFortnight(cr.list))
+    }
+
+    if (removed > 0) this.notifyDataChanged()
+    return { removed }
+  }
+
+  private renumberByMonth<T extends { month?: string; serialNo?: number }>(list: T[]): T[] {
+    const groups = new Map<string, T[]>()
+    for (const row of list) {
+      const m = sheetMonthKey(row.month)
+      const g = groups.get(m) || []
+      g.push(row)
+      groups.set(m, g)
+    }
+    const out: T[] = []
+    for (const [, rows] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      rows
+        .sort((a, b) => (Number(a.serialNo) || 0) - (Number(b.serialNo) || 0))
+        .forEach((row, i) => out.push({ ...row, serialNo: i + 1 }))
+    }
+    return out
+  }
+
+  private renumberByMonthFortnight<
+    T extends { month?: string; fortnight?: string; serialNo?: number },
+  >(list: T[]): T[] {
+    const groups = new Map<string, T[]>()
+    for (const row of list) {
+      const key = `${sheetMonthKey(row.month)}|${row.fortnight || '1-15'}`
+      const g = groups.get(key) || []
+      g.push(row)
+      groups.set(key, g)
+    }
+    const out: T[] = []
+    for (const [, rows] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      rows
+        .sort((a, b) => (Number(a.serialNo) || 0) - (Number(b.serialNo) || 0))
+        .forEach((row, i) => out.push({ ...row, serialNo: i + 1 }))
+    }
+    return out
+  }
+
+  /** True if this person already has an advance row in the month (blocks double entry). */
+  hasAdvanceForEmployee(
+    month: string,
+    employeeId?: string,
+    employeeName?: string
+  ): AdvanceRecord | undefined {
+    const key = advancePersonMonthKey({ month, employeeId, employeeName })
+    if (!key) return undefined
+    return this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES).find(
+      (a) => advancePersonMonthKey(a) === key
+    )
+  }
+
   updateEmployee(
     id: string,
     updatedFields: Partial<EmployeeProfile>,
@@ -6296,20 +6582,31 @@ class PayrollService {
     if (idx === -1) return null
 
     const current = list[idx]
-    const salary = updatedFields.salary !== undefined ? Number(updatedFields.salary) : current.salary
+    const writePayToProfile = this.shouldWritePayOntoProfile(targetMonth)
+    const salary =
+      updatedFields.salary !== undefined && writePayToProfile
+        ? Number(updatedFields.salary)
+        : current.salary
     const dutyHrs = updatedFields.dutyHrs !== undefined ? Number(updatedFields.dutyHrs) : current.dutyHrs
 
     const explicitDaily =
-      updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0
+      writePayToProfile &&
+      updatedFields.ratePerDay30 != null &&
+      Number(updatedFields.ratePerDay30) > 0
         ? Number(updatedFields.ratePerDay30)
         : null
-    const ratePerDay31 =
-      explicitDaily ?? Math.round((salary / 31) * 100) / 100
-    const ratePerDay30 =
-      explicitDaily ?? Math.round((salary / 30) * 100) / 100
-    const ratePerHr30 = Math.round((salary / (30 * (dutyHrs || 8))) * 100) / 100
-    const ratePerDay28 =
-      explicitDaily ?? Math.round((salary / 28) * 100) / 100
+    const ratePerDay31 = writePayToProfile
+      ? (explicitDaily ?? Math.round((salary / 31) * 100) / 100)
+      : current.ratePerDay31
+    const ratePerDay30 = writePayToProfile
+      ? (explicitDaily ?? Math.round((salary / 30) * 100) / 100)
+      : current.ratePerDay30
+    const ratePerHr30 = writePayToProfile
+      ? Math.round((salary / (30 * (dutyHrs || 8))) * 100) / 100
+      : current.ratePerHr30
+    const ratePerDay28 = writePayToProfile
+      ? (explicitDaily ?? Math.round((salary / 28) * 100) / 100)
+      : current.ratePerDay28
 
     const nextStatus = updatedFields.status ?? current.status ?? 'Active'
     let resignedAt = updatedFields.resignedAt !== undefined ? updatedFields.resignedAt : current.resignedAt
@@ -6321,6 +6618,14 @@ class PayrollService {
     } else if (updatedFields.status && updatedFields.status !== 'Resigned') {
       resignedAt = undefined
     }
+
+    // Sheet sync always sees the pay values intended for targetMonth (even if profile keeps current rate).
+    const sheetPaySalary =
+      updatedFields.salary !== undefined ? Number(updatedFields.salary) : current.salary
+    const sheetPayDaily =
+      updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0
+        ? Number(updatedFields.ratePerDay30)
+        : null
 
     const merged: EmployeeProfile = {
       ...current,
@@ -6336,10 +6641,20 @@ class PayrollService {
     }
     merged.employeeCategory = inferEmployeeCategory(merged)
 
+    const syncEmp: EmployeeProfile = {
+      ...merged,
+      salary: sheetPaySalary,
+      ratePerDay30: sheetPayDaily ?? merged.ratePerDay30,
+      ratePerDay31: sheetPayDaily ?? merged.ratePerDay31,
+      ratePerDay28: sheetPayDaily ?? merged.ratePerDay28,
+      overtimeRate: updatedFields.overtimeRate ?? merged.overtimeRate,
+      overtimeShifts: updatedFields.overtimeShifts ?? merged.overtimeShifts,
+    }
+
     list[idx] = merged
     this.profileAliases.set(id, current.name)
     writeStore(STORAGE_KEYS.EMPLOYEES, list)
-    this.syncSingleEmployeeAcrossSheets(current, merged, targetMonth)
+    this.syncSingleEmployeeAcrossSheets(current, syncEmp, targetMonth)
     this.profileAliases.delete(id)
 
     if (nextStatus === 'Resigned') {
@@ -6359,20 +6674,31 @@ class PayrollService {
     if (idx === -1) return null
 
     const current = list[idx]
-    const salary = updatedFields.salary !== undefined ? Number(updatedFields.salary) : current.salary
+    const writePayToProfile = this.shouldWritePayOntoProfile(targetMonth)
+    const salary =
+      updatedFields.salary !== undefined && writePayToProfile
+        ? Number(updatedFields.salary)
+        : current.salary
     const dutyHrs = updatedFields.dutyHrs !== undefined ? Number(updatedFields.dutyHrs) : current.dutyHrs
 
     const explicitDaily =
-      updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0
+      writePayToProfile &&
+      updatedFields.ratePerDay30 != null &&
+      Number(updatedFields.ratePerDay30) > 0
         ? Number(updatedFields.ratePerDay30)
         : null
-    const ratePerDay31 =
-      explicitDaily ?? Math.round((salary / 31) * 100) / 100
-    const ratePerDay30 =
-      explicitDaily ?? Math.round((salary / 30) * 100) / 100
-    const ratePerHr30 = Math.round((salary / (30 * (dutyHrs || 8))) * 100) / 100
-    const ratePerDay28 =
-      explicitDaily ?? Math.round((salary / 28) * 100) / 100
+    const ratePerDay31 = writePayToProfile
+      ? (explicitDaily ?? Math.round((salary / 31) * 100) / 100)
+      : current.ratePerDay31
+    const ratePerDay30 = writePayToProfile
+      ? (explicitDaily ?? Math.round((salary / 30) * 100) / 100)
+      : current.ratePerDay30
+    const ratePerHr30 = writePayToProfile
+      ? Math.round((salary / (30 * (dutyHrs || 8))) * 100) / 100
+      : current.ratePerHr30
+    const ratePerDay28 = writePayToProfile
+      ? (explicitDaily ?? Math.round((salary / 28) * 100) / 100)
+      : current.ratePerDay28
 
     const nextStatus = updatedFields.status ?? current.status ?? 'Active'
     let resignedAt = updatedFields.resignedAt !== undefined ? updatedFields.resignedAt : current.resignedAt
@@ -6384,6 +6710,13 @@ class PayrollService {
     } else if (updatedFields.status && updatedFields.status !== 'Resigned') {
       resignedAt = undefined
     }
+
+    const sheetPaySalary =
+      updatedFields.salary !== undefined ? Number(updatedFields.salary) : current.salary
+    const sheetPayDaily =
+      updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0
+        ? Number(updatedFields.ratePerDay30)
+        : null
 
     const merged: EmployeeProfile = {
       ...current,
@@ -6399,10 +6732,20 @@ class PayrollService {
     }
     merged.employeeCategory = inferEmployeeCategory(merged)
 
+    const syncEmp: EmployeeProfile = {
+      ...merged,
+      salary: sheetPaySalary,
+      ratePerDay30: sheetPayDaily ?? merged.ratePerDay30,
+      ratePerDay31: sheetPayDaily ?? merged.ratePerDay31,
+      ratePerDay28: sheetPayDaily ?? merged.ratePerDay28,
+      overtimeRate: updatedFields.overtimeRate ?? merged.overtimeRate,
+      overtimeShifts: updatedFields.overtimeShifts ?? merged.overtimeShifts,
+    }
+
     list[idx] = merged
     this.profileAliases.set(id, current.name)
     await writeStoreAndWait(STORAGE_KEYS.EMPLOYEES, list)
-    await this.syncSingleEmployeeAcrossSheetsAsync(current, merged, targetMonth)
+    await this.syncSingleEmployeeAcrossSheetsAsync(current, syncEmp, targetMonth)
     this.profileAliases.delete(id)
 
     if (nextStatus === 'Resigned') {
@@ -6424,14 +6767,12 @@ class PayrollService {
       return false
     }
 
-    // 1. Staff Salary & OT
+    // 1. Staff Salary & OT — identity all months; pay only targetMonth
     const staffList = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
     let staffChanged = false
     const updatedStaff = staffList.map((st) => {
       if (!isEmpMatch(st.employeeName, st.employeeId)) return st
-      const rowMonth = st.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(st.month, activeMonth)) {
         if (
           st.employeeName !== newEmp.name ||
           st.designation !== newEmp.designation ||
@@ -6456,19 +6797,17 @@ class PayrollService {
           designation: newEmp.designation,
           salary: newEmp.salary,
         },
-        daysInCalendarMonth(st.month || activeMonth)
+        daysInCalendarMonth(sheetMonthKey(st.month, activeMonth))
       )
     })
     if (staffChanged) this.saveStaffSalaries(updatedStaff, false)
 
-    // 2. Contract Salaries (Employees, OverTime, Net Payment)
+    // 2. Contract Salaries — identity all months; pay only targetMonth
     const contractList = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
     let contractChanged = false
     const updatedContract = contractList.map((ct) => {
       if (!isEmpMatch(ct.employeeName, ct.employeeId)) return ct
-      const rowMonth = ct.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(ct.month, activeMonth)) {
         if (
           ct.employeeName !== newEmp.name ||
           ct.designation !== newEmp.designation ||
@@ -6493,19 +6832,17 @@ class PayrollService {
           designation: newEmp.designation,
           salary: newEmp.salary,
         },
-        daysInCalendarMonth(ct.month || activeMonth)
+        daysInCalendarMonth(sheetMonthKey(ct.month, activeMonth))
       )
     })
     if (contractChanged) this.saveContractSalaries(updatedContract, false)
 
-    // 3. Efficiency
+    // 3. Efficiency — identity all months; salaryEarned only for targetMonth
     const efficiencyAll = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
     let efficiencyChanged = false
     const updatedEfficiency = efficiencyAll.map((eff) => {
       if (!isEmpMatch(eff.name, eff.employeeId)) return eff
-      const rowMonth = eff.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(eff.month, activeMonth)) {
         if (
           eff.name !== newEmp.name ||
           eff.designation !== newEmp.designation ||
@@ -6524,7 +6861,7 @@ class PayrollService {
       const linkedContract = updatedContract.find(
         (ct) =>
           isEmpMatch(ct.employeeName, ct.employeeId) &&
-          (ct.month || activeMonth) === activeMonth
+          isTargetPayMonth(ct.month, activeMonth)
       )
       const salaryEarned = linkedContract ? linkedContract.basicSalary : eff.salaryEarned
       const recalculated = this.calculateEfficiencyRow({
@@ -6540,8 +6877,8 @@ class PayrollService {
     if (efficiencyChanged) {
       this.saveEfficiencyIncentives(updatedEfficiency, false)
       updatedEfficiency.forEach((eff) => {
-        if (isEmpMatch(eff.name, eff.employeeId) && (eff.month || activeMonth) === activeMonth) {
-          this.syncEfficiencyToSalaries(eff.name, eff.month || activeMonth, eff.amount || 0, false)
+        if (isEmpMatch(eff.name, eff.employeeId) && isTargetPayMonth(eff.month, activeMonth)) {
+          this.syncEfficiencyToSalaries(eff.name, sheetMonthKey(eff.month, activeMonth), eff.amount || 0, false)
         }
       })
     }
@@ -6561,13 +6898,12 @@ class PayrollService {
     })
     if (advancesChanged) this.saveAdvances(updatedAdvances, false)
 
-    // 5. Weavers (Daily Wage)
+    // 5. Weavers — identity all months; wage only targetMonth
     const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
     let weaversChanged = false
     const updatedWeavers = weavers.map((w) => {
       if (!isEmpMatch(w.employeeName, w.employeeId)) return w
-      const rowMonth = w.month || activeMonth
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(w.month, activeMonth)) {
         if (
           w.employeeName !== newEmp.name ||
           w.designation !== newEmp.designation ||
@@ -6597,13 +6933,12 @@ class PayrollService {
     })
     if (weaversChanged) this.saveWeaversWages(updatedWeavers, false)
 
-    // 6. Helpers (Daily Wage)
+    // 6. Helpers — identity all months; wage only targetMonth
     const helpers = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
     let helpersChanged = false
     const updatedHelpers = helpers.map((h) => {
       if (!isEmpMatch(h.employeeName, h.employeeId)) return h
-      const rowMonth = h.month || activeMonth
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(h.month, activeMonth)) {
         if (
           h.employeeName !== newEmp.name ||
           h.designation !== newEmp.designation ||
@@ -6633,13 +6968,12 @@ class PayrollService {
     })
     if (helpersChanged) this.saveHelpersWages(updatedHelpers, false)
 
-    // 7. Contractors
+    // 7. Contractors — identity all months; amount only targetMonth
     const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
     let contractorsChanged = false
     const updatedContractors = contractors.map((c) => {
       if (!isEmpMatch(c.name, c.employeeId)) return c
-      const rowMonth = c.month || activeMonth
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(c.month, activeMonth)) {
         if (c.name !== newEmp.name || c.employeeId !== newEmp.id) {
           contractorsChanged = true
           return {
@@ -6676,14 +7010,12 @@ class PayrollService {
 
     const persistPromises: Promise<boolean>[] = []
 
-    // 1. Staff Salary & OT
+    // 1. Staff — identity all months; pay only targetMonth
     const staffList = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
     let staffChanged = false
     const updatedStaff = staffList.map((st) => {
       if (!isEmpMatch(st.employeeName, st.employeeId)) return st
-      const rowMonth = st.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(st.month, activeMonth)) {
         if (
           st.employeeName !== newEmp.name ||
           st.designation !== newEmp.designation ||
@@ -6708,21 +7040,19 @@ class PayrollService {
           designation: newEmp.designation,
           salary: newEmp.salary,
         },
-        daysInCalendarMonth(st.month || activeMonth)
+        daysInCalendarMonth(sheetMonthKey(st.month, activeMonth))
       )
     })
     if (staffChanged) {
       persistPromises.push(writeStoreAndWait(STORAGE_KEYS.STAFF, updatedStaff))
     }
 
-    // 2. Contract Salaries (Employees, OverTime, Net Payment)
+    // 2. Contract — identity all months; pay only targetMonth
     const contractList = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
     let contractChanged = false
     const updatedContract = contractList.map((ct) => {
       if (!isEmpMatch(ct.employeeName, ct.employeeId)) return ct
-      const rowMonth = ct.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(ct.month, activeMonth)) {
         if (
           ct.employeeName !== newEmp.name ||
           ct.designation !== newEmp.designation ||
@@ -6747,21 +7077,19 @@ class PayrollService {
           designation: newEmp.designation,
           salary: newEmp.salary,
         },
-        daysInCalendarMonth(ct.month || activeMonth)
+        daysInCalendarMonth(sheetMonthKey(ct.month, activeMonth))
       )
     })
     if (contractChanged) {
       persistPromises.push(writeStoreAndWait(STORAGE_KEYS.CONTRACT, updatedContract))
     }
 
-    // 3. Efficiency
+    // 3. Efficiency — identity all months; salaryEarned only targetMonth
     const efficiencyAll = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
     let efficiencyChanged = false
     const updatedEfficiency = efficiencyAll.map((eff) => {
       if (!isEmpMatch(eff.name, eff.employeeId)) return eff
-      const rowMonth = eff.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(eff.month, activeMonth)) {
         if (
           eff.name !== newEmp.name ||
           eff.designation !== newEmp.designation ||
@@ -6780,7 +7108,7 @@ class PayrollService {
       const linkedContract = updatedContract.find(
         (ct) =>
           isEmpMatch(ct.employeeName, ct.employeeId) &&
-          (ct.month || activeMonth) === activeMonth
+          isTargetPayMonth(ct.month, activeMonth)
       )
       const salaryEarned = linkedContract ? linkedContract.basicSalary : eff.salaryEarned
       const recalculated = this.calculateEfficiencyRow({
@@ -6796,8 +7124,8 @@ class PayrollService {
     if (efficiencyChanged) {
       persistPromises.push(writeStoreAndWait(STORAGE_KEYS.EFFICIENCY, updatedEfficiency))
       updatedEfficiency.forEach((eff) => {
-        if (isEmpMatch(eff.name, eff.employeeId) && (eff.month || activeMonth) === activeMonth) {
-          this.syncEfficiencyToSalaries(eff.name, eff.month || activeMonth, eff.amount || 0, false)
+        if (isEmpMatch(eff.name, eff.employeeId) && isTargetPayMonth(eff.month, activeMonth)) {
+          this.syncEfficiencyToSalaries(eff.name, sheetMonthKey(eff.month, activeMonth), eff.amount || 0, false)
         }
       })
     }
@@ -6819,13 +7147,12 @@ class PayrollService {
       persistPromises.push(writeStoreAndWait(STORAGE_KEYS.ADVANCES, updatedAdvances))
     }
 
-    // 5. Weavers (Daily Wage)
+    // 5. Weavers — identity all months; wage only targetMonth
     const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
     let weaversChanged = false
     const updatedWeavers = weavers.map((w) => {
       if (!isEmpMatch(w.employeeName, w.employeeId)) return w
-      const rowMonth = w.month || activeMonth
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(w.month, activeMonth)) {
         if (
           w.employeeName !== newEmp.name ||
           w.designation !== newEmp.designation ||
@@ -6857,13 +7184,12 @@ class PayrollService {
       persistPromises.push(writeStoreAndWait(STORAGE_KEYS.WEAVERS, updatedWeavers))
     }
 
-    // 6. Helpers (Daily Wage)
+    // 6. Helpers — identity all months; wage only targetMonth
     const helpers = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
     let helpersChanged = false
     const updatedHelpers = helpers.map((h) => {
       if (!isEmpMatch(h.employeeName, h.employeeId)) return h
-      const rowMonth = h.month || activeMonth
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(h.month, activeMonth)) {
         if (
           h.employeeName !== newEmp.name ||
           h.designation !== newEmp.designation ||
@@ -6895,13 +7221,12 @@ class PayrollService {
       persistPromises.push(writeStoreAndWait(STORAGE_KEYS.HELPERS, updatedHelpers))
     }
 
-    // 7. Contractors
+    // 7. Contractors — identity all months; amount only targetMonth
     const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
     let contractorsChanged = false
     const updatedContractors = contractors.map((c) => {
       if (!isEmpMatch(c.name, c.employeeId)) return c
-      const rowMonth = c.month || activeMonth
-      if (rowMonth !== activeMonth) {
+      if (!isTargetPayMonth(c.month, activeMonth)) {
         if (c.name !== newEmp.name || c.employeeId !== newEmp.id) {
           contractorsChanged = true
           return {
@@ -7180,7 +7505,11 @@ class PayrollService {
       return undefined
     }
 
-    // Staff: name, designation, monthly salary → recalc. Attendance/OT/cheque stay local.
+    // IDENTITY ONLY (name / designation / id) across EVERY month.
+    // Never push profile.salary / wages here — that wiped Aug 36000 when Sep was 40000
+    // and General Wages Save (or active-month switch) re-synced the roster.
+    // Month pay changes only via updateEmployee → syncSingleEmployeeAcrossSheets(targetMonth).
+
     const staffList = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
     let staffChanged = false
     const updatedStaff = staffList.map((st) => {
@@ -7188,89 +7517,42 @@ class PayrollService {
       if (!emp) return st
       const cat = inferEmployeeCategory(emp)
       if (cat !== 'Staff' && cat !== 'Admin') return st
-      const rowMonth = st.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
-        if (
-          st.employeeName !== emp.name ||
-          st.designation !== emp.designation ||
-          st.employeeId !== emp.id
-        ) {
-          staffChanged = true
-          return {
-            ...st,
-            employeeId: emp.id,
-            employeeName: emp.name,
-            designation: emp.designation,
-          }
-        }
-        return st
-      }
       if (
         st.employeeId === emp.id &&
         st.employeeName === emp.name &&
-        st.designation === emp.designation &&
-        st.salary === emp.salary
+        st.designation === emp.designation
       ) {
         return st
       }
       staffChanged = true
-      return this.calculateStaffSalaryRow(
-        {
-          ...st,
-          employeeId: emp.id,
-          employeeName: emp.name,
-          designation: emp.designation,
-          salary: emp.salary,
-        },
-        daysInCalendarMonth(st.month || activeMonth)
-      )
+      return {
+        ...st,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        designation: emp.designation,
+      }
     })
     if (staffChanged) this.saveStaffSalaries(updatedStaff, false)
 
-    // Contract: name, designation, salary + live duty hours. Attendance/OT/ticket stay local.
     const contractList = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
     let contractChanged = false
     const updatedContract = contractList.map((ct) => {
       const emp = resolveLinked(ct.employeeName, ct.designation, ct.employeeId)
       if (!emp || inferEmployeeCategory(emp) !== 'Contract') return ct
-      const rowMonth = ct.month || activeMonth
-      // CRITICAL: NEVER alter past months (e.g. August 2026)!
-      if (rowMonth !== activeMonth) {
-        if (
-          ct.employeeName !== emp.name ||
-          ct.designation !== emp.designation ||
-          ct.employeeId !== emp.id
-        ) {
-          contractChanged = true
-          return {
-            ...ct,
-            employeeId: emp.id,
-            employeeName: emp.name,
-            designation: emp.designation,
-          }
-        }
-        return ct
-      }
       if (
         ct.employeeId === emp.id &&
         ct.employeeName === emp.name &&
-        ct.designation === emp.designation &&
-        ct.salary === emp.salary
+        ct.designation === emp.designation
       ) {
         return ct
       }
       contractChanged = true
-      return this.calculateContractSalaryRow(
-        {
-          ...ct,
-          employeeId: emp.id,
-          employeeName: emp.name,
-          designation: emp.designation,
-          salary: emp.salary,
-        },
-        daysInCalendarMonth(ct.month || activeMonth)
-      )
+      return {
+        ...ct,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        designation: emp.designation,
+      }
     })
     if (contractChanged) this.saveContractSalaries(updatedContract, false)
 
@@ -7297,78 +7579,52 @@ class PayrollService {
     })
     if (advancesChanged) this.saveAdvances(updatedAdvances, false)
 
-    // Efficiency: identity + salaryEarned from linked contract basic. % stays local.
+    // Efficiency: identity only on roster sync (amounts stay per-month on the sheet).
     const efficiencyAll = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
-    const efficiencyOthers = efficiencyAll.filter((eff) => (eff.month || month) !== month)
-    const efficiency = efficiencyAll.filter((eff) => (eff.month || month) === month)
     let efficiencyChanged = false
-    const updatedEfficiencyMonth = efficiency.map((eff) => {
+    const updatedEfficiency = efficiencyAll.map((eff) => {
       const emp = resolveLinked(eff.name, eff.designation, eff.employeeId)
-      const contractRow = updatedContract.find(
-        (ct) =>
-          ct.employeeId === emp?.id ||
-          namesMatch(ct.employeeName, eff.name) ||
-          (emp ? namesMatch(ct.employeeName, emp.name) : false)
-      )
-      if (!emp && !contractRow) return eff
-
-      const next = {
-        ...eff,
-        employeeId: emp?.id || contractRow?.employeeId || eff.employeeId,
-        name: emp?.name || eff.name,
-        designation: emp?.designation || eff.designation,
-        salaryEarned: contractRow ? contractRow.basicSalary : eff.salaryEarned,
-      }
-      const recalculated = this.calculateEfficiencyRow(next)
+      if (!emp) return eff
       if (
-        recalculated.employeeId === eff.employeeId &&
-        recalculated.name === eff.name &&
-        recalculated.designation === eff.designation &&
-        recalculated.salaryEarned === eff.salaryEarned &&
-        recalculated.amount === eff.amount
+        eff.employeeId === emp.id &&
+        eff.name === emp.name &&
+        eff.designation === emp.designation
       ) {
         return eff
       }
       efficiencyChanged = true
-      return recalculated
+      return {
+        ...eff,
+        employeeId: emp.id,
+        name: emp.name,
+        designation: emp.designation,
+      }
     })
-    const updatedEfficiency = efficiencyChanged
-      ? [...efficiencyOthers, ...updatedEfficiencyMonth]
-      : efficiencyAll
     if (efficiencyChanged) this.saveEfficiencyIncentives(updatedEfficiency, false)
 
-    // Push latest efficiency amounts back onto contract / weaver rows
-    if (efficiencyChanged || contractChanged) {
-      updatedEfficiencyMonth.forEach((eff) => {
-        this.syncEfficiencyToSalaries(eff.name, eff.month || month, eff.amount || 0, false)
-      })
-    }
-
-    // Weavers / Helpers / Contractors: name, designation, and wage from HR. Attendance stays local.
+    // Weavers / Helpers / Contractors: identity only (wages owned by monthly sheets).
     const weavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
     let weaversChanged = false
     const updatedWeavers = weavers.map((w) => {
       const emp = resolveLinked(w.employeeName, w.designation, w.employeeId)
       if (!emp || inferEmployeeCategory(emp) !== 'Weaver') return w
-      const pay = weaverSheetFields(emp)
+      const nextDesignation = (
+        emp.designation === 'Spare Weaver' ? 'Spare Weaver' : 'Weaver'
+      ) as 'Spare Weaver' | 'Weaver'
       if (
         w.employeeId === emp.id &&
         w.employeeName === emp.name &&
-        w.designation === pay.designation &&
-        w.wagePerDay === pay.wagePerDay &&
-        w.holidayRate === pay.holidayRate
+        w.designation === nextDesignation
       ) {
         return w
       }
       weaversChanged = true
-      return this.calculateWeaverWageRow({
+      return {
         ...w,
         employeeId: emp.id,
         employeeName: emp.name,
-        designation: pay.designation,
-        wagePerDay: pay.wagePerDay,
-        holidayRate: pay.holidayRate,
-      })
+        designation: nextDesignation,
+      }
     })
     if (weaversChanged) this.saveWeaversWages(updatedWeavers, false)
 
@@ -7377,24 +7633,23 @@ class PayrollService {
     const updatedHelpers = helpers.map((h) => {
       const emp = resolveLinked(h.employeeName, h.designation, h.employeeId)
       if (!emp || inferEmployeeCategory(emp) !== 'Helper') return h
-      const pay = helperSheetFields(emp)
+      const nextDesignation = (
+        emp.designation === 'Winder' ? 'Winder' : 'Helper'
+      ) as 'Helper' | 'Winder'
       if (
         h.employeeId === emp.id &&
         h.employeeName === emp.name &&
-        h.designation === pay.designation &&
-        h.wagePerDay === pay.wagePerDay
+        h.designation === nextDesignation
       ) {
         return h
       }
       helpersChanged = true
-      return this.calculateHelperWageRow({
+      return {
         ...h,
         employeeId: emp.id,
         employeeName: emp.name,
-        designation: pay.designation,
-        wagePerDay: pay.wagePerDay,
-        otRate: pay.otRate,
-      })
+        designation: nextDesignation,
+      }
     })
     if (helpersChanged) this.saveHelpersWages(updatedHelpers, false)
 
@@ -7403,27 +7658,17 @@ class PayrollService {
     const updatedContractors = contractors.map((c) => {
       const emp = resolveLinked(c.name, c.contractType, c.employeeId)
       if (!emp || inferEmployeeCategory(emp) !== 'Contractor') return c
-      const nextAmount =
-        c.contractualAmount != null && c.contractualAmount > 0
-          ? c.contractualAmount
-          : (Number(emp.salary) > 0 ? Number(emp.salary) : c.contractualAmount)
       const nextType = emp.designation || c.contractType
-      if (
-        c.employeeId === emp.id &&
-        c.name === emp.name &&
-        c.contractType === nextType &&
-        c.contractualAmount === nextAmount
-      ) {
+      if (c.employeeId === emp.id && c.name === emp.name && c.contractType === nextType) {
         return c
       }
       contractorsChanged = true
-      return this.calculateContractorPaymentRow({
+      return {
         ...c,
         employeeId: emp.id,
         name: emp.name,
         contractType: nextType,
-        contractualAmount: nextAmount,
-      })
+      }
     })
     if (contractorsChanged) this.saveContractorsPayments(updatedContractors, false)
 
@@ -7522,6 +7767,7 @@ class PayrollService {
     const contractors = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
     let contractorUpdated = false
     const updatedContractors = contractors.map((c) => {
+      if (sheetMonthKey(c.month) !== sheetMonthKey(month)) return c
       if (this.rowMatchesPerson(employeeNameOrId, c.name, c.contractType, c.employeeId, roster)) {
         contractorUpdated = true
         return this.calculateContractorPaymentRow({
@@ -7587,7 +7833,11 @@ class PayrollService {
 
   getAdvances(month: string = '2026-08', fortnight?: string): AdvanceRecord[] {
     const list = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
-    let filtered = list.filter((a) => (a.month || '2026-08') === month)
+    const { list: deduped, removed } = dedupeRowsByKey(list, advancePersonMonthKey)
+    if (removed > 0 && this.canWrite()) {
+      writeStore(STORAGE_KEYS.ADVANCES, this.renumberByMonth(deduped))
+    }
+    let filtered = deduped.filter((a) => sheetMonthKey(a.month) === sheetMonthKey(month))
     if (fortnight && fortnight !== 'all') {
       filtered = filtered.filter((a) => (a.fortnight || '1-15') === fortnight)
     }
@@ -7598,19 +7848,21 @@ class PayrollService {
     if (this.canWrite()) {
       try {
         let masterList = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
+        const incoming = dedupeRowsByKey(list, advancePersonMonthKey).list
 
         if (month) {
           masterList = masterList.filter((a) => {
-            if ((a.month || '2026-08') !== month) return true
+            if (sheetMonthKey(a.month) !== sheetMonthKey(month)) return true
             if (fortnight && fortnight !== 'all' && (a.fortnight || '1-15') !== fortnight) return true
             return false
           })
-          masterList = [...masterList, ...list]
+          masterList = [...masterList, ...incoming]
         } else {
-          masterList = list
+          masterList = incoming
         }
 
-        writeStore(STORAGE_KEYS.ADVANCES, masterList)
+        const cleaned = dedupeRowsByKey(masterList, advancePersonMonthKey).list
+        writeStore(STORAGE_KEYS.ADVANCES, this.renumberByMonth(cleaned))
       } catch (err) {
         console.error(err)
         writeStore(STORAGE_KEYS.ADVANCES, list)
@@ -8473,6 +8725,34 @@ export function projectProfilesOntoSheets(store: Record<string, unknown>): Recor
     payrollService.syncMasterRoster()
   } finally {
     allowServerSheetWrite = false
+  }
+  const changed: Record<string, unknown> = {}
+  for (const [key, value] of memoryStore) {
+    if (snapshot.get(key) !== value) changed[key] = JSON.parse(value) as unknown
+  }
+  memoryStore.clear()
+  for (const [key, value] of previous) memoryStore.set(key, value)
+  return changed
+}
+
+/** Server-side: strip same-person duplicate rows from a payroll store snapshot. */
+export function dedupePayrollStore(store: Record<string, unknown>): Record<string, unknown> {
+  const previous = new Map(memoryStore)
+  const snapshot = new Map<string, string>()
+  const prevHydrated = hydrated
+  memoryStore.clear()
+  for (const [key, value] of Object.entries(store)) {
+    const raw = JSON.stringify(value ?? null)
+    memoryStore.set(key, raw)
+    snapshot.set(key, raw)
+  }
+  hydrated = true
+  allowServerSheetWrite = true
+  try {
+    payrollService.repairDuplicatePayrollRows()
+  } finally {
+    allowServerSheetWrite = false
+    hydrated = prevHydrated
   }
   const changed: Record<string, unknown> = {}
   for (const [key, value] of memoryStore) {

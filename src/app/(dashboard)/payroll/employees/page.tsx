@@ -80,7 +80,8 @@ export default function GeneralWagesPage() {
   const [activeMonth, setActiveMonth] = useState(() => payrollService.getActiveSalariedMonth())
 
   const crossSheetSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const CROSS_SHEET_FIELDS: Array<keyof EmployeeProfile> = ['name', 'designation', 'salary', 'dutyHrs']
+  // Identity only — salary/wages are month-owned on Staff/Contract sheets (never push via roster save).
+  const CROSS_SHEET_FIELDS: Array<keyof EmployeeProfile> = ['name', 'designation', 'dutyHrs']
 
   const persistRoster = (gwList: EmployeeProfile[]) => {
     const all = payrollService.getEmployees()
@@ -91,6 +92,10 @@ export default function GeneralWagesPage() {
     const renumberedOthers = others.map((e, i) => ({ ...e, serialNo: startOther + i }))
     payrollService.saveEmployees([...renumberedGw, ...renumberedOthers])
   }
+
+  /** Month-scoped pay for the active salary month (Aug can stay 36000 while Sep is 40000). */
+  const monthPay = (emp: EmployeeProfile) =>
+    payrollService.getEmployeeCompensationForMonth(emp, activeMonth)
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'general_wages_excel_exact_v1',
@@ -239,11 +244,20 @@ export default function GeneralWagesPage() {
     window.print()
   }
 
-  // Metrics
-  const totalBaseSalary = employees.reduce((s, e) => s + (e.salary || 0), 0)
-  const totalRatePerDay30 = employees.reduce((s, e) => s + (e.ratePerDay30 || Math.round(e.salary / 30)), 0)
-  const totalRatePerDay31 = employees.reduce((s, e) => s + (e.ratePerDay31 || Math.round(e.salary / 31)), 0)
-  const totalRatePerDay28 = employees.reduce((s, e) => s + (e.ratePerDay28 || Math.round(e.salary / 28)), 0)
+  // Metrics — from active month sheets, not the single profile.salary
+  const totalBaseSalary = employees.reduce((s, e) => s + (monthPay(e).salary || 0), 0)
+  const totalRatePerDay30 = employees.reduce((s, e) => {
+    const pay = monthPay(e)
+    return s + (pay.ratePerDay || Math.round(pay.salary / 30))
+  }, 0)
+  const totalRatePerDay31 = employees.reduce((s, e) => {
+    const pay = monthPay(e)
+    return s + Math.round(pay.salary / 31)
+  }, 0)
+  const totalRatePerDay28 = employees.reduce((s, e) => {
+    const pay = monthPay(e)
+    return s + Math.round(pay.salary / 28)
+  }, 0)
 
   return (
     <div className="space-y-4 pb-24 font-sans">
@@ -299,7 +313,7 @@ export default function GeneralWagesPage() {
               Active salary month
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Yahan se month set karo — Advances, Staff, Contract, Efficiency, Net Payment isi pe khulenge (wahan change nahi).
+              Active month ki salary yahan dikhegi. Name/designation har month same; salary har month alag ho sakti hai (profile card se us month ke liye change).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -609,6 +623,7 @@ export default function GeneralWagesPage() {
               {/* Exact Data Rows */}
               <tbody className="divide-y divide-slate-200">
                 {employees.map((emp, idx) => {
+                  const pay = monthPay(emp)
                   return (
                     <tr
                       key={emp.id}
@@ -680,17 +695,17 @@ export default function GeneralWagesPage() {
                         {emp.shiftFromTo || '9 to 6'}
                       </td>
 
-                      {/* Salary — Managed via HR Profile Card */}
+                      {/* Salary — month-scoped (profile card edit for active month) */}
                       <td
                         className="border-r border-slate-300 py-1.5 px-2 text-right font-mono font-bold text-slate-900 bg-slate-50/40"
-                        title="Managed in HR Profile Card"
+                        title={`Salary for ${formatPayrollMonthLabel(activeMonth)} — edit via HR Profile Card`}
                       >
-                        {formatNumber(emp.salary)}
+                        {formatNumber(pay.salary)}
                       </td>
 
                       {/* 31 days - Per day */}
                       <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-700">
-                        {formatNumber(emp.ratePerDay31 || Math.round(emp.salary / 31))}
+                        {formatNumber(Math.round(pay.salary / 31))}
                       </td>
 
                       {/* 31 days - Per Hr (Blank in Excel) */}
@@ -700,13 +715,13 @@ export default function GeneralWagesPage() {
 
                       {/* 30 days - Per day */}
                       <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-900 font-medium">
-                        {formatNumber(emp.ratePerDay30 || Math.round(emp.salary / 30))}
+                        {formatNumber(pay.ratePerDay || Math.round(pay.salary / 30))}
                       </td>
 
                       {/* 30 days - Per Hr */}
                       <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono font-medium text-slate-900">
                         {emp.dutyHrs && emp.dutyHrs > 0
-                          ? (emp.salary / (30 * emp.dutyHrs)).toFixed(2)
+                          ? (pay.salary / (30 * emp.dutyHrs)).toFixed(2)
                           : emp.ratePerHr30
                           ? emp.ratePerHr30.toFixed(2)
                           : '—'}
@@ -714,7 +729,7 @@ export default function GeneralWagesPage() {
 
                       {/* 28 days - Per day */}
                       <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-700">
-                        {formatNumber(emp.ratePerDay28 || Math.round(emp.salary / 28))}
+                        {formatNumber(Math.round(pay.salary / 28))}
                       </td>
 
                       {/* 28 days - Per Hr (Blank in Excel) */}
@@ -805,7 +820,10 @@ export default function GeneralWagesPage() {
                   </td>
                   <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono font-bold text-slate-900">
                     {employees
-                      .reduce((s, e) => s + (e.dutyHrs ? e.salary / (30 * e.dutyHrs) : e.ratePerHr30 || 0), 0)
+                      .reduce((s, e) => {
+                        const pay = monthPay(e)
+                        return s + (e.dutyHrs ? pay.salary / (30 * e.dutyHrs) : e.ratePerHr30 || 0)
+                      }, 0)
                       .toFixed(2)}
                   </td>
                   <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono">

@@ -45,6 +45,7 @@ export default function SalaryAdvancesPage() {
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   const [search, setSearch] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [dedupeNotice, setDedupeNotice] = useState<string | null>(null)
 
   // Delete confirmation modal state
   const [deleteConfirmState, setDeleteConfirmState] = useState<{
@@ -78,8 +79,27 @@ export default function SalaryAdvancesPage() {
   >([])
 
   const reload = () => {
+    const { removed } = payrollService.repairDuplicatePayrollRows()
+    if (removed > 0) {
+      setDedupeNotice(
+        `${removed} duplicate row(s) hata di — same person ek month me ek hi advance rakha gaya.`
+      )
+      setTimeout(() => setDedupeNotice(null), 5000)
+    }
     setAdvances(payrollService.getAdvances(selectedMonth, 'all'))
     setMasterEmployees(payrollService.getAdvanceEligibleEmployees())
+  }
+
+  const handleCleanDuplicates = () => {
+    if (!canEditAccounts) return
+    const { removed } = payrollService.repairDuplicatePayrollRows()
+    reload()
+    setDedupeNotice(
+      removed > 0
+        ? `${removed} duplicate row(s) clean ho gayi.`
+        : 'Koi duplicate nahi mila — table pehle se clean hai.'
+    )
+    setTimeout(() => setDedupeNotice(null), 4000)
   }
 
   useEffect(() => {
@@ -146,6 +166,18 @@ export default function SalaryAdvancesPage() {
     if (!employeeName || isNaN(numAmt)) return
     if (!selectedEmployeeId) {
       alert('Select an Advance-eligible employee from Profiles (enable Advance Eligible on their HR profile).')
+      return
+    }
+
+    const existing = payrollService.hasAdvanceForEmployee(
+      selectedMonth,
+      selectedEmployeeId,
+      employeeName
+    )
+    if (existing) {
+      alert(
+        `"${employeeName}" ka advance is month (${formatMonthName(selectedMonth)}) me pehle se maujood hai (Rs. ${formatNumber(existing.amount || 0)}). Duplicate row nahi add hogi — amount table me edit karo.`
+      )
       return
     }
 
@@ -319,6 +351,16 @@ export default function SalaryAdvancesPage() {
               <AddColumnButton onAddColumn={handleAddCustomColumn} />
               <button
                 type="button"
+                onClick={handleCleanDuplicates}
+                disabled={!canEditAccounts}
+                title="Same person / same month ki double rows hatao"
+                className="erp-btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+                <span>Clean Duplicates</span>
+              </button>
+              <button
+                type="button"
                 onClick={handleReset}
                 disabled={!canEditAccounts}
                 title={canEditAccounts ? 'Reset to default template values' : 'Enable Editing to reset'}
@@ -349,6 +391,13 @@ export default function SalaryAdvancesPage() {
           }
         />
       </div>
+
+      {dedupeNotice && (
+        <div className="print:hidden flex items-center gap-2 p-3 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs font-medium">
+          <CheckCircle2 className="size-3.5 shrink-0" />
+          <span>{dedupeNotice}</span>
+        </div>
+      )}
 
       {/* Month & Search Filter Bar */}
       <div className="erp-card p-3 flex flex-wrap items-center justify-between gap-3 print:hidden">
