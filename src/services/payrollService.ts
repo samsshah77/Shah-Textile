@@ -170,6 +170,52 @@ export function resignedMonth(emp?: EmployeeProfile | null): string {
   return ''
 }
 
+/** Parse DOJ strings like 2026-09-01 / 01-Sep-2026 / 26-Jul-2026 → YYYY-MM-DD. */
+export function parseDojToIso(doj?: string): string | undefined {
+  if (!doj) return undefined
+  const text = doj.trim()
+  if (!text) return undefined
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10)
+
+  const named = text.match(/(\d{1,2})[\s.\-\/]+([A-Za-z]+)[\s.\-\/]+(\d{2,4})/)
+  if (named) {
+    const day = Number(named[1])
+    const mon = MONTH_NAME_TO_NUM[named[2].toLowerCase()]
+    let year = Number(named[3])
+    if (year < 100) year += 2000
+    if (mon && day >= 1 && day <= 31 && year >= 1990 && year <= 2100) {
+      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  const dmy = text.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/)
+  if (dmy) {
+    let a = Number(dmy[1])
+    let b = Number(dmy[2])
+    let year = Number(dmy[3])
+    if (year < 100) year += 2000
+    let day = a
+    let mon = b
+    if (a <= 12 && b > 12) {
+      mon = a
+      day = b
+    }
+    if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  return undefined
+}
+
+/** First payroll month this person should appear (from DOJ). Empty = no DOJ limit. */
+export function joiningMonth(emp?: EmployeeProfile | null): string {
+  if (!emp) return ''
+  const iso = parseDojToIso(emp.doj)
+  if (iso && /^\d{4}-\d{2}/.test(iso)) return iso.slice(0, 7)
+  return ''
+}
+
 function hydrateResignedDates(list: EmployeeProfile[]): { list: EmployeeProfile[]; changed: boolean } {
   let changed = false
   const next = list.map((e) => {
@@ -185,10 +231,13 @@ function hydrateResignedDates(list: EmployeeProfile[]): { list: EmployeeProfile[
 
 /**
  * Include in a payroll month sheet?
- * Resigned people stay through their resign month, then drop from later months.
+ * - New joiners: only from DOJ month onward (Sep joiner does not show in Aug).
+ * - Resigned: stay through resign month, then drop from later months.
  */
 export function employeeBelongsInMonth(emp: EmployeeProfile | null | undefined, month: string): boolean {
   if (!emp) return true
+  const start = joiningMonth(emp)
+  if (start && month < start) return false
   if ((emp.status || 'Active') !== 'Resigned') return true
   const end = resignedMonth(emp)
   if (!end) return false
@@ -5431,6 +5480,7 @@ class PayrollService {
     const cat = inferEmployeeCategory(emp)
     if (cat !== 'Weaver' && cat !== 'Helper') return
     if ((emp.status || 'Active') === 'Resigned') return
+    if (!employeeBelongsInMonth(emp, month)) return
 
     const monthsOf = (_rows?: { month?: string }[]) => [month]
 
@@ -5567,6 +5617,7 @@ class PayrollService {
     const cat = inferEmployeeCategory(emp)
     if (cat === 'Weaver' || cat === 'Helper' || cat === 'Contractor') return
     if ((emp.status || 'Active') === 'Resigned') return
+    if (!employeeBelongsInMonth(emp, month)) return
 
     const monthsOf = (_rows?: { month?: string }[]) => [month]
 
@@ -5774,7 +5825,9 @@ class PayrollService {
       }
     }
 
-    const roster = this.getActiveEmployees().filter(isGeneralWagesEmployee)
+    const roster = this.getActiveEmployees()
+      .filter(isGeneralWagesEmployee)
+      .filter((e) => employeeBelongsInMonth(e, month))
     const days = daysInCalendarMonth(month)
     const staffPeople = roster.filter((e) => {
       const cat = inferEmployeeCategory(e)
@@ -6273,6 +6326,33 @@ class PayrollService {
     this.saveContractorsPayments(dropFuture(this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)), false)
   }
 
+  /**
+   * Drop a new joiner from every sheet month BEFORE their DOJ month
+   * (e.g. Sep joiner must not remain on August Staff / Advances / etc.).
+   */
+  purgeJoinerFromPastMonths(emp: EmployeeProfile): void {
+    const start = joiningMonth(emp)
+    if (!start) return
+    const unlink = (name?: string, designation?: string, employeeId?: string) =>
+      Boolean(findLinkedEmployee([emp], name, designation, employeeId))
+
+    const dropPast = <T extends { month: string; employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
+      list: T[]
+    ) =>
+      list.filter((row) => {
+        if (sheetMonthKey(row.month) >= start) return true
+        return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+      })
+
+    this.saveStaffSalaries(dropPast(this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)), false)
+    this.saveContractSalaries(dropPast(this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)), false)
+    this.saveAdvances(dropPast(this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)), false)
+    this.saveEfficiencyIncentives(dropPast(this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)), false)
+    this.saveWeaversWages(dropPast(this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)), false)
+    this.saveHelpersWages(dropPast(this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)), false)
+    this.saveContractorsPayments(dropPast(this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)), false)
+  }
+
   private readStore<T>(key: string, fallback: T[]): T[] {
     try {
       const raw = memoryStore.get(key)
@@ -6348,6 +6428,7 @@ class PayrollService {
     const activeMonth = this.getActiveSalariedMonth()
     this.placeOnDailyWageSheets(saved, activeMonth)
     this.placeOnSalariedSheets(saved, activeMonth)
+    this.purgeJoinerFromPastMonths(saved)
     this.notifyDataChanged()
     return saved
   }
@@ -6364,6 +6445,12 @@ class PayrollService {
     const ratePerDay28 = Math.round((emp.salary / 28) * 100) / 100
     const employeeCategory = inferEmployeeCategory(emp)
 
+    // If registering for a target month without DOJ, pin DOJ to that month so past sheets stay clean.
+    const pinnedDoj =
+      emp.doj ||
+      (targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) ? `${targetMonth}-01` : '') ||
+      todayIsoDate()
+
     const newEmp: EmployeeProfile = {
       ...emp,
       id: `emp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -6372,6 +6459,7 @@ class PayrollService {
       ratePerDay30,
       ratePerHr30,
       ratePerDay28,
+      doj: pinnedDoj,
       status: emp.status || 'Active',
       employeeCategory,
     }
@@ -6388,6 +6476,7 @@ class PayrollService {
     const activeMonth = targetMonth || this.getActiveSalariedMonth()
     this.placeOnDailyWageSheets(saved, activeMonth)
     this.placeOnSalariedSheets(saved, activeMonth)
+    this.purgeJoinerFromPastMonths(saved)
     this.notifyDataChanged(targetMonth)
     return saved
   }
@@ -6660,6 +6749,9 @@ class PayrollService {
     if (nextStatus === 'Resigned') {
       this.purgeResignedFromFutureMonths(merged)
     }
+    if (joiningMonth(merged)) {
+      this.purgeJoinerFromPastMonths(merged)
+    }
     this.notifyDataChanged(targetMonth)
     return merged
   }
@@ -6750,6 +6842,9 @@ class PayrollService {
 
     if (nextStatus === 'Resigned') {
       this.purgeResignedFromFutureMonths(merged)
+    }
+    if (joiningMonth(merged)) {
+      this.purgeJoinerFromPastMonths(merged)
     }
     this.notifyDataChanged(targetMonth)
     return merged
@@ -8586,7 +8681,9 @@ export function applySalariedMonthGenerateToStore(
           return INITIAL_EMPLOYEES
         }
       })() || INITIAL_EMPLOYEES
-    ).filter((e) => isGeneralWagesEmployee(e))
+    )
+      .filter((e) => isGeneralWagesEmployee(e))
+      .filter((e) => employeeBelongsInMonth(e, m))
 
     const days = daysInCalendarMonth(m)
     const staffPeople = employees.filter((e) => {

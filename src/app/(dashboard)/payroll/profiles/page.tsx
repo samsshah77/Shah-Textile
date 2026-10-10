@@ -407,7 +407,8 @@ function EmployeeProfilesContent() {
       } else {
         await payrollService.addEmployeeAsync({
           ...payload,
-          doj: doj || new Date().toISOString().split('T')[0],
+          // Pin join month so person does not appear on earlier sheets (e.g. Aug).
+          doj: doj || `${targetMonth}-01`,
           remarks: remarks || undefined,
         }, undefined, targetMonth)
         setStatusNotice(`Profile for "${name}" registered successfully for ${formatPayrollMonthLabel(targetMonth)}.`)
@@ -1477,9 +1478,12 @@ function EmployeeProfilesContent() {
                     type="text"
                     value={doj}
                     onChange={(e) => setDoj(e.target.value)}
-                    placeholder="e.g. 10-Aug-2008"
+                    placeholder="e.g. 01-Sep-2026"
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    September joining? DOJ me Sep date likho — August salary / advance sheets se auto hata jayega.
+                  </p>
                 </div>
 
                 <div>
