@@ -170,11 +170,11 @@ export default function TechnicalEfficiencyPage() {
       confirmText: 'Reset',
       danger: true,
       onConfirm: () => {
-        payrollService.resetAllToDefault()
+        payrollService.resetMonthSheetToSeed('efficiency', selectedMonth)
         setIncentiveList(payrollService.getEfficiencyIncentives(selectedMonth))
         setCustomColumns([])
         resetAllWidths()
-        showSuccess('Reset complete', 'Efficiency sheet template pe restore ho gaya.')
+        showSuccess('Reset complete', 'Is month ka efficiency sheet template pe restore ho gaya.')
       },
     })
   }

@@ -234,14 +234,10 @@ function ContractPayrollContent() {
       confirmText: 'Reset',
       danger: true,
       onConfirm: () => {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('sara_payroll_contract_v7')
-          localStorage.removeItem('sara_payroll_contract_v6')
-        }
-        payrollService.resetAllToDefault()
+        payrollService.resetMonthSheetToSeed('contract', selectedMonth)
         setContractList(payrollService.getContractSalaries(selectedMonth))
         setCustomColumns([])
-        showSuccess('Reset complete', 'Contract sheet template pe restore ho gaya.')
+        showSuccess('Reset complete', 'Is month ka contract sheet template pe restore ho gaya.')
       },
     })
   }

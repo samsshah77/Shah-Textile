@@ -304,10 +304,10 @@ function WeaversPayrollContent() {
       confirmText: 'Reset',
       danger: true,
       onConfirm: () => {
-        payrollService.resetAllToDefault()
+        payrollService.resetFortnightSheetToSeed('weavers', selectedMonth, activeFortnight)
         setWeaversList(payrollService.getWeaversWages(selectedMonth, activeFortnight))
         setCustomColumns([])
-        showSuccess('Reset complete', 'Weavers sheet template pe restore ho gaya.')
+        showSuccess('Reset complete', 'Is fortnight ka weavers sheet template pe restore ho gaya.')
       },
     })
   }
@@ -1021,15 +1021,19 @@ function WeaversPayrollContent() {
                       {w.designation}
                     </td>
 
-                    {/* H/Day Attendance — From HR Profile Card */}
+                    {/* H/Day Attendance — editable on sheet */}
                     <td
                       style={{ width: `${otWidths.holidayAttendance}px`, minWidth: `${otWidths.holidayAttendance}px` }}
-                      className="border-r border-slate-100 py-1.5 px-2 text-center bg-slate-50/50"
-                      title="Set in HR Profile Card"
+                      className="border-r border-slate-100 py-1 px-1 text-center"
                     >
-                      <span className="font-mono text-xs font-semibold text-slate-800">
-                        {w.holidayAttendance || 0}
-                      </span>
+                      <NumericCellInput
+                        value={w.holidayAttendance || 0}
+                        disabled={!canEditAccounts}
+                        navRow={idx}
+                        navCol={0}
+                        onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
+                        className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-800"
+                      />
                     </td>
 
                     <td

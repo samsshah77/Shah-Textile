@@ -4526,16 +4526,43 @@ function writeStore(key: string, value: unknown): void {
       }
     } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
       const prev = pendingPersists.get(key)
-      pendingPersists.set(
-        key,
-        prev && typeof prev === 'object' ? { ...(prev as object), ...(value as object) } : value
-      )
+      const prevObj =
+        prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
+      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
+      const prevOverrides =
+        prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
+          ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
+          : {}
+      pendingPersists.set(key, {
+        ...prevObj,
+        ...incoming,
+        pettyCashInflowOverrides: {
+          ...prevOverrides,
+          ...(incoming.pettyCashInflowOverrides || {}),
+        },
+      })
     } else {
       pendingPersists.set(key, value)
     }
     return
   }
   void persistPayrollKey(key, value)
+}
+
+/** Prefer DB rows for periods already saved; only add mirror rows for brand-new month/fortnight. */
+function mergeMirrorPreferDbPeriods<
+  T extends { id?: string; month?: string; fortnight?: string },
+>(dbRows: T[], mirrorRows: T[]): T[] {
+  const db = Array.isArray(dbRows) ? dbRows : []
+  const mirror = Array.isArray(mirrorRows) ? mirrorRows : []
+  if (db.length === 0) return mergeRowsById(db, mirror)
+  const periodsInDb = new Set(
+    db.map((r) => `${r.month || ''}|${r.fortnight || ''}`)
+  )
+  const extras = mirror.filter(
+    (r) => !periodsInDb.has(`${r.month || ''}|${r.fortnight || ''}`)
+  )
+  return extras.length ? mergeRowsById(db, extras) : [...db]
 }
 
 async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> {
@@ -4554,6 +4581,23 @@ async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> 
           ? mergeRowsById(prev as { id?: string }[], value as { id?: string }[])
           : value
       )
+    } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
+      const prev = pendingPersists.get(key)
+      const prevObj =
+        prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
+      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
+      const prevOverrides =
+        prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
+          ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
+          : {}
+      pendingPersists.set(key, {
+        ...prevObj,
+        ...incoming,
+        pettyCashInflowOverrides: {
+          ...prevOverrides,
+          ...(incoming.pettyCashInflowOverrides || {}),
+        },
+      })
     } else {
       pendingPersists.set(key, value)
     }
@@ -4567,6 +4611,30 @@ async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> 
         current = []
       }
       const merged = mergeRowsById(current, value as { id?: string }[])
+      memoryStore.set(key, JSON.stringify(merged))
+      writeLocalMirror(key, merged)
+      return persistPayrollKey(key, merged)
+    }
+    if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
+      let current: Record<string, unknown> = {}
+      try {
+        current = JSON.parse(memoryStore.get(key) || '{}')
+      } catch {
+        current = {}
+      }
+      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
+      const curOverrides =
+        current.pettyCashInflowOverrides && typeof current.pettyCashInflowOverrides === 'object'
+          ? (current.pettyCashInflowOverrides as Record<string, number>)
+          : {}
+      const merged = {
+        ...current,
+        ...incoming,
+        pettyCashInflowOverrides: {
+          ...curOverrides,
+          ...(incoming.pettyCashInflowOverrides || {}),
+        },
+      }
       memoryStore.set(key, JSON.stringify(merged))
       writeLocalMirror(key, merged)
       return persistPayrollKey(key, merged)
@@ -4775,6 +4843,7 @@ export async function hydratePayrollFromDb(): Promise<void> {
             activeFortnight?: '1-15' | '16-31'
             categories?: string[]
             designations?: string[]
+            pettyCashInflowOverrides?: Record<string, number>
           }
           const localMeta = mirrored as typeof dbMeta
           const merged = {
@@ -4791,21 +4860,33 @@ export async function hydratePayrollFromDb(): Promise<void> {
             activeFortnightMonth:
               localMeta.activeFortnightMonth || dbMeta.activeFortnightMonth || undefined,
             activeFortnight: localMeta.activeFortnight || dbMeta.activeFortnight || undefined,
+            // Keep synopsis petty-cash inflow edits across refresh (local wins on key clash).
+            pettyCashInflowOverrides: {
+              ...(dbMeta.pettyCashInflowOverrides || {}),
+              ...(localMeta.pettyCashInflowOverrides || {}),
+            },
           }
           memoryStore.set(key, JSON.stringify(merged))
           pendingPersists.set(key, merged)
           continue
         }
         if (Array.isArray(mirrored)) {
-          let dbRows: { id?: string }[] = []
+          let dbRows: { id?: string; month?: string; fortnight?: string }[] = []
           try {
             dbRows = JSON.parse(memoryStore.get(key) || '[]')
           } catch {
             dbRows = []
           }
-          const merged = mergeRowsById(dbRows, mirrored as { id?: string }[])
+          // Employees: DB roster wins once present (don't resurrect deleted seed people from mirror).
+          const merged =
+            key === STORAGE_KEYS.EMPLOYEES && dbRows.length > 0
+              ? [...dbRows]
+              : mergeMirrorPreferDbPeriods(
+                  dbRows,
+                  mirrored as { id?: string; month?: string; fortnight?: string }[]
+                )
           memoryStore.set(key, JSON.stringify(merged))
-          // Always flush union so DB catches up to browser mirror (September etc.)
+          // Flush only when mirror added brand-new periods (or first offline sheet).
           if (JSON.stringify(merged) !== JSON.stringify(dbRows)) {
             pendingPersists.set(key, merged)
           }
@@ -4835,7 +4916,22 @@ export async function hydratePayrollFromDb(): Promise<void> {
           } catch {
             current = {}
           }
-          const merged = { ...current, ...(value as object) }
+          const incoming = value as {
+            pettyCashInflowOverrides?: Record<string, number>
+          }
+          const curOverrides =
+            current.pettyCashInflowOverrides &&
+            typeof current.pettyCashInflowOverrides === 'object'
+              ? (current.pettyCashInflowOverrides as Record<string, number>)
+              : {}
+          const merged = {
+            ...current,
+            ...incoming,
+            pettyCashInflowOverrides: {
+              ...curOverrides,
+              ...(incoming.pettyCashInflowOverrides || {}),
+            },
+          }
           memoryStore.set(key, JSON.stringify(merged))
           pendingPersists.set(key, merged)
           writeLocalMirror(key, merged)
@@ -5525,14 +5621,13 @@ class PayrollService {
           )
           if (idx >= 0) {
             const row = next[idx]
-            const nextOt = emp.overtimeShifts !== undefined ? Number(emp.overtimeShifts) : row.holidayAttendance
+            // holidayAttendance is sheet-owned (editable on Weavers OT) — do not overwrite from profile.
             if (
               row.employeeId === emp.id &&
               row.employeeName === emp.name &&
               row.designation === pay.designation &&
               row.wagePerDay === pay.wagePerDay &&
-              row.holidayRate === pay.holidayRate &&
-              row.holidayAttendance === nextOt
+              row.holidayRate === pay.holidayRate
             ) {
               continue
             }
@@ -5543,7 +5638,7 @@ class PayrollService {
               designation: pay.designation,
               wagePerDay: pay.wagePerDay,
               holidayRate: pay.holidayRate,
-              holidayAttendance: nextOt,
+              holidayAttendance: row.holidayAttendance,
             })
             changed = true
             continue
@@ -5591,14 +5686,13 @@ class PayrollService {
         )
         if (idx >= 0) {
           const row = next[idx]
-          const nextOt = emp.overtimeShifts !== undefined ? Number(emp.overtimeShifts) : row.holidayAttendance
+          // holidayAttendance is sheet-owned (editable on Helpers) — do not overwrite from profile.
           if (
             row.employeeId === emp.id &&
             row.employeeName === emp.name &&
             row.designation === pay.designation &&
             row.wagePerDay === pay.wagePerDay &&
-            row.otRate === pay.otRate &&
-            row.holidayAttendance === nextOt
+            row.otRate === pay.otRate
           ) {
             continue
           }
@@ -5609,7 +5703,7 @@ class PayrollService {
             designation: pay.designation,
             wagePerDay: pay.wagePerDay,
             otRate: pay.otRate,
-            holidayAttendance: nextOt,
+            holidayAttendance: row.holidayAttendance,
           })
           changed = true
           continue
@@ -6432,7 +6526,8 @@ class PayrollService {
       const raw = memoryStore.get(key)
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[]
+        // Empty arrays are valid saved state — never revive Excel INITIAL_* just because [].
+        if (Array.isArray(parsed)) return parsed as T[]
       }
     } catch (err) {
       console.error(err)
@@ -6442,7 +6537,7 @@ class PayrollService {
         const legacy = localStorage.getItem(key)
         if (legacy) {
           const parsed = JSON.parse(legacy)
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             // Do not PUT legacy localStorage — it is often August-only and wipes newer months.
             if (!memoryStore.get(key)) memoryStore.set(key, legacy)
             return parsed as T[]
@@ -7160,7 +7255,8 @@ class PayrollService {
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
         holidayRate: pay.holidayRate,
-        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
+        // Keep sheet holiday attendance (editable on Weavers OT tab).
+        holidayAttendance: w.holidayAttendance,
       })
     })
     if (weaversChanged) this.saveWeaversWages(updatedWeavers, false)
@@ -7195,7 +7291,8 @@ class PayrollService {
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
         otRate: pay.otRate,
-        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
+        // Keep sheet holiday attendance (editable on Helpers sheet).
+        holidayAttendance: h.holidayAttendance,
       })
     })
     if (helpersChanged) this.saveHelpersWages(updatedHelpers, false)
@@ -7409,7 +7506,7 @@ class PayrollService {
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
         holidayRate: pay.holidayRate,
-        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
+        holidayAttendance: w.holidayAttendance,
       })
     })
     if (weaversChanged) {
@@ -7446,7 +7543,7 @@ class PayrollService {
         designation: pay.designation,
         wagePerDay: pay.wagePerDay,
         otRate: pay.otRate,
-        ...(newEmp.overtimeShifts !== undefined ? { holidayAttendance: Number(newEmp.overtimeShifts) } : {}),
+        holidayAttendance: h.holidayAttendance,
       })
     })
     if (helpersChanged) {
@@ -8484,6 +8581,13 @@ class PayrollService {
         [key]: n,
       },
     }
+    // Write memory + mirror first so refresh keeps the value even if PUT races.
+    writeLocalMirror(STORAGE_KEYS.HR_META, meta)
+    try {
+      memoryStore.set(STORAGE_KEYS.HR_META, JSON.stringify(meta))
+    } catch {
+      // ignore
+    }
     const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
     this.notifyDataChanged(month)
     return ok
@@ -8696,14 +8800,9 @@ class PayrollService {
 
   getPettyCashEntries(month: string = '2026-08', fortnight: '1-15' | '16-31'): PettyCashRecord[] {
     const list = this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH)
-    const filtered = list.filter(
+    return list.filter(
       (e) => (e.month || '2026-08') === month && e.fortnight === fortnight
     )
-    if (filtered.length > 0) return filtered
-    if (month === '2026-08') {
-      return INITIAL_PETTY_CASH.filter((e) => e.fortnight === fortnight)
-    }
-    return []
   }
 
   savePettyCashEntries(
@@ -8737,6 +8836,72 @@ class PayrollService {
     this.notifyDataChanged()
   }
 
+  /**
+   * Reset only one fortnight sheet (helpers/contractors/weavers/petty) for the open period.
+   * Does NOT wipe the whole payroll module or HR meta / synopsis inflow overrides.
+   */
+  resetFortnightSheetToSeed(
+    sheet: 'weavers' | 'helpers' | 'contractors' | 'petty-cash',
+    month: string,
+    fortnight: '1-15' | '16-31'
+  ): void {
+    if (!this.isClient()) return
+    const m = (month || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(m)) return
+    if (fortnight !== '1-15' && fortnight !== '16-31') return
+
+    const map = {
+      weavers: {
+        key: STORAGE_KEYS.WEAVERS,
+        seed: INITIAL_WEAVERS_WAGES as Array<{ month?: string; fortnight?: string }>,
+      },
+      helpers: {
+        key: STORAGE_KEYS.HELPERS,
+        seed: INITIAL_HELPERS_WAGES as Array<{ month?: string; fortnight?: string }>,
+      },
+      contractors: {
+        key: STORAGE_KEYS.CONTRACTORS,
+        seed: INITIAL_CONTRACTORS as Array<{ month?: string; fortnight?: string }>,
+      },
+      'petty-cash': {
+        key: STORAGE_KEYS.PETTY_CASH,
+        seed: INITIAL_PETTY_CASH as Array<{ month?: string; fortnight?: string }>,
+      },
+    } as const
+    const { key, seed } = map[sheet]
+    const existing = this.readStore(key, seed)
+    const periodSeed = seed
+      .filter((r) => (r.month || '') === m && (r.fortnight || '1-15') === fortnight)
+      .map((r) => ({ ...r }))
+    const next = this.mergeMonthOrFortnightRows(existing, periodSeed, m, fortnight)
+    writeStore(key, next)
+    this.notifyDataChanged(m)
+  }
+
+  /** Reset only one salaried month sheet (contract / efficiency). */
+  resetMonthSheetToSeed(sheet: 'contract' | 'efficiency', month: string): void {
+    if (!this.isClient()) return
+    const m = (month || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(m)) return
+    const map = {
+      contract: {
+        key: STORAGE_KEYS.CONTRACT,
+        seed: INITIAL_CONTRACT_SALARIES as Array<{ month?: string }>,
+      },
+      efficiency: {
+        key: STORAGE_KEYS.EFFICIENCY,
+        seed: INITIAL_EFFICIENCY_INCENTIVES as Array<{ month?: string }>,
+      },
+    } as const
+    const { key, seed } = map[sheet]
+    const existing = this.readStore(key, seed)
+    const monthSeed = seed.filter((r) => (r.month || '') === m).map((r) => ({ ...r }))
+    const next = this.mergeMonthOrFortnightRows(existing, monthSeed, m)
+    writeStore(key, next)
+    this.notifyDataChanged(m)
+  }
+
+  /** Nuclear: entire payroll → Excel seed. Prefer scoped reset methods instead. */
   resetAllToDefault(): void {
     this.resetToDefaults()
   }
@@ -8747,6 +8912,11 @@ class PayrollService {
       memoryStore.delete(key)
       try {
         localStorage.removeItem(key)
+      } catch {
+        /* ignore */
+      }
+      try {
+        localStorage.removeItem(localMirrorKey(key))
       } catch {
         /* ignore */
       }

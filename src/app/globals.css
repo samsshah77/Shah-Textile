@@ -1156,6 +1156,38 @@ tr:hover .sara-serial-arrows {
     print-color-adjust: exact !important;
   }
 
+  /* CRITICAL: Force all layout ancestors to overflow: visible and height: auto so print does NOT truncate after page 1 */
+  html,
+  body,
+  body.layout-fixed,
+  body.layout-fixed .app-wrapper,
+  body.layout-fixed .app-main,
+  body.layout-fixed .app-content,
+  body.layout-fixed .sara-app-main,
+  body.layout-fixed .sara-app-content,
+  body.layout-fixed .container-fluid,
+  .app-wrapper,
+  .app-main,
+  .app-content,
+  .sara-app-main,
+  .sara-app-content,
+  .container-fluid,
+  .sara-production-workspace,
+  .sara-production-panel,
+  .card,
+  .card-body,
+  .sara-prod-sheet-print,
+  .sara-prod-sheet-print__body,
+  .sara-hscroll-pane {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    display: block !important;
+    position: static !important;
+    float: none !important;
+  }
+
   /* Hide interactive chrome + date filters / shift UI (never in PDF) */
   header,
   nav,
@@ -1176,10 +1208,11 @@ tr:hover .sara-serial-arrows {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin: 0 0 10px 0;
-    padding: 0 0 8px 0;
-    border-bottom: 2px solid #0f172a;
+    margin: 0 0 4px 0 !important;
+    padding: 0 0 4px 0 !important;
+    border-bottom: 1.5px solid #0f172a;
     page-break-after: avoid;
+    break-after: avoid;
   }
 
   .sara-print-doc-header__left {
@@ -1190,17 +1223,17 @@ tr:hover .sara-serial-arrows {
   }
 
   .sara-print-doc-header__logo {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     object-fit: contain;
     flex-shrink: 0;
-    border-radius: 6px;
+    border-radius: 4px;
   }
 
   .sara-print-doc-header__company {
     font-family: system-ui, sans-serif;
     font-weight: 800;
-    font-size: 13pt;
+    font-size: 11pt;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: #0f172a;
@@ -1208,10 +1241,10 @@ tr:hover .sara-serial-arrows {
   }
 
   .sara-print-doc-header__sheet {
-    font-size: 9pt;
+    font-size: 8pt;
     font-weight: 600;
     color: #334155;
-    margin-top: 2px;
+    margin-top: 1px;
   }
 
   .sara-print-doc-header__right {
@@ -1220,14 +1253,14 @@ tr:hover .sara-serial-arrows {
   }
 
   .sara-print-doc-header__meta-label {
-    font-size: 7pt;
+    font-size: 6.5pt;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     color: #64748b;
   }
 
   .sara-print-doc-header__meta-value {
-    font-size: 9pt;
+    font-size: 8pt;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: #0f172a;
@@ -1245,12 +1278,15 @@ tr:hover .sara-serial-arrows {
     min-width: 0 !important;
     border-collapse: collapse !important;
     page-break-inside: auto !important;
+    break-inside: auto !important;
     font-size: 8pt !important;
   }
 
   tr {
     page-break-inside: avoid !important;
+    break-inside: avoid !important;
     page-break-after: auto !important;
+    break-after: auto !important;
   }
 
   thead {
@@ -1263,11 +1299,11 @@ tr:hover .sara-serial-arrows {
 
   th,
   td {
-    padding: 3px 4px !important;
+    padding: 2px 3px !important;
     min-width: 0 !important;
     border-color: #0f172a !important;
     font-size: 7.5pt !important;
-    line-height: 1.2 !important;
+    line-height: 1.15 !important;
   }
 
   /* Convert input boxes into clean flat printed text */
@@ -1288,11 +1324,13 @@ tr:hover .sara-serial-arrows {
     display: none !important;
   }
 
-  /* Production Sheet PDF — landscape, compact so all columns fit on one page */
+  /* Production Sheet PDF — landscape, compact so all columns and rows fit */
   .sara-prod-sheet-print {
     border: none !important;
     box-shadow: none !important;
     margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .sara-prod-sheet-print__body {
@@ -1306,8 +1344,20 @@ tr:hover .sara-serial-arrows {
     min-width: 0 !important;
     max-width: 100% !important;
     table-layout: fixed !important;
-    font-size: 5.5pt !important;
+    font-size: 5.75pt !important;
     border-collapse: collapse !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .sara-prod-sheet-print tbody {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .sara-prod-sheet-print tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .sara-prod-sheet-print col {
@@ -1316,26 +1366,56 @@ tr:hover .sara-serial-arrows {
 
   .sara-prod-sheet-print th,
   .sara-prod-sheet-print td {
-    padding: 0.5px 1px !important;
-    font-size: 5.5pt !important;
+    padding: 0.35px 1px !important;
+    font-size: 5.75pt !important;
     line-height: 1.05 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: clip !important;
     vertical-align: middle !important;
-    border-width: 0.4pt !important;
+    border-width: 0.35pt !important;
   }
 
   .sara-prod-sheet-print thead th {
-    font-size: 5pt !important;
+    font-size: 5.5pt !important;
     font-weight: 700 !important;
-    padding: 1px 1px !important;
+    padding: 0.8px 1px !important;
     line-height: 1.05 !important;
   }
 
   .sara-prod-sheet-print tfoot td {
-    font-size: 5.5pt !important;
+    font-size: 5.75pt !important;
     font-weight: 700 !important;
+  }
+
+  /* Large font print mode (+20% size) */
+  .sara-prod-sheet-print.sara-sheet-font-large table,
+  .sara-prod-sheet-print.sara-sheet-font-large th,
+  .sara-prod-sheet-print.sara-sheet-font-large td {
+    font-size: 7.5pt !important;
+    line-height: 1.12 !important;
+    padding: 0.8px 1.4px !important;
+  }
+  .sara-prod-sheet-print.sara-sheet-font-large thead th {
+    font-size: 7pt !important;
+  }
+  .sara-prod-sheet-print.sara-sheet-font-large tfoot td {
+    font-size: 7.5pt !important;
+  }
+
+  /* Extra Large font print mode (+40% size) */
+  .sara-prod-sheet-print.sara-sheet-font-xlarge table,
+  .sara-prod-sheet-print.sara-sheet-font-xlarge th,
+  .sara-prod-sheet-print.sara-sheet-font-xlarge td {
+    font-size: 8.5pt !important;
+    line-height: 1.18 !important;
+    padding: 1px 1.6px !important;
+  }
+  .sara-prod-sheet-print.sara-sheet-font-xlarge thead th {
+    font-size: 8pt !important;
+  }
+  .sara-prod-sheet-print.sara-sheet-font-xlarge tfoot td {
+    font-size: 8.5pt !important;
   }
 
   .sara-prod-sheet-print .sara-print-doc-header,
@@ -2029,5 +2109,26 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   color: #0f172a;
   background: #f8fafc;
   white-space: nowrap;
+}
+
+/* Production Sheet On-Screen Text Size Controls */
+.sara-sheet-font-normal .sara-prod-sheet-print__table {
+  font-size: 0.8125rem;
+}
+.sara-sheet-font-large .sara-prod-sheet-print__table {
+  font-size: 0.95rem;
+}
+.sara-sheet-font-large .sara-prod-sheet-print__table th,
+.sara-sheet-font-large .sara-prod-sheet-print__table td {
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+}
+.sara-sheet-font-xlarge .sara-prod-sheet-print__table {
+  font-size: 1.08rem;
+}
+.sara-sheet-font-xlarge .sara-prod-sheet-print__table th,
+.sara-sheet-font-xlarge .sara-prod-sheet-print__table td {
+  padding-top: 0.45rem !important;
+  padding-bottom: 0.45rem !important;
 }
 

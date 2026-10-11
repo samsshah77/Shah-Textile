@@ -216,7 +216,7 @@ function PettyCashContent() {
       confirmText: 'Reset',
       danger: true,
       onConfirm: () => {
-        payrollService.resetAllToDefault()
+        payrollService.resetFortnightSheetToSeed('petty-cash', selectedMonth, activeFortnight)
         setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
         setCustomColumns([])
         resetAllWidths()

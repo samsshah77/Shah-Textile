@@ -178,7 +178,7 @@ function ContractorsPayrollContent() {
       confirmText: 'Reset',
       danger: true,
       onConfirm: () => {
-        payrollService.resetAllToDefault()
+        payrollService.resetFortnightSheetToSeed('contractors', selectedMonth, activeFortnight)
         setContractorsList(payrollService.getContractorsPayments(selectedMonth, activeFortnight))
         setCustomColumns([])
         resetAllWidths()

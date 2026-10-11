@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
-import { ProductionSheetTable } from '@/components/floor/ProductionSheetTable'
+import { ProductionSheetTable, type SheetTextSize } from '@/components/floor/ProductionSheetTable'
 import { FloorEntryTable } from '@/components/floor/FloorEntryTable'
 import { LoomMasterTable } from '@/components/floor/LoomMasterTable'
 import {
@@ -58,6 +58,8 @@ function ProductionWorkspaceContent() {
   const [entryEdit, setEntryEdit] = useState(false)
   const [yarnEdit, setYarnEdit] = useState(false)
   const [yarnAddOpen, setYarnAddOpen] = useState(false)
+  const [sheetTextSize, setSheetTextSize] = useState<SheetTextSize>('normal')
+  const [isSheetExportOpen, setIsSheetExportOpen] = useState(false)
 
   // Accountant: Production Sheet only (view)
   useEffect(() => {
@@ -318,10 +320,51 @@ function ProductionWorkspaceContent() {
                 </>
               )}
 
-              <ExportPdfButton
-                filename={`Production-${tabTitle[currentTab] || 'Production-Sheet'}-${selectedDate || selectedMonth || 'export'}`}
-                sheetLabel={tabTitle[currentTab] || 'Production Sheet'}
-              />
+              {currentTab === 'sheet' ? (
+                <>
+                  <div className="btn-group btn-group-sm" role="group" aria-label="Sheet font size">
+                    <button
+                      type="button"
+                      className={`btn ${sheetTextSize === 'normal' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      onClick={() => setSheetTextSize('normal')}
+                      title="Normal font size"
+                    >
+                      A
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${sheetTextSize === 'large' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      onClick={() => setSheetTextSize('large')}
+                      title="Large font size (+20% Bara)"
+                    >
+                      A+
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${sheetTextSize === 'xlarge' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      onClick={() => setSheetTextSize('xlarge')}
+                      title="Extra Large font size (+40% Sab Se Bara)"
+                    >
+                      A++
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1.5"
+                    onClick={() => setIsSheetExportOpen(true)}
+                    title="Save PDF, Print, Share via WhatsApp or Email"
+                  >
+                    <i className="bi bi-file-earmark-pdf" />
+                    <span>PDF</span>
+                  </button>
+                </>
+              ) : (
+                <ExportPdfButton
+                  filename={`Production-${tabTitle[currentTab] || 'Production-Sheet'}-${selectedDate || selectedMonth || 'export'}`}
+                  sheetLabel={tabTitle[currentTab] || 'Production Sheet'}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -365,7 +408,14 @@ function ProductionWorkspaceContent() {
         )}
 
         {currentTab === 'sheet' && (
-          <ProductionSheetTable entries={entries} sheetDate={selectedDate} />
+          <ProductionSheetTable
+            entries={entries}
+            sheetDate={selectedDate}
+            textSize={sheetTextSize}
+            onChangeTextSize={setSheetTextSize}
+            isExportOpen={isSheetExportOpen}
+            onExportOpenChange={setIsSheetExportOpen}
+          />
         )}
 
         {currentTab === 'looms' && (

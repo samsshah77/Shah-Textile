@@ -180,11 +180,11 @@ function HelpersPayrollContent() {
       confirmText: 'Reset',
       danger: true,
       onConfirm: () => {
-        payrollService.resetAllToDefault()
+        payrollService.resetFortnightSheetToSeed('helpers', selectedMonth, activeFortnight)
         setHelpersList(payrollService.getHelpersWages(selectedMonth, activeFortnight))
         setCustomColumns([])
         resetAllWidths()
-        showSuccess('Reset complete', 'Helpers sheet template pe restore ho gaya.')
+        showSuccess('Reset complete', 'Is fortnight ka helpers sheet template pe restore ho gaya.')
       },
     })
   }
@@ -508,15 +508,19 @@ function HelpersPayrollContent() {
                     {formatNumber(h.wagesAmount, 0)}
                   </td>
 
-                  {/* Holiday Shifts — From HR Profile Card */}
+                  {/* Holiday Shifts — editable on sheet */}
                   <td
                     style={{ width: `${widths.holidayAttendance}px`, minWidth: `${widths.holidayAttendance}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center bg-slate-50/50"
-                    title="Set in HR Profile Card"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1 px-1 text-center"
                   >
-                    <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      {h.holidayAttendance || 0}
-                    </span>
+                    <NumericCellInput
+                      value={h.holidayAttendance || 0}
+                      disabled={!canEditAccounts}
+                      navRow={idx}
+                      navCol={2}
+                      onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
+                      className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] rounded text-slate-800 dark:text-slate-200"
+                    />
                   </td>
 
                   {/* Calculated Holiday OT */}

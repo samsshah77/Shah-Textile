@@ -8,10 +8,20 @@ import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useTablePanScroll } from '@/hooks/useTablePanScroll'
 import { loomConditionRowStyle, LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 import { formatProductionDayLabel, productionDayName } from '@/constants/productionCalendar'
+import {
+  ProductionSheetExportModal,
+  type SheetTextSize,
+} from '@/components/floor/ProductionSheetExportModal'
+
+export type { SheetTextSize } from '@/components/floor/ProductionSheetExportModal'
 
 interface ProductionSheetTableProps {
   entries: DailyLoomProductionEntry[]
   sheetDate?: string
+  textSize?: SheetTextSize
+  onChangeTextSize?: (size: SheetTextSize) => void
+  isExportOpen?: boolean
+  onExportOpenChange?: (open: boolean) => void
 }
 
 function num(n: number | undefined, digits = 0) {
@@ -220,10 +230,25 @@ function ModelSectionTotal({ totals }: { totals: SectionTotals }) {
 }
 
 /** Read-only Excel Production sheet — all values auto from masters + Daily Entry. */
-export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTableProps) {
+export function ProductionSheetTable({
+  entries,
+  sheetDate,
+  textSize: propTextSize,
+  onChangeTextSize,
+  isExportOpen: propIsExportOpen,
+  onExportOpenChange,
+}: ProductionSheetTableProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const panRef = useTablePanScroll<HTMLDivElement>()
   const [fullView, setFullView] = useState(false)
+  const [internalTextSize, setInternalTextSize] = useState<SheetTextSize>('normal')
+  const textSize = propTextSize ?? internalTextSize
+  const setTextSize = onChangeTextSize ?? setInternalTextSize
+
+  const [internalExportOpen, setInternalExportOpen] = useState(false)
+  const isExportOpen = propIsExportOpen ?? internalExportOpen
+  const setIsExportOpen = onExportOpenChange ?? setInternalExportOpen
+
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
     'sara_prod_sheet_col_widths_v1',
     DEFAULT_WIDTHS
@@ -318,7 +343,7 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
   return (
     <div
       ref={rootRef}
-      className={`card sara-prod-sheet-print${fullView ? ' sara-prod-sheet-fullview' : ''}`}
+      className={`card sara-prod-sheet-print sara-sheet-font-${textSize}${fullView ? ' sara-prod-sheet-fullview' : ''}`}
     >
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center print:hidden">
         <div className="min-w-0">
@@ -758,6 +783,15 @@ export function ProductionSheetTable({ entries, sheetDate }: ProductionSheetTabl
         Formulas: 100% Running = RPM ÷ Pick × 60 ÷ 39.38 × Roller Hours · A+B = A + B · Efficiency % =
         A+B ÷ 100% × 100 · Loss = 100% − A+B (same for 24 Hours with Hours = 24)
       </div>
+
+      <ProductionSheetExportModal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        entries={entries}
+        sheetDate={activeDate}
+        textSize={textSize}
+        onChangeTextSize={setTextSize}
+      />
     </div>
   )
 }
