@@ -473,20 +473,46 @@ export function findLinkedEmployee(
   if (employeeId) {
     const byId = roster.find((emp) => emp.id === employeeId)
     if (byId) return byId
+    // Row is explicitly tied to another id — never name-fallback onto a different person
+    // (e.g. resigned Dawood emp-38 must not claim new Dawood emp-sep-48-dawood rows).
+    return undefined
   }
   if (!name) return undefined
 
   const familyMatches = roster.filter(
     (emp) => namesMatch(emp.name, name) && sameJobFamily(emp, designation)
   )
+  if (familyMatches.length === 0) return undefined
   if (familyMatches.length === 1) return familyMatches[0]
-  if (familyMatches.length > 1) {
-    const exactDesignation = familyMatches.find(
-      (emp) => normalizeName(emp.designation) === normalizeName(designation)
-    )
-    return exactDesignation || familyMatches[0]
+  // Prefer Active when duplicate names share a job family (Dawood ×2).
+  const active = familyMatches.filter((emp) => (emp.status || 'Active') !== 'Resigned')
+  const pool = active.length > 0 ? active : familyMatches
+  const exactDesignation = pool.find(
+    (emp) => normalizeName(emp.designation) === normalizeName(designation)
+  )
+  return exactDesignation || pool[0]
+}
+
+/**
+ * Does this sheet row belong to `emp` for purge/delete?
+ * If the row has employeeId → exact id only (never same-name collateral).
+ * Name-only rows → match name+family, preferring Active on collisions.
+ */
+export function sheetRowBelongsToEmployee(
+  emp: EmployeeProfile,
+  name?: string,
+  designation?: string,
+  employeeId?: string,
+  roster?: EmployeeProfile[]
+): boolean {
+  if (employeeId) {
+    return Boolean(emp.id && emp.id === employeeId)
   }
-  return undefined
+  if (!namesMatch(name, emp.name)) return false
+  if (designation && !sameJobFamily(emp, designation)) return false
+  if (!roster || roster.length === 0) return true
+  const canonical = findLinkedEmployee(roster, name, designation)
+  return Boolean(canonical && canonical.id === emp.id)
 }
 
 export function formatPayrollMonthLabel(month: string): string {

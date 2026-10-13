@@ -95,6 +95,7 @@ import {
   helperSheetFields,
   sameJobFamily,
   findLinkedEmployee,
+  sheetRowBelongsToEmployee,
   formatPayrollMonthLabel,
   calculateStaffSalaryRow,
   calculateContractSalaryRow,
@@ -1354,13 +1355,15 @@ class PayrollService {
     const roster = this.getEmployees()
     const filtered = rows.filter((row) => {
       const rowName = nameKey === 'name' ? row.name : row.employeeName
-      let emp = findLinkedEmployee(roster, rowName, row.designation || row.contractType, row.employeeId)
-      // Fallback: name-only match so DOJ still hides Sep joiners even if designation drifted.
-      if (!emp && rowName) {
-        emp = roster.find((e) => namesMatch(e.name, rowName))
-      }
+      // Prefer id / Active on duplicate names (new Dawood vs resigned Dawood).
+      // No naive roster.find name fallback — that bound rows to the wrong namesake.
+      const emp = findLinkedEmployee(
+        roster,
+        rowName,
+        row.designation || row.contractType,
+        row.employeeId
+      )
       // Day>15 / resign-day hide ONLY on real fortnight sheets (1-15 / 16-31).
-      // Monthly advances use fortnight "all" — never apply mid-month joiner hide (Dawood etc.).
       const rowFortnight =
         row.fortnight === '1-15' || row.fortnight === '16-31' ? row.fortnight : undefined
       return employeeBelongsInMonth(emp, month, rowFortnight)
@@ -1373,8 +1376,9 @@ class PayrollService {
   /** Drop a resigned person from months after resign, and from 16-31 if resign day ≤ 15. */
   purgeResignedFromFutureMonths(emp: EmployeeProfile): void {
     const end = resignedMonth(emp) || todayIsoDate().slice(0, 7)
+    const roster = this.getEmployees()
     const unlink = (name?: string, designation?: string, employeeId?: string) =>
-      Boolean(findLinkedEmployee([emp], name, designation, employeeId))
+      sheetRowBelongsToEmployee(emp, name, designation, employeeId, roster)
 
     const dropFuture = <
       T extends {
@@ -1419,11 +1423,9 @@ class PayrollService {
   purgeJoinerFromPastMonths(emp: EmployeeProfile): void {
     const start = joiningMonth(emp)
     if (!start) return
-    const unlink = (name?: string, designation?: string, employeeId?: string) => {
-      if (emp.id && employeeId && emp.id === employeeId) return true
-      if (namesMatch(name, emp.name)) return true
-      return Boolean(findLinkedEmployee([emp], name, designation, employeeId))
-    }
+    const roster = this.getEmployees()
+    const unlink = (name?: string, designation?: string, employeeId?: string) =>
+      sheetRowBelongsToEmployee(emp, name, designation, employeeId, roster)
 
     const dropPast = <
       T extends {
@@ -3190,8 +3192,9 @@ class PayrollService {
   }
 
   private removeLinkedPayrollRows(emp: EmployeeProfile): void {
+    const roster = this.getEmployees()
     const unlink = (name?: string, designation?: string, employeeId?: string) =>
-      Boolean(findLinkedEmployee([emp], name, designation, employeeId))
+      sheetRowBelongsToEmployee(emp, name, designation, employeeId, roster)
 
     const staff = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES).filter(
       (row) => !unlink(row.employeeName, row.designation, row.employeeId)
@@ -3355,20 +3358,17 @@ class PayrollService {
     if (fortnight && fortnight !== 'all') {
       filtered = filtered.filter((a) => (a.fortnight || '1-15') === fortnight)
     }
-    // Monthly advance sheet: belong by DOJ/resign month only — never 1-15 mid-month hide
-    // (Dawood joined 26th; fortnight "1-15" on a row must not drop him after refresh).
+    // Monthly advance sheet: belong by DOJ/resign month only — never 1-15 mid-month hide.
+    // findLinkedEmployee prefers Active on duplicate names (new Dawood vs resigned Dawood).
     const roster = this.getEmployees()
     return filtered
       .filter((row) => {
-        let emp = findLinkedEmployee(
+        const emp = findLinkedEmployee(
           roster,
           row.employeeName,
           row.designation,
           row.employeeId
         )
-        if (!emp && row.employeeName) {
-          emp = roster.find((e) => namesMatch(e.name, row.employeeName))
-        }
         return employeeBelongsInMonth(emp, month)
       })
       .map((row, idx) =>
@@ -3379,35 +3379,45 @@ class PayrollService {
   }
 
   saveAdvances(list: AdvanceRecord[], triggerCascade: boolean = true, month?: string, fortnight?: string): void {
-    if (this.canWrite()) {
-      try {
-        let masterList = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
-        const incoming = dedupeRowsByKey(list, advancePersonMonthKey).list
+    void this.saveAdvancesAsync(list, triggerCascade, month, fortnight)
+  }
 
-        if (month) {
-          masterList = masterList.filter((a) => {
-            if (sheetMonthKey(a.month) !== sheetMonthKey(month)) return true
-            if (fortnight && fortnight !== 'all' && (a.fortnight || '1-15') !== fortnight) return true
-            return false
-          })
-          masterList = [...masterList, ...incoming]
-        } else {
-          masterList = incoming
-        }
+  async saveAdvancesAsync(
+    list: AdvanceRecord[],
+    triggerCascade: boolean = true,
+    month?: string,
+    fortnight?: string
+  ): Promise<boolean> {
+    if (!this.canWrite()) return false
+    let cleaned: AdvanceRecord[] = list
+    try {
+      let masterList = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
+      const incoming = dedupeRowsByKey(list, advancePersonMonthKey).list
 
-        const cleaned = dedupeRowsByKey(masterList, advancePersonMonthKey).list
-        writeStore(STORAGE_KEYS.ADVANCES, this.renumberByMonth(cleaned))
-      } catch (err) {
-        console.error(err)
-        writeStore(STORAGE_KEYS.ADVANCES, list)
-      }
-
-      if (triggerCascade) {
-        this.syncAllAdvanceTotals(month || list[0]?.month || '2026-08')
+      if (month) {
+        masterList = masterList.filter((a) => {
+          if (sheetMonthKey(a.month) !== sheetMonthKey(month)) return true
+          if (fortnight && fortnight !== 'all' && (a.fortnight || '1-15') !== fortnight) return true
+          return false
+        })
+        masterList = [...masterList, ...incoming]
       } else {
-        this.notifyDataChanged(month)
+        masterList = incoming
       }
+
+      cleaned = this.renumberByMonth(dedupeRowsByKey(masterList, advancePersonMonthKey).list)
+    } catch (err) {
+      console.error(err)
+      cleaned = list
     }
+
+    const ok = await writeStoreAndWait(STORAGE_KEYS.ADVANCES, cleaned)
+    if (triggerCascade) {
+      this.syncAllAdvanceTotals(month || list[0]?.month || '2026-08')
+    } else {
+      this.notifyDataChanged(month)
+    }
+    return ok
   }
 
   private mergeMonthOrFortnightRows<T extends { month?: string; fortnight?: string }>(

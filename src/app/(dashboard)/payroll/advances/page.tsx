@@ -145,7 +145,7 @@ export default function SalaryAdvancesPage() {
     }
   }
 
-  const handleAddAdvance = (e: React.FormEvent) => {
+  const handleAddAdvance = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!canEditAccounts) return
     const numAmt = parseFloat(amount as string)
@@ -186,10 +186,14 @@ export default function SalaryAdvancesPage() {
 
     const updated = [...advances, newRecord]
     setAdvances(updated)
-    payrollService.saveAdvances(updated, true, selectedMonth)
+    const ok = await payrollService.saveAdvancesAsync(updated, true, selectedMonth)
     setShowAddDialog(false)
     resetAddForm()
-    showSuccess('Advance saved', `"${employeeName}" ka advance record ho gaya.`)
+    if (ok) {
+      showSuccess('Advance saved', `"${employeeName}" ka advance record ho gaya.`)
+    } else {
+      showError('Save failed', 'Advance local me save hua lekin server pe nahi gaya. Dobara Save dabao.')
+    }
   }
 
   const requestDeleteAdvance = (id: string, empName: string) => {

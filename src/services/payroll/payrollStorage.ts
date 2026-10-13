@@ -542,10 +542,17 @@ export async function hydratePayrollFromDb(): Promise<void> {
           const merged =
             key === STORAGE_KEYS.EMPLOYEES && dbRows.length > 0
               ? [...dbRows]
-              : mergeMirrorPreferDbPeriods(
-                  dbRows,
-                  mirrored as { id?: string; month?: string; fortnight?: string }[]
-                )
+              : key === STORAGE_KEYS.ADVANCES
+                ? // Always union advances by id so a just-saved Dawood isn't dropped
+                  // when DB already has that month/period from an earlier snapshot.
+                  mergeRowsById(
+                    dbRows,
+                    mirrored as { id?: string; month?: string; fortnight?: string }[]
+                  )
+                : mergeMirrorPreferDbPeriods(
+                    dbRows,
+                    mirrored as { id?: string; month?: string; fortnight?: string }[]
+                  )
           memoryStore.set(key, JSON.stringify(merged))
           if (JSON.stringify(merged) !== JSON.stringify(dbRows)) {
             pendingPersists.set(key, merged)
