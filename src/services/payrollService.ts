@@ -16,528 +16,6 @@ import {
 
 import allEmployeesData from '@/data/all_employees.json'
 
-export const STORAGE_KEYS = {
-  EMPLOYEES: 'sara_payroll_employees_v9',
-  ADVANCES: 'sara_payroll_advances_v7',
-  STAFF: 'sara_payroll_staff_v6',
-  CONTRACT: 'sara_payroll_contract_v7',
-  EFFICIENCY: 'sara_payroll_efficiency_v6',
-  WEAVERS: 'sara_payroll_weavers_v6',
-  HELPERS: 'sara_payroll_helpers_v6',
-  CONTRACTORS: 'sara_payroll_contractors_v6',
-  PETTY_CASH: 'sara_payroll_petty_cash_v6',
-  HR_META: 'sara_payroll_hr_meta_v1',
-}
-
-const DEFAULT_HR_CATEGORIES = ['Admin', 'Staff', 'Contract', 'Weaver', 'Helper', 'Contractor']
-const DEFAULT_HR_DESIGNATIONS = [
-  'Incharge',
-  'Supervisor',
-  'Accountant',
-  'Quality Controller',
-  'D.E.O',
-  'Sr.Technician',
-  'Electrician',
-  'Asst Technician',
-  'Oil Man',
-  'Weaver',
-  'Spare Weaver',
-  'Helper',
-  'Store Keeper',
-  'Time Keeper',
-]
-
-type JobFamily = 'weaver' | 'helper' | 'contractor' | 'salaried'
-
-const NAME_ALIASES: Record<string, string> = {
-  muhammed: 'muhammad',
-  mohammed: 'muhammad',
-  mohammad: 'muhammad',
-  ahmer: 'ahmar',
-  billal: 'bilal',
-}
-
-function daysInCalendarMonth(month: string = '2026-08'): number {
-  const [year, mon] = (month || '2026-08').split('-').map(Number)
-  if (!year || !mon) return 31
-  return new Date(year, mon, 0).getDate()
-}
-
-/** Normalize sheet month; never fall back to "active" month (that overwrote Aug with Sep pay). */
-function sheetMonthKey(rowMonth?: string | null, fallback = '2026-08'): string {
-  const m = (rowMonth || '').trim()
-  return /^\d{4}-\d{2}$/.test(m) ? m : fallback
-}
-
-/** Pay / wage fields apply only to the month being edited from the profile card. */
-function isTargetPayMonth(rowMonth: string | undefined | null, targetMonth: string): boolean {
-  return sheetMonthKey(rowMonth) === sheetMonthKey(targetMonth)
-}
-
-/** Active / On Leave count as working roster; Resigned does not. */
-export function isActiveEmployee(emp?: EmployeeProfile | null): boolean {
-  if (!emp) return false
-  return (emp.status || 'Active') !== 'Resigned'
-}
-
-const MONTH_NAME_TO_NUM: Record<string, number> = {
-  jan: 1,
-  january: 1,
-  feb: 2,
-  february: 2,
-  mar: 3,
-  march: 3,
-  apr: 4,
-  april: 4,
-  may: 5,
-  jun: 6,
-  june: 6,
-  jul: 7,
-  july: 7,
-  aug: 8,
-  august: 8,
-  sep: 9,
-  sept: 9,
-  september: 9,
-  oct: 10,
-  october: 10,
-  nov: 11,
-  november: 11,
-  dec: 12,
-  december: 12,
-}
-
-/**
- * Parse dates from remarks like "Resignation 31 Oct 2022" / "Resignation 06-Jan-26".
- * Returns YYYY-MM-DD when possible.
- */
-export function parseResignationDateFromRemarks(remarks?: string): string | undefined {
-  if (!remarks) return undefined
-  const text = remarks.trim()
-  const afterLabel = text.replace(/^resign(?:ation|ed)?\s*[:\-]?\s*/i, '').trim() || text
-
-  // 31 Oct 2022 | 30 June-24 | 06-Jan-26 | 18-Sep-2022
-  const named = afterLabel.match(/(\d{1,2})[\s.\-\/]+([A-Za-z]+)[\s.\-\/]+(\d{2,4})/)
-  if (named) {
-    const day = Number(named[1])
-    const mon = MONTH_NAME_TO_NUM[named[2].toLowerCase()]
-    let year = Number(named[3])
-    if (year < 100) year += 2000
-    if (mon && day >= 1 && day <= 31 && year >= 1990 && year <= 2100) {
-      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    }
-  }
-
-  // ISO already
-  if (/^\d{4}-\d{2}-\d{2}/.test(afterLabel)) return afterLabel.slice(0, 10)
-
-  // 31-10-2022 or 31/10/22 (D-M-Y)
-  const dmy = afterLabel.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/)
-  if (dmy) {
-    let a = Number(dmy[1])
-    let b = Number(dmy[2])
-    let year = Number(dmy[3])
-    if (year < 100) year += 2000
-    // Prefer D-M-Y when first > 12
-    let day = a
-    let mon = b
-    if (a <= 12 && b > 12) {
-      mon = a
-      day = b
-    }
-    if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
-      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    }
-  }
-
-  return undefined
-}
-
-/** Prefer resignedAt; else parse from remarks. */
-export function resolveResignedAt(emp?: EmployeeProfile | null): string {
-  if (!emp) return ''
-  const direct = (emp.resignedAt || '').trim()
-  if (/^\d{4}-\d{2}-\d{2}/.test(direct)) return direct.slice(0, 10)
-  if (direct) return direct
-  return parseResignationDateFromRemarks(emp.remarks) || ''
-}
-
-/** YYYY-MM of resignation (empty if not resigned). */
-export function resignedMonth(emp?: EmployeeProfile | null): string {
-  if (!emp || (emp.status || 'Active') !== 'Resigned') return ''
-  const raw = resolveResignedAt(emp)
-  if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7)
-  return ''
-}
-
-/** Parse DOJ strings like 2026-09-01 / 01-Sep-2026 / 26-Jul-2026 / Jan-13-25 → YYYY-MM-DD. */
-export function parseDojToIso(doj?: string): string | undefined {
-  if (!doj) return undefined
-  const text = doj.trim()
-  if (!text) return undefined
-  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10)
-
-  const named = text.match(/(\d{1,2})[\s.\-\/]+([A-Za-z]+)[\s.\-\/]+(\d{2,4})/)
-  if (named) {
-    const day = Number(named[1])
-    const mon = MONTH_NAME_TO_NUM[named[2].toLowerCase()]
-    let year = Number(named[3])
-    if (year < 100) year += 2000
-    if (mon && day >= 1 && day <= 31 && year >= 1990 && year <= 2100) {
-      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    }
-  }
-
-  const monthFirst = text.match(/^([A-Za-z]+)[\s.\-\/]+(\d{1,2})[\s.\-\/]+(\d{2,4})$/)
-  if (monthFirst) {
-    const mon = MONTH_NAME_TO_NUM[monthFirst[1].toLowerCase()]
-    const day = Number(monthFirst[2])
-    let year = Number(monthFirst[3])
-    if (year < 100) year += 2000
-    if (mon && day >= 1 && day <= 31 && year >= 1990 && year <= 2100) {
-      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    }
-  }
-
-  const dmy = text.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/)
-  if (dmy) {
-    let a = Number(dmy[1])
-    let b = Number(dmy[2])
-    let year = Number(dmy[3])
-    if (year < 100) year += 2000
-    let day = a
-    let mon = b
-    if (a <= 12 && b > 12) {
-      mon = a
-      day = b
-    }
-    if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
-      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    }
-  }
-
-  return undefined
-}
-
-/** First payroll month this person should appear (from DOJ). Empty = no DOJ limit. */
-export function joiningMonth(emp?: EmployeeProfile | null): string {
-  if (!emp) return ''
-  const iso = parseDojToIso(emp.doj)
-  if (iso && /^\d{4}-\d{2}/.test(iso)) return iso.slice(0, 7)
-  return ''
-}
-
-function hydrateResignedDates(list: EmployeeProfile[]): { list: EmployeeProfile[]; changed: boolean } {
-  let changed = false
-  const next = list.map((e) => {
-    if ((e.status || 'Active') !== 'Resigned') return e
-    if ((e.resignedAt || '').trim()) return e
-    const parsed = parseResignationDateFromRemarks(e.remarks)
-    if (!parsed) return e
-    changed = true
-    return { ...e, resignedAt: parsed }
-  })
-  return { list: next, changed }
-}
-
-/**
- * Include in a payroll month sheet?
- * - New joiners: only from DOJ month onward (Sep joiner does not show in Aug).
- * - Fortnight (Weaver/Helper/Contractor ONLY): if fortnight is explicitly '1-15' and joining day
- *   in that month is > 15, do not show on the first-15 sheet. Monthly Staff/Contract ignore this.
- * - Resigned: stay through resign month, then drop from later months.
- */
-export function employeeBelongsInMonth(
-  emp: EmployeeProfile | null | undefined,
-  month: string,
-  fortnight?: string
-): boolean {
-  if (!emp) return true
-  const start = joiningMonth(emp)
-  if (start && month < start) return false
-  // Only when caller passes a real fortnight sheet key — never treat monthly as 1-15.
-  if (fortnight === '1-15' && start && month === start) {
-    const iso = parseDojToIso(emp.doj)
-    if (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) {
-      const joinDay = Number(iso.slice(8, 10))
-      if (joinDay > 15) return false
-    }
-  }
-  if ((emp.status || 'Active') !== 'Resigned') return true
-  const end = resignedMonth(emp)
-  if (!end) return false
-  return month <= end
-}
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function normalizeName(name?: string): string {
-  const parts = (name || '')
-    .toLowerCase()
-    .replace(/[.]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => NAME_ALIASES[part] || part)
-  return parts.join(' ')
-}
-
-function namesMatch(a?: string, b?: string): boolean {
-  if (!a || !b) return false
-  const na = normalizeName(a)
-  const nb = normalizeName(b)
-  if (!na || !nb) return false
-  return na === nb
-}
-
-function jobFamily(designation?: string, category?: string): JobFamily {
-  const c = (category || '').toLowerCase()
-  const d = (designation || '').toLowerCase()
-  if (c === 'weaver' || /\bweaver\b/.test(d) || d.includes('spare weaver')) return 'weaver'
-  if (
-    d.includes('contractor') ||
-    d.includes('contracter') ||
-    d.includes('knotting') ||
-    d.includes('sarning') ||
-    d.includes('chowkidar') ||
-    d.includes('gitta') ||
-    c === 'contractor'
-  ) {
-    return 'contractor'
-  }
-  if ((c === 'helper' && !d.includes('sweeper')) || (d.includes('helper') && !d.includes('electrician helper')) || d.includes('winder')) {
-    return 'helper'
-  }
-  return 'salaried'
-}
-
-/** Infer HR category from designation / contract status (Category field removed from form). */
-export function inferEmployeeCategory(input: {
-  designation?: string
-  contractStatus?: string
-  employeeCategory?: string | null
-}): EmployeeCategory {
-  const family = jobFamily(input.designation, input.employeeCategory || undefined)
-  if (family === 'weaver') return 'Weaver'
-  if (family === 'helper') return 'Helper'
-  if (family === 'contractor' || input.contractStatus === 'Contractor') return 'Contractor'
-  if (input.contractStatus === 'Company Contract' || input.contractStatus === 'Contract Services') {
-    return 'Contract'
-  }
-
-  const d = (input.designation || '').toLowerCase()
-  const existing = (input.employeeCategory || '').trim()
-  if (existing && !['Staff', 'staff'].includes(existing)) {
-    // Keep explicit Admin/Contract if already set and not overridden by family
-    if (['Admin', 'Contract', 'Contractor', 'Weaver', 'Helper'].includes(existing)) {
-      if (family === 'salaried' && (existing === 'Admin' || existing === 'Contract')) return existing as EmployeeCategory
-    }
-  }
-  if (
-    d.includes('technician') ||
-    d.includes('oilman') ||
-    d.includes('oil man') ||
-    d.includes('electrician') ||
-    d.includes('mechanic') ||
-    d.includes('folding') ||
-    d.includes('time keeper') ||
-    d.includes('beem gater') ||
-    d.includes('quality controller') ||
-    d.includes('sweeper') ||
-    d.includes('kitchen')
-  ) {
-    return 'Contract'
-  }
-  if (d.includes('incharge') || d.includes('ceo') || d.includes('director') || d.includes('owner')) {
-    return 'Admin'
-  }
-  return 'Staff'
-}
-
-/** Monthly General Wages sheet — exclude daily-wage roles (Weaver / Helper / Contractor) and Resigned employees. */
-export function isGeneralWagesEmployee(
-  emp: Pick<EmployeeProfile, 'designation' | 'employeeCategory' | 'contractStatus' | 'status' | 'remarks' | 'resignedAt'>
-): boolean {
-  if (!isActiveEmployee(emp as EmployeeProfile)) return false
-  // Only status drives GW membership — remarks text must not kick active people to table end.
-  if ((emp.status || 'Active') === 'Resigned') return false
-  const cat = inferEmployeeCategory(emp)
-  return cat !== 'Weaver' && cat !== 'Helper' && cat !== 'Contractor'
-}
-
-export function matchesHrCategoryFilter(
-  emp: Pick<EmployeeProfile, 'designation' | 'employeeCategory' | 'contractStatus' | 'status'>,
-  filter: string
-): boolean {
-  if (!filter || filter === 'ALL') return true
-  const f = filter.toUpperCase()
-  if (f === 'RESIGNED') {
-    return (emp.status || 'Active').toLowerCase() === 'resigned'
-  }
-  const cat = inferEmployeeCategory(emp).toUpperCase()
-  if (f === 'STAFF') return cat === 'STAFF' || cat === 'ADMIN'
-  if (f === 'WEAVER') return cat === 'WEAVER'
-  if (f === 'HELPER') return cat === 'HELPER'
-  if (f === 'CONTRACT') return cat === 'CONTRACT'
-  if (f === 'CONTRACTOR') return cat === 'CONTRACTOR'
-  return cat === f
-}
-
-/**
- * Finds the optimal row index to insert an employee based on their designation / category.
- * Places the new employee immediately beneath existing peers (e.g. under Quality Controller, Electrician, Contractor, etc.).
- */
-export function findSmartInsertionIndex(
-  list: EmployeeProfile[],
-  designation?: string,
-  category?: string
-): number {
-  if (!list || list.length === 0) return 0
-  const dNorm = (designation || '').toLowerCase().trim()
-
-  // 1. Exact designation match: find the last active employee with the exact same designation
-  let lastExactIdx = -1
-  for (let i = 0; i < list.length; i++) {
-    const e = list[i]
-    if ((e.status || 'Active') === 'Resigned') continue
-    if (dNorm && (e.designation || '').toLowerCase().trim() === dNorm) {
-      lastExactIdx = i
-    }
-  }
-  if (lastExactIdx !== -1) {
-    return lastExactIdx + 1
-  }
-
-  // 2. Keyword match: e.g. "quality", "technician", "electrician", "supervisor", "contractor", "sweeper", "weaver", "helper", etc.
-  const keywords = [
-    'quality',
-    'controller',
-    'incharge',
-    'supervisor',
-    'technician',
-    'electrician',
-    'mechanic',
-    'oil man',
-    'folding',
-    'time keeper',
-    'sweeper',
-    'kitchen',
-    'contractor',
-    'contracter',
-    'weaver',
-    'helper',
-    'winder',
-  ]
-  const matchedKw = keywords.find((k) => dNorm.includes(k))
-  if (matchedKw) {
-    let lastKwIdx = -1
-    for (let i = 0; i < list.length; i++) {
-      const e = list[i]
-      if ((e.status || 'Active') === 'Resigned') continue
-      if ((e.designation || '').toLowerCase().includes(matchedKw)) {
-        lastKwIdx = i
-      }
-    }
-    if (lastKwIdx !== -1) {
-      return lastKwIdx + 1
-    }
-  }
-
-  // 3. Category match: infer category and find the last active in same category
-  const targetCategory = inferEmployeeCategory({ designation, employeeCategory: category })
-  let lastCatIdx = -1
-  for (let i = 0; i < list.length; i++) {
-    const e = list[i]
-    if ((e.status || 'Active') === 'Resigned') continue
-    if (inferEmployeeCategory(e) === targetCategory) {
-      lastCatIdx = i
-    }
-  }
-  if (lastCatIdx !== -1) {
-    return lastCatIdx + 1
-  }
-
-  // 4. Default: insert after the last active employee (before any resigned records)
-  let lastActiveIdx = -1
-  for (let i = 0; i < list.length; i++) {
-    if ((list[i].status || 'Active') !== 'Resigned') {
-      lastActiveIdx = i
-    }
-  }
-  if (lastActiveIdx !== -1) {
-    return lastActiveIdx + 1
-  }
-
-  return list.length
-}
-
-function weaverSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' | 'ratePerDay30'> & { overtimeRate?: number }): {
-  designation: 'Spare Weaver' | 'Weaver'
-  wagePerDay: number
-  holidayRate: number
-} {
-  const isSpare = (emp.designation || '').toLowerCase().includes('spare')
-  const wage =
-    Number(emp.ratePerDay30) || Math.round((Number(emp.salary) || 0) / 30) || (isSpare ? 1800 : 1450)
-  const holidayRate = Number(emp.overtimeRate) || (isSpare ? 2100 : 1750)
-  return {
-    designation: isSpare ? 'Spare Weaver' : 'Weaver',
-    wagePerDay: wage,
-    holidayRate,
-  }
-}
-
-function helperSheetFields(emp: Pick<EmployeeProfile, 'designation' | 'salary' | 'ratePerDay30'> & { overtimeRate?: number }): {
-  designation: 'Helper' | 'Winder'
-  wagePerDay: number
-  otRate: number
-} {
-  const isWinder = (emp.designation || '').toLowerCase().includes('winder')
-  const wage =
-    Number(emp.ratePerDay30) || Math.round((Number(emp.salary) || 0) / 30) || (isWinder ? 1150 : 1050)
-  const otRate = Number(emp.overtimeRate) || (isWinder ? 1400 : 1200)
-  return {
-    designation: isWinder ? 'Winder' : 'Helper',
-    wagePerDay: wage,
-    otRate,
-  }
-}
-
-function sameJobFamily(emp: EmployeeProfile, rowDesignation?: string): boolean {
-  if (!rowDesignation) return true
-  return jobFamily(emp.designation, emp.employeeCategory) === jobFamily(rowDesignation)
-}
-
-function findLinkedEmployee(
-  roster: EmployeeProfile[],
-  name?: string,
-  designation?: string,
-  employeeId?: string
-): EmployeeProfile | undefined {
-  if (employeeId) {
-    const byId = roster.find((emp) => emp.id === employeeId)
-    if (byId) return byId
-  }
-  if (!name) return undefined
-
-  const familyMatches = roster.filter(
-    (emp) => namesMatch(emp.name, name) && sameJobFamily(emp, designation)
-  )
-  if (familyMatches.length === 1) return familyMatches[0]
-  if (familyMatches.length > 1) {
-    const exactDesignation = familyMatches.find(
-      (emp) => normalizeName(emp.designation) === normalizeName(designation)
-    )
-    return exactDesignation || familyMatches[0]
-  }
-  return undefined
-}
-
-
-// Seed data directly transcribed from August-2026 Excel sheets
 import {
   INITIAL_STAFF_SALARIES,
   INITIAL_ADVANCES,
@@ -553,643 +31,118 @@ import {
 
 export { getPayrollSeedStore }
 
+// Re-export constants, storage, calculations, reports, and cycle generators
+export * from './payroll/payrollConstants'
+export * from './payroll/payrollStorage'
+export * from './payroll/payrollCalculations'
+export * from './payroll/payrollReports'
+export * from './payroll/payrollCycles'
 
-/** In-memory cache hydrated from PostgreSQL via /api/payroll/store. */
-const memoryStore = new Map<string, string>()
-let hydrated = false
-let hydratePromise: Promise<void> | null = null
-let allowServerSheetWrite = false
+import {
+  STORAGE_KEYS,
+  DEFAULT_HR_CATEGORIES,
+  DEFAULT_HR_DESIGNATIONS,
+} from './payroll/payrollConstants'
 
-/** Writes that happened before hydrate finished — must not be wiped by DB snapshot. */
-const pendingPersists = new Map<string, unknown>()
+import {
+  memoryStore,
+  hydrated,
+  allowServerSheetWrite,
+  isPayrollClient,
+  readStore,
+  writeStore,
+  writeStoreAndWait,
+  readLocalMirror,
+  writeLocalMirror,
+  persistPayrollKey,
+  readHrMetaRaw,
+  writeHrMeta,
+  isTombstonedEmployee,
+  rememberDeletedEmployee,
+  registerPostHydrateHook,
+  dedupeRowsByKey,
+  advancePersonMonthKey,
+  salariedPersonMonthKey,
+  fortnightPersonMonthKey,
+  setHydrated,
+  setAllowServerSheetWrite,
+  hydratePayrollFromDb,
+  resetPayrollHydration,
+  defaultPettyCashInflow,
+  pettyCashInflowMetaKey,
+} from './payroll/payrollStorage'
 
-const LOCAL_MIRROR_KEYS = new Set<string>([
-  STORAGE_KEYS.EMPLOYEES,
-  STORAGE_KEYS.STAFF,
-  STORAGE_KEYS.CONTRACT,
-  STORAGE_KEYS.HR_META,
-  STORAGE_KEYS.ADVANCES,
-  STORAGE_KEYS.EFFICIENCY,
-  STORAGE_KEYS.WEAVERS,
-  STORAGE_KEYS.HELPERS,
-  STORAGE_KEYS.CONTRACTORS,
-  STORAGE_KEYS.PETTY_CASH,
-])
+import {
+  daysInCalendarMonth,
+  sheetMonthKey,
+  isTargetPayMonth,
+  isActiveEmployee,
+  parseResignationDateFromRemarks,
+  resolveResignedAt,
+  resignedMonth,
+  parseDojToIso,
+  joiningMonth,
+  employeeBelongsInMonth,
+  todayIsoDate,
+  normalizeName,
+  namesMatch,
+  jobFamily,
+  inferEmployeeCategory,
+  isGeneralWagesEmployee,
+  matchesHrCategoryFilter,
+  findSmartInsertionIndex,
+  weaverSheetFields,
+  helperSheetFields,
+  sameJobFamily,
+  findLinkedEmployee,
+  formatPayrollMonthLabel,
+  calculateStaffSalaryRow,
+  calculateContractSalaryRow,
+  calculateEfficiencyRow,
+  calculateWeaverWageRow,
+  calculateHelperWageRow,
+  calculateContractorPaymentRow,
+} from './payroll/payrollCalculations'
 
-const ARRAY_MERGE_KEYS = new Set<string>([
-  STORAGE_KEYS.STAFF,
-  STORAGE_KEYS.CONTRACT,
-  STORAGE_KEYS.ADVANCES,
-  STORAGE_KEYS.EFFICIENCY,
-  STORAGE_KEYS.WEAVERS,
-  STORAGE_KEYS.HELPERS,
-  STORAGE_KEYS.CONTRACTORS,
-  STORAGE_KEYS.PETTY_CASH,
-])
-
-export function isPayrollHydrated(): boolean {
-  return hydrated
-}
-
-/** Force next hydratePayrollFromDb() to re-fetch from Postgres. */
-export function resetPayrollHydration(): void {
-  hydrated = false
-  hydratePromise = null
-}
-
-function localMirrorKey(key: string): string {
-  return `sara_payroll_mirror_${key}`
-}
-
-function writeLocalMirror(key: string, value: unknown): void {
-  if (!isPayrollClient() || !LOCAL_MIRROR_KEYS.has(key)) return
-  try {
-    localStorage.setItem(localMirrorKey(key), JSON.stringify(value))
-  } catch {
-    // ignore quota / private mode
-  }
-}
-
-function readLocalMirror(key: string): unknown | null {
-  if (!isPayrollClient() || !LOCAL_MIRROR_KEYS.has(key)) return null
-  try {
-    const raw = localStorage.getItem(localMirrorKey(key))
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
-function isPayrollClient(): boolean {
-  return typeof window !== 'undefined'
-}
-
-async function persistPayrollKey(key: string, value: unknown): Promise<boolean> {
-  if (!isPayrollClient()) return false
-  writeLocalMirror(key, value)
-  try {
-    const res = await fetch('/api/payroll/store', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ key, value }),
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      console.error('[payroll] persist rejected', key, res.status, body)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[payroll] persist failed', key, err)
-    return false
-  }
-}
-
-function writeStore(key: string, value: unknown): void {
-  try {
-    memoryStore.set(key, JSON.stringify(value))
-  } catch {
-    // ignore
-  }
-  writeLocalMirror(key, value)
-  // Wait until the DB snapshot is loaded, otherwise a first paint can overwrite Postgres.
-  if (!hydrated) {
-    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-      const prev = pendingPersists.get(key)
-      if (Array.isArray(prev)) {
-        pendingPersists.set(
-          key,
-          mergeRowsById(prev as { id?: string }[], value as { id?: string }[])
-        )
-      } else {
-        pendingPersists.set(key, value)
-      }
-    } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-      const prev = pendingPersists.get(key)
-      const prevObj =
-        prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
-      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
-      const prevOverrides =
-        prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
-          ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
-          : {}
-      pendingPersists.set(key, {
-        ...prevObj,
-        ...incoming,
-        pettyCashInflowOverrides: {
-          ...prevOverrides,
-          ...(incoming.pettyCashInflowOverrides || {}),
-        },
-      })
-    } else {
-      pendingPersists.set(key, value)
-    }
-    return
-  }
-  void persistPayrollKey(key, value)
-}
-
-/** Prefer DB rows for periods already saved; only add mirror rows for brand-new month/fortnight. */
-function mergeMirrorPreferDbPeriods<
-  T extends { id?: string; month?: string; fortnight?: string },
->(dbRows: T[], mirrorRows: T[]): T[] {
-  const db = Array.isArray(dbRows) ? dbRows : []
-  const mirror = Array.isArray(mirrorRows) ? mirrorRows : []
-  if (db.length === 0) return mergeRowsById(db, mirror)
-  const periodsInDb = new Set(
-    db.map((r) => `${r.month || ''}|${r.fortnight || ''}`)
-  )
-  const extras = mirror.filter(
-    (r) => !periodsInDb.has(`${r.month || ''}|${r.fortnight || ''}`)
-  )
-  return extras.length ? mergeRowsById(db, extras) : [...db]
-}
-
-async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> {
-  try {
-    memoryStore.set(key, JSON.stringify(value))
-  } catch {
-    // ignore
-  }
-  writeLocalMirror(key, value)
-  if (!hydrated) {
-    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-      const prev = pendingPersists.get(key)
-      pendingPersists.set(
-        key,
-        Array.isArray(prev)
-          ? mergeRowsById(prev as { id?: string }[], value as { id?: string }[])
-          : value
-      )
-    } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-      const prev = pendingPersists.get(key)
-      const prevObj =
-        prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
-      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
-      const prevOverrides =
-        prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
-          ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
-          : {}
-      pendingPersists.set(key, {
-        ...prevObj,
-        ...incoming,
-        pettyCashInflowOverrides: {
-          ...prevOverrides,
-          ...(incoming.pettyCashInflowOverrides || {}),
-        },
-      })
-    } else {
-      pendingPersists.set(key, value)
-    }
-    await hydratePayrollFromDb()
-    // After hydrate, memory has DB+mirrors; still force-write our value merged in
-    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-      let current: { id?: string }[] = []
-      try {
-        current = JSON.parse(memoryStore.get(key) || '[]')
-      } catch {
-        current = []
-      }
-      const merged = mergeRowsById(current, value as { id?: string }[])
-      memoryStore.set(key, JSON.stringify(merged))
-      writeLocalMirror(key, merged)
-      return persistPayrollKey(key, merged)
-    }
-    if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-      let current: Record<string, unknown> = {}
-      try {
-        current = JSON.parse(memoryStore.get(key) || '{}')
-      } catch {
-        current = {}
-      }
-      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
-      const curOverrides =
-        current.pettyCashInflowOverrides && typeof current.pettyCashInflowOverrides === 'object'
-          ? (current.pettyCashInflowOverrides as Record<string, number>)
-          : {}
-      const merged = {
-        ...current,
-        ...incoming,
-        pettyCashInflowOverrides: {
-          ...curOverrides,
-          ...(incoming.pettyCashInflowOverrides || {}),
-        },
-      }
-      memoryStore.set(key, JSON.stringify(merged))
-      writeLocalMirror(key, merged)
-      return persistPayrollKey(key, merged)
-    }
-  }
-  return persistPayrollKey(key, value)
-}
-
-/** Union salary-sheet rows by id so that a local September isn't lost, with overrides taking precedence over base rows. */
-function mergeRowsById<T extends { id?: string }>(baseRows: T[], overrides: T[]): T[] {
-  const map = new Map<string, T>()
-  for (const row of baseRows || []) {
-    if (row?.id) map.set(row.id, row)
-  }
-  for (const row of overrides || []) {
-    if (row?.id) map.set(row.id, row)
-  }
-  return [...map.values()]
-}
-
-/**
- * Prefer the "better" duplicate row: has employeeId, stable/seed id, higher amount, lower serial.
- * Used when local mirror + Postgres both kept the same person under different ids.
- */
-function preferPayrollDuplicateRow<T extends { id?: string; employeeId?: string; amount?: number; salary?: number; serialNo?: number }>(
-  a: T,
-  b: T
-): T {
-  const score = (r: T) => {
-    let s = 0
-    if (r.employeeId) s += 40
-    const id = r.id || ''
-    if (/^(adv-sep-|adv-\d+$|st-|ct-|staff-|cnt-)/.test(id)) s += 25
-    if (!id.includes('Date.now') && !/-\d{13}-/.test(id)) s += 5
-    s += Math.min(20, Math.abs(Number(r.amount ?? r.salary) || 0) / 5000)
-    s += Math.max(0, 15 - (Number(r.serialNo) || 99))
-    return s
-  }
-  return score(a) >= score(b) ? a : b
-}
-
-function dedupeRowsByKey<T extends { id?: string }>(
-  rows: T[],
-  keyOf: (row: T) => string,
-  prefer: (a: T, b: T) => T = preferPayrollDuplicateRow
-): { list: T[]; removed: number } {
-  const map = new Map<string, T>()
-  let removed = 0
-  for (const row of rows || []) {
-    const key = keyOf(row)
-    if (!key) {
-      map.set(`__noid__${row.id || Math.random()}`, row)
-      continue
-    }
-    const prev = map.get(key)
-    if (!prev) {
-      map.set(key, row)
-      continue
-    }
-    removed += 1
-    map.set(key, prefer(prev, row))
-  }
-  return { list: [...map.values()], removed }
-}
-
-function advancePersonMonthKey(a: {
-  month?: string
-  employeeId?: string
-  employeeName?: string
-}): string {
-  const month = sheetMonthKey(a.month)
-  const person = (a.employeeId || '').trim() || normalizeName(a.employeeName)
-  if (!person) return ''
-  return `${month}|${person}`
-}
-
-function salariedPersonMonthKey(row: {
-  month?: string
-  employeeId?: string
-  employeeName?: string
-  name?: string
-}): string {
-  const month = sheetMonthKey(row.month)
-  const person =
-    (row.employeeId || '').trim() ||
-    normalizeName(row.employeeName || row.name)
-  if (!person) return ''
-  return `${month}|${person}`
-}
-
-function fortnightPersonMonthKey(row: {
-  month?: string
-  fortnight?: string
-  employeeId?: string
-  employeeName?: string
-  name?: string
-}): string {
-  const base = salariedPersonMonthKey(row)
-  if (!base) return ''
-  return `${base}|${row.fortnight || '1-15'}`
-}
-
-/** Default Excel petty-cash transfer amounts (accountant can override per month/fortnight). */
-function defaultPettyCashInflow(fortnight: '1-15' | '16-31'): number {
-  return fortnight === '1-15' ? 86930 : 86570
-}
-
-function pettyCashInflowMetaKey(month: string, fortnight: '1-15' | '16-31'): string {
-  return `${month}|${fortnight}`
-}
-
-type HrMetaShape = {
-  categories?: string[]
-  designations?: string[]
-  activeSalariedMonth?: string
-  activeFortnightMonth?: string
-  activeFortnight?: '1-15' | '16-31'
-  pettyCashInflowOverrides?: Record<string, number>
-  /** Profiles permanently removed — repairRoster must not resurrect from seed. */
-  deletedEmployeeIds?: string[]
-  deletedEmployeeNames?: string[]
-}
-
-function writeHrMeta(custom: {
-  categories: string[]
-  designations: string[]
-  activeSalariedMonth?: string
-  activeFortnightMonth?: string
-  activeFortnight?: '1-15' | '16-31'
-  pettyCashInflowOverrides?: Record<string, number>
-  deletedEmployeeIds?: string[]
-  deletedEmployeeNames?: string[]
-}): void {
-  const raw = readHrMetaRaw()
-  writeStore(STORAGE_KEYS.HR_META, {
-    ...custom,
-    pettyCashInflowOverrides:
-      custom.pettyCashInflowOverrides ?? raw.pettyCashInflowOverrides,
-    deletedEmployeeIds: custom.deletedEmployeeIds ?? raw.deletedEmployeeIds,
-    deletedEmployeeNames: custom.deletedEmployeeNames ?? raw.deletedEmployeeNames,
-  })
-}
-
-function readHrMetaRaw(): HrMetaShape {
-  try {
-    const raw = memoryStore.get(STORAGE_KEYS.HR_META)
-    if (raw) return JSON.parse(raw)
-  } catch {
-    // ignore
-  }
-  if (isPayrollClient()) {
-    try {
-      const legacy = localStorage.getItem(STORAGE_KEYS.HR_META)
-      if (legacy) {
-        memoryStore.set(STORAGE_KEYS.HR_META, legacy)
-        const parsed = JSON.parse(legacy)
-        void persistPayrollKey(STORAGE_KEYS.HR_META, parsed)
-        return parsed
-      }
-    } catch {
-      // ignore
-    }
-    const mirrored = readLocalMirror(STORAGE_KEYS.HR_META)
-    if (mirrored && typeof mirrored === 'object') {
-      return mirrored as HrMetaShape
-    }
-  }
-  return {}
-}
-
-function isTombstonedEmployee(id?: string, name?: string): boolean {
-  const raw = readHrMetaRaw()
-  const ids = raw.deletedEmployeeIds || []
-  const names = raw.deletedEmployeeNames || []
-  if (id && ids.includes(id)) return true
-  const key = normalizeName(name)
-  return Boolean(key && names.includes(key))
-}
-
-function rememberDeletedEmployee(emp: EmployeeProfile): void {
-  const raw = readHrMetaRaw()
-  const ids = new Set(raw.deletedEmployeeIds || [])
-  if (emp.id) ids.add(emp.id)
-  const names = new Set(raw.deletedEmployeeNames || [])
-  const key = normalizeName(emp.name)
-  if (key) names.add(key)
-  writeHrMeta({
-    categories: raw.categories || [],
-    designations: raw.designations || [],
-    activeSalariedMonth: raw.activeSalariedMonth,
-    activeFortnightMonth: raw.activeFortnightMonth,
-    activeFortnight: raw.activeFortnight,
-    pettyCashInflowOverrides: raw.pettyCashInflowOverrides,
-    deletedEmployeeIds: [...ids],
-    deletedEmployeeNames: [...names],
-  })
-}
-
-export function formatPayrollMonthLabel(month: string): string {
-  try {
-    const [y, m] = month.split('-').map(Number)
-    if (!y || !m) return month
-    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  } catch {
-    return month
-  }
-}
-
-/** Load payroll store from DB (seeds DB if empty). Call once when entering Payroll module. */
-export async function hydratePayrollFromDb(): Promise<void> {
-  if (!isPayrollClient()) return
-  if (hydrated) return
-  if (hydratePromise) return hydratePromise
-
-  hydratePromise = (async () => {
-    try {
-      const res = await fetch('/api/payroll/store', { method: 'GET', cache: 'no-store' })
-      const data = await res.json()
-      if (data?.ok && data.store && typeof data.store === 'object') {
-        Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
-          memoryStore.set(key, JSON.stringify(value))
-        })
-      }
-
-      // Merge local mirrors (e.g. September generated before PUT finished / offline).
-      for (const key of LOCAL_MIRROR_KEYS) {
-        const mirrored = readLocalMirror(key)
-        if (mirrored == null) continue
-        if (key === STORAGE_KEYS.HR_META && typeof mirrored === 'object') {
-          const dbMeta = (() => {
-            try {
-              return JSON.parse(memoryStore.get(key) || '{}')
-            } catch {
-              return {}
-            }
-          })() as {
-            activeSalariedMonth?: string
-            activeFortnightMonth?: string
-            activeFortnight?: '1-15' | '16-31'
-            categories?: string[]
-            designations?: string[]
-            pettyCashInflowOverrides?: Record<string, number>
-          }
-          const localMeta = mirrored as typeof dbMeta
-          const merged = {
-            categories: localMeta.categories?.length ? localMeta.categories : dbMeta.categories || [],
-            designations: localMeta.designations?.length
-              ? localMeta.designations
-              : dbMeta.designations || [],
-            activeSalariedMonth: (() => {
-              const local = localMeta.activeSalariedMonth || ''
-              const db = dbMeta.activeSalariedMonth || ''
-              if (local && db) return local >= db ? local : db
-              return local || db || undefined
-            })(),
-            activeFortnightMonth:
-              localMeta.activeFortnightMonth || dbMeta.activeFortnightMonth || undefined,
-            activeFortnight: localMeta.activeFortnight || dbMeta.activeFortnight || undefined,
-            // Keep synopsis petty-cash inflow edits across refresh (local wins on key clash).
-            pettyCashInflowOverrides: {
-              ...(dbMeta.pettyCashInflowOverrides || {}),
-              ...(localMeta.pettyCashInflowOverrides || {}),
-            },
-          }
-          memoryStore.set(key, JSON.stringify(merged))
-          pendingPersists.set(key, merged)
-          continue
-        }
-        if (Array.isArray(mirrored)) {
-          let dbRows: { id?: string; month?: string; fortnight?: string }[] = []
-          try {
-            dbRows = JSON.parse(memoryStore.get(key) || '[]')
-          } catch {
-            dbRows = []
-          }
-          // Employees: DB roster wins once present (don't resurrect deleted seed people from mirror).
-          const merged =
-            key === STORAGE_KEYS.EMPLOYEES && dbRows.length > 0
-              ? [...dbRows]
-              : mergeMirrorPreferDbPeriods(
-                  dbRows,
-                  mirrored as { id?: string; month?: string; fortnight?: string }[]
-                )
-          memoryStore.set(key, JSON.stringify(merged))
-          // Flush only when mirror added brand-new periods (or first offline sheet).
-          if (JSON.stringify(merged) !== JSON.stringify(dbRows)) {
-            pendingPersists.set(key, merged)
-          }
-        }
-      }
-
-      // Merge any in-flight pending writes into memory (never let seed wipe newer months).
-      for (const [key, value] of pendingPersists) {
-        if (key === STORAGE_KEYS.EMPLOYEES && Array.isArray(value)) {
-          memoryStore.set(key, JSON.stringify(value))
-          writeLocalMirror(key, value)
-        } else if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-          let current: { id?: string }[] = []
-          try {
-            current = JSON.parse(memoryStore.get(key) || '[]')
-          } catch {
-            current = []
-          }
-          const merged = mergeRowsById(current, value as { id?: string }[])
-          memoryStore.set(key, JSON.stringify(merged))
-          pendingPersists.set(key, merged)
-          writeLocalMirror(key, merged)
-        } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-          let current: Record<string, unknown> = {}
-          try {
-            current = JSON.parse(memoryStore.get(key) || '{}')
-          } catch {
-            current = {}
-          }
-          const incoming = value as {
-            pettyCashInflowOverrides?: Record<string, number>
-          }
-          const curOverrides =
-            current.pettyCashInflowOverrides &&
-            typeof current.pettyCashInflowOverrides === 'object'
-              ? (current.pettyCashInflowOverrides as Record<string, number>)
-              : {}
-          const merged = {
-            ...current,
-            ...incoming,
-            pettyCashInflowOverrides: {
-              ...curOverrides,
-              ...(incoming.pettyCashInflowOverrides || {}),
-            },
-          }
-          memoryStore.set(key, JSON.stringify(merged))
-          pendingPersists.set(key, merged)
-          writeLocalMirror(key, merged)
-        }
-      }
-
-      hydrated = true
-
-      // Flush anything written during the race / recovered from mirror.
-      const toFlush = [...pendingPersists.entries()]
-      pendingPersists.clear()
-      await Promise.all(
-        toFlush.map(async ([key, value]) => {
-          if (key === STORAGE_KEYS.EMPLOYEES && Array.isArray(value)) {
-            memoryStore.set(key, JSON.stringify(value))
-            writeLocalMirror(key, value)
-            return persistPayrollKey(key, value)
-          } else if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-            let current: { id?: string }[] = []
-            try {
-              current = JSON.parse(memoryStore.get(key) || '[]')
-            } catch {
-              current = []
-            }
-            const merged = mergeRowsById(current, value as { id?: string }[])
-            memoryStore.set(key, JSON.stringify(merged))
-            writeLocalMirror(key, merged)
-            return persistPayrollKey(key, merged)
-          }
-          return persistPayrollKey(key, value)
-        })
-      )
-
-      // After mirror flush: restore Aug (etc.) pay if profile sync had overwritten it to 40000.
-      try {
-        payrollService.repairHistoricalPayClobberedByProfile()
-      } catch (repairErr) {
-        console.error('[payroll] historical pay repair skipped', repairErr)
-      }
-      // Fix Sep Staff cheque = -advance corruption (Net Cash wrongly = Gross).
-      try {
-        payrollService.repairCorruptedStaffChequeAmounts()
-      } catch (chequeErr) {
-        console.error('[payroll] staff cheque repair skipped', chequeErr)
-      }
-      // Fix Contract rows where ratePerDay does not match calendar days (e.g. Sep rows copied with 31-day Aug rates).
-      try {
-        payrollService.repairCorruptedContractRates()
-      } catch (rateErr) {
-        console.error('[payroll] contract rate repair skipped', rateErr)
-      }
-      // Drop same-person duplicates (local mirror + DB often keep two ids for one advance).
-      try {
-        payrollService.repairDuplicatePayrollRows()
-      } catch (dupErr) {
-        console.error('[payroll] duplicate repair skipped', dupErr)
-      }
-      try {
-        payrollService.purgeAllJoinersFromPastMonths()
-      } catch (purgeErr) {
-        console.error('[payroll] joiner purge skipped', purgeErr)
-      }
-      // Restore Contract monthly rows wrongly removed by old day>15 purge / filter.
-      try {
-        payrollService.repairMissingContractSheetRows()
-      } catch (missingErr) {
-        console.error('[payroll] missing contract repair skipped', missingErr)
-      }
-    } catch (err) {
-      console.error('[payroll] hydrate failed — falling back to seed/local', err)
-      hydrated = true
-      const toFlush = [...pendingPersists.entries()]
-      pendingPersists.clear()
-      await Promise.all(toFlush.map(([key, value]) => persistPayrollKey(key, value)))
-    }
-  })()
-
-  return hydratePromise
-}
+import {
+  buildFortnightSynopsis,
+  buildMonthlyGrandSummary,
+} from './payroll/payrollReports'
 
 class PayrollService {
   /** Previous name, so a renamed person still matches their wage-sheet row. */
   private profileAliases = new Map<string, string>()
+
+  constructor() {
+    registerPostHydrateHook(() => {
+      try {
+        this.repairHistoricalPayClobberedByProfile()
+      } catch (e) {
+        console.error('[payroll] historical pay repair skipped', e)
+      }
+      try {
+        this.repairCorruptedStaffChequeAmounts()
+      } catch (e) {
+        console.error('[payroll] staff cheque repair skipped', e)
+      }
+      try {
+        this.repairCorruptedContractRates()
+      } catch (e) {
+        console.error('[payroll] contract rate repair skipped', e)
+      }
+      try {
+        this.repairDuplicatePayrollRows()
+      } catch (e) {
+        console.error('[payroll] duplicate repair skipped', e)
+      }
+      try {
+        this.purgeAllJoinersFromPastMonths()
+      } catch (e) {
+        console.error('[payroll] joiner purge skipped', e)
+      }
+    })
+  }
+
   private isClient(): boolean {
     return isPayrollClient()
   }
@@ -1198,375 +151,41 @@ class PayrollService {
     return this.isClient() || allowServerSheetWrite
   }
 
+  private readStore<T>(key: string, fallback: T[]): T[] {
+    return readStore(key, fallback)
+  }
+
   // ==========================================
   // FORMULA CALCULATION UTILITIES (LIVE EXCEL MATH)
   // ==========================================
 
   calculateStaffSalaryRow(row: Partial<StaffSalaryRecord>, daysInMonth = 31): StaffSalaryRecord {
-    const salary = Number(row.salary) || 0
-    const attendance = Number(row.attendanceDays) || 0
-    const otHours = Number(row.otHours) || 0
-    // Advances / cheques are never negative (live had cheque = -advance, which inflated Net Cash).
-    const lessAdvance = Math.max(0, Number(row.lessAdvance) || 0)
-    const chequeAmount = Math.max(0, Number(row.chequeAmount) || 0)
-
-    const month = row.month || '2026-08'
-    const isHistorical = month !== this.getActiveSalariedMonth()
-    const calDays = daysInCalendarMonth(month)
-
-    let actualDays = calDays
-    if (!isHistorical && daysInMonth !== undefined && daysInMonth > 0) {
-      actualDays = daysInMonth
-    } else if (isHistorical && (daysInMonth === 28 || daysInMonth === calDays)) {
-      actualDays = daysInMonth
-    }
-
-    // Excel: Rate Per Day = Salary / days; Basic = Attn × Rate Per Day
-    const calculatedRatePerDay = Math.round((salary / actualDays) * 100) / 100
-    let ratePerDay = calculatedRatePerDay
-    let basicSalary = Math.round(attendance * ratePerDay)
-
-    if (
-      isHistorical &&
-      row.basicSalary !== undefined &&
-      row.salary === salary &&
-      row.attendanceDays === attendance
-    ) {
-      basicSalary = Number(row.basicSalary)
-      ratePerDay = row.ratePerDay !== undefined ? Number(row.ratePerDay) : calculatedRatePerDay
-    }
-
-    const perHrRate = Number((salary / 240).toFixed(2))
-    // Excel exact formula: OT Hrs * (Salary / 240) (e.g. 176 * 40000 / 240 = 29333)
-    let otAmount = Math.round(otHours * (salary / 240))
-    if (
-      isHistorical &&
-      row.otAmount !== undefined &&
-      row.otHours === otHours &&
-      row.salary === salary
-    ) {
-      otAmount = Number(row.otAmount)
-    }
-
-    const grossAmount = basicSalary + otAmount
-    const synopsisAmount = grossAmount - lessAdvance
-    let netCashAmount = Math.max(0, synopsisAmount - chequeAmount)
-    if (
-      isHistorical &&
-      row.netCashAmount !== undefined &&
-      row.salary === salary &&
-      row.attendanceDays === attendance &&
-      row.otHours === otHours &&
-      row.lessAdvance === lessAdvance &&
-      row.chequeAmount === chequeAmount
-    ) {
-      netCashAmount = Number(row.netCashAmount)
-    }
-
-    return {
-      id: row.id || `staff-${Date.now()}`,
-      serialNo: row.serialNo || 1,
-      employeeId: row.employeeId,
-      employeeName: row.employeeName || '',
-      designation: row.designation || '',
-      salary,
-      attendanceDays: attendance,
-      ratePerDay,
-      basicSalary,
-      perHrRate,
-      otHours,
-      otAmount,
-      grossAmount,
-      lessAdvance,
-      chequeAmount,
-      synopsisAmount,
-      netCashAmount,
-      month,
-      customFields: row.customFields,
-    }
+    return calculateStaffSalaryRow(row, daysInMonth, this.getActiveSalariedMonth())
   }
 
-  calculateContractSalaryRow(row: Partial<ContractSalaryRecord>, daysInMonth = 31): ContractSalaryRecord {
-    const salary = Number(row.salary) || 0
-    const attendance = Number(row.attendanceDays) || 0
-    const otHours = Number(row.otHours) || 0
-    const efficiencyAmount = Number(row.efficiencyAmount) || 0
-    const advanceDeduction = Number(row.advanceDeduction) || 0
-    const ticketCharges = row.ticketCharges !== undefined ? Number(row.ticketCharges) : 5
-    const lateHours = Number(row.lateHours) || 0
-
-    const month = row.month || '2026-08'
-    const isHistorical = month !== this.getActiveSalariedMonth()
-    const calDays = daysInCalendarMonth(month)
-
-    let actualDays = calDays
-    if (!isHistorical && daysInMonth !== undefined && daysInMonth > 0) {
-      actualDays = daysInMonth
-    } else if (isHistorical && (daysInMonth === 28 || daysInMonth === calDays)) {
-      actualDays = daysInMonth
-    }
-
-    // Excel Contract Employees: Rate = Salary/days; Gross (H) = Attn × Rate
-    const calculatedRatePerDay = Math.round((salary / actualDays) * 100) / 100
-    let ratePerDay = calculatedRatePerDay
-    let basicSalary = Math.round(attendance * ratePerDay)
-
-    if (
-      isHistorical &&
-      row.basicSalary !== undefined &&
-      row.salary === salary &&
-      row.attendanceDays === attendance
-    ) {
-      basicSalary = Number(row.basicSalary)
-      ratePerDay = row.ratePerDay !== undefined ? Number(row.ratePerDay) : calculatedRatePerDay
-    }
-
-    // Look up duty hours from live master roster (Sheet 1) or fall back to role defaults
-    let dutyHrs = 10
-    const roster = this.getEmployees()
-    const matchedEmp = findLinkedEmployee(roster, row.employeeName, row.designation, row.employeeId)
-
-    if (matchedEmp && matchedEmp.dutyHrs && matchedEmp.dutyHrs > 0) {
-      dutyHrs = matchedEmp.dutyHrs
-    } else {
-      const des = (row.designation || '').toLowerCase()
-      if (
-        des.includes('quality controller') ||
-        des.includes('oilman') ||
-        des.includes('oil man') ||
-        des.includes('folding') ||
-        des.includes('time keeper') ||
-        des.includes('beem gater') ||
-        des.includes('shift technician') ||
-        des.includes('asst technician') ||
-        des.includes('asst. technician') ||
-        des.includes('technician')
-      ) {
-        dutyHrs = 12
-      } else if (
-        des.includes('incharge') ||
-        des.includes('accountant') ||
-        des.includes('supervisor') ||
-        des.includes('store') ||
-        des.includes('kitchen') ||
-        des.includes('sweeper')
-      ) {
-        dutyHrs = 8
-      } else if (des.includes('d.e.o') || des.includes('deo')) {
-        dutyHrs = 9
-      }
-    }
-
-    // Excel: Rate Per Hr from row salary / (30×dutyHrs). NEVER leak master roster if salaries differ!
-    let ratePerHr = Number(row.ratePerHr) || 0
-    const calculatedRatePerHr = Number((salary / (30 * dutyHrs)).toFixed(2))
-
-    if (isHistorical) {
-      if (ratePerHr <= 0) {
-        ratePerHr = calculatedRatePerHr
-      }
-    } else {
-      ratePerHr = calculatedRatePerHr
-    }
-
-    let otAmount = Math.round(otHours * ratePerHr)
-    if (
-      isHistorical &&
-      row.otAmount !== undefined &&
-      row.otHours === otHours &&
-      row.salary === salary
-    ) {
-      otAmount = Number(row.otAmount)
-    }
-
-    // Late Hrs Amount: keep manual value if set; else Late Hrs × Rate Per Hr
-    const lateAmount =
-      row.lateAmount !== undefined && row.lateAmount !== null && String(row.lateAmount) !== ''
-        ? Number(row.lateAmount) || 0
-        : lateHours > 0
-          ? Math.round(lateHours * ratePerHr)
-          : 0
-
-    // Contract Net: Gross = Basic + Efficiency only — OT is tracked separately, not in net.
-    let grossSalary = basicSalary + efficiencyAmount
-    if (
-      isHistorical &&
-      row.grossSalary !== undefined &&
-      row.salary === salary &&
-      row.attendanceDays === attendance &&
-      row.efficiencyAmount === efficiencyAmount
-    ) {
-      grossSalary = Number(row.grossSalary)
-    }
-
-    // Net = Gross − Late − Advance − Ticket (no OT); never show negative
-    let netAmount = Math.max(
-      0,
-      grossSalary - lateAmount - advanceDeduction - ticketCharges
-    )
-    if (
-      isHistorical &&
-      row.netAmount !== undefined &&
-      row.salary === salary &&
-      row.attendanceDays === attendance &&
-      row.advanceDeduction === advanceDeduction &&
-      row.efficiencyAmount === efficiencyAmount &&
-      row.ticketCharges === ticketCharges
-    ) {
-      netAmount = Math.max(0, Number(row.netAmount))
-    }
-
-    return {
-      id: row.id || `cnt-${Date.now()}`,
-      serialNo: row.serialNo || 1,
-      employeeId: row.employeeId || matchedEmp?.id,
-      employeeName: row.employeeName || '',
-      designation: row.designation || '',
-      salary,
-      attendanceDays: attendance,
-      ratePerDay,
-      ratePerHr,
-      basicSalary,
-      lateHours,
-      lateAmount,
-      otHours,
-      otAmount,
-      efficiencyAmount,
-      grossSalary,
-      advanceDeduction,
-      ticketCharges,
-      netAmount,
-      month,
-      customFields: row.customFields,
-    }
+  calculateContractSalaryRow(
+    row: Partial<ContractSalaryRecord>,
+    daysInMonth = 31,
+    matchedEmp?: EmployeeProfile
+  ): ContractSalaryRecord {
+    return calculateContractSalaryRow(row, daysInMonth, this.getActiveSalariedMonth(), matchedEmp)
   }
 
   calculateEfficiencyRow(row: Partial<EfficiencyIncentiveRecord>): EfficiencyIncentiveRecord {
-    const eff = Number(row.efficiencyPercent) || 0
-    const salaryEarned = Number(row.salaryEarned) || 0
-    const availPercent = eff >= 70 ? Math.max(0, eff - 60) : 0
-    const amount = Math.round(salaryEarned * (availPercent / 100))
-
-    return {
-      id: row.id || `eff-${Date.now()}`,
-      serialNo: row.serialNo || 1,
-      employeeId: row.employeeId,
-      loom: row.loom || 'Overall',
-      name: row.name || '',
-      designation: row.designation || '',
-      efficiencyPercent: eff,
-      salaryEarned,
-      availPercent,
-      amount,
-      month: row.month || '2026-08',
-      customFields: row.customFields,
-    }
+    return calculateEfficiencyRow(row)
   }
 
   calculateWeaverWageRow(row: Partial<WeaverWageRecord>): WeaverWageRecord {
-    const designation = row.designation || 'Weaver'
-    const isSpare = designation === 'Spare Weaver' || (row.wagePerDay && row.wagePerDay >= 1800)
-    const wagePerDay = row.wagePerDay ? Number(row.wagePerDay) : isSpare ? 1800 : 1450
-    const attendance = Number(row.attendanceDays) || 0
-    const extraLooms = Number(row.extraLooms) || 0
-    const rateLoom = row.rateLoom !== undefined ? Number(row.rateLoom) : 150
-    const holidayAttendance = Number(row.holidayAttendance) || 0
-    const holidayRate = row.holidayRate !== undefined ? Number(row.holidayRate) : isSpare ? 2100 : 1750
-    const efficiencyAmount = Number(row.efficiencyAmount) || 0
-
-    const basicSalary = wagePerDay * attendance
-    const extraLoomAmount = extraLooms * rateLoom
-    const attendanceAllowance =
-      row.attendanceAllowance !== undefined ? Number(row.attendanceAllowance) : (attendance >= 13 ? 800 : 0)
-    const holidayAmount = holidayAttendance * holidayRate
-    const grossAmount = basicSalary + extraLoomAmount + attendanceAllowance
-    const netPay = grossAmount + holidayAmount + efficiencyAmount
-
-    return {
-      id: row.id || `w-${Date.now()}`,
-      serialNo: row.serialNo || 1,
-      employeeId: row.employeeId,
-      employeeName: row.employeeName || '',
-      designation: isSpare ? 'Spare Weaver' : 'Weaver',
-      wagePerDay,
-      attendanceDays: attendance,
-      basicSalary,
-      rateLoom,
-      extraLooms,
-      extraLoomAmount,
-      attendanceAllowance,
-      holidayAttendance,
-      holidayRate,
-      holidayAmount,
-      efficiencyAmount,
-      grossAmount,
-      netPay,
-      fortnight: row.fortnight || '1-15',
-      month: row.month || '2026-08',
-      customFields: row.customFields,
-    }
+    return calculateWeaverWageRow(row)
   }
 
   calculateHelperWageRow(row: Partial<HelperWageRecord>): HelperWageRecord {
-    const wagePerDay = row.wagePerDay !== undefined ? Number(row.wagePerDay) : 1050
-    const attendance = Number(row.attendanceDays) || 0
-    const holidayAttendance = Number(row.holidayAttendance) || 0
-    const wagesAmount = wagePerDay * attendance
-    const otRate =
-      row.otRate !== undefined
-        ? Number(row.otRate)
-        : (row.designation === 'Winder' ? 1400 : 1200)
-    const otAmount = holidayAttendance * otRate
-    const netAmount = wagesAmount + otAmount
-
-    return {
-      id: row.id || `h-${Date.now()}`,
-      serialNo: row.serialNo || 1,
-      employeeId: row.employeeId,
-      employeeName: row.employeeName || '',
-      designation: row.designation === 'Winder' ? 'Winder' : 'Helper',
-      wagePerDay,
-      attendanceDays: attendance,
-      wagesAmount,
-      otRate,
-      holidayAttendance,
-      otAmount,
-      netAmount,
-      fortnight: row.fortnight || '1-15',
-      month: row.month || '2026-08',
-      customFields: row.customFields,
-    }
+    return calculateHelperWageRow(row)
   }
 
   calculateContractorPaymentRow(row: Partial<ContractorPaymentRecord>): ContractorPaymentRecord {
-    const contractualAmount = Number(row.contractualAmount) || 0
-    const extraIncentive = Number(row.extraIncentive) || 0
-    const lessAdvance = Number(row.lessAdvance) || 0
-
-    const totalAmount = contractualAmount + extraIncentive
-    const netPayment = totalAmount - lessAdvance
-
-    return {
-      id: row.id || `c-${Date.now()}`,
-      serialNo: row.serialNo || 1,
-      employeeId: row.employeeId,
-      name: row.name || '',
-      contractType: row.contractType || '',
-      contractualAmount,
-      extraIncentive,
-      totalAmount,
-      lessAdvance,
-      netPayment,
-      remarks: row.remarks || '',
-      fortnight: row.fortnight || '1-15',
-      month: row.month || '2026-08',
-      customFields: row.customFields,
-    }
+    return calculateContractorPaymentRow(row)
   }
-
-  // ==========================================
-  // REACTIVE EVENT BROADCAST & SYNC
-  // ==========================================
 
   notifyDataChanged(month?: string): void {
     if (this.isClient()) {
@@ -2791,34 +1410,7 @@ class PayrollService {
     return count
   }
 
-  private readStore<T>(key: string, fallback: T[]): T[] {
-    try {
-      const raw = memoryStore.get(key)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        // Empty arrays are valid saved state — never revive Excel INITIAL_* just because [].
-        if (Array.isArray(parsed)) return parsed as T[]
-      }
-    } catch (err) {
-      console.error(err)
-    }
-    if (this.isClient()) {
-      try {
-        const legacy = localStorage.getItem(key)
-        if (legacy) {
-          const parsed = JSON.parse(legacy)
-          if (Array.isArray(parsed)) {
-            // Do not PUT legacy localStorage — it is often August-only and wipes newer months.
-            if (!memoryStore.get(key)) memoryStore.set(key, legacy)
-            return parsed as T[]
-          }
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
-    return [...fallback]
-  }
+
 
   saveEmployees(list: EmployeeProfile[], triggerSync: boolean = true): void {
     if (!this.isClient()) return
@@ -5013,160 +3605,13 @@ class PayrollService {
   }
 
   getFortnightSynopsis(month: string = '2026-08', fortnight: '1-15' | '16-31'): FortnightSynopsis {
-    if (fortnight === '1-15') {
-      const advances = this.getAdvances(month)
-      const totalAdvance = advances.reduce((s, a) => s + (a.amount || 0), 0)
-
-      const weavers1 = this.getWeaversWages(month, '1-15')
-      const totalWeaverWages = weavers1.reduce((s, w) => s + (w.grossAmount || 0), 0)
-      const totalWeaverHol = weavers1.reduce((s, w) => s + (w.holidayAmount || 0), 0)
-      const totalWeaverEff = weavers1.reduce((s, w) => s + (w.efficiencyAmount || 0), 0)
-
-      const helpers1 = this.getHelpersWages(month, '1-15')
-      const totalHelperWages = helpers1.reduce((s, h) => s + (h.netAmount || 0), 0)
-
-      const contractors1 = this.getContractorsPayments(month, '1-15')
-      const totalContractor1 = contractors1.reduce((s, c) => s + (c.netPayment || 0), 0)
-
-      const totalPayrollCash = totalAdvance + totalWeaverWages + totalWeaverHol + totalWeaverEff + totalHelperWages + totalContractor1
-      const pettyCashInflow = this.getPettyCashInflow(month, '1-15')
-      const totalBankCheque = totalPayrollCash + pettyCashInflow
-
-      return {
-        fortnight: '1-15',
-        month,
-        title: `Salary Expense 1 to 15 (${month}) - 1st Fortnight Disbursal Voucher`,
-        items: [
-          { serialNo: 1, description: 'ADVANCE (Peshgi)', amount: totalAdvance },
-          { serialNo: 2, description: 'WEAVERS WAGES (Basic + Extra Looms + Allowance)', amount: totalWeaverWages },
-          { serialNo: 3, description: 'WEAVERS OVERTIME / HOLIDAYS', amount: totalWeaverHol },
-          { serialNo: 4, description: 'WEAVER EFFICIENCY BONUS', amount: totalWeaverEff },
-          { serialNo: 5, description: `HELPERS WAGES (${helpers1.length} Helpers)`, amount: totalHelperWages },
-          { serialNo: 6, description: `CONTRACTORS PAYMENT (${contractors1.length} Contractors)`, amount: totalContractor1 },
-        ],
-        totalPayrollCash,
-        pettyCashInflow,
-        totalBankCheque,
-      }
-    }
-
-    // Fortnight 2 (16-31 & Month End)
-    const staff = this.getStaffSalaries(month)
-    const totalStaffSynopsis = staff.reduce((s, st) => s + (st.synopsisAmount || 0), 0)
-    const totalStaffCheque = staff.reduce((s, st) => s + (st.chequeAmount || 0), 0)
-    const totalStaffAdvance = staff.reduce((s, st) => s + (st.lessAdvance || 0), 0)
-
-    const contract = this.getContractSalaries(month)
-    const totalContractBasic = contract.reduce((s, c) => s + (c.basicSalary || 0), 0)
-    const totalContractAdv = contract.reduce((s, c) => s + (c.advanceDeduction || 0), 0)
-    const netContractBasic = Math.max(0, totalContractBasic - totalContractAdv)
-    const totalContractOT = contract.reduce((s, c) => s + (c.otAmount || 0), 0)
-    const totalContractEff = contract.reduce((s, c) => s + (c.efficiencyAmount || 0), 0)
-    const totalTicket = contract.reduce((s, c) => s + (c.ticketCharges || 0), 0)
-
-    const weavers2 = this.getWeaversWages(month, '16-31')
-    const totalWeaverWages2 = weavers2.reduce((s, w) => s + (w.grossAmount || 0), 0)
-    const totalWeaverHol2 = weavers2.reduce((s, w) => s + (w.holidayAmount || 0), 0)
-    const totalWeaverEff2 = weavers2.reduce((s, w) => s + (w.efficiencyAmount || 0), 0)
-
-    const helpers2 = this.getHelpersWages(month, '16-31')
-    const totalHelperWages2 = helpers2.reduce((s, h) => s + (h.netAmount || 0), 0)
-
-    const contractors2 = this.getContractorsPayments(month, '16-31')
-    const totalContractor2 = contractors2.reduce((s, c) => s + (c.netPayment || 0), 0)
-
-    const totalPayrollCash = Math.round(
-      (totalStaffSynopsis - totalStaffCheque) +
-      netContractBasic +
-      totalContractOT +
-      totalContractEff +
-      totalWeaverWages2 +
-      totalWeaverHol2 +
-      totalWeaverEff2 +
-      totalHelperWages2 +
-      totalContractor2 -
-      totalTicket
-    )
-    const pettyCashInflow = this.getPettyCashInflow(month, '16-31')
-    const totalBankCheque = totalPayrollCash + pettyCashInflow
-
-    return {
-      fortnight: '16-31',
-      month,
-      title: `Salary Expense 16 to 31 (${month}) - 2nd Fortnight & Settlement`,
-      items: [
-        { serialNo: 1, description: 'Staff Salaries & Overtime (Net Cash)', amount: Math.round(totalStaffSynopsis - totalStaffCheque), chequeAmount: totalStaffCheque, advance: totalStaffAdvance },
-        { serialNo: 2, description: 'Contract Employees Salaries (Net Basic)', amount: Math.round(netContractBasic), advance: totalContractAdv },
-        { serialNo: 3, description: 'Contract Employees Overtime', amount: Math.round(totalContractOT) },
-        { serialNo: 4, description: 'Contract Employees Efficiency', amount: Math.round(totalContractEff) },
-        { serialNo: 5, description: 'Weavers Wages (2nd Half)', amount: totalWeaverWages2 },
-        { serialNo: 6, description: 'Weavers Overtime / Holidays (2nd Half)', amount: totalWeaverHol2 },
-        { serialNo: 7, description: 'Weaver Efficiency Bonus (2nd Half)', amount: totalWeaverEff2 },
-        { serialNo: 8, description: `Helpers Wages (${helpers2.length} Helpers)`, amount: totalHelperWages2 },
-        { serialNo: 9, description: `Contractors Bill Payments (${contractors2.length} Contractors)`, amount: totalContractor2 },
-        { serialNo: 10, description: 'Ticket Charges Deductions', amount: -totalTicket },
-      ],
-      totalPayrollCash,
-      pettyCashInflow,
-      totalBankCheque,
-    }
+    return buildFortnightSynopsis(month, fortnight, this)
   }
 
   getMonthlyGrandSummary(month: string = '2026-08'): MonthlyGrandSalarySynopsis {
-    const f1 = this.getFortnightSynopsis(month, '1-15')
-    const f2 = this.getFortnightSynopsis(month, '16-31')
-
-    const staff = this.getStaffSalaries(month)
-    const contract = this.getContractSalaries(month)
-    const weavers1 = this.getWeaversWages(month, '1-15')
-    const weavers2 = this.getWeaversWages(month, '16-31')
-    const helpers1 = this.getHelpersWages(month, '1-15')
-    const helpers2 = this.getHelpersWages(month, '16-31')
-    const contractors1 = this.getContractorsPayments(month, '1-15')
-    const contractors2 = this.getContractorsPayments(month, '16-31')
-
-    const totalStaffGross = staff.reduce((s, st) => s + (st.grossAmount || 0), 0)
-    const totalStaffCheque = staff.reduce((s, st) => s + (st.chequeAmount || 0), 0)
-    const totalStaffAdv = staff.reduce((s, st) => s + (st.lessAdvance || 0), 0)
-    const totalStaffCash = staff.reduce((s, st) => s + (st.netCashAmount || 0), 0)
-
-    const totalContractBasic = contract.reduce((s, c) => s + (c.basicSalary || 0), 0)
-    const totalContractAdv = contract.reduce((s, c) => s + (c.advanceDeduction || 0), 0)
-    const totalContractOT = contract.reduce((s, c) => s + (c.otAmount || 0), 0)
-    const totalContractEff = contract.reduce((s, c) => s + (c.efficiencyAmount || 0), 0)
-
-    const totalWeaverWages = weavers1.reduce((s, w) => s + (w.grossAmount || 0), 0) + weavers2.reduce((s, w) => s + (w.grossAmount || 0), 0)
-    const totalWeaverHol = weavers1.reduce((s, w) => s + (w.holidayAmount || 0), 0) + weavers2.reduce((s, w) => s + (w.holidayAmount || 0), 0)
-    const totalWeaverEff = weavers1.reduce((s, w) => s + (w.efficiencyAmount || 0), 0) + weavers2.reduce((s, w) => s + (w.efficiencyAmount || 0), 0)
-
-    const totalHelperWages = helpers1.reduce((s, h) => s + (h.netAmount || 0), 0) + helpers2.reduce((s, h) => s + (h.netAmount || 0), 0)
-    const totalContractorPayments = contractors1.reduce((s, c) => s + (c.netPayment || 0), 0) + contractors2.reduce((s, c) => s + (c.netPayment || 0), 0)
-
-    return {
-      month,
-      monthTitle: `Grand Monthly Salary & Wages Synopsis (${month})`,
-      fortnight1Total: f1.totalPayrollCash,
-      fortnight1PettyCash: f1.pettyCashInflow,
-      fortnight1Cheque: f1.totalBankCheque,
-      fortnight2Total: f2.totalPayrollCash,
-      fortnight2PettyCash: f2.pettyCashInflow,
-      fortnight2Cheque: f2.totalBankCheque,
-      monthlyTotalSalary: f1.totalBankCheque + f2.totalBankCheque,
-      grandSynopsisItems: [
-        { serialNo: 1, description: 'Staff Salaries & Overtime', amount: Math.round(totalStaffCash), chequeAmount: totalStaffCheque, advance: totalStaffAdv, totalGrossHead: totalStaffGross },
-        { serialNo: 2, description: 'Contract Employees Salaries', amount: Math.round(Math.max(0, totalContractBasic - totalContractAdv)), chequeAmount: 0, advance: totalContractAdv, totalGrossHead: totalContractBasic },
-        { serialNo: 3, description: 'Contract Employee Overtime', amount: Math.round(totalContractOT), chequeAmount: 0, advance: 0, totalGrossHead: totalContractOT },
-        { serialNo: 4, description: 'Contract Employee Efficiency', amount: Math.round(totalContractEff), chequeAmount: 0, advance: 0, totalGrossHead: totalContractEff },
-        { serialNo: 5, description: 'Weavers Wages (Total Fortnight 1 + 2)', amount: Math.round(totalWeaverWages), chequeAmount: 0, advance: 0, totalGrossHead: totalWeaverWages },
-        { serialNo: 6, description: 'Weavers Holy Days / OT Amount', amount: Math.round(totalWeaverHol), chequeAmount: 0, advance: 0, totalGrossHead: totalWeaverHol },
-        { serialNo: 7, description: 'Weaver Efficiency Bonus', amount: Math.round(totalWeaverEff), chequeAmount: 0, advance: 0, totalGrossHead: totalWeaverEff },
-        { serialNo: 8, description: 'Helpers Wages (Total Fortnight 1 + 2)', amount: Math.round(totalHelperWages), chequeAmount: 0, advance: 0, totalGrossHead: totalHelperWages },
-        { serialNo: 9, description: 'Contractors Bill Payments', amount: Math.round(totalContractorPayments), chequeAmount: 0, advance: 0, totalGrossHead: totalContractorPayments },
-      ],
-    }
+    return buildMonthlyGrandSummary(month, this)
   }
 
-  /** Months that have Helper rows (independent of Weaver active period). */
   listHelpersMonths(): string[] {
     const months = new Set<string>(this.listPayrollMonths())
     for (const row of this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)) {
@@ -5257,209 +3702,6 @@ class PayrollService {
 
 }
 
-export function applySalariedMonthGenerateToStore(
-  store: Record<string, unknown>,
-  month: string
-): {
-  ok: boolean
-  message: string
-  staff: number
-  contract: number
-  patch: Record<string, unknown>
-} {
-  const m = (month || '').trim()
-  if (!/^\d{4}-\d{2}$/.test(m)) {
-    return { ok: false, message: 'Month format YYYY-MM chahiye.', staff: 0, contract: 0, patch: {} }
-  }
-
-  const previous = new Map(memoryStore)
-  const prevHydrated = hydrated
-  const prevAllow = allowServerSheetWrite
-
-  memoryStore.clear()
-  const seed = getPayrollSeedStore()
-  for (const [key, value] of Object.entries({ ...seed, ...store })) {
-    memoryStore.set(key, JSON.stringify(value ?? null))
-  }
-  hydrated = true
-  allowServerSheetWrite = true
-
-  try {
-    const allStaff = payrollService['readStore'](STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES) as StaffSalaryRecord[]
-    const allContract = payrollService['readStore'](
-      STORAGE_KEYS.CONTRACT,
-      INITIAL_CONTRACT_SALARIES
-    ) as ContractSalaryRecord[]
-
-    const staffExists = allStaff.some((r) => (r.month || '') === m)
-    const contractExists = allContract.some((r) => (r.month || '') === m)
-
-    const rawMeta = (() => {
-      try {
-        return JSON.parse(memoryStore.get(STORAGE_KEYS.HR_META) || '{}') as {
-          categories?: string[]
-          designations?: string[]
-          activeSalariedMonth?: string
-          activeFortnightMonth?: string
-          activeFortnight?: '1-15' | '16-31'
-          pettyCashInflowOverrides?: Record<string, number>
-        }
-      } catch {
-        return {}
-      }
-    })()
-
-    if (staffExists || contractExists) {
-      const meta = {
-        categories: rawMeta.categories || [],
-        designations: rawMeta.designations || [],
-        activeSalariedMonth: m,
-        activeFortnightMonth: rawMeta.activeFortnightMonth,
-        activeFortnight: rawMeta.activeFortnight,
-        pettyCashInflowOverrides: rawMeta.pettyCashInflowOverrides,
-      }
-      return {
-        ok: true,
-        message: `${formatPayrollMonthLabel(m)} pehle se maujood hai — active month set.`,
-        staff: allStaff.filter((r) => r.month === m).length,
-        contract: allContract.filter((r) => r.month === m).length,
-        patch: { [STORAGE_KEYS.HR_META]: meta },
-      }
-    }
-
-    const employees = (
-      (() => {
-        try {
-          return JSON.parse(memoryStore.get(STORAGE_KEYS.EMPLOYEES) || '[]') as EmployeeProfile[]
-        } catch {
-          return INITIAL_EMPLOYEES
-        }
-      })() || INITIAL_EMPLOYEES
-    )
-      .filter((e) => isGeneralWagesEmployee(e))
-      .filter((e) => employeeBelongsInMonth(e, m))
-
-    const days = daysInCalendarMonth(m)
-    const staffPeople = employees.filter((e) => {
-      const cat = inferEmployeeCategory(e)
-      return cat === 'Staff' || cat === 'Admin'
-    })
-    const contractPeople = employees.filter((e) => inferEmployeeCategory(e) === 'Contract')
-
-    const newStaff = staffPeople.map((emp, i) =>
-      payrollService.calculateStaffSalaryRow(
-        {
-          id: `st-${m}-${emp.id}`,
-          serialNo: i + 1,
-          employeeId: emp.id,
-          employeeName: emp.name,
-          designation: emp.designation,
-          salary: emp.salary,
-          attendanceDays: 0,
-          otHours: 0,
-          lessAdvance: 0,
-          chequeAmount: 0,
-          month: m,
-        },
-        days
-      )
-    )
-    const newContract = contractPeople.map((emp, i) =>
-      payrollService.calculateContractSalaryRow(
-        {
-          id: `ct-${m}-${emp.id}`,
-          serialNo: i + 1,
-          employeeId: emp.id,
-          employeeName: emp.name,
-          designation: emp.designation,
-          salary: emp.salary,
-          attendanceDays: 0,
-          otHours: 0,
-          lateHours: 0,
-          lateAmount: 0,
-          efficiencyAmount: 0,
-          advanceDeduction: 0,
-          ticketCharges: 0,
-          month: m,
-        },
-        days
-      )
-    )
-
-    if (newStaff.length === 0 && newContract.length === 0) {
-      return {
-        ok: false,
-        message: 'General Wages me koi Staff / Company Contract person nahi mila.',
-        staff: 0,
-        contract: 0,
-        patch: {},
-      }
-    }
-
-    let allEff: EfficiencyIncentiveRecord[] = []
-    try {
-      allEff = JSON.parse(memoryStore.get(STORAGE_KEYS.EFFICIENCY) || '[]')
-      if (!Array.isArray(allEff) || allEff.length === 0) allEff = INITIAL_EFFICIENCY_INCENTIVES
-    } catch {
-      allEff = INITIAL_EFFICIENCY_INCENTIVES
-    }
-
-    let nextEff = allEff
-    let newEffCount = 0
-    if (!allEff.some((r) => (r.month || '') === m)) {
-      const priorMonths = [
-        ...new Set(allEff.map((r) => r.month).filter(Boolean) as string[]),
-      ].sort()
-      const sourceMonth = priorMonths[priorMonths.length - 1] || '2026-08'
-      const template = allEff.filter((r) => r.month === sourceMonth)
-      const seeded = template.map((r, i) =>
-        payrollService.calculateEfficiencyRow({
-          id: `eff-${m}-${i + 1}`,
-          serialNo: i + 1,
-          employeeId: r.employeeId,
-          loom: r.loom,
-          name: r.name,
-          designation: r.designation,
-          efficiencyPercent: 0,
-          salaryEarned: r.salaryEarned || 0,
-          month: m,
-        })
-      )
-      nextEff = [...allEff, ...seeded]
-      newEffCount = seeded.length
-    }
-
-    const meta = {
-      categories: rawMeta.categories || [],
-      designations: rawMeta.designations || [],
-      activeSalariedMonth: m,
-      activeFortnightMonth: rawMeta.activeFortnightMonth,
-      activeFortnight: rawMeta.activeFortnight,
-      pettyCashInflowOverrides: rawMeta.pettyCashInflowOverrides,
-    }
-
-    const patch: Record<string, unknown> = {
-      [STORAGE_KEYS.HR_META]: meta,
-    }
-    if (newStaff.length) patch[STORAGE_KEYS.STAFF] = [...allStaff, ...newStaff]
-    if (newContract.length) patch[STORAGE_KEYS.CONTRACT] = [...allContract, ...newContract]
-    if (newEffCount > 0) patch[STORAGE_KEYS.EFFICIENCY] = nextEff
-
-    return {
-      ok: true,
-      message: `${formatPayrollMonthLabel(m)}: ${newStaff.length} Staff + ${newContract.length} Contract + ${newEffCount} Efficiency — Postgres save. Refresh ke baad bhi rahega.`,
-      staff: newStaff.length,
-      contract: newContract.length,
-      patch,
-    }
-  } finally {
-    hydrated = prevHydrated
-    allowServerSheetWrite = prevAllow
-    memoryStore.clear()
-    for (const [k, v] of previous) memoryStore.set(k, v)
-  }
-}
-
 export const payrollService = new PayrollService()
 
 /** Copy HR name, designation, and wage onto each person's own sheet. Returns changed store keys. */
@@ -5472,11 +3714,11 @@ export function projectProfilesOntoSheets(store: Record<string, unknown>): Recor
     memoryStore.set(key, raw)
     snapshot.set(key, raw)
   }
-  allowServerSheetWrite = true
+  setAllowServerSheetWrite(true)
   try {
     payrollService.syncMasterRoster()
   } finally {
-    allowServerSheetWrite = false
+    setAllowServerSheetWrite(false)
   }
   const changed: Record<string, unknown> = {}
   for (const [key, value] of memoryStore) {
@@ -5498,8 +3740,8 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
     memoryStore.set(key, raw)
     snapshot.set(key, raw)
   }
-  hydrated = true
-  allowServerSheetWrite = true
+  setHydrated(true)
+  setAllowServerSheetWrite(true)
   try {
     payrollService.repairCorruptedStaffChequeAmounts()
     payrollService.repairCorruptedContractRates()
@@ -5507,8 +3749,8 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
     payrollService.purgeAllJoinersFromPastMonths()
     payrollService.repairMissingContractSheetRows()
   } finally {
-    allowServerSheetWrite = false
-    hydrated = prevHydrated
+    setAllowServerSheetWrite(false)
+    setHydrated(prevHydrated)
   }
   const changed: Record<string, unknown> = {}
   for (const [key, value] of memoryStore) {

@@ -779,12 +779,19 @@ function WeaversPayrollContent() {
                       {formatNumber(w.extraLoomAmount ?? (w as any).extraAmount ?? 0, 0)}
                     </td>
 
-                    {/* Attendance Allowance Input */}
+                    {/* Attendance Allowance — editable */}
                     <td
                       style={{ width: `${wageWidths.attendanceAllowance}px`, minWidth: `${wageWidths.attendanceAllowance}px` }}
-                      className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                      className="border-r border-slate-100 py-1 px-1 text-right"
                     >
-                      {formatNumber(w.attendanceAllowance, 0)}
+                      <NumericCellInput
+                        value={w.attendanceAllowance || 0}
+                        disabled={!canEditAccounts}
+                        navRow={idx}
+                        navCol={3}
+                        onValueChange={(v) => handleCellChange(idx, 'attendanceAllowance', v)}
+                        className="w-full text-right bg-transparent px-1 py-0.5 font-semibold text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-slate-900"
+                      />
                     </td>
 
                     {/* Calculated Gross Amount */}
