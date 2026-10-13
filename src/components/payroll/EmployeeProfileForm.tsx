@@ -892,26 +892,28 @@ export function EmployeeProfileForm({
               Resign
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setRejoinDoj(new Date().toISOString().slice(0, 10))
-                setShowRejoinConfirm(true)
-              }}
-              className="erp-btn-secondary text-xs !text-emerald-700 !border-emerald-200 hover:!bg-emerald-50"
-            >
-              <UserPlus className="size-3.5" />
-              Re-Join
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejoinDoj(new Date().toISOString().slice(0, 10))
+                  setShowRejoinConfirm(true)
+                }}
+                className="erp-btn-secondary text-xs !text-emerald-700 !border-emerald-200 hover:!bg-emerald-50"
+              >
+                <UserPlus className="size-3.5" />
+                Re-Join
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="erp-btn-secondary text-xs !text-rose-700 !border-rose-200 hover:!bg-rose-50"
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </button>
+            </>
           )}
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="erp-btn-secondary text-xs !text-rose-700 !border-rose-200 hover:!bg-rose-50"
-          >
-            <Trash2 className="size-3.5" />
-            Delete
-          </button>
         </div>
       )}
         </div>
@@ -1043,14 +1045,20 @@ export function EmployeeProfileForm({
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={async () => {
           if (!editingEmployee) return
-          await payrollService.deleteEmployeeAsync(editingEmployee.id)
-          setShowDeleteConfirm(false)
-          router.push('/payroll/profiles')
+          try {
+            await payrollService.deleteEmployeeAsync(editingEmployee.id)
+            setShowDeleteConfirm(false)
+            router.push('/payroll/profiles?tab=RESIGNED')
+          } catch (err) {
+            setShowDeleteConfirm(false)
+            setError(err instanceof Error ? err.message : 'Delete failed.')
+          }
         }}
         title="Confirm delete profile"
-        message={`Delete "${editingEmployee?.name || 'this employee'}" permanently from payroll records?`}
+        message={`Permanently delete resigned profile "${editingEmployee?.name || 'this employee'}"? Ye seed se wapas nahi aayega.`}
         confirmText="Delete profile"
         type="confirm"
+        danger
       />
     </div>
   )

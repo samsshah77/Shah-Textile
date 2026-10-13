@@ -374,7 +374,7 @@ function EmployeeProfilesContent() {
 
       {filterCategory === 'RESIGNED' && (
         <p className="mt-3 text-xs text-rose-700">
-          Resigned archive — profile kholo, wahan Re-Join confirmation ke sath hai.
+          Resigned archive — profile kholo: Re-Join ya permanent Delete wahan milenge.
         </p>
       )}
     </main>

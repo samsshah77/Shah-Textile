@@ -2,7 +2,11 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
+import {
+  payrollService,
+  formatPayrollMonthLabel,
+  hydratePayrollFromDb,
+} from '@/services/payrollService'
 import { ContractSalaryRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
@@ -127,9 +131,15 @@ function ContractPayrollContent() {
   }
 
   useEffect(() => {
+    let cancelled = false
     const [y, m] = selectedMonth.split('-').map(Number)
     if (y && m) setDaysInMonth(new Date(y, m, 0).getDate())
-    reload()
+
+    // Wait for DB hydrate so we don't flash local/seed count (e.g. 15 → 12).
+    void hydratePayrollFromDb().then(() => {
+      if (!cancelled) reload()
+    })
+
     const handleSync = (e: Event) => {
       const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
       const next =
@@ -145,7 +155,10 @@ function ContractPayrollContent() {
       reload()
     }
     window.addEventListener('payroll_synced', handleSync)
-    return () => window.removeEventListener('payroll_synced', handleSync)
+    return () => {
+      cancelled = true
+      window.removeEventListener('payroll_synced', handleSync)
+    }
   }, [selectedMonth])
 
   // Handle cell edit with live formula recalculation
