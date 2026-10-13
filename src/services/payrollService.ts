@@ -1723,8 +1723,8 @@ class PayrollService {
   }
 
   /**
-   * Restore Contract Excel Sheet 4 rows from seed when live attendance was wiped to 0
-   * (September seed previously shipped with attendanceDays: 0).
+   * Restore Contract Excel Sheet 4 rows from seed when live attendance was wiped to 0,
+   * or efficiency/net drifted from the Excel snapshot (e.g. Sep Sheet 4).
    */
   repairContractAttendanceFromSeed(): number {
     if (this.isClient() && !hydrated) return 0
@@ -1732,7 +1732,6 @@ class PayrollService {
     let fixed = 0
     const next = contracts.map((ct) => {
       const m = sheetMonthKey(ct.month)
-      if ((Number(ct.attendanceDays) || 0) > 0) return ct
       const seed = INITIAL_CONTRACT_SALARIES.find(
         (s) =>
           sheetMonthKey(s.month) === m &&
@@ -1740,6 +1739,20 @@ class PayrollService {
             (s.employeeId && ct.employeeId && s.employeeId === ct.employeeId))
       )
       if (!seed || (Number(seed.attendanceDays) || 0) <= 0) return ct
+      const liveAttn = Number(ct.attendanceDays) || 0
+      const seedAttn = Number(seed.attendanceDays) || 0
+      const liveEff = Number(ct.efficiencyAmount) || 0
+      const seedEff = Number(seed.efficiencyAmount) || 0
+      const liveNet = Number(ct.netAmount) || 0
+      const seedNet = Number(seed.netAmount) || 0
+      // Restore empty rows always; for Excel Sep snapshot also fix wrong efficiency/net.
+      const needsRestore =
+        liveAttn <= 0 ||
+        (m === '2026-09' &&
+          (liveAttn !== seedAttn ||
+            liveEff !== seedEff ||
+            Math.abs(liveNet - seedNet) > 1))
+      if (!needsRestore) return ct
       fixed += 1
       const dayBase = daysInCalendarMonth(m) === 28 ? 28 : 30
       return this.calculateContractSalaryRow(
@@ -1752,9 +1765,9 @@ class PayrollService {
           basicSalary: seed.basicSalary,
           lateHours: seed.lateHours ?? 0,
           lateAmount: seed.lateAmount ?? 0,
-          otHours: seed.otHours ?? ct.otHours,
-          otAmount: seed.otAmount ?? ct.otAmount,
-          efficiencyAmount: seed.efficiencyAmount ?? ct.efficiencyAmount,
+          otHours: seed.otHours ?? 0,
+          otAmount: seed.otAmount ?? 0,
+          efficiencyAmount: seedEff,
           advanceDeduction: seed.advanceDeduction ?? ct.advanceDeduction,
           ticketCharges: seed.ticketCharges ?? ct.ticketCharges,
           grossSalary: seed.grossSalary,
