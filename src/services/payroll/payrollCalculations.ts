@@ -758,22 +758,11 @@ export function calculateContractSalaryRow(
         ? Math.round(lateHours * ratePerHr)
         : 0
 
-  let grossSalary = basicSalary + efficiencyAmount
-  if (
-    isHistorical &&
-    row.grossSalary !== undefined &&
-    row.salary === salary &&
-    row.attendanceDays === attendance &&
-    row.efficiencyAmount === efficiencyAmount
-  ) {
-    grossSalary = Number(row.grossSalary)
-  }
+  // Contract Sheet 4: Gross = Basic + OT + Efficiency (always live — never freeze).
+  const grossSalary = basicSalary + otAmount + efficiencyAmount
 
-  // Always recompute: Gross − Late − Advance − Ticket (never freeze stale OT-era nets).
-  const netAmount = Math.max(
-    0,
-    grossSalary - lateAmount - advanceDeduction - ticketCharges
-  )
+  // Net = Gross − Advance − Ticket
+  const netAmount = Math.max(0, grossSalary - advanceDeduction - ticketCharges)
 
   return {
     id: row.id || `cnt-${Date.now()}`,
