@@ -18,14 +18,26 @@ function formatLocalIso(d: Date, timeZone: string = MILL_TZ): string {
 /** Earliest day the floor calendar allows (seed / Excel start). */
 export const PRODUCTION_START = '2026-09-01'
 
-/** Real wall-clock date in mill timezone. */
+/**
+ * Optional local/test override: set NEXT_PUBLIC_PRODUCTION_TODAY=YYYY-MM-DD
+ * in .env.local so seeded future days (e.g. 14 Oct) show everywhere as Today.
+ * Leave unset on live.
+ */
+function productionTodayOverride(): string | null {
+  const raw =
+    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PRODUCTION_TODAY) || ''
+  const day = String(raw).trim().slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
+}
+
+/** Real wall-clock date in mill timezone (or local override). */
 export function getCalendarToday(): string {
-  return formatLocalIso(new Date())
+  return productionTodayOverride() || formatLocalIso(new Date())
 }
 
 /**
- * Active production “Today” — same as mill wall-clock date
- * (Daily Entry / Production Sheet open on aaj).
+ * Active production “Today” — mill wall-clock date
+ * (Daily Entry / Production Sheet open on aaj), unless overridden locally.
  */
 export function getProductionToday(): string {
   return getCalendarToday()

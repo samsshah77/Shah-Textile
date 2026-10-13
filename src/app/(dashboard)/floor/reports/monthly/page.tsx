@@ -18,6 +18,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
+import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 
 export default function MonthlyProductionReportsPage() {
   const [monthRollup, setMonthRollup] = useState<{
@@ -77,7 +78,9 @@ export default function MonthlyProductionReportsPage() {
         }
       />
 
-      {monthRollup && (
+      {loading ? (
+        <ProductionReportSkeleton />
+      ) : monthRollup ? (
         <>
           {/* Monthly KPI Metrics */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -274,7 +277,7 @@ export default function MonthlyProductionReportsPage() {
             </div>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   )
 }

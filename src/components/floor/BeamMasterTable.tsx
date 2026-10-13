@@ -134,7 +134,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   track: 88,
 }
 
-export type BeamFilterType = 'ALL' | 'IN_STOCK' | 'AT_SIZING' | 'ON_LOOM'
+export type BeamFilterType = 'IN_STOCK' | 'ON_LOOM' | 'AT_SIZING'
 
 function isEmptyBeam(b: BeamMaster) {
   return !b.usedInLoom && b.location === 'SIZING'
@@ -144,9 +144,18 @@ export function beamStockCounts(beams: BeamMaster[]) {
   const inStock = beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE').length
   const atSizing = beams.filter((b) => isEmptyBeam(b)).length
   const onLoom = beams.filter((b) => Boolean(b.usedInLoom)).length
-  // All = everything except Empty Beam (those only under Empty filter)
-  const all = beams.filter((b) => !isEmptyBeam(b)).length
-  return { inStock, atSizing, onLoom, all }
+  return { inStock, atSizing, onLoom }
+}
+
+function filterLabel(f: BeamFilterType): string {
+  if (f === 'IN_STOCK') return 'In Stock'
+  if (f === 'ON_LOOM') return 'On Loom'
+  return 'Empty Beam'
+}
+
+/** Empty Beam tab: specs live on Track — list is identity + status only. */
+function isCompactBeamTab(f: BeamFilterType): boolean {
+  return f === 'AT_SIZING'
 }
 
 export function BeamStockFilterBar({
@@ -162,31 +171,24 @@ export function BeamStockFilterBar({
     <div className="btn-group btn-group-sm" role="group" aria-label="Beam Stock Category Filter">
       <button
         type="button"
-        className={`btn ${filter === 'ALL' ? 'btn-primary' : 'btn-outline-secondary'}`}
-        onClick={() => onChange('ALL')}
-      >
-        All ({counts.all})
-      </button>
-      <button
-        type="button"
-        className={`btn ${filter === 'IN_STOCK' ? 'btn-primary' : 'btn-outline-secondary'}`}
+        className={`btn ${filter === 'IN_STOCK' ? 'btn-success' : 'btn-outline-success'}`}
         onClick={() => onChange('IN_STOCK')}
       >
         In Stock ({counts.inStock})
       </button>
       <button
         type="button"
-        className={`btn ${filter === 'AT_SIZING' ? 'btn-primary' : 'btn-outline-secondary'}`}
-        onClick={() => onChange('AT_SIZING')}
-      >
-        Empty Beam ({counts.atSizing})
-      </button>
-      <button
-        type="button"
-        className={`btn ${filter === 'ON_LOOM' ? 'btn-primary' : 'btn-outline-secondary'}`}
+        className={`btn ${filter === 'ON_LOOM' ? 'sara-btn-hold' : 'sara-btn-hold-outline'}`}
         onClick={() => onChange('ON_LOOM')}
       >
         On Loom ({counts.onLoom})
+      </button>
+      <button
+        type="button"
+        className={`btn ${filter === 'AT_SIZING' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+        onClick={() => onChange('AT_SIZING')}
+      >
+        Empty Beam ({counts.atSizing})
       </button>
     </div>
   )
@@ -225,12 +227,14 @@ function formatShortDate(dateStr?: string | null) {
   }
 }
 
-/** Mounted: date only. Other locations keep short status labels. */
+/** Status column — mounted looms show loom # + mount date. */
 function LoomStatusNote({ beam }: { beam: BeamMaster }) {
   if (beam.usedInLoom) {
+    const datePart = beam.mountedOn ? formatShortDate(beam.mountedOn) : ''
     return (
       <span className="text-secondary small">
-        {beam.mountedOn ? formatShortDate(beam.mountedOn) : '—'}
+        Mounted on Loom #{beam.usedInLoom}
+        {datePart ? ` · ${datePart}` : ''}
       </span>
     )
   }
@@ -300,9 +304,10 @@ export function BeamMasterTable({
 }: BeamMasterTableProps) {
   const { canEditProduction } = useAuth()
   const { showError, showConfirm, showSuccessSoon } = useAlertDialog()
-  const [filterInternal, setFilterInternal] = useState<BeamFilterType>('ALL')
+  const [filterInternal, setFilterInternal] = useState<BeamFilterType>('IN_STOCK')
   const filter = filterProp ?? filterInternal
   const setFilter = onFilterChange ?? setFilterInternal
+  const [lotKindFilter, setLotKindFilter] = useState<'ALL' | LotKind>('ALL')
   const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEditLocal, setTableEditLocal] = useState(false)
@@ -322,11 +327,18 @@ export function BeamMasterTable({
     'sara_beam_col_widths_v11',
     DEFAULT_WIDTHS
   )
-  const tableMinWidth = useMemo(
-    () => Object.values(widths).reduce((sum, w) => sum + w, 0),
-    [widths]
-  )
   const activeLooms = looms.filter((l) => l.isActive)
+  const compactTab = isCompactBeamTab(filter)
+  /** Empty Beam keeps Machine Type; other compact cols stay hidden. */
+  const tableColCount = compactTab ? 6 : 12
+  const visibleColKeys = useMemo(() => {
+    if (!compactTab) return Object.keys(DEFAULT_WIDTHS)
+    return ['beam', 'swLot', 'beamRepeat', 'machine', 'status', 'track']
+  }, [compactTab])
+  const tableMinWidthVisible = useMemo(
+    () => visibleColKeys.reduce((sum, k) => sum + (widths[k] || 80), 0),
+    [visibleColKeys, widths]
+  )
 
   const filteredBeams = useMemo(() => {
     let list: BeamMaster[]
@@ -334,11 +346,12 @@ export function BeamMasterTable({
       list = beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE')
     } else if (filter === 'AT_SIZING') {
       list = beams.filter((b) => isEmptyBeam(b))
-    } else if (filter === 'ON_LOOM') {
-      list = beams.filter((b) => Boolean(b.usedInLoom))
     } else {
-      // All: hide Empty Beam rows (only visible under Empty Beam filter)
-      list = beams.filter((b) => !isEmptyBeam(b))
+      list = beams.filter((b) => Boolean(b.usedInLoom))
+    }
+
+    if (lotKindFilter !== 'ALL') {
+      list = list.filter((b) => parseLotKind(b.swLot).kind === lotKindFilter)
     }
 
     // Same Sw# together, ascending (334, 334, 335…). Empty Sw# last.
@@ -357,7 +370,7 @@ export function BeamMasterTable({
       return (a.beamNo || '').localeCompare(b.beamNo || '', undefined, { numeric: true })
     }
     return list.slice().sort(swSort)
-  }, [beams, filter])
+  }, [beams, filter, lotKindFilter])
 
   const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
   const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
@@ -500,6 +513,29 @@ export function BeamMasterTable({
         </div>
 
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto justify-content-end">
+          <div className="btn-group btn-group-sm" role="group" aria-label="Sw / Wp filter">
+            <button
+              type="button"
+              className={`btn ${lotKindFilter === 'ALL' ? 'btn-primary' : 'btn-outline-primary'}`}
+              onClick={() => setLotKindFilter('ALL')}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={`btn ${lotKindFilter === 'Sw' ? 'btn-primary' : 'btn-outline-primary'}`}
+              onClick={() => setLotKindFilter('Sw')}
+            >
+              Sw #
+            </button>
+            <button
+              type="button"
+              className={`btn ${lotKindFilter === 'Wp' ? 'btn-primary' : 'btn-outline-primary'}`}
+              onClick={() => setLotKindFilter('Wp')}
+            >
+              Wp #
+            </button>
+          </div>
           {!toolbarInChrome && editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
           {!toolbarInChrome && !readOnly && canEditProduction && (
@@ -520,15 +556,7 @@ export function BeamMasterTable({
             <EmptyPlaceholder
               icon="bi-bounding-box"
               title="No beams in this category"
-              hint={`Filter: ${
-                filter === 'IN_STOCK'
-                  ? 'In Stock'
-                  : filter === 'AT_SIZING'
-                    ? 'Empty Beam'
-                    : filter === 'ON_LOOM'
-                      ? 'On Loom'
-                      : 'All'
-              }. Add Beam ya dusra filter try karo.`}
+              hint={`Filter: ${filterLabel(filter)}. Add Beam ya dusra filter try karo.`}
             />
           ) : (
             filteredBeams.map((b, rowIdx) => {
@@ -601,6 +629,7 @@ export function BeamMasterTable({
                     )}
                   </div>
 
+                  {!compactTab && (
                   <div>
                     <label className="form-label small mb-1 fw-semibold">Yarn Warp</label>
                     {masterEdit ? (
@@ -616,91 +645,99 @@ export function BeamMasterTable({
                       <div className="small">{b.warp || '—'}</div>
                     )}
                   </div>
+                  )}
 
-                  <div className="d-flex gap-2">
-                    <div className="flex-fill">
-                      <label className="form-label small mb-1 fw-semibold">Reed</label>
-                      {masterEdit ? (
-                        <NumericCellInput
-                          className="form-control form-control-sm text-end"
-                          value={b.reed}
-                          placeholder="60"
-                          navRow={rowIdx}
-                          navCol={1}
-                          onValueChange={(v) => patchBeam(b, { reed: v })}
-                        />
-                      ) : (
-                        <div className="small">{b.reed}</div>
-                      )}
-                    </div>
-                    <div className="flex-fill">
-                      <label className="form-label small mb-1 fw-semibold">Width (in)</label>
-                      {masterEdit ? (
-                        <NumericCellInput
-                          className="form-control form-control-sm text-end"
-                          value={b.width}
-                          placeholder="66"
-                          navRow={rowIdx}
-                          navCol={2}
-                          onValueChange={(v) => patchBeam(b, { width: v })}
-                        />
-                      ) : (
-                        <div className="small">{b.width}</div>
-                      )}
-                    </div>
-                    <div className="flex-fill">
-                      <label className="form-label small mb-1 fw-semibold">Threads</label>
-                      {masterEdit ? (
-                        <NumericCellInput
-                          className="form-control form-control-sm text-end"
-                          value={b.totalThreads}
-                          placeholder="auto"
-                          navRow={rowIdx}
-                          navCol={3}
-                          onValueChange={(v) => patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })}
-                        />
-                      ) : (
-                        <div className="small">{b.totalThreads.toLocaleString()}</div>
-                      )}
-                    </div>
+                  {!compactTab && (
+                    <>
+                      <div className="d-flex gap-2">
+                        <div className="flex-fill">
+                          <label className="form-label small mb-1 fw-semibold">Reed</label>
+                          {masterEdit ? (
+                            <NumericCellInput
+                              className="form-control form-control-sm text-end"
+                              value={b.reed}
+                              placeholder="60"
+                              navRow={rowIdx}
+                              navCol={1}
+                              onValueChange={(v) => patchBeam(b, { reed: v })}
+                            />
+                          ) : (
+                            <div className="small">{b.reed}</div>
+                          )}
+                        </div>
+                        <div className="flex-fill">
+                          <label className="form-label small mb-1 fw-semibold">Width (in)</label>
+                          {masterEdit ? (
+                            <NumericCellInput
+                              className="form-control form-control-sm text-end"
+                              value={b.width}
+                              placeholder="66"
+                              navRow={rowIdx}
+                              navCol={2}
+                              onValueChange={(v) => patchBeam(b, { width: v })}
+                            />
+                          ) : (
+                            <div className="small">{b.width}</div>
+                          )}
+                        </div>
+                        <div className="flex-fill">
+                          <label className="form-label small mb-1 fw-semibold">Threads</label>
+                          {masterEdit ? (
+                            <NumericCellInput
+                              className="form-control form-control-sm text-end"
+                              value={b.totalThreads}
+                              placeholder="auto"
+                              navRow={rowIdx}
+                              navCol={3}
+                              onValueChange={(v) =>
+                                patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })
+                              }
+                            />
+                          ) : (
+                            <div className="small">{b.totalThreads.toLocaleString()}</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex-fill">
+                        <label className="form-label small mb-1 fw-semibold">Length (m)</label>
+                        {masterEdit ? (
+                          <NumericCellInput
+                            className="form-control form-control-sm text-end"
+                            value={b.length}
+                            navRow={rowIdx}
+                            navCol={4}
+                            onValueChange={(v) => patchBeam(b, { length: v })}
+                          />
+                        ) : (
+                          <div className="small">{b.length.toLocaleString()}</div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="form-label small mb-1 fw-semibold">Machine Type</label>
+                    {masterEdit ? (
+                      <select
+                        className="form-select form-select-sm"
+                        value={b.loomType}
+                        onChange={(e) => patchBeam(b, { loomType: e.target.value })}
+                      >
+                        <option value="G6200">G6200</option>
+                        <option value="G6300">G6300</option>
+                        <option value="PU">PU</option>
+                      </select>
+                    ) : (
+                      <div className="small">{b.loomType}</div>
+                    )}
                   </div>
 
-                  <div className="d-flex gap-2">
-                    <div className="flex-fill">
-                      <label className="form-label small mb-1 fw-semibold">Length (m)</label>
-                      {masterEdit ? (
-                        <NumericCellInput
-                          className="form-control form-control-sm text-end"
-                          value={b.length}
-                          navRow={rowIdx}
-                          navCol={4}
-                          onValueChange={(v) => patchBeam(b, { length: v })}
-                        />
-                      ) : (
-                        <div className="small">{b.length.toLocaleString()}</div>
-                      )}
+                  {compactTab && (
+                    <div className="pt-2 border-top mt-2">
+                      <LoomStatusNote beam={b} />
                     </div>
-                    <div className="flex-fill">
-                      <label className="form-label small mb-1 fw-semibold">Machine</label>
-                      {masterEdit ? (
-                        <select
-                          className="form-select form-select-sm"
-                          value={b.loomType}
-                          onChange={(e) => patchBeam(b, { loomType: e.target.value })}
-                        >
-                          <option value="G6200">G6200</option>
-                          <option value="G6300">G6300</option>
-                          <option value="PU">PU</option>
-                        </select>
-                      ) : (
-                        <div className="small">{b.loomType}</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-top mt-2">
-                    <LoomStatusNote beam={b} />
-                  </div>
+                  )}
                 </div>
               )
             })
@@ -710,10 +747,14 @@ export function BeamMasterTable({
         <TablePanScroll className="card-body p-0">
           <table
             className="table table-sm table-hover mb-0 align-middle text-nowrap"
-            style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
+            style={{
+              tableLayout: 'fixed',
+              width: tableMinWidthVisible,
+              minWidth: tableMinWidthVisible,
+            }}
           >
             <colgroup>
-              {Object.keys(DEFAULT_WIDTHS).map((key) => (
+              {visibleColKeys.map((key) => (
                 <col key={key} style={{ width: widths[key] }} />
               ))}
             </colgroup>
@@ -722,30 +763,36 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="beam" width={widths.beam} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Beam Identity
                 </ResizableTh>
-                <ResizableTh columnKey="location" width={widths.location} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Location / Loom
-                </ResizableTh>
+                {!compactTab && (
+                  <ResizableTh columnKey="location" width={widths.location} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                    Location / Loom
+                  </ResizableTh>
+                )}
                 <ResizableTh columnKey="swLot" width={widths.swLot} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Sw / Wp #
                 </ResizableTh>
                 <ResizableTh columnKey="beamRepeat" width={widths.beamRepeat} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Beam Repeat
                 </ResizableTh>
-                <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Yarn Warp
-                </ResizableTh>
-                <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Reed
-                </ResizableTh>
-                <ResizableTh columnKey="width" width={widths.width} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Width
-                </ResizableTh>
-                <ResizableTh columnKey="threads" width={widths.threads} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Total Thread
-                </ResizableTh>
-                <ResizableTh columnKey="length" width={widths.length} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Length (meters)
-                </ResizableTh>
+                {!compactTab && (
+                  <>
+                    <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                      Yarn Warp
+                    </ResizableTh>
+                    <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                      Reed
+                    </ResizableTh>
+                    <ResizableTh columnKey="width" width={widths.width} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                      Width
+                    </ResizableTh>
+                    <ResizableTh columnKey="threads" width={widths.threads} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                      Total Thread
+                    </ResizableTh>
+                    <ResizableTh columnKey="length" width={widths.length} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                      Length (meters)
+                    </ResizableTh>
+                  </>
+                )}
                 <ResizableTh columnKey="machine" width={widths.machine} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Machine Type
                 </ResizableTh>
@@ -760,19 +807,11 @@ export function BeamMasterTable({
             <tbody>
               {filteredBeams.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-0 border-0">
+                  <td colSpan={tableColCount} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon="bi-bounding-box"
                       title="No beams in this category"
-                      hint={`Filter: ${
-                        filter === 'IN_STOCK'
-                          ? 'In Stock'
-                          : filter === 'AT_SIZING'
-                            ? 'Empty Beam'
-                            : filter === 'ON_LOOM'
-                              ? 'On Loom'
-                              : 'All'
-                      }. Add Beam ya dusra filter try karo.`}
+                      hint={`Filter: ${filterLabel(filter)}. Add Beam ya dusra filter try karo.`}
                       compact
                     />
                   </td>
@@ -785,7 +824,9 @@ export function BeamMasterTable({
                       className={editActive ? 'sara-edit-row' : undefined}
                     >
                       <td className="fw-semibold px-2">{b.beamNo}</td>
-                      <td className="px-1">{renderLocationSelect(b, opsEdit)}</td>
+                      {!compactTab && (
+                        <td className="px-1">{renderLocationSelect(b, opsEdit)}</td>
+                      )}
                       <td className="px-1">
                         <SwLotCell
                           beamNo={b.beamNo}
@@ -810,102 +851,128 @@ export function BeamMasterTable({
                           <span className="small px-1">{b.beamRepeat || '—'}</span>
                         )}
                       </td>
-                      <td
-                        className="px-2 text-truncate"
-                        style={{
-                          maxWidth: widths.warp,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                        title={b.warp || undefined}
-                      >
-                        {editActive ? (
-                          <TextCellInput
-                            className="form-control form-control-sm"
-                            value={b.warp || ''}
-                            placeholder="e.g. 45/1 Pv White+46/1"
-                            navRow={rowIdx}
-                            navCol={2}
-                            onValueChange={(v) => patchBeam(b, { warp: v })}
-                          />
-                        ) : (
-                          <span
-                            className="text-secondary d-block text-truncate"
+                      {!compactTab && (
+                        <>
+                          <td
+                            className="px-2 text-truncate"
+                            style={{
+                              maxWidth: widths.warp,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
                             title={b.warp || undefined}
                           >
-                            {b.warp || '—'}
+                            {editActive ? (
+                              <TextCellInput
+                                className="form-control form-control-sm"
+                                value={b.warp || ''}
+                                placeholder="e.g. 45/1 Pv White+46/1"
+                                navRow={rowIdx}
+                                navCol={2}
+                                onValueChange={(v) => patchBeam(b, { warp: v })}
+                              />
+                            ) : (
+                              <span
+                                className="text-secondary d-block text-truncate"
+                                title={b.warp || undefined}
+                              >
+                                {b.warp || '—'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-1">
+                            {editActive ? (
+                              <NumericCellInput
+                                className="form-control form-control-sm text-end"
+                                value={b.reed}
+                                placeholder="60"
+                                navRow={rowIdx}
+                                navCol={3}
+                                onValueChange={(v) => patchBeam(b, { reed: v })}
+                              />
+                            ) : (
+                              <div className="text-end px-1">{b.reed}</div>
+                            )}
+                          </td>
+                          <td className="px-1">
+                            {editActive ? (
+                              <NumericCellInput
+                                className="form-control form-control-sm text-end"
+                                value={b.width}
+                                placeholder="66"
+                                navRow={rowIdx}
+                                navCol={4}
+                                onValueChange={(v) => patchBeam(b, { width: v })}
+                              />
+                            ) : (
+                              <div className="text-end px-1">{b.width}</div>
+                            )}
+                          </td>
+                          <td className="px-1">
+                            {editActive ? (
+                              <NumericCellInput
+                                className="form-control form-control-sm text-end fw-semibold"
+                                value={b.totalThreads}
+                                placeholder="threads"
+                                navRow={rowIdx}
+                                navCol={5}
+                                onValueChange={(v) =>
+                                  patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })
+                                }
+                              />
+                            ) : (
+                              <div className="fw-semibold text-end pe-3">
+                                {b.totalThreads.toLocaleString()}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-1">
+                            <div className="text-end px-1">{b.length.toLocaleString()}</div>
+                          </td>
+                        </>
+                      )}
+                      <td className="px-1">
+                        {editActive ? (
+                          <select
+                            className="form-select form-select-sm"
+                            value={b.loomType}
+                            onChange={(e) => patchBeam(b, { loomType: e.target.value })}
+                          >
+                            <option value="G6200">G6200</option>
+                            <option value="G6300">G6300</option>
+                            <option value="PU">PU</option>
+                          </select>
+                        ) : (
+                          <span className="badge bg-light text-dark border px-2 py-1">
+                            {b.loomType}
                           </span>
                         )}
-                      </td>
-                      <td className="px-1">
-                        {editActive ? (
-                          <NumericCellInput
-                            className="form-control form-control-sm text-end"
-                            value={b.reed}
-                            placeholder="60"
-                            navRow={rowIdx}
-                            navCol={3}
-                            onValueChange={(v) => patchBeam(b, { reed: v })}
-                          />
-                        ) : (
-                          <div className="text-end px-1">{b.reed}</div>
-                        )}
-                      </td>
-                      <td className="px-1">
-                        {editActive ? (
-                          <NumericCellInput
-                            className="form-control form-control-sm text-end"
-                            value={b.width}
-                            placeholder="66"
-                            navRow={rowIdx}
-                            navCol={4}
-                            onValueChange={(v) => patchBeam(b, { width: v })}
-                          />
-                        ) : (
-                          <div className="text-end px-1">{b.width}</div>
-                        )}
-                      </td>
-                      <td className="px-1">
-                        {editActive ? (
-                          <NumericCellInput
-                            className="form-control form-control-sm text-end fw-semibold"
-                            value={b.totalThreads}
-                            placeholder="threads"
-                            navRow={rowIdx}
-                            navCol={5}
-                            onValueChange={(v) =>
-                              patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })
-                            }
-                          />
-                        ) : (
-                          <div className="fw-semibold text-end pe-3">
-                            {b.totalThreads.toLocaleString()}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-1">
-                        <div className="text-end px-1">{b.length.toLocaleString()}</div>
-                      </td>
-                      <td className="px-1">
-                        <span className="badge bg-light text-dark border px-2 py-1">{b.loomType}</span>
                       </td>
                       <td className="px-2">
                         {opsEdit && b.usedInLoom ? (
                           <div className="d-flex flex-column gap-1">
                             <LoomStatusNote beam={b} />
-                            <div className="d-flex align-items-center gap-1 mt-1">
-                              <span className="text-muted small" style={{ fontSize: '0.70rem' }}>
-                                Mounted:
-                              </span>
-                              <input
-                                type="date"
-                                className="form-control form-control-sm py-0 px-1"
-                                style={{ width: 110, fontSize: '0.72rem', height: 22 }}
-                                value={b.mountedOn || ''}
-                                onChange={(e) => patchBeam(b, { mountedOn: e.target.value })}
-                              />
-                            </div>
+                            <input
+                              type="date"
+                              className="form-control form-control-sm py-0 px-1"
+                              style={{ width: 110, fontSize: '0.72rem', height: 22 }}
+                              title="Mount date"
+                              value={b.mountedOn || ''}
+                              onChange={(e) => patchBeam(b, { mountedOn: e.target.value })}
+                            />
+                          </div>
+                        ) : compactTab && opsEdit ? (
+                          <div className="d-flex flex-column gap-1 align-items-start">
+                            <LoomStatusNote beam={b} />
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary py-0"
+                              style={{ fontSize: '0.72rem' }}
+                              onClick={() => onReceiveFromSizing(b.beamNo)}
+                            >
+                              → In Stock
+                            </button>
                           </div>
                         ) : (
                           <LoomStatusNote beam={b} />

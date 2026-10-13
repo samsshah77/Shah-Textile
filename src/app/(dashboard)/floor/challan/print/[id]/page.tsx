@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { DeliveryChallan } from '@/types/challan'
 import { challanService } from '@/services/challanService'
 import { ChallanPrintPreview } from '@/components/challan/ChallanPrintPreview'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ChallanPrintPage() {
@@ -26,8 +27,8 @@ export default function ChallanPrintPage() {
 
   if (loading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-blue-600" />
+      <div className="p-3">
+        <ProductionReportSkeleton />
       </div>
     )
   }

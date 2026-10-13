@@ -460,6 +460,7 @@ export function useProductionGrid() {
         void productionMastersService.flushQualityStatus(id).then(() => {
           setQualities(productionMastersService.getQualities())
           setLooms(productionMastersService.getLooms())
+          setEntries(productionMastersService.buildSheetForDate(selectedDate))
         })
       }
       return statusOk

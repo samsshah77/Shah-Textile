@@ -8,6 +8,7 @@ import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useTablePanScroll } from '@/hooks/useTablePanScroll'
 import { loomConditionRowStyle, LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 import { formatProductionDayLabel, productionDayName } from '@/constants/productionCalendar'
+import { isQualityEndedSheetRow } from '@/services/productionMastersService'
 import {
   ProductionSheetExportModal,
   type SheetTextSize,
@@ -696,28 +697,53 @@ export function ProductionSheetTable({
                 <ModelSectionHeader model={model} />
                 {rows.map((e) => {
                   const condition = resolveLoomCondition(e.status, e.remarks)
-                  const rowStyle = loomConditionRowStyle(e.status, e.remarks)
-                  const remarkText =
-                    e.remarks?.trim() ||
-                    (condition !== 'RUNNING' ? LOOM_STATUS_LABEL[condition] : '—')
+                  const qualityEnded = isQualityEndedSheetRow(e)
+                  // Ended rows: one shared class (CSS paints all tds). Skip mixed status tints.
+                  const rowStyle = qualityEnded
+                    ? undefined
+                    : loomConditionRowStyle(e.status, e.remarks)
+                  const remarkText = qualityEnded
+                    ? 'Quality Ended'
+                    : e.remarks?.trim() ||
+                      (condition !== 'RUNNING' ? LOOM_STATUS_LABEL[condition] : '—')
                   const seg = Math.max(1, Math.floor(Number(e.segmentIndex) || 1))
                   const loomLabel = seg > 1 ? `${e.loomNumber}·${seg}` : String(e.loomNumber)
                   return (
                     <tr
                       key={e.id || `${e.loomNumber}-s${seg}`}
-                      className={condition !== 'RUNNING' ? 'prod-sheet-row--issue' : undefined}
+                      className={
+                        [
+                          qualityEnded
+                            ? 'sara-sheet-quality-ended'
+                            : condition !== 'RUNNING'
+                              ? 'prod-sheet-row--issue'
+                              : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || undefined
+                      }
                       style={rowStyle}
                       title={
-                        condition !== 'RUNNING'
-                          ? `Condition: ${LOOM_STATUS_LABEL[condition]}`
-                          : seg > 1
-                            ? `Same-day part ${seg}: ${e.qualityName || '—'}`
-                          : undefined
+                        qualityEnded
+                          ? 'Quality ended — no new quality on loom yet'
+                          : condition !== 'RUNNING'
+                            ? `Condition: ${LOOM_STATUS_LABEL[condition]}`
+                            : seg > 1
+                              ? `Same-day part ${seg}: ${e.qualityName || '—'}`
+                              : undefined
                       }
                     >
                       <td className="fw-semibold text-nowrap px-2 text-truncate">{loomLabel}</td>
-                      <td className="px-2 small text-truncate">{e.qualityName}</td>
-                      <td className="px-2 small text-truncate">{e.fabricType || '—'}</td>
+                      <td
+                        className={`px-2 small text-truncate${qualityEnded ? ' text-secondary' : ''}`}
+                      >
+                        {e.qualityName}
+                      </td>
+                      <td
+                        className={`px-2 small text-truncate${qualityEnded ? ' text-secondary' : ''}`}
+                      >
+                        {e.fabricType || '—'}
+                      </td>
                       <td className="px-2 small text-truncate">{e.warpYarn || '—'}</td>
                       <td className="px-2 small text-truncate">{e.weftYarn || '—'}</td>
                       <td className="text-end px-1">{e.rpm}</td>

@@ -9,6 +9,8 @@ import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { loomConditionRowStyle } from '@/constants/loomConditions'
+import { isQualityEndedSheetRow } from '@/services/productionMastersService'
+import { FabricFaultMultiInput } from '@/components/floor/FabricFaultMultiInput'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 interface FloorEntryTableProps {
@@ -36,8 +38,8 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   shiftB: 88,
   totalAB: 94,
   remarks: 150,
-  fabricFault: 160,
   lot: 130,
+  fabricFault: 200,
 }
 
 /** Daily floor punch — table-level Edit; Enter moves to next field. */
@@ -151,6 +153,8 @@ export function FloorEntryTable({
   }
 
   const rowStyleFor = (e: DailyLoomProductionEntry): CSSProperties | undefined => {
+    // Quality Ended: class `sara-sheet-quality-ended` paints cells via CSS (consistent).
+    if (isQualityEndedSheetRow(e)) return undefined
     const base = canEdit ? undefined : loomConditionRowStyle(e.status, e.remarks)
     const partBg = showPartBadge(e) ? partRowBg(segOf(e)) : undefined
     if (!base && !partBg) return undefined
@@ -398,7 +402,7 @@ export function FloorEntryTable({
               key={e.id || `${e.loomNumber}-s${segOf(e)}`}
               className={`master-grid-card${canEdit ? ' sara-edit-card' : ''}${
                 activeLoom === e.loomNumber ? ' sara-active-entry-card' : ''
-              }`}
+              }${isQualityEndedSheetRow(e) ? ' sara-sheet-quality-ended' : ''}`}
               style={rowStyleFor(e)}
               onFocusCapture={() => markRowActive(e.loomNumber)}
               onBlurCapture={(ev) => clearRowActiveIfLeaving(ev, e.loomNumber)}
@@ -489,37 +493,27 @@ export function FloorEntryTable({
               </div>
 
               <label className="small mb-0">Remarks</label>
-              {canEdit ? (
-                <TextCellInput
-                  className="form-control form-control-sm"
-                  value={e.remarks || ''}
-                  placeholder="Remarks"
-                  navRow={rowIdx}
-                  navCol={3}
-                  onValueChange={(v) => patchEntry(e, { remarks: v })}
-                />
-              ) : (
-                <div className="small text-secondary">{e.remarks || '—'}</div>
-              )}
-
-              <label className="small mb-0">Fabric Fault</label>
-              {canEdit ? (
-                <TextCellInput
-                  className="form-control form-control-sm"
-                  value={e.fabricFault || ''}
-                  placeholder="Loom fabric fault…"
-                  navRow={rowIdx}
-                  navCol={4}
-                  onValueChange={(v) => patchEntry(e, { fabricFault: v })}
-                />
-              ) : (
-                <div className="small text-secondary">{e.fabricFault || '—'}</div>
-              )}
+              <div
+                className="small text-secondary"
+                title="Remarks system se aate hain — Daily Entry pe edit nahi"
+              >
+                {e.remarks || '—'}
+              </div>
 
               <label className="small mb-0">SW #</label>
               <div className="small text-secondary" title="Beam pe jo Sw# hai — Daily Entry pe edit nahi">
                 {e.lot || '—'}
               </div>
+
+              <label className="small mb-0">Fabric Fault</label>
+              <FabricFaultMultiInput
+                value={e.fabricFault}
+                canEdit={canEdit}
+                placeholder="Loom fabric fault…"
+                navRow={rowIdx}
+                navCol={4}
+                onChange={(v) => patchEntry(e, { fabricFault: v })}
+              />
             </div>
           ))}
         </div>
@@ -564,21 +558,24 @@ export function FloorEntryTable({
                 <ResizableTh columnKey="remarks" width={widths.remarks} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Remarks
                 </ResizableTh>
-                <ResizableTh columnKey="fabricFault" width={widths.fabricFault} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                  Fabric Fault
-                </ResizableTh>
                 <ResizableTh columnKey="lot" width={widths.lot} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   SW #
+                </ResizableTh>
+                <ResizableTh columnKey="fabricFault" width={widths.fabricFault} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Fabric Fault
                 </ResizableTh>
               </tr>
             </thead>
             <tbody>
-              {entries.map((e, rowIdx) => (
+              {entries.map((e, rowIdx) => {
+                const qualityEnded = isQualityEndedSheetRow(e)
+                return (
                 <tr
                   key={e.id || `${e.loomNumber}-s${segOf(e)}`}
                   className={[
                     canEdit ? 'sara-edit-row' : undefined,
                     activeLoom === e.loomNumber ? 'sara-active-entry-row' : undefined,
+                    qualityEnded ? 'sara-sheet-quality-ended' : undefined,
                   ]
                     .filter(Boolean)
                     .join(' ') || undefined}
@@ -612,7 +609,11 @@ export function FloorEntryTable({
                       </button>
                     ) : null}
                   </td>
-                  <td className="px-2 text-truncate">{e.qualityName || '—'}</td>
+                  <td
+                    className={`px-2 text-truncate${qualityEnded ? ' text-secondary' : ''}`}
+                  >
+                    {e.qualityName || '—'}
+                  </td>
                   <td className="small text-secondary px-2 text-truncate">
                     {e.fabricType || '—'}
                   </td>
@@ -662,38 +663,16 @@ export function FloorEntryTable({
                     {(e.totalMeters ?? 0).toLocaleString()}
                   </td>
                   <td className="px-1">
-                    {canEdit ? (
-                      <TextCellInput
-                        className="form-control form-control-sm"
-                        style={{ width: '100%', minWidth: 0 }}
-                        value={e.remarks || ''}
-                        placeholder="Beam End, Fault…"
-                        navRow={rowIdx}
-                        navCol={3}
-                        onValueChange={(v) => patchEntry(e, { remarks: v })}
-                      />
-                    ) : (
-                      <div className="px-1 text-truncate" title={e.remarks || ''}>
-                        {e.remarks || '—'}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-1">
-                    {canEdit ? (
-                      <TextCellInput
-                        className="form-control form-control-sm"
-                        style={{ width: '100%', minWidth: 0 }}
-                        value={e.fabricFault || ''}
-                        placeholder="Loom fabric fault…"
-                        navRow={rowIdx}
-                        navCol={4}
-                        onValueChange={(v) => patchEntry(e, { fabricFault: v })}
-                      />
-                    ) : (
-                      <div className="px-1 text-truncate" title={e.fabricFault || ''}>
-                        {e.fabricFault || '—'}
-                      </div>
-                    )}
+                    <div
+                      className="px-1 text-truncate text-secondary"
+                      title={
+                        e.remarks
+                          ? `${e.remarks} (system — edit nahi)`
+                          : 'Remarks system se aate hain — Daily Entry pe edit nahi'
+                      }
+                    >
+                      {e.remarks || '—'}
+                    </div>
                   </td>
                   <td className="px-1">
                     <div
@@ -703,8 +682,18 @@ export function FloorEntryTable({
                       {e.lot || '—'}
                     </div>
                   </td>
+                  <td className="px-1" style={{ whiteSpace: 'normal' }}>
+                    <FabricFaultMultiInput
+                      value={e.fabricFault}
+                      canEdit={canEdit}
+                      placeholder="Loom fabric fault…"
+                      navRow={rowIdx}
+                      navCol={4}
+                      onChange={(v) => patchEntry(e, { fabricFault: v })}
+                    />
+                  </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </TablePanScroll>

@@ -8,6 +8,7 @@ import { CalendarRange, Layers, Gauge, DollarSign, ArrowUpRight, BarChart3 } fro
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
+import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 
 export default function WeeklyProductionReportsPage() {
   const [reports, setReports] = useState<FloorWeeklyReport[]>([])
@@ -55,7 +56,9 @@ export default function WeeklyProductionReportsPage() {
         }
       />
 
-      {current && (
+      {loading ? (
+        <ProductionReportSkeleton />
+      ) : current ? (
         <>
           {/* KPI Metrics for Selected Week */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -217,7 +220,7 @@ export default function WeeklyProductionReportsPage() {
             </TablePanScroll>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   )
 }

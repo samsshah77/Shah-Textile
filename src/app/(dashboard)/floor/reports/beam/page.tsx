@@ -8,6 +8,7 @@ import { MetricCard } from '@/components/shared/MetricCard'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { SimpleBarChart, SimpleLineChart } from '@/components/shared/MiniCharts'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
+import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 import {
   hydrateFloorFromDb,
   preloadAllFloorSheets,
@@ -127,12 +128,7 @@ function BeamTrackContent() {
       </div>
 
       {loading ? (
-        <div className="card">
-          <div className="card-body text-center py-5">
-            <div className="spinner-border text-primary" role="status" aria-label="Loading" />
-            <div className="mt-3 text-secondary">Beam length data load ho raha hai…</div>
-          </div>
-        </div>
+        <ProductionReportSkeleton />
       ) : !track ? (
         <div className="alert alert-warning">
           Beam &quot;{beamNo}&quot; nahi mili.{' '}
@@ -305,8 +301,8 @@ export default function BeamLengthTrackPage() {
   return (
     <Suspense
       fallback={
-        <div className="container-fluid py-5 text-center">
-          <div className="spinner-border text-primary" role="status" />
+        <div className="container-fluid py-3">
+          <ProductionReportSkeleton />
         </div>
       }
     >

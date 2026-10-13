@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { formatNumber } from '@/lib/utils'
 
 interface SeriesPoint {
@@ -9,16 +10,59 @@ interface SeriesPoint {
   color?: string
 }
 
+type ChartTip = { x: number; y: number; label: string; value: string } | null
+
+function ChartHoverChip({ tip }: { tip: ChartTip }) {
+  if (!tip || typeof document === 'undefined') return null
+  return createPortal(
+    <div
+      className="sara-chart-hover-chip"
+      style={{
+        left: tip.x,
+        top: tip.y,
+      }}
+      role="tooltip"
+    >
+      <span className="sara-chart-hover-chip__label">{tip.label}</span>
+      <span className="sara-chart-hover-chip__value">{tip.value}</span>
+    </div>,
+    document.body
+  )
+}
+
+function formatPoint(value: number, suffix: string) {
+  const n = formatNumber(value, 0)
+  return suffix ? `${n}${suffix}` : n
+}
+
+function tipFromMouse(
+  e: MouseEvent,
+  label: string,
+  value: number,
+  valueSuffix: string
+): ChartTip {
+  return {
+    x: e.clientX,
+    y: e.clientY - 12,
+    label,
+    value: formatPoint(value, valueSuffix),
+  }
+}
+
 /** Compact SVG bar chart — no chart library. */
 export function SimpleBarChart({
   data,
   height = 160,
   barColor = '#0d6efd',
+  valueSuffix = ' m',
 }: {
   data: SeriesPoint[]
   height?: number
   barColor?: string
+  /** e.g. ` m`, `%`, or `` for unitless */
+  valueSuffix?: string
 }) {
+  const [tip, setTip] = useState<ChartTip>(null)
   const max = Math.max(...data.map((d) => d.value), 1)
   const gap = 6
   const barW = data.length ? Math.max(10, Math.min(36, (520 - gap * data.length) / data.length)) : 20
@@ -26,7 +70,7 @@ export function SimpleBarChart({
   const chartH = height - 28
 
   return (
-    <div className="w-100 overflow-auto">
+    <div className="w-100 overflow-auto" onMouseLeave={() => setTip(null)}>
       <svg width={width} height={height} role="img" aria-label="Bar chart">
         {data.map((d, i) => {
           const h = (d.value / max) * (chartH - 8)
@@ -42,6 +86,9 @@ export function SimpleBarChart({
                 rx={3}
                 fill={d.color || barColor}
                 opacity={0.9}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
+                onMouseMove={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
               />
               <text
                 x={x + barW / 2}
@@ -52,11 +99,11 @@ export function SimpleBarChart({
               >
                 {d.label}
               </text>
-              <title>{`${d.label}: ${formatNumber(d.value, 0)} m`}</title>
             </g>
           )
         })}
       </svg>
+      <ChartHoverChip tip={tip} />
     </div>
   )
 }
@@ -66,11 +113,14 @@ export function SimpleLineChart({
   data,
   height = 160,
   stroke = '#198754',
+  valueSuffix = ' m',
 }: {
   data: SeriesPoint[]
   height?: number
   stroke?: string
+  valueSuffix?: string
 }) {
+  const [tip, setTip] = useState<ChartTip>(null)
   const max = Math.max(...data.map((d) => d.value), 1)
   const padX = 16
   const padY = 12
@@ -90,7 +140,7 @@ export function SimpleLineChart({
   }, [data, max, chartH, chartW])
 
   return (
-    <div className="w-100 overflow-auto">
+    <div className="w-100 overflow-auto" onMouseLeave={() => setTip(null)}>
       <svg width={width} height={height} role="img" aria-label="Line chart">
         <polyline
           fill="none"
@@ -105,15 +155,32 @@ export function SimpleLineChart({
           const y = padY + (1 - d.value / max) * (chartH - padY)
           return (
             <g key={`${d.label}-${i}`}>
-              <circle cx={x} cy={y} r={3.5} fill={stroke} />
+              <circle
+                cx={x}
+                cy={y}
+                r={7}
+                fill="transparent"
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
+                onMouseMove={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
+              />
+              <circle
+                cx={x}
+                cy={y}
+                r={4.5}
+                fill={stroke}
+                stroke="#fff"
+                strokeWidth={1.5}
+                style={{ pointerEvents: 'none' }}
+              />
               <text x={x} y={height - 6} textAnchor="middle" fontSize={9} fill="#6c757d">
                 {d.label}
               </text>
-              <title>{`${d.label}: ${formatNumber(d.value, 0)} m`}</title>
             </g>
           )
         })}
       </svg>
+      <ChartHoverChip tip={tip} />
     </div>
   )
 }

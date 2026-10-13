@@ -12,6 +12,8 @@ import {
   qualityIdOnLoomForDate,
   qualityIdsOnLoomForDate,
   qualityActiveOnSheetDate,
+  qualityRunThatOwnsSheetEntry,
+  isQualityEndedSheetRow,
   rpmOnLoomForDate,
   statusOnLoomForDate,
   mergeSheetEntriesForDate,
@@ -159,18 +161,22 @@ export function LoomMasterTable({
   const dayQualityId = (loom: LoomMaster) =>
     qualityIdOnLoomForDate(loom, qualities, dayRows, sheetDate)
 
+  /** Select value: Active only — ENDED allotment shows as empty so it is not in the list. */
+  const dayQualitySelectValue = (loom: LoomMaster) => {
+    const id = dayQualityId(loom)
+    if (!id) return ''
+    const q = qualities.find((item) => item.id === id)
+    if (!q || normalizeQualityStatus(q.status) !== 'ACTIVE') return ''
+    return id
+  }
+
   const daySegmentCount = (loom: LoomMaster) => {
     const rows = dayRows.filter((e) => e.loomNumber === loom.loomNumber)
     if (rows.length === 0) return 0
     return Math.max(...rows.map((e) => sheetSegmentIndex(e)), rows.length)
   }
 
-  const dayHasNamedPose = (loom: LoomMaster) =>
-    dayRows.some((e) => {
-      if (e.loomNumber !== loom.loomNumber) return false
-      const n = (e.qualityName || '').trim()
-      return n !== '' && n !== '—' && n !== '-'
-    }) || Boolean(dayQualityId(loom))
+  const dayHasNamedPose = (loom: LoomMaster) => dayQualityParts(loom).length > 0
 
   const dayRpm = (loom: LoomMaster) => rpmOnLoomForDate(loom, dayRows)
 
@@ -394,11 +400,11 @@ export function LoomMasterTable({
     const currentId = dayQualityId(loom)
     const day = String(sheetDate || '').slice(0, 10)
     const visible = qualities.filter((q) => {
-      // Keep current selection visible even if it would otherwise be filtered.
-      if (q.id === currentId) return true
-      // Loom dropdown = Active only; qualities created after this date stay hidden
-      // (e.g. made on 3 Oct must not appear when assigning on 2 Oct).
+      // Loom dropdown = Active only — ENDED / HOLD never appear (even if currently allotted).
       if (normalizeQualityStatus(q.status) !== 'ACTIVE') return false
+      // Keep current Active selection; qualities created after this date stay hidden
+      // (e.g. made on 3 Oct must not appear when assigning on 2 Oct).
+      if (q.id === currentId) return true
       return qualityActiveOnSheetDate(q, day, dayRows, qualities)
     })
 
@@ -438,12 +444,24 @@ export function LoomMasterTable({
 
   /** Same-day quality parts for loom (Part 1, Part 2, …) for display. */
   const dayQualityParts = (loom: LoomMaster): { seg: number; name: string }[] => {
+    const day = String(sheetDate || '').slice(0, 10)
     const rows = dayRows
       .filter((e) => e.loomNumber === loom.loomNumber)
       .sort((a, b) => sheetSegmentIndex(a) - sheetSegmentIndex(b))
     const parts: { seg: number; name: string }[] = []
     for (const row of rows) {
       if (!namedPose(row.qualityName)) continue
+      // Post-end day (e.g. End 13 → view 14): show "—" not the ended quality name.
+      if (isQualityEndedSheetRow(row)) continue
+      const owner = qualityRunThatOwnsSheetEntry(
+        { ...row, date: day || row.date },
+        qualities,
+        day || row.date
+      )
+      if (owner && normalizeQualityStatus(owner.status) === 'ENDED') {
+        const stamp = owner.endedOn ? String(owner.endedOn).slice(0, 10) : ''
+        if (stamp && day && stamp < day) continue
+      }
       parts.push({
         seg: sheetSegmentIndex(row),
         name: (row.qualityName || '').trim(),
@@ -453,7 +471,7 @@ export function LoomMasterTable({
     const id = dayQualityId(loom)
     if (id) {
       const q = qualities.find((item) => item.id === id)
-      if (q && q.status !== 'ENDED' && q.status !== 'HOLD') {
+      if (q && normalizeQualityStatus(q.status) === 'ACTIVE') {
         return [{ seg: 1, name: qualityDisplayName(q, qualities) }]
       }
     }
@@ -785,7 +803,7 @@ export function LoomMasterTable({
                         )}
                         <select
                           className="form-select form-select-sm"
-                          value={dayQualityId(l) || ''}
+                          value={dayQualitySelectValue(l)}
                           onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
                         >
                           <option value="">—</option>
@@ -934,7 +952,7 @@ export function LoomMasterTable({
                             <select
                               className="form-select form-select-sm"
                               style={{ width: '100%', minWidth: 0 }}
-                              value={dayQualityId(l) || ''}
+                              value={dayQualitySelectValue(l)}
                               onChange={(e) => assignQuality(l.loomNumber, e.target.value || null)}
                             >
                               <option value="">—</option>

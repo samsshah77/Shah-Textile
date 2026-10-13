@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { ProductionTableSkeleton } from '@/components/floor/ProductionSkeleton'
 
 export default function ChallanPage() {
   const { canEditProduction, isAccountant } = useAuth()
@@ -135,14 +136,18 @@ export default function ChallanPage() {
       )}
 
       {/* CHALAN FOI SHEET VIEW */}
-      <ChalanFoiTable
-        items={foiItems}
-        onUpdateItem={handleUpdateItem}
-        onAddItem={handleAddItem}
-        onDeleteItem={handleDeleteItem}
-        onImportFromProduction={handleImportFromProduction}
-        readOnly={!canEditProduction}
-      />
+      {loadingFoi ? (
+        <ProductionTableSkeleton rows={10} cols={8} title="Loading challan FOI" />
+      ) : (
+        <ChalanFoiTable
+          items={foiItems}
+          onUpdateItem={handleUpdateItem}
+          onAddItem={handleAddItem}
+          onDeleteItem={handleDeleteItem}
+          onImportFromProduction={handleImportFromProduction}
+          readOnly={!canEditProduction}
+        />
+      )}
     </div>
   )
 }

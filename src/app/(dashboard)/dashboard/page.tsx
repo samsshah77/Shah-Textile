@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/shared/MiniCharts'
+import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 import {
   hydrateFloorFromDb,
   listPersistedSheetDates,
@@ -211,7 +212,7 @@ export default function DashboardPage() {
     <>
       <PrintBrandHeader sheetTitle="Dashboard" />
 
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 mt-3 pt-1">
         <h2 className="h6 mb-0 text-secondary text-uppercase">Production overview</h2>
         <div className="d-flex flex-wrap align-items-center gap-2">
           <div className="d-flex align-items-center gap-1">
@@ -278,6 +279,10 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {loading ? (
+        <ProductionReportSkeleton />
+      ) : (
+        <>
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <MetricCard
@@ -377,6 +382,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+        </>
+      )}
 
       <div className="card mb-4">
         <div className="card-header">

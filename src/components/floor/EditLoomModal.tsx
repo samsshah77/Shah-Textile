@@ -45,10 +45,15 @@ export function EditLoomModal({
       setShed(loom.shed || 'Main Floor')
       setDefaultRpm(loom.defaultRpm || 340)
       setStatus(loom.status || 'RUNNING')
-      setQualityId(loom.qualityId || '')
+      {
+        const qid = loom.qualityId || ''
+        const q = qid ? qualities.find((item) => item.id === qid) : null
+        const status = (q?.status ?? 'ACTIVE') as string
+        setQualityId(status === 'ENDED' || status === 'HOLD' ? '' : qid)
+      }
       setPictureDataUrls(getLoomPictures(loom))
     }
-  }, [loom])
+  }, [loom, qualities])
 
   if (!isOpen || !loom) return null
 
@@ -172,8 +177,8 @@ export function EditLoomModal({
                     {qualities
                       .filter(
                         (q) =>
-                          ((q.status ?? 'ACTIVE') !== 'ENDED' && (q.status ?? 'ACTIVE') !== 'HOLD') ||
-                          q.id === loom.qualityId
+                          (q.status ?? 'ACTIVE') !== 'ENDED' &&
+                          (q.status ?? 'ACTIVE') !== 'HOLD'
                       )
                       .map((q) => (
                         <option key={q.id} value={q.id}>

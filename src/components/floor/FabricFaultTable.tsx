@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
-import { TextCellInput } from '@/components/shared/NumericCellInput'
+import { FabricFaultMultiInput } from '@/components/floor/FabricFaultMultiInput'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { cn } from '@/lib/utils'
@@ -133,29 +133,20 @@ export function FabricFaultTable({
                       {e.fabricType || '—'}
                     </td>
                     <td className="small px-2">{e.status || '—'}</td>
-                    <td className="px-1">
-                      {canEdit ? (
-                        <TextCellInput
-                          className="form-control form-control-sm"
-                          value={e.fabricFault || ''}
-                          placeholder="Loom fabric fault…"
-                          navRow={idx}
-                          navCol={0}
-                          onValueChange={(v) =>
-                            onUpdateEntry(e.loomNumber, {
-                              fabricFault: v,
-                              segmentIndex: e.segmentIndex,
-                            })
-                          }
-                        />
-                      ) : (
-                        <div
-                          className="px-1 small"
-                          title={e.fabricFault || ''}
-                        >
-                          {(e.fabricFault || '').trim() || '—'}
-                        </div>
-                      )}
+                    <td className="px-1" style={{ whiteSpace: 'normal', minWidth: 280 }}>
+                      <FabricFaultMultiInput
+                        value={e.fabricFault}
+                        canEdit={canEdit}
+                        placeholder="Loom fabric fault…"
+                        navRow={idx}
+                        navCol={0}
+                        onChange={(v) =>
+                          onUpdateEntry(e.loomNumber, {
+                            fabricFault: v,
+                            segmentIndex: e.segmentIndex,
+                          })
+                        }
+                      />
                     </td>
                   </tr>
                 )

@@ -8,6 +8,7 @@ import { MetricCard } from '@/components/shared/MetricCard'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/shared/MiniCharts'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
+import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 import {
   hydrateFloorFromDb,
   preloadMonthSheets,
@@ -565,6 +566,13 @@ function ProductionTotalTrackingContent() {
 
   const focusName = qualityFocus?.name || qualityNameParam || ''
 
+  const backHref =
+    qualityFocus || isQualityDeepLink
+      ? '/floor/production?tab=quality'
+      : '/dashboard'
+  const backLabel =
+    qualityFocus || isQualityDeepLink ? '← Back to Quality' : '← Back to Dashboard'
+
   return (
     <div className="pb-4">
       <PageHeader
@@ -574,10 +582,11 @@ function ProductionTotalTrackingContent() {
           <>
             <select
               className="form-select form-select-sm"
-              style={{ width: 'auto' }}
+              style={{ width: 'auto', minWidth: 150 }}
               value={month}
               onChange={(e) => setMonth(e.target.value)}
               disabled={loading}
+              aria-label="Tracking month"
             >
               {MONTH_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -590,8 +599,18 @@ function ProductionTotalTrackingContent() {
         }
       />
 
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 print:hidden">
+        <Link
+          href={backHref}
+          className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+        >
+          <i className="bi bi-arrow-left" aria-hidden />
+          {backLabel.replace(/^←\s*/, '')}
+        </Link>
+      </div>
+
       {(qualityFocus || (isQualityDeepLink && focusName)) && (
-        <div className="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3">
+        <div className="alert alert-info d-flex flex-wrap align-items-center gap-2 py-2 mb-3">
           <div>
             <strong>Quality run:</strong> {focusName || qualityFocus?.name}
             {!loading && qualityFocus?.createdOn && (
@@ -617,23 +636,11 @@ function ProductionTotalTrackingContent() {
               <span className="ms-2 small text-warning">Abhi is run pe production start nahi hui.</span>
             )}
           </div>
-          <Link href="/floor/production?tab=quality" className="btn btn-sm btn-outline-secondary">
-            ← Back to Quality
-          </Link>
         </div>
       )}
 
       {loading ? (
-        <div className="card">
-          <div className="card-body text-center py-5">
-            <div className="spinner-border text-primary" role="status" aria-label="Loading" />
-            <div className="mt-3 text-secondary">
-              {focusName
-                ? `${focusName} ka production data load ho raha hai…`
-                : 'Production data load ho raha hai…'}
-            </div>
-          </div>
-        </div>
+        <ProductionReportSkeleton />
       ) : (
         <>
       <div className="row g-3 mb-3">
@@ -724,6 +731,9 @@ function ProductionTotalTrackingContent() {
               <SimpleBarChart
                 data={daySeries}
                 height={180}
+                valueSuffix={
+                  view === 'efficiency' ? '%' : view === 'active' ? '' : ' m'
+                }
                 barColor={
                   view === 'shifts'
                     ? shiftChartMode === 'SHIFT_A'
@@ -731,13 +741,18 @@ function ProductionTotalTrackingContent() {
                       : shiftChartMode === 'SHIFT_B'
                         ? '#198754'
                         : '#0284c7'
-                    : '#0d6efd'
+                    : view === 'efficiency'
+                      ? '#0d9488'
+                      : '#0d6efd'
                 }
               />
               <div className="mt-3">
                 <SimpleLineChart
                   data={daySeries}
                   height={120}
+                  valueSuffix={
+                    view === 'efficiency' ? '%' : view === 'active' ? '' : ' m'
+                  }
                   stroke={
                     view === 'shifts'
                       ? shiftChartMode === 'SHIFT_A'
@@ -745,7 +760,9 @@ function ProductionTotalTrackingContent() {
                         : shiftChartMode === 'SHIFT_B'
                           ? '#198754'
                           : '#0284c7'
-                      : '#0d6efd'
+                      : view === 'efficiency'
+                        ? '#0d9488'
+                        : '#0d6efd'
                   }
                 />
               </div>
@@ -1025,8 +1042,8 @@ export default function ProductionTotalTrackingPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-4">
-          <div className="spinner-border text-primary" role="status" />
+        <div className="p-3">
+          <ProductionReportSkeleton />
         </div>
       }
     >

@@ -22,6 +22,7 @@ import {
 } from '@/components/floor/QualityMasterTable'
 import { ProductionDateFilterBar } from '@/components/floor/ProductionDateFilterBar'
 import { NewDayProductionModal } from '@/components/floor/NewDayProductionModal'
+import { ProductionWorkspaceSkeleton } from '@/components/floor/ProductionSkeleton'
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -47,7 +48,7 @@ function ProductionWorkspaceContent() {
   const { setDateLabel } = useFloorDateLabel()
   const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
   const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
-  const [beamFilter, setBeamFilter] = useState<BeamFilterType>('ALL')
+  const [beamFilter, setBeamFilter] = useState<BeamFilterType>('IN_STOCK')
   const [qualityStatusFilter, setQualityStatusFilter] = useState<QualityStatusFilter>('ACTIVE')
   const [qualityEdit, setQualityEdit] = useState(false)
   const [qualityViewMode, setQualityViewMode] = useState<TableGridMode>('table')
@@ -110,6 +111,7 @@ function ProductionWorkspaceContent() {
     submitForApproval,
     approveSheet,
     unlockSheet,
+    loading,
   } = useProductionGrid()
 
   const getFormattedDateLabel = (dateStr: string) => {
@@ -406,146 +408,152 @@ function ProductionWorkspaceContent() {
       </div>
 
       <div className="sara-production-panel">
-        {currentTab === 'entry' && (
-          <FloorEntryTable
-            entries={entries}
-            onUpdateEntry={updateEntry}
-            onResetDayMeters={resetDayMeters}
-            onRemoveQualitySegment={removeQualitySegment}
-            canEdit={canEditProduction}
-            selectedDate={selectedDate}
-            onSubmitForApproval={submitForApproval}
-            onApproveSheet={approveSheet}
-            onUnlockSheet={unlockSheet}
-            toolbarInChrome
-            tableEdit={entryEdit}
-            onTableEditChange={setEntryEdit}
-          />
-        )}
+        {loading ? (
+          <ProductionWorkspaceSkeleton tab={currentTab} />
+        ) : (
+          <>
+            {currentTab === 'entry' && (
+              <FloorEntryTable
+                entries={entries}
+                onUpdateEntry={updateEntry}
+                onResetDayMeters={resetDayMeters}
+                onRemoveQualitySegment={removeQualitySegment}
+                canEdit={canEditProduction}
+                selectedDate={selectedDate}
+                onSubmitForApproval={submitForApproval}
+                onApproveSheet={approveSheet}
+                onUnlockSheet={unlockSheet}
+                toolbarInChrome
+                tableEdit={entryEdit}
+                onTableEditChange={setEntryEdit}
+              />
+            )}
 
-        {currentTab === 'fabric-fault' && (
-          <FabricFaultTable
-            entries={entries}
-            selectedDate={selectedDate}
-            onUpdateEntry={updateEntry}
-            canEdit={canEditProduction && fabricFaultEdit}
-          />
-        )}
+            {currentTab === 'fabric-fault' && (
+              <FabricFaultTable
+                entries={entries}
+                selectedDate={selectedDate}
+                onUpdateEntry={updateEntry}
+                canEdit={canEditProduction && fabricFaultEdit}
+              />
+            )}
 
-        {currentTab === 'sheet' && (
-          <ProductionSheetTable
-            entries={entries}
-            sheetDate={selectedDate}
-            textSize={sheetTextSize}
-            onChangeTextSize={setSheetTextSize}
-            isExportOpen={isSheetExportOpen}
-            onExportOpenChange={setIsSheetExportOpen}
-          />
-        )}
+            {currentTab === 'sheet' && (
+              <ProductionSheetTable
+                entries={entries}
+                sheetDate={selectedDate}
+                textSize={sheetTextSize}
+                onChangeTextSize={setSheetTextSize}
+                isExportOpen={isSheetExportOpen}
+                onExportOpenChange={setIsSheetExportOpen}
+              />
+            )}
 
-        {currentTab === 'looms' && (
-          <LoomMasterTable
-            looms={looms}
-            yarn={yarn}
-            qualities={qualities}
-            entries={entries}
-            sheetDate={selectedDate}
-            onUpdate={updateLoom}
-            onAddQualitySegment={addQualitySegment}
-            onRemoveQualitySegment={removeQualitySegment}
-            onAdd={addLoom}
-            onDelete={deleteLoom}
-            readOnly={!canEditProduction}
-            toolbarInChrome
-            tableEdit={loomEdit}
-            onTableEditChange={setLoomEdit}
-            addModalOpen={loomAddOpen}
-            onAddModalOpenChange={setLoomAddOpen}
-          />
-        )}
+            {currentTab === 'looms' && (
+              <LoomMasterTable
+                looms={looms}
+                yarn={yarn}
+                qualities={qualities}
+                entries={entries}
+                sheetDate={selectedDate}
+                onUpdate={updateLoom}
+                onAddQualitySegment={addQualitySegment}
+                onRemoveQualitySegment={removeQualitySegment}
+                onAdd={addLoom}
+                onDelete={deleteLoom}
+                readOnly={!canEditProduction}
+                toolbarInChrome
+                tableEdit={loomEdit}
+                onTableEditChange={setLoomEdit}
+                addModalOpen={loomAddOpen}
+                onAddModalOpenChange={setLoomAddOpen}
+              />
+            )}
 
-        {currentTab === 'beams' && (
-          <BeamMasterTable
-            beams={beams}
-            looms={looms}
-            qualities={qualities}
-            selectedDate={selectedDate}
-            onUpdate={updateBeam}
-            onAdd={addBeam}
-            onMount={mountBeam}
-            onUnmount={unmountBeam}
-            onReceiveFromSizing={receiveBeamFromSizing}
-            onSendToSizing={sendBeamToSizing}
-            onDelete={deleteBeam}
-            readOnly={!canEditProduction}
-            filter={beamFilter}
-            onFilterChange={setBeamFilter}
-            toolbarInChrome
-            tableEdit={beamEdit}
-            onTableEditChange={setBeamEdit}
-            addModalOpen={beamAddOpen}
-            onAddModalOpenChange={setBeamAddOpen}
-          />
-        )}
+            {currentTab === 'beams' && (
+              <BeamMasterTable
+                beams={beams}
+                looms={looms}
+                qualities={qualities}
+                selectedDate={selectedDate}
+                onUpdate={updateBeam}
+                onAdd={addBeam}
+                onMount={mountBeam}
+                onUnmount={unmountBeam}
+                onReceiveFromSizing={receiveBeamFromSizing}
+                onSendToSizing={sendBeamToSizing}
+                onDelete={deleteBeam}
+                readOnly={!canEditProduction}
+                filter={beamFilter}
+                onFilterChange={setBeamFilter}
+                toolbarInChrome
+                tableEdit={beamEdit}
+                onTableEditChange={setBeamEdit}
+                addModalOpen={beamAddOpen}
+                onAddModalOpenChange={setBeamAddOpen}
+              />
+            )}
 
-        {currentTab === 'yarn' && (
-          <YarnStockTable
-            yarn={yarn}
-            looms={looms}
-            qualities={qualities}
-            onUpdate={updateYarn}
-            onAdd={(yarnData, arrival) => {
-              if (arrival) {
-                addYarnInward({
-                  yarnType: yarnData.yarnType || 'New Yarn',
-                  bags: arrival.bags,
-                  weightKg: arrival.weightKg,
-                  dateStr: arrival.date,
-                  lotOrSupplier: arrival.lotOrSupplier,
-                })
-              } else {
-                addYarn(yarnData)
-              }
-            }}
-            onIssue={issueYarnToLoom}
-            issuances={yarnIssuances}
-            movements={yarnMovements}
-            selectedDate={selectedDate}
-            dateFilterMode={yarnDateMode}
-            setDateFilterMode={setYarnDateMode}
-            onDelete={deleteYarn}
-            readOnly={!canEditProduction}
-            toolbarInChrome
-            tableEdit={yarnEdit}
-            onTableEditChange={setYarnEdit}
-            addModalOpen={yarnAddOpen}
-            onAddModalOpenChange={setYarnAddOpen}
-          />
-        )}
+            {currentTab === 'yarn' && (
+              <YarnStockTable
+                yarn={yarn}
+                looms={looms}
+                qualities={qualities}
+                onUpdate={updateYarn}
+                onAdd={(yarnData, arrival) => {
+                  if (arrival) {
+                    addYarnInward({
+                      yarnType: yarnData.yarnType || 'New Yarn',
+                      bags: arrival.bags,
+                      weightKg: arrival.weightKg,
+                      dateStr: arrival.date,
+                      lotOrSupplier: arrival.lotOrSupplier,
+                    })
+                  } else {
+                    addYarn(yarnData)
+                  }
+                }}
+                onIssue={issueYarnToLoom}
+                issuances={yarnIssuances}
+                movements={yarnMovements}
+                selectedDate={selectedDate}
+                dateFilterMode={yarnDateMode}
+                setDateFilterMode={setYarnDateMode}
+                onDelete={deleteYarn}
+                readOnly={!canEditProduction}
+                toolbarInChrome
+                tableEdit={yarnEdit}
+                onTableEditChange={setYarnEdit}
+                addModalOpen={yarnAddOpen}
+                onAddModalOpenChange={setYarnAddOpen}
+              />
+            )}
 
-        {currentTab === 'quality' && (
-          <QualityMasterTable
-            qualities={qualities}
-            onUpdate={updateQuality}
-            onAdd={addQuality}
-            onDelete={deleteQuality}
-            onReassignEnded={reassignEndedQuality}
-            readOnly={!canEditProduction}
-            entries={entries}
-            looms={looms}
-            beams={beams}
-            yarn={yarn}
-            statusFilter={qualityStatusFilter}
-            onStatusFilterChange={setQualityStatusFilter}
-            sheetDate={selectedDate}
-            toolbarInChrome
-            tableEdit={qualityEdit}
-            onTableEditChange={setQualityEdit}
-            viewMode={qualityViewMode}
-            onViewModeChange={setQualityViewMode}
-            addModalOpen={qualityAddOpen}
-            onAddModalOpenChange={setQualityAddOpen}
-          />
+            {currentTab === 'quality' && (
+              <QualityMasterTable
+                qualities={qualities}
+                onUpdate={updateQuality}
+                onAdd={addQuality}
+                onDelete={deleteQuality}
+                onReassignEnded={reassignEndedQuality}
+                readOnly={!canEditProduction}
+                entries={entries}
+                looms={looms}
+                beams={beams}
+                yarn={yarn}
+                statusFilter={qualityStatusFilter}
+                onStatusFilterChange={setQualityStatusFilter}
+                sheetDate={selectedDate}
+                toolbarInChrome
+                tableEdit={qualityEdit}
+                onTableEditChange={setQualityEdit}
+                viewMode={qualityViewMode}
+                onViewModeChange={setQualityViewMode}
+                addModalOpen={qualityAddOpen}
+                onAddModalOpenChange={setQualityAddOpen}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -563,8 +571,8 @@ export default function ProductionGridPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-4">
-          <div className="spinner-border text-primary" role="status" />
+        <div className="sara-production-workspace p-3">
+          <ProductionWorkspaceSkeleton tab="sheet" />
         </div>
       }
     >
