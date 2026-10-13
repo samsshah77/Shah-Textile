@@ -505,7 +505,7 @@ export function formatPayrollMonthLabel(month: string): string {
 
 export function calculateStaffSalaryRow(
   row: Partial<StaffSalaryRecord>,
-  daysInMonth = 31,
+  daysInMonth = 30,
   activeSalariedMonth = '2026-08',
   matchedEmp?: EmployeeProfile
 ): StaffSalaryRecord {
@@ -526,7 +526,27 @@ export function calculateStaffSalaryRow(
     actualDays = daysInMonth
   }
 
-  const calculatedRatePerDay = Math.round((salary / actualDays) * 100) / 100
+  // Staff Excel sheet uses 30-day rate (same as General Wages), not calendar 31.
+  // UI may pass 28/30/31; if calendar days leaked in as default, still prefer 30.
+  const divisor =
+    daysInMonth === 28 || daysInMonth === 30 || daysInMonth === 31
+      ? daysInMonth
+      : actualDays === 28
+        ? 28
+        : 30
+
+  const gwRatePerDay =
+    matchedEmp &&
+    Number(matchedEmp.ratePerDay30) > 0 &&
+    divisor === 30 &&
+    Math.abs((Number(matchedEmp.salary) || 0) - salary) < 1
+      ? Number(matchedEmp.ratePerDay30)
+      : 0
+
+  const calculatedRatePerDay =
+    gwRatePerDay > 0
+      ? Math.round(gwRatePerDay * 100) / 100
+      : Math.round((salary / divisor) * 100) / 100
   let ratePerDay = calculatedRatePerDay
   let basicSalary = Math.round(attendance * ratePerDay)
 
@@ -535,17 +555,22 @@ export function calculateStaffSalaryRow(
       row.ratePerDay && row.ratePerDay > 0 ? Math.round(salary / row.ratePerDay) : 0
     if (explicitDays === calDays || explicitDays === 28 || explicitDays === 31 || explicitDays === 30) {
       ratePerDay = Number(row.ratePerDay) || calculatedRatePerDay
-      basicSalary = Math.round(attendance * ratePerDay)
-    } else if (attendance === actualDays && salary > 0) {
+      basicSalary =
+        attendance === explicitDays && salary > 0
+          ? salary
+          : Math.round(attendance * ratePerDay)
+    } else if (attendance === divisor && salary > 0) {
       basicSalary = salary
     } else {
       basicSalary = Number(row.basicSalary)
     }
-  } else if (attendance === actualDays && salary > 0) {
+  } else if (attendance === divisor && salary > 0) {
+    // Full attendance for day-base → full salary (Excel: 30 attn → 80,000)
     basicSalary = salary
+    ratePerDay = calculatedRatePerDay
   }
 
-  // Same as General Wages 30-day Per Hr (not hardcoded 8hr / 240)
+  // Same as General Wages 30-day Per Hr; OT uses exact fraction to match Excel (176×40000/240=29333)
   const dutyHrs = Number(matchedEmp?.dutyHrs) > 0 ? Number(matchedEmp!.dutyHrs) : 8
   const gwRatePerHr =
     matchedEmp &&
@@ -557,7 +582,7 @@ export function calculateStaffSalaryRow(
     gwRatePerHr > 0
       ? gwRatePerHr
       : Number((salary / (30 * dutyHrs)).toFixed(2))
-  const otAmount = Math.round(otHours * perHrRate)
+  const otAmount = Math.round((otHours * salary) / (30 * dutyHrs))
   const grossAmount = basicSalary + otAmount
   const synopsisAmount = grossAmount - lessAdvance
   const netCashAmount = Math.max(0, synopsisAmount - chequeAmount)
@@ -587,7 +612,7 @@ export function calculateStaffSalaryRow(
 
 export function calculateContractSalaryRow(
   row: Partial<ContractSalaryRecord>,
-  daysInMonth = 31,
+  daysInMonth = 30,
   activeSalariedMonth = '2026-08',
   matchedEmp?: EmployeeProfile
 ): ContractSalaryRecord {
@@ -603,23 +628,31 @@ export function calculateContractSalaryRow(
   const isHistorical = month !== activeSalariedMonth
   const calDays = daysInCalendarMonth(month)
 
-  let actualDays = calDays
-  if (!isHistorical && daysInMonth !== undefined && daysInMonth > 0) {
+  // Contract Excel Sheet 4 uses 30-day rate base (same as General Wages), not calendar 31.
+  let actualDays = 30
+  if (daysInMonth === 28 || daysInMonth === 30 || daysInMonth === 31) {
     actualDays = daysInMonth
-  } else if (isHistorical && (daysInMonth === 28 || daysInMonth === calDays)) {
-    actualDays = daysInMonth
+  } else if (isHistorical && (calDays === 28 || calDays === 30 || calDays === 31)) {
+    // Prefer stored rate base when historical row already encodes 28/30/31
+    const encoded =
+      row.ratePerDay && row.ratePerDay > 0 ? Math.round(salary / Number(row.ratePerDay)) : 0
+    actualDays =
+      encoded === 28 || encoded === 30 || encoded === 31 ? encoded : calDays === 28 ? 28 : 30
   }
 
   const calculatedRatePerDay = Math.round((salary / actualDays) * 100) / 100
   let ratePerDay = calculatedRatePerDay
   let basicSalary = Math.round(attendance * ratePerDay)
 
-  if (isHistorical && row.basicSalary !== undefined) {
+  if (isHistorical && row.basicSalary !== undefined && Number(row.attendanceDays) > 0) {
     const explicitDays =
       row.ratePerDay && row.ratePerDay > 0 ? Math.round(salary / row.ratePerDay) : 0
     if (explicitDays === calDays || explicitDays === 28 || explicitDays === 31 || explicitDays === 30) {
       ratePerDay = Number(row.ratePerDay) || calculatedRatePerDay
-      basicSalary = Math.round(attendance * ratePerDay)
+      basicSalary =
+        attendance === explicitDays && salary > 0
+          ? salary
+          : Math.round(attendance * ratePerDay)
     } else if (attendance === actualDays && salary > 0) {
       basicSalary = salary
     } else {

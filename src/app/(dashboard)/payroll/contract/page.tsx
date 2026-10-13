@@ -92,11 +92,8 @@ function ContractPayrollContent() {
   const [contractList, setContractList] = useState<ContractSalaryRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
-  const [daysInMonth, setDaysInMonth] = useState<number>(() => {
-    const month = payrollService.getActiveSalariedMonth()
-    const [y, m] = month.split('-').map(Number)
-    return y && m ? new Date(y, m, 0).getDate() : 31
-  })
+  // Contract Excel Sheet 4 / General Wages use 30-day rate base (not calendar 31).
+  const [daysInMonth, setDaysInMonth] = useState<number>(30)
 
   // Resizable column width hooks for all 3 views
   const {
@@ -118,11 +115,7 @@ function ContractPayrollContent() {
   } = useResizableColumns('contract_net', DEFAULT_CONTRACT_NET_WIDTHS)
 
   const reload = () => {
-    const days = daysInMonth || new Date(
-      Number(selectedMonth.slice(0, 4)),
-      Number(selectedMonth.slice(5, 7)),
-      0
-    ).getDate()
+    const days = daysInMonth || 30
     setContractList(
       payrollService
         .getContractSalaries(selectedMonth)
@@ -132,8 +125,9 @@ function ContractPayrollContent() {
 
   useEffect(() => {
     let cancelled = false
-    const [y, m] = selectedMonth.split('-').map(Number)
-    if (y && m) setDaysInMonth(new Date(y, m, 0).getDate())
+    if (daysInMonth !== 28 && daysInMonth !== 30 && daysInMonth !== 31) {
+      setDaysInMonth(30)
+    }
 
     // Wait for DB hydrate so we don't flash local/seed count (e.g. 15 → 12).
     void hydratePayrollFromDb().then(() => {
@@ -148,8 +142,6 @@ function ContractPayrollContent() {
           : payrollService.getActiveSalariedMonth()
       if (next !== selectedMonth) {
         setSelectedMonth(next)
-        const [sy, sm] = next.split('-').map(Number)
-        if (sy && sm) setDaysInMonth(new Date(sy, sm, 0).getDate())
         return
       }
       reload()
@@ -159,7 +151,7 @@ function ContractPayrollContent() {
       cancelled = true
       window.removeEventListener('payroll_synced', handleSync)
     }
-  }, [selectedMonth])
+  }, [selectedMonth, daysInMonth])
 
   // Handle cell edit with live formula recalculation
   const handleCellChange = (
@@ -340,8 +332,8 @@ function ContractPayrollContent() {
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                   aria-label="Days in month"
                 >
-                  <option value={31}>31 Days</option>
                   <option value={30}>30 Days</option>
+                  <option value={31}>31 Days</option>
                   <option value={28}>28 Days</option>
                 </select>
               </div>

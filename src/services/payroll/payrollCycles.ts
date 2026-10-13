@@ -124,6 +124,8 @@ export function applySalariedMonthGenerateToStore(
       .filter((e) => employeeBelongsInMonth(e, m))
 
     const days = daysInCalendarMonth(m)
+    // Staff Excel / General Wages use 30-day rate base (not calendar length).
+    const staffDays = days === 28 ? 28 : 30
     const staffPeople = employees.filter((e) => {
       const cat = inferEmployeeCategory(e)
       return cat === 'Staff' || cat === 'Admin'
@@ -145,7 +147,7 @@ export function applySalariedMonthGenerateToStore(
           chequeAmount: 0,
           month: m,
         },
-        days,
+        staffDays,
         m,
         emp
       )

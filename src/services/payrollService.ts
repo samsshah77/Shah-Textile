@@ -131,6 +131,11 @@ class PayrollService {
         console.error('[payroll] contract rate repair skipped', e)
       }
       try {
+        this.repairContractAttendanceFromSeed()
+      } catch (e) {
+        console.error('[payroll] contract attendance seed repair skipped', e)
+      }
+      try {
         this.repairDuplicatePayrollRows()
       } catch (e) {
         console.error('[payroll] duplicate repair skipped', e)
@@ -176,7 +181,7 @@ class PayrollService {
 
   calculateStaffSalaryRow(
     row: Partial<StaffSalaryRecord>,
-    daysInMonth = 31,
+    daysInMonth = 30,
     matchedEmp?: EmployeeProfile
   ): StaffSalaryRecord {
     const emp =
@@ -192,7 +197,7 @@ class PayrollService {
 
   calculateContractSalaryRow(
     row: Partial<ContractSalaryRecord>,
-    daysInMonth = 31,
+    daysInMonth = 30,
     matchedEmp?: EmployeeProfile
   ): ContractSalaryRecord {
     const emp =
@@ -690,7 +695,8 @@ class PayrollService {
     let changed = false
     const next = [...all]
     for (const m of monthsOf(all)) {
-      const days = daysInCalendarMonth(m)
+      const cal = daysInCalendarMonth(m)
+      const staffDays = cal === 28 ? 28 : 30
       const idx = next.findIndex(
         (s) =>
           s.month === m &&
@@ -716,7 +722,7 @@ class PayrollService {
             designation: emp.designation,
             salary: emp.salary,
           },
-          days
+          staffDays
         )
         changed = true
         continue
@@ -737,7 +743,7 @@ class PayrollService {
             chequeAmount: 0,
             month: m,
           },
-          days
+          staffDays
         )
       )
       changed = true
@@ -829,6 +835,7 @@ class PayrollService {
       .filter(isGeneralWagesEmployee)
       .filter((e) => employeeBelongsInMonth(e, month))
     const days = daysInCalendarMonth(month)
+    const staffDays = days === 28 ? 28 : 30
     const staffPeople = roster.filter((e) => {
       const cat = inferEmployeeCategory(e)
       return cat === 'Staff' || cat === 'Admin'
@@ -850,7 +857,7 @@ class PayrollService {
           chequeAmount: 0,
           month,
         },
-        days
+        staffDays
       )
     )
     const newContract = contractPeople.map((emp, i) =>
@@ -1679,7 +1686,8 @@ class PayrollService {
   }
 
   /**
-   * Fix Contract rows where ratePerDay does not match daysInCalendarMonth (e.g. Sep rows copied with 31-day Aug rates).
+   * Fix Contract rows to Excel Sheet 4 / General Wages 30-day rate base
+   * (calendar 31 was wrongly forced before and broke September Staff/Contract).
    */
   repairCorruptedContractRates(): number {
     if (this.isClient() && !hydrated) return 0
@@ -1688,20 +1696,72 @@ class PayrollService {
     const next = contracts.map((ct) => {
       const m = sheetMonthKey(ct.month)
       const calDays = daysInCalendarMonth(m)
+      const dayBase = calDays === 28 ? 28 : 30
       const salary = Number(ct.salary) || 0
       if (salary <= 0) return ct
-      const expectedRate = Math.round((salary / calDays) * 100) / 100
-      if (Math.abs((Number(ct.ratePerDay) || 0) - expectedRate) > 1) {
+      const expectedRate = Math.round((salary / dayBase) * 100) / 100
+      const looksLike31 =
+        calDays === 31 &&
+        Math.abs((Number(ct.ratePerDay) || 0) - Math.round((salary / 31) * 100) / 100) <= 1
+      if (
+        looksLike31 ||
+        Math.abs((Number(ct.ratePerDay) || 0) - expectedRate) > 1
+      ) {
         fixed += 1
         return this.calculateContractSalaryRow(
           {
             ...ct,
             ratePerDay: expectedRate,
           },
-          calDays
+          dayBase
         )
       }
       return ct
+    })
+    if (fixed > 0) this.saveContractSalaries(next, false)
+    return fixed
+  }
+
+  /**
+   * Restore Contract Excel Sheet 4 rows from seed when live attendance was wiped to 0
+   * (September seed previously shipped with attendanceDays: 0).
+   */
+  repairContractAttendanceFromSeed(): number {
+    if (this.isClient() && !hydrated) return 0
+    const contracts = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
+    let fixed = 0
+    const next = contracts.map((ct) => {
+      const m = sheetMonthKey(ct.month)
+      if ((Number(ct.attendanceDays) || 0) > 0) return ct
+      const seed = INITIAL_CONTRACT_SALARIES.find(
+        (s) =>
+          sheetMonthKey(s.month) === m &&
+          (namesMatch(s.employeeName, ct.employeeName) ||
+            (s.employeeId && ct.employeeId && s.employeeId === ct.employeeId))
+      )
+      if (!seed || (Number(seed.attendanceDays) || 0) <= 0) return ct
+      fixed += 1
+      const dayBase = daysInCalendarMonth(m) === 28 ? 28 : 30
+      return this.calculateContractSalaryRow(
+        {
+          ...ct,
+          salary: seed.salary ?? ct.salary,
+          attendanceDays: seed.attendanceDays,
+          ratePerDay: seed.ratePerDay,
+          ratePerHr: seed.ratePerHr,
+          basicSalary: seed.basicSalary,
+          lateHours: seed.lateHours ?? 0,
+          lateAmount: seed.lateAmount ?? 0,
+          otHours: seed.otHours ?? ct.otHours,
+          otAmount: seed.otAmount ?? ct.otAmount,
+          efficiencyAmount: seed.efficiencyAmount ?? ct.efficiencyAmount,
+          advanceDeduction: seed.advanceDeduction ?? ct.advanceDeduction,
+          ticketCharges: seed.ticketCharges ?? ct.ticketCharges,
+          grossSalary: seed.grossSalary,
+          netAmount: seed.netAmount,
+        },
+        dayBase
+      )
     })
     if (fixed > 0) this.saveContractSalaries(next, false)
     return fixed
@@ -3848,6 +3908,7 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
   try {
     payrollService.repairCorruptedStaffChequeAmounts()
     payrollService.repairCorruptedContractRates()
+    payrollService.repairContractAttendanceFromSeed()
     payrollService.repairDuplicatePayrollRows()
     payrollService.purgeAllJoinersFromPastMonths()
     payrollService.purgeAllResignedFortnightCuts()

@@ -54,11 +54,8 @@ export default function StaffSalariesPage() {
   const [staffList, setStaffList] = useState<StaffSalaryRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
-  const [daysInMonth, setDaysInMonth] = useState<number>(() => {
-    const month = payrollService.getActiveSalariedMonth()
-    const [y, m] = month.split('-').map(Number)
-    return y && m ? new Date(y, m, 0).getDate() : 31
-  })
+  // Staff Excel / General Wages use 30-day rate base (not calendar 31).
+  const [daysInMonth, setDaysInMonth] = useState<number>(30)
 
   const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
     'staff_salaries_v1',
@@ -66,12 +63,19 @@ export default function StaffSalariesPage() {
   )
 
   const reload = () => {
-    setStaffList(payrollService.getStaffSalaries(selectedMonth))
+    const days = daysInMonth || 30
+    setStaffList(
+      payrollService
+        .getStaffSalaries(selectedMonth)
+        .map((row) => payrollService.calculateStaffSalaryRow(row, days))
+    )
   }
 
   useEffect(() => {
-    const [y, m] = selectedMonth.split('-').map(Number)
-    if (y && m) setDaysInMonth(new Date(y, m, 0).getDate())
+    // Keep 30-day Staff base across months (Feb can be switched manually to 28).
+    if (daysInMonth !== 28 && daysInMonth !== 30 && daysInMonth !== 31) {
+      setDaysInMonth(30)
+    }
     reload()
     const handleSync = (e: Event) => {
       const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
@@ -81,15 +85,13 @@ export default function StaffSalariesPage() {
           : payrollService.getActiveSalariedMonth()
       if (next !== selectedMonth) {
         setSelectedMonth(next)
-        const [sy, sm] = next.split('-').map(Number)
-        if (sy && sm) setDaysInMonth(new Date(sy, sm, 0).getDate())
         return
       }
       reload()
     }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
-  }, [selectedMonth])
+  }, [selectedMonth, daysInMonth])
 
   // Handle cell edit with live reactive calculation
   const handleCellChange = (
@@ -249,8 +251,8 @@ export default function StaffSalariesPage() {
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                   aria-label="Days in month"
                 >
-                  <option value={31}>31 Days</option>
                   <option value={30}>30 Days</option>
+                  <option value={31}>31 Days</option>
                   <option value={28}>28 Days</option>
                 </select>
               </div>
