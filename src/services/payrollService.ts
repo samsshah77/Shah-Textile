@@ -170,7 +170,7 @@ export function resignedMonth(emp?: EmployeeProfile | null): string {
   return ''
 }
 
-/** Parse DOJ strings like 2026-09-01 / 01-Sep-2026 / 26-Jul-2026 → YYYY-MM-DD. */
+/** Parse DOJ strings like 2026-09-01 / 01-Sep-2026 / 26-Jul-2026 / Jan-13-25 → YYYY-MM-DD. */
 export function parseDojToIso(doj?: string): string | undefined {
   if (!doj) return undefined
   const text = doj.trim()
@@ -182,6 +182,17 @@ export function parseDojToIso(doj?: string): string | undefined {
     const day = Number(named[1])
     const mon = MONTH_NAME_TO_NUM[named[2].toLowerCase()]
     let year = Number(named[3])
+    if (year < 100) year += 2000
+    if (mon && day >= 1 && day <= 31 && year >= 1990 && year <= 2100) {
+      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  const monthFirst = text.match(/^([A-Za-z]+)[\s.\-\/]+(\d{1,2})[\s.\-\/]+(\d{2,4})$/)
+  if (monthFirst) {
+    const mon = MONTH_NAME_TO_NUM[monthFirst[1].toLowerCase()]
+    const day = Number(monthFirst[2])
+    let year = Number(monthFirst[3])
     if (year < 100) year += 2000
     if (mon && day >= 1 && day <= 31 && year >= 1990 && year <= 2100) {
       return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -232,12 +243,25 @@ function hydrateResignedDates(list: EmployeeProfile[]): { list: EmployeeProfile[
 /**
  * Include in a payroll month sheet?
  * - New joiners: only from DOJ month onward (Sep joiner does not show in Aug).
+ * - Fortnight: if fortnight is '1-15' and joining day in that month is > 15 (e.g. joined after 15th),
+ *   do not show in the first 15 dates.
  * - Resigned: stay through resign month, then drop from later months.
  */
-export function employeeBelongsInMonth(emp: EmployeeProfile | null | undefined, month: string): boolean {
+export function employeeBelongsInMonth(
+  emp: EmployeeProfile | null | undefined,
+  month: string,
+  fortnight?: string
+): boolean {
   if (!emp) return true
   const start = joiningMonth(emp)
   if (start && month < start) return false
+  if (fortnight === '1-15' && start && month === start) {
+    const iso = parseDojToIso(emp.doj)
+    if (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) {
+      const joinDay = Number(iso.slice(8, 10))
+      if (joinDay > 15) return false
+    }
+  }
   if ((emp.status || 'Active') !== 'Resigned') return true
   const end = resignedMonth(emp)
   if (!end) return false
@@ -4989,6 +5013,11 @@ export async function hydratePayrollFromDb(): Promise<void> {
       } catch (dupErr) {
         console.error('[payroll] duplicate repair skipped', dupErr)
       }
+      try {
+        payrollService.purgeAllJoinersFromPastMonths()
+      } catch (purgeErr) {
+        console.error('[payroll] joiner purge skipped', purgeErr)
+      }
     } catch (err) {
       console.error('[payroll] hydrate failed — falling back to seed/local', err)
       hydrated = true
@@ -5201,32 +5230,33 @@ class PayrollService {
           ? Math.round(lateHours * ratePerHr)
           : 0
 
-    // Net Payment sheet: Gross = Basic (sheet4 H) + OT + Efficiency
-    let grossSalary = basicSalary + otAmount + efficiencyAmount
+    // Contract Net: Gross = Basic + Efficiency only — OT is tracked separately, not in net.
+    let grossSalary = basicSalary + efficiencyAmount
     if (
       isHistorical &&
       row.grossSalary !== undefined &&
       row.salary === salary &&
       row.attendanceDays === attendance &&
-      row.otHours === otHours &&
       row.efficiencyAmount === efficiencyAmount
     ) {
       grossSalary = Number(row.grossSalary)
     }
 
-    // Excel: Net = Gross − Late − Advance − Ticket
-    let netAmount = grossSalary - lateAmount - advanceDeduction - ticketCharges
+    // Net = Gross − Late − Advance − Ticket (no OT); never show negative
+    let netAmount = Math.max(
+      0,
+      grossSalary - lateAmount - advanceDeduction - ticketCharges
+    )
     if (
       isHistorical &&
       row.netAmount !== undefined &&
       row.salary === salary &&
       row.attendanceDays === attendance &&
-      row.otHours === otHours &&
       row.advanceDeduction === advanceDeduction &&
       row.efficiencyAmount === efficiencyAmount &&
       row.ticketCharges === ticketCharges
     ) {
-      netAmount = Number(row.netAmount)
+      netAmount = Math.max(0, Number(row.netAmount))
     }
 
     return {
@@ -5617,6 +5647,22 @@ class PayrollService {
       const next = [...all]
       for (const m of monthsOf(all)) {
         for (const fortnight of ['1-15', '16-31'] as const) {
+          if (!employeeBelongsInMonth(emp, m, fortnight)) {
+            const idx = next.findIndex(
+              (w) =>
+                w.month === m &&
+                w.fortnight === fortnight &&
+                (w.employeeId === emp.id ||
+                  namesMatch(w.employeeName, emp.name) ||
+                  namesMatch(w.employeeName, previousName))
+            )
+            if (idx >= 0) {
+              next.splice(idx, 1)
+              changed = true
+            }
+            continue
+          }
+
           const idx = next.findIndex(
             (w) =>
               w.month === m &&
@@ -5682,6 +5728,22 @@ class PayrollService {
     const next = [...all]
     for (const m of monthsOf(all)) {
       for (const fortnight of ['1-15', '16-31'] as const) {
+        if (!employeeBelongsInMonth(emp, m, fortnight)) {
+          const idx = next.findIndex(
+            (h) =>
+              h.month === m &&
+              h.fortnight === fortnight &&
+              (h.employeeId === emp.id ||
+                namesMatch(h.employeeName, emp.name) ||
+                namesMatch(h.employeeName, previousName))
+          )
+          if (idx >= 0) {
+            next.splice(idx, 1)
+            changed = true
+          }
+          continue
+        }
+
         const idx = next.findIndex(
           (h) =>
             h.month === m &&
@@ -6277,9 +6339,15 @@ class PayrollService {
     }
 
     const roster = this.getActiveEmployees()
-    const weaverPeople = roster.filter((e) => inferEmployeeCategory(e) === 'Weaver')
-    const helperPeople = roster.filter((e) => inferEmployeeCategory(e) === 'Helper')
-    const contractorPeople = roster.filter((e) => inferEmployeeCategory(e) === 'Contractor')
+    const weaverPeople = roster
+      .filter((e) => inferEmployeeCategory(e) === 'Weaver')
+      .filter((e) => employeeBelongsInMonth(e, month, fortnight))
+    const helperPeople = roster
+      .filter((e) => inferEmployeeCategory(e) === 'Helper')
+      .filter((e) => employeeBelongsInMonth(e, month, fortnight))
+    const contractorPeople = roster
+      .filter((e) => inferEmployeeCategory(e) === 'Contractor')
+      .filter((e) => employeeBelongsInMonth(e, month, fortnight))
 
     const newWeavers = weaverPeople.map((emp, i) => {
       const pay = weaverSheetFields(emp)
@@ -6445,21 +6513,36 @@ class PayrollService {
     writeHrMeta(custom)
   }
 
-  private filterRowsForMonth<T extends { employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
+  private filterRowsForMonth<
+    T extends {
+      employeeName?: string
+      name?: string
+      designation?: string
+      employeeId?: string
+      contractType?: string
+      fortnight?: string
+      serialNo?: number | null
+    }
+  >(
     rows: T[],
     month: string,
-    nameKey: 'employeeName' | 'name' = 'employeeName'
+    nameKey: 'employeeName' | 'name' = 'employeeName',
+    fortnight?: string
   ): T[] {
     const roster = this.getEmployees()
-    return rows.filter((row) => {
+    const filtered = rows.filter((row) => {
       const rowName = nameKey === 'name' ? row.name : row.employeeName
       let emp = findLinkedEmployee(roster, rowName, row.designation || row.contractType, row.employeeId)
       // Fallback: name-only match so DOJ still hides Sep joiners even if designation drifted.
       if (!emp && rowName) {
         emp = roster.find((e) => namesMatch(e.name, rowName))
       }
-      return employeeBelongsInMonth(emp, month)
+      const fn = row.fortnight || fortnight
+      return employeeBelongsInMonth(emp, month, fn)
     })
+    return filtered.map((row, idx) =>
+      row.serialNo !== undefined && row.serialNo !== null ? { ...row, serialNo: idx + 1 } : row
+    )
   }
 
   /** Drop a resigned person from every stored sheet month after resign month. */
@@ -6498,12 +6581,30 @@ class PayrollService {
       return Boolean(findLinkedEmployee([emp], name, designation, employeeId))
     }
 
-    const dropPast = <T extends { month: string; employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
+    const dropPast = <
+      T extends {
+        month: string
+        fortnight?: string
+        employeeName?: string
+        name?: string
+        designation?: string
+        employeeId?: string
+        contractType?: string
+      }
+    >(
       list: T[]
     ) =>
       list.filter((row) => {
-        if (sheetMonthKey(row.month) >= start) return true
-        return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+        const rowM = sheetMonthKey(row.month)
+        if (rowM < start) {
+          return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+        }
+        if (rowM === start && (row.fortnight === '1-15' || !row.fortnight)) {
+          if (!employeeBelongsInMonth(emp, row.month, row.fortnight || '1-15')) {
+            return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+          }
+        }
+        return true
       })
 
     this.saveStaffSalaries(dropPast(this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)), false)
@@ -8433,7 +8534,8 @@ class PayrollService {
     return this.filterRowsForMonth(
       list.filter((w) => w.month === month && (!fortnight || w.fortnight === fortnight)),
       month,
-      'employeeName'
+      'employeeName',
+      fortnight
     )
   }
 
@@ -8480,7 +8582,8 @@ class PayrollService {
     return this.filterRowsForMonth(
       list.filter((h) => h.month === month && (!fortnight || h.fortnight === fortnight)),
       month,
-      'employeeName'
+      'employeeName',
+      fortnight
     )
   }
 
@@ -8527,7 +8630,8 @@ class PayrollService {
     return this.filterRowsForMonth(
       list.filter((c) => c.month === month && (!fortnight || c.fortnight === fortnight)),
       month,
-      'name'
+      'name',
+      fortnight
     )
   }
 
@@ -9296,6 +9400,7 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
     payrollService.repairCorruptedStaffChequeAmounts()
     payrollService.repairCorruptedContractRates()
     payrollService.repairDuplicatePayrollRows()
+    payrollService.purgeAllJoinersFromPastMonths()
   } finally {
     allowServerSheetWrite = false
     hydrated = prevHydrated

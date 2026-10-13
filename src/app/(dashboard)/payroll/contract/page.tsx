@@ -114,7 +114,16 @@ function ContractPayrollContent() {
   } = useResizableColumns('contract_net', DEFAULT_CONTRACT_NET_WIDTHS)
 
   const reload = () => {
-    setContractList(payrollService.getContractSalaries(selectedMonth))
+    const days = daysInMonth || new Date(
+      Number(selectedMonth.slice(0, 4)),
+      Number(selectedMonth.slice(5, 7)),
+      0
+    ).getDate()
+    setContractList(
+      payrollService
+        .getContractSalaries(selectedMonth)
+        .map((row) => payrollService.calculateContractSalaryRow(row, days))
+    )
   }
 
   useEffect(() => {
