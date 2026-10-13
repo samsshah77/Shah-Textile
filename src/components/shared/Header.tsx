@@ -79,6 +79,7 @@ function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
     if (tab === 'yarn') return 'Yarn'
     if (tab === 'quality') return 'Quality'
     if (tab === 'entry') return 'Production Entry'
+    if (tab === 'fabric-fault') return 'Fabric Fault'
     return 'Production'
   }
   return 'Floor'

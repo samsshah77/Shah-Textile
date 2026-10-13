@@ -369,7 +369,7 @@ export default function DashboardPage() {
             </div>
             <div className="card-body">
               {conditionBars.length > 0 ? (
-                <SimpleHBarList data={conditionBars} maxBars={8} />
+                <SimpleHBarList data={conditionBars} maxBars={8} valueSuffix=" looms" />
               ) : (
                 <p className="text-secondary small mb-0">No loom conditions for this date.</p>
               )}

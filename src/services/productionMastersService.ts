@@ -972,7 +972,35 @@ export function qualityHeldButVisibleOnPastDay(
   return day < stamp
 }
 
-/** Active tab on `sheetDate`: live Active, plus HOLD history on days before hold. */
+/**
+ * True when an ENDED quality should still appear on Active for a *past* day
+ * (it was running that day; End day onward → Ends tab only).
+ * History rows are read-only (E badge + muted BG).
+ */
+export function qualityEndedButVisibleOnPastDay(
+  q: QualityMaster,
+  sheetDate: string
+): boolean {
+  if (normalizeQualityStatus(q.status) !== 'ENDED') return false
+  const day = String(sheetDate || '').slice(0, 10)
+  const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
+  if (!day || !stamp) return false
+  // End day and after → Ends tab only. Before end → history on Active.
+  return day < stamp
+}
+
+/** HOLD or ENDED history row on Active for a past sheet date (read-only). */
+export function qualityHistoryOnActivePastDay(
+  q: QualityMaster,
+  sheetDate: string
+): boolean {
+  return (
+    qualityHeldButVisibleOnPastDay(q, sheetDate) ||
+    qualityEndedButVisibleOnPastDay(q, sheetDate)
+  )
+}
+
+/** Active tab on `sheetDate`: live Active, plus HOLD/ENDED history before stamp day. */
 export function qualityActiveOnSheetDate(
   q: QualityMaster,
   sheetDate: string,
@@ -987,7 +1015,9 @@ export function qualityActiveOnSheetDate(
     if (!dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))) return false
   }
   const status = normalizeQualityStatus(q.status)
-  if (status === 'ENDED') return false
+  if (status === 'ENDED') {
+    return qualityEndedButVisibleOnPastDay(q, day)
+  }
   if (status === 'HOLD') {
     return qualityHeldButVisibleOnPastDay(q, day)
   }
@@ -4207,6 +4237,7 @@ class ProductionMastersService {
         loss24h: metrics.loss24h,
         status,
         remarks,
+        fabricFault: prev?.fabricFault || '',
         lot,
       }
       // Guard: never demote a saved named primary to "—" on rebuild (dual-quality wipe).
@@ -4368,6 +4399,7 @@ class ProductionMastersService {
         stopLossMeters: 0,
         status: (base?.status || loom?.status || 'RUNNING') as LoomStatus,
         remarks: '',
+        fabricFault: '',
         lot: base?.lot || '',
         ...patchRest2,
         lastEditedBy: editorName || 'Floor Operator',

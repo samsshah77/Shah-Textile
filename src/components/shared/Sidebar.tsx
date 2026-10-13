@@ -77,6 +77,13 @@ const FLOOR_ITEMS: NavLeaf[] = [
     icon: 'bi-grid-3x3-gap',
     activeCheck: (p) => p.startsWith('/floor/reports'),
   },
+  {
+    title: 'Fabric Fault',
+    href: '/floor/production?tab=fabric-fault',
+    icon: 'bi-exclamation-diamond',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' && sp.get('tab') === 'fabric-fault',
+  },
 ]
 
 const ACCOUNTS_ITEMS: NavLeaf[] = [

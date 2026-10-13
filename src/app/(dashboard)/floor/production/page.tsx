@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable, type SheetTextSize } from '@/components/floor/ProductionSheetTable'
 import { FloorEntryTable } from '@/components/floor/FloorEntryTable'
+import { FabricFaultTable } from '@/components/floor/FabricFaultTable'
 import { LoomMasterTable } from '@/components/floor/LoomMasterTable'
 import {
   BeamMasterTable,
@@ -56,6 +57,7 @@ function ProductionWorkspaceContent() {
   const [beamEdit, setBeamEdit] = useState(false)
   const [beamAddOpen, setBeamAddOpen] = useState(false)
   const [entryEdit, setEntryEdit] = useState(false)
+  const [fabricFaultEdit, setFabricFaultEdit] = useState(false)
   const [yarnEdit, setYarnEdit] = useState(false)
   const [yarnAddOpen, setYarnAddOpen] = useState(false)
   const [sheetTextSize, setSheetTextSize] = useState<SheetTextSize>('normal')
@@ -144,12 +146,14 @@ function ProductionWorkspaceContent() {
     setBeamEdit(false)
     setBeamAddOpen(false)
     setEntryEdit(false)
+    setFabricFaultEdit(false)
     setYarnEdit(false)
     setYarnAddOpen(false)
   }, [currentTab])
 
   const tabTitle: Record<string, string> = {
     entry: 'Daily Entry',
+    'fabric-fault': 'Fabric Fault',
     sheet: 'Production Sheet',
     looms: 'Looms',
     beams: 'Beams',
@@ -160,6 +164,7 @@ function ProductionWorkspaceContent() {
   const showDateBar =
     currentTab === 'sheet' ||
     currentTab === 'entry' ||
+    currentTab === 'fabric-fault' ||
     currentTab === 'quality' ||
     currentTab === 'looms'
   const isYarnTab = currentTab === 'yarn'
@@ -300,6 +305,17 @@ function ProductionWorkspaceContent() {
                 </button>
               )}
 
+              {currentTab === 'fabric-fault' && canEditProduction && (
+                <button
+                  type="button"
+                  className={`btn btn-sm ${fabricFaultEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
+                  onClick={() => setFabricFaultEdit(!fabricFaultEdit)}
+                >
+                  <i className={`bi ${fabricFaultEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
+                  {fabricFaultEdit ? 'Done' : 'Edit'}
+                </button>
+              )}
+
               {isYarnTab && canEditProduction && (
                 <>
                   <button
@@ -404,6 +420,15 @@ function ProductionWorkspaceContent() {
             toolbarInChrome
             tableEdit={entryEdit}
             onTableEditChange={setEntryEdit}
+          />
+        )}
+
+        {currentTab === 'fabric-fault' && (
+          <FabricFaultTable
+            entries={entries}
+            selectedDate={selectedDate}
+            onUpdateEntry={updateEntry}
+            canEdit={canEditProduction && fabricFaultEdit}
           />
         )}
 

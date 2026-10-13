@@ -36,6 +36,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   shiftB: 88,
   totalAB: 94,
   remarks: 150,
+  fabricFault: 160,
   lot: 130,
 }
 
@@ -71,7 +72,7 @@ export function FloorEntryTable({
   }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_prod_entry_col_widths_v3',
+    'sara_prod_entry_col_widths_v4',
     DEFAULT_WIDTHS
   )
 
@@ -501,6 +502,20 @@ export function FloorEntryTable({
                 <div className="small text-secondary">{e.remarks || '—'}</div>
               )}
 
+              <label className="small mb-0">Fabric Fault</label>
+              {canEdit ? (
+                <TextCellInput
+                  className="form-control form-control-sm"
+                  value={e.fabricFault || ''}
+                  placeholder="Loom fabric fault…"
+                  navRow={rowIdx}
+                  navCol={4}
+                  onValueChange={(v) => patchEntry(e, { fabricFault: v })}
+                />
+              ) : (
+                <div className="small text-secondary">{e.fabricFault || '—'}</div>
+              )}
+
               <label className="small mb-0">SW #</label>
               <div className="small text-secondary" title="Beam pe jo Sw# hai — Daily Entry pe edit nahi">
                 {e.lot || '—'}
@@ -548,6 +563,9 @@ export function FloorEntryTable({
                 </ResizableTh>
                 <ResizableTh columnKey="remarks" width={widths.remarks} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Remarks
+                </ResizableTh>
+                <ResizableTh columnKey="fabricFault" width={widths.fabricFault} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Fabric Fault
                 </ResizableTh>
                 <ResizableTh columnKey="lot" width={widths.lot} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   SW #
@@ -657,6 +675,23 @@ export function FloorEntryTable({
                     ) : (
                       <div className="px-1 text-truncate" title={e.remarks || ''}>
                         {e.remarks || '—'}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-1">
+                    {canEdit ? (
+                      <TextCellInput
+                        className="form-control form-control-sm"
+                        style={{ width: '100%', minWidth: 0 }}
+                        value={e.fabricFault || ''}
+                        placeholder="Loom fabric fault…"
+                        navRow={rowIdx}
+                        navCol={4}
+                        onValueChange={(v) => patchEntry(e, { fabricFault: v })}
+                      />
+                    ) : (
+                      <div className="px-1 text-truncate" title={e.fabricFault || ''}>
+                        {e.fabricFault || '—'}
                       </div>
                     )}
                   </td>

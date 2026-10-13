@@ -18,6 +18,8 @@ import {
   qualityLoomEndsOnDate,
   loomHasQualityOnDate,
   qualityHeldButVisibleOnPastDay,
+  qualityEndedButVisibleOnPastDay,
+  qualityHistoryOnActivePastDay,
   findLiveQualityByName,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY, getProductionToday } from '@/constants/productionCalendar'
@@ -407,7 +409,15 @@ export function QualityMasterTable({
         }
         continue
       }
-      // Ended: stamped loom ends for this close, else sheet rows this run owns (by id).
+      // ENDED on past Active days: that day's sheet allotment (not end-stamp looms).
+      if (!isToday && qualityEndedButVisibleOnPastDay(q, sheetDate)) {
+        const fromDay = looms
+          .filter((l) => loomHasQualityOnDate(l, q.id, qualities, dayRows, sheetDate))
+          .map((l) => l.loomNumber)
+        map.set(q.id, [...new Set(fromDay)].sort((a, b) => a - b))
+        continue
+      }
+      // Ended (Ends tab / end day): stamped loom ends, else sheet rows this run owns.
       const fromEnds = qualityLoomEndsOnDate(q, sheetDate)
       if (fromEnds.length > 0) {
         map.set(q.id, fromEnds)
@@ -491,7 +501,7 @@ export function QualityMasterTable({
 
   const handleDelete = (q: QualityMaster) => {
     if (!masterEdit) return
-    if (qualityHeldButVisibleOnPastDay(q, sheetDate)) return
+    if (qualityHistoryOnActivePastDay(q, sheetDate)) return
     showConfirm({
       title: 'Quality Delete Karein?',
       message: `Kya aap waqai quality "${q.name}" ko delete karna chahte hain? Ye permanent delete ho jayegi.`,
@@ -547,14 +557,42 @@ export function QualityMasterTable({
   const flashClassFor = (id: string) =>
     flashIds.has(id) ? FLASH_CLASS[flashTone] : undefined
 
-  /** HOLD quality on a past day (was running then) — show on Active with muted/amber bg. */
-  const heldHistoryClass = (q: QualityMaster) =>
-    !isHoldView && !isEndedView && qualityHeldButVisibleOnPastDay(q, sheetDate)
-      ? 'sara-quality-held-history'
-      : undefined
+  /** HOLD/ENDED on a past Active day (was running then) — muted history bg. */
+  const pastHistoryClass = (q: QualityMaster) => {
+    if (isHoldView || isEndedView) return undefined
+    if (qualityHeldButVisibleOnPastDay(q, sheetDate)) return 'sara-quality-held-history'
+    if (qualityEndedButVisibleOnPastDay(q, sheetDate)) return 'sara-quality-ended-history'
+    return undefined
+  }
 
   const rowClassFor = (q: QualityMaster) =>
-    [flashClassFor(q.id), heldHistoryClass(q)].filter(Boolean).join(' ') || undefined
+    [flashClassFor(q.id), pastHistoryClass(q)].filter(Boolean).join(' ') || undefined
+
+  const PastHistoryBadge = ({ q }: { q: QualityMaster }) => {
+    if (qualityHeldButVisibleOnPastDay(q, sheetDate)) {
+      return (
+        <span
+          className="badge text-bg-warning"
+          style={{ fontSize: '0.65rem' }}
+          title="Hold — past history (Resume Hold tab se)"
+        >
+          H
+        </span>
+      )
+    }
+    if (qualityEndedButVisibleOnPastDay(q, sheetDate)) {
+      return (
+        <span
+          className="badge text-bg-secondary"
+          style={{ fontSize: '0.65rem' }}
+          title="Ended — past history (us din active thi; Ends tab pe ab)"
+        >
+          E
+        </span>
+      )
+    }
+    return null
+  }
 
   const handleEnd = (q: QualityMaster) => {
     if (!canOps) return
@@ -749,8 +787,8 @@ export function QualityMasterTable({
 
   const rowMenu = (q: QualityMaster, compact?: boolean) => {
     if (!canOps) return null
-    // Past-day HOLD history is read-only on Active (Resume from Hold tab).
-    if (qualityHeldButVisibleOnPastDay(q, sheetDate)) return null
+    // Past-day HOLD/ENDED history is read-only on Active.
+    if (qualityHistoryOnActivePastDay(q, sheetDate)) return null
     return (
       <div className="dropdown">
         <button
@@ -1019,6 +1057,17 @@ export function QualityMasterTable({
         tr.sara-quality-held-history > td {
           background-color: rgba(253, 126, 20, 0.2) !important;
         }
+        /* ENDED on past Active days — muted slate history bg. */
+        .sara-quality-ended-history,
+        .sara-quality-ended-history.master-grid-card,
+        li.sara-quality-ended-history {
+          background-color: rgba(108, 117, 125, 0.18) !important;
+          box-shadow: inset 4px 0 0 #6c757d !important;
+          opacity: 0.92;
+        }
+        tr.sara-quality-ended-history > td {
+          background-color: rgba(108, 117, 125, 0.16) !important;
+        }
       `}</style>
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
         <div className="min-w-0">
@@ -1097,15 +1146,7 @@ export function QualityMasterTable({
                           #{rowIdx + 1}
                         </span>
                         <span className="fw-semibold text-truncate">{qualityDisplayName(q, qualities)}</span>
-                        {qualityHeldButVisibleOnPastDay(q, sheetDate) && (
-                          <span
-                            className="badge text-bg-warning"
-                            style={{ fontSize: '0.65rem' }}
-                            title="Hold — past history (Resume Hold tab se)"
-                          >
-                            H
-                          </span>
-                        )}
+                        <PastHistoryBadge q={q} />
                       </div>
                       <div className="d-flex align-items-center gap-2">
                         <span className="small fw-bold text-success font-monospace">
@@ -1172,8 +1213,8 @@ export function QualityMasterTable({
           ) : (
           orderedForView.map((q, rowIdx) => {
             const overall = productionByQuality[q.id] || 0
-            const heldHistory = qualityHeldButVisibleOnPastDay(q, sheetDate)
-            const rowMasterEdit = masterEdit && !heldHistory
+            const pastHistory = qualityHistoryOnActivePastDay(q, sheetDate)
+            const rowMasterEdit = masterEdit && !pastHistory
 
             return (
               <div
@@ -1181,7 +1222,7 @@ export function QualityMasterTable({
                 data-quality-row={q.id}
                 className={[
                   'master-grid-card',
-                  editActive && !heldHistory ? 'sara-edit-card' : '',
+                  editActive && !pastHistory ? 'sara-edit-card' : '',
                   rowClassFor(q) || '',
                 ]
                   .filter(Boolean)
@@ -1193,15 +1234,7 @@ export function QualityMasterTable({
                       #{rowIdx + 1}
                     </span>
                     <span className="text-truncate">{q.name || '—'}</span>
-                    {heldHistory && (
-                      <span
-                        className="badge text-bg-warning"
-                        style={{ fontSize: '0.65rem' }}
-                        title="Hold — past history (Resume Hold tab se)"
-                      >
-                        H
-                      </span>
-                    )}
+                    <PastHistoryBadge q={q} />
                   </div>
                   {rowMasterEdit && (
                     <button
@@ -1447,16 +1480,8 @@ export function QualityMasterTable({
                   <tr key={q.id} data-quality-row={q.id} className={rowClassFor(q)}>
                     <td className="px-2 text-center text-muted fw-semibold font-monospace">{rowIdx + 1}</td>
                     <td className="px-2 fw-semibold">
-                      {qualityDisplayName(q, qualities)}
-                      {qualityHeldButVisibleOnPastDay(q, sheetDate) && (
-                        <span
-                          className="badge text-bg-warning ms-1"
-                          style={{ fontSize: '0.65rem' }}
-                          title="Hold — past history (Resume Hold tab se)"
-                        >
-                          H
-                        </span>
-                      )}
+                      {qualityDisplayName(q, qualities)}{' '}
+                      <PastHistoryBadge q={q} />
                     </td>
                     <td className="px-2 text-secondary">{q.fabricType || '—'}</td>
                     <td className="px-2 small">{q.warpYarn || '—'}</td>
@@ -1585,14 +1610,14 @@ export function QualityMasterTable({
               ) : (
               orderedForView.map((q, rowIdx) => {
                 const overall = productionByQuality[q.id] || 0
-                const heldHistory = qualityHeldButVisibleOnPastDay(q, sheetDate)
-                const rowOpsEdit = opsEdit && !heldHistory
+                const pastHistory = qualityHistoryOnActivePastDay(q, sheetDate)
+                const rowOpsEdit = opsEdit && !pastHistory
 
                 return (
                   <tr
                     key={q.id}
                     data-quality-row={q.id}
-                    className={[editActive && !heldHistory ? 'sara-edit-row' : '', rowClassFor(q) || '']
+                    className={[editActive && !pastHistory ? 'sara-edit-row' : '', rowClassFor(q) || '']
                       .filter(Boolean)
                       .join(' ') || undefined}
                   >
@@ -1603,16 +1628,8 @@ export function QualityMasterTable({
                       <LoomListCell nums={assignedByQuality.get(q.id) || []} />
                     </td>
                     <td className="px-2">
-                      <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>
-                      {heldHistory && (
-                        <span
-                          className="badge text-bg-warning ms-1"
-                          style={{ fontSize: '0.65rem' }}
-                          title="Hold — past history (Resume Hold tab se)"
-                        >
-                          H
-                        </span>
-                      )}
+                      <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>{' '}
+                      <PastHistoryBadge q={q} />
                     </td>
                     <td className="px-2 text-truncate">
                       {rowOpsEdit ? (

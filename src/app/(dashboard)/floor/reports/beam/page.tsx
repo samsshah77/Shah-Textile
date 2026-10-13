@@ -140,39 +140,27 @@ function BeamTrackContent() {
         </div>
       ) : (
         <>
-          <div className="row g-3 mb-3">
-            <div className="col-6 col-lg-3">
+          <div className="row g-3 mb-3 align-items-stretch">
+            <div className="col-6 col-lg-4">
               <MetricCard
-                title="Length"
+                title="Beam Length"
                 value={`${formatNumber(track.length, 0)} m`}
-                subValue="Beam master"
                 biIcon="bi-rulers"
                 colorVariant="primary"
               />
             </div>
-            <div className="col-6 col-lg-3">
+            <div className="col-6 col-lg-4">
               <MetricCard
-                title="Consumed (Recived)"
-                value={`${formatNumber(track.consumed, 0)} m`}
-                subValue="Daily Entry lot meters"
-                biIcon="bi-graph-down"
-                colorVariant="info"
-              />
-            </div>
-            <div className="col-6 col-lg-3">
-              <MetricCard
-                title="Balance"
+                title="Balance Length"
                 value={`${formatNumber(track.balance, 0)} m`}
-                subValue="Length − Consumed"
                 biIcon="bi-pie-chart"
                 colorVariant={track.balance < 0 ? 'danger' : 'success'}
               />
             </div>
-            <div className="col-6 col-lg-3">
+            <div className="col-6 col-lg-4">
               <MetricCard
                 title="Avg / producing day"
                 value={`${formatNumber(avgPerDay, 0)} m`}
-                subValue={`${track.days.length} day(s) with meters`}
                 biIcon="bi-calendar3"
                 colorVariant="warning"
               />

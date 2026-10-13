@@ -136,11 +136,17 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 
 export type BeamFilterType = 'ALL' | 'IN_STOCK' | 'AT_SIZING' | 'ON_LOOM'
 
+function isEmptyBeam(b: BeamMaster) {
+  return !b.usedInLoom && b.location === 'SIZING'
+}
+
 export function beamStockCounts(beams: BeamMaster[]) {
   const inStock = beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE').length
-  const atSizing = beams.filter((b) => !b.usedInLoom && b.location === 'SIZING').length
+  const atSizing = beams.filter((b) => isEmptyBeam(b)).length
   const onLoom = beams.filter((b) => Boolean(b.usedInLoom)).length
-  return { inStock, atSizing, onLoom, all: beams.length }
+  // All = everything except Empty Beam (those only under Empty filter)
+  const all = beams.filter((b) => !isEmptyBeam(b)).length
+  return { inStock, atSizing, onLoom, all }
 }
 
 export function BeamStockFilterBar({
@@ -209,14 +215,6 @@ interface BeamMasterTableProps {
   onAddModalOpenChange?: (open: boolean) => void
 }
 
-function getDaysDifference(from?: string | null, to?: string | null): number {
-  if (!from || !to) return 0
-  const d1 = new Date(`${from}T00:00:00`).getTime()
-  const d2 = new Date(`${to}T00:00:00`).getTime()
-  const diffTime = d2 - d1
-  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)))
-}
-
 function formatShortDate(dateStr?: string | null) {
   if (!dateStr) return ''
   try {
@@ -227,38 +225,14 @@ function formatShortDate(dateStr?: string | null) {
   }
 }
 
-/**
- * Shows what the Looms table did for this beam (e.g. Running · Loom 5 · Mounted 14 Sep).
- */
-function LoomStatusNote({
-  beam,
-  looms,
-  selectedDate,
-}: {
-  beam: BeamMaster
-  looms: LoomMaster[]
-  selectedDate: string
-}) {
-  // Still mounted: show that loom's live status + mounting date & active days
+/** Mounted: date only. Other locations keep short status labels. */
+function LoomStatusNote({ beam }: { beam: BeamMaster }) {
   if (beam.usedInLoom) {
-    const loom = looms.find((l) => String(l.loomNumber) === String(beam.usedInLoom))
-    if (loom) {
-      const status = loom.status as LoomStatus
-      const days = getDaysDifference(beam.mountedOn, selectedDate)
-      return (
-        <div className="d-flex flex-column">
-          <span className="fw-semibold" style={{ color: LOOM_STATUS_COLOR[status] }}>
-            {LOOM_STATUS_LABEL[status]} · Loom {loom.loomNumber}
-          </span>
-          {beam.mountedOn && (
-            <span className="text-muted" style={{ fontSize: '0.72rem' }}>
-              <i className="bi bi-calendar-check text-primary me-1" />
-              Mounted {formatShortDate(beam.mountedOn)} ({days > 0 ? `${days}d active` : 'today'})
-            </span>
-          )}
-        </div>
-      )
-    }
+    return (
+      <span className="text-secondary small">
+        {beam.mountedOn ? formatShortDate(beam.mountedOn) : '—'}
+      </span>
+    )
   }
 
   if (beam.location === 'SIZING') {
@@ -359,11 +333,12 @@ export function BeamMasterTable({
     if (filter === 'IN_STOCK') {
       list = beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE')
     } else if (filter === 'AT_SIZING') {
-      list = beams.filter((b) => !b.usedInLoom && b.location === 'SIZING')
+      list = beams.filter((b) => isEmptyBeam(b))
     } else if (filter === 'ON_LOOM') {
       list = beams.filter((b) => Boolean(b.usedInLoom))
     } else {
-      list = [...beams]
+      // All: hide Empty Beam rows (only visible under Empty Beam filter)
+      list = beams.filter((b) => !isEmptyBeam(b))
     }
 
     // Same Sw# together, ascending (334, 334, 335…). Empty Sw# last.
@@ -565,7 +540,7 @@ export function BeamMasterTable({
                   <div className="d-flex justify-content-between align-items-start gap-2 border-bottom pb-2">
                     <div>
                       <div className="fw-semibold">Beam #{b.beamNo}</div>
-                      <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                      <LoomStatusNote beam={b} />
                     </div>
                     <div className="d-flex flex-column align-items-end gap-1">
                       <button
@@ -724,7 +699,7 @@ export function BeamMasterTable({
                   </div>
 
                   <div className="pt-2 border-top mt-2">
-                    <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                    <LoomStatusNote beam={b} />
                   </div>
                 </div>
               )
@@ -918,7 +893,7 @@ export function BeamMasterTable({
                       <td className="px-2">
                         {opsEdit && b.usedInLoom ? (
                           <div className="d-flex flex-column gap-1">
-                            <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                            <LoomStatusNote beam={b} />
                             <div className="d-flex align-items-center gap-1 mt-1">
                               <span className="text-muted small" style={{ fontSize: '0.70rem' }}>
                                 Mounted:
@@ -933,7 +908,7 @@ export function BeamMasterTable({
                             </div>
                           </div>
                         ) : (
-                          <LoomStatusNote beam={b} looms={looms} selectedDate={selectedDate} />
+                          <LoomStatusNote beam={b} />
                         )}
                       </td>
                       <td className="px-2">

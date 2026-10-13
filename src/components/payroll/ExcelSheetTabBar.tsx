@@ -228,6 +228,13 @@ export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
     href: '/floor/reports/total',
     activeCheck: (p) => p.startsWith('/floor/reports'),
   },
+  {
+    sheetNumber: 8,
+    name: 'Fabric Fault',
+    href: '/floor/production?tab=fabric-fault',
+    activeCheck: (p, sp) =>
+      p === '/floor/production' && sp.get('tab') === 'fabric-fault',
+  },
 ]
 
 export const ACCOUNTS_EXCEL_SHEETS: SheetTabInfo[] = [

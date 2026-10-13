@@ -92,7 +92,7 @@ export function MetricCard({
       <Link
         href={href}
         className={cn(
-          'small-box text-decoration-none d-block link-light',
+          'small-box h-100 mb-0 text-decoration-none d-block link-light',
           VARIANT_CLASS[colorVariant] || 'text-bg-primary'
         )}
       >
@@ -102,6 +102,13 @@ export function MetricCard({
   }
 
   return (
-    <div className={cn('small-box', VARIANT_CLASS[colorVariant] || 'text-bg-primary')}>{body}</div>
+    <div
+      className={cn(
+        'small-box h-100 mb-0',
+        VARIANT_CLASS[colorVariant] || 'text-bg-primary'
+      )}
+    >
+      {body}
+    </div>
   )
 }

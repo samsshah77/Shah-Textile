@@ -34,6 +34,8 @@ export interface DailyLoomProductionEntry {
   loss24h?: number;
   status: LoomStatus;
   remarks?: string;
+  /** Per-loom fabric fault note for the day (Daily Entry + Fabric Fault tab). */
+  fabricFault?: string;
   lot?: string;
   approvalStatus?: 'DRAFT' | 'APPROVED';
   submittedBy?: string;
