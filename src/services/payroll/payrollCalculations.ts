@@ -173,11 +173,11 @@ export function hydrateResignedDates(list: EmployeeProfile[]): {
 }
 
 /**
- * Include in a payroll month sheet?
+ * Include in a payroll month / fortnight sheet?
  * - New joiners: only from DOJ month onward (Sep joiner does not show in Aug).
- * - Fortnight: if fortnight is '1-15' and joining day in that month is > 15 (e.g. joined after 15th),
- *   do not show in the first 15 dates.
- * - Resigned: stay through resign month, then drop from later months.
+ * - Join after 15th: hide from that month's 1-15 Weaver/Helper/Contractor sheet only.
+ * - Resign on/before 15th: hide from that month's 16-31 sheet (still on 1-15 if they worked).
+ * - Resigned: stay through resign month (subject to fortnight rules), then drop later months.
  */
 export function employeeBelongsInMonth(
   emp: EmployeeProfile | null | undefined,
@@ -197,7 +197,17 @@ export function employeeBelongsInMonth(
   if ((emp.status || 'Active') !== 'Resigned') return true
   const end = resignedMonth(emp)
   if (!end) return false
-  return month <= end
+  if (month > end) return false
+  // Left on/before 15th → not paid in second fortnight of resign month.
+  if (fortnight === '16-31' && month === end) {
+    const raw = resolveResignedAt(emp)
+    const iso = /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : parseDojToIso(raw)
+    if (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) {
+      const resignDay = Number(iso.slice(8, 10))
+      if (resignDay >= 1 && resignDay <= 15) return false
+    }
+  }
+  return true
 }
 
 export function todayIsoDate(): string {

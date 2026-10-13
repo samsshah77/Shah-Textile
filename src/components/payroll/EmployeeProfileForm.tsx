@@ -811,6 +811,9 @@ export function EmployeeProfileForm({
                 value={resignedAt}
                 onChange={(e) => setResignedAt(e.target.value)}
               />
+              <span className="block text-[11px] text-slate-500 mt-0.5">
+                Agar resign date 1–15 hai to us mahine ki Weaver/Helper/Contractor 16–31 sheet se automatic hat jayega.
+              </span>
             </label>
           )}
 

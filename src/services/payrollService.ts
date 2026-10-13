@@ -140,6 +140,21 @@ class PayrollService {
       } catch (e) {
         console.error('[payroll] joiner purge skipped', e)
       }
+      try {
+        this.purgeAllResignedFortnightCuts()
+      } catch (e) {
+        console.error('[payroll] resigned fortnight purge skipped', e)
+      }
+      try {
+        this.repairMissingFortnightWageRows()
+      } catch (e) {
+        console.error('[payroll] missing fortnight wage repair skipped', e)
+      }
+      try {
+        this.repairMissingContractSheetRows()
+      } catch (e) {
+        console.error('[payroll] missing contract repair skipped', e)
+      }
     })
   }
 
@@ -571,6 +586,7 @@ class PayrollService {
             month: m,
           })
         )
+        changed = true
       }
     }
     if (changed) this.saveHelpersWages(next, false)
@@ -1325,18 +1341,37 @@ class PayrollService {
     )
   }
 
-  /** Drop a resigned person from every stored sheet month after resign month. */
+  /** Drop a resigned person from months after resign, and from 16-31 if resign day ≤ 15. */
   purgeResignedFromFutureMonths(emp: EmployeeProfile): void {
     const end = resignedMonth(emp) || todayIsoDate().slice(0, 7)
     const unlink = (name?: string, designation?: string, employeeId?: string) =>
       Boolean(findLinkedEmployee([emp], name, designation, employeeId))
 
-    const dropFuture = <T extends { month: string; employeeName?: string; name?: string; designation?: string; employeeId?: string; contractType?: string }>(
+    const dropFuture = <
+      T extends {
+        month: string
+        fortnight?: string
+        employeeName?: string
+        name?: string
+        designation?: string
+        employeeId?: string
+        contractType?: string
+      }
+    >(
       list: T[]
     ) =>
       list.filter((row) => {
-        if (row.month <= end) return true
-        return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+        const rowM = sheetMonthKey(row.month)
+        if (rowM > end) {
+          return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+        }
+        // Resign on/before 15th → remove from that month's 16-31 fortnight sheets.
+        if (rowM === end && row.fortnight === '16-31') {
+          if (!employeeBelongsInMonth(emp, row.month, '16-31')) {
+            return !unlink(row.employeeName || row.name, row.designation || row.contractType, row.employeeId)
+          }
+        }
+        return true
       })
 
     this.saveStaffSalaries(dropFuture(this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)), false)
@@ -1410,7 +1445,55 @@ class PayrollService {
     return count
   }
 
+  /** Apply resign-day fortnight rules (e.g. resign ≤15 → drop from 16-31) for all resigned. */
+  purgeAllResignedFortnightCuts(): number {
+    if (this.isClient() && !hydrated) return 0
+    let count = 0
+    for (const emp of this.getEmployees()) {
+      if ((emp.status || 'Active') !== 'Resigned') continue
+      this.purgeResignedFromFutureMonths(emp)
+      count += 1
+    }
+    return count
+  }
 
+  /**
+   * Ensure every active Weaver/Helper is on every existing fortnight sheet they belong to.
+   * Fixes live gaps (e.g. Winder on 1-15 but missing from 16-31 after the helper save bug).
+   */
+  repairMissingFortnightWageRows(): number {
+    if (this.isClient() && !hydrated) return 0
+    const weaverMonths = [
+      ...new Set(
+        this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES).map((r) => sheetMonthKey(r.month))
+      ),
+    ]
+    const helperMonths = [
+      ...new Set(
+        this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES).map((r) => sheetMonthKey(r.month))
+      ),
+    ]
+    const months = [...new Set([...weaverMonths, ...helperMonths, this.getActiveSalariedMonth()])]
+    let touched = 0
+    for (const emp of this.getActiveEmployees()) {
+      const cat = inferEmployeeCategory(emp)
+      if (cat !== 'Weaver' && cat !== 'Helper') continue
+      for (const m of months) {
+        if (!m || !employeeBelongsInMonth(emp, m)) continue
+        const beforeW =
+          cat === 'Weaver'
+            ? this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES).length
+            : this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES).length
+        this.placeOnDailyWageSheets(emp, m)
+        const afterW =
+          cat === 'Weaver'
+            ? this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES).length
+            : this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES).length
+        if (afterW !== beforeW) touched += 1
+      }
+    }
+    return touched
+  }
 
   saveEmployees(list: EmployeeProfile[], triggerSync: boolean = true): void {
     if (!this.isClient()) return
@@ -3747,6 +3830,8 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
     payrollService.repairCorruptedContractRates()
     payrollService.repairDuplicatePayrollRows()
     payrollService.purgeAllJoinersFromPastMonths()
+    payrollService.purgeAllResignedFortnightCuts()
+    payrollService.repairMissingFortnightWageRows()
     payrollService.repairMissingContractSheetRows()
   } finally {
     setAllowServerSheetWrite(false)
