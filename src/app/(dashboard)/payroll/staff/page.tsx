@@ -16,7 +16,6 @@ import {
   Clock,
   Building,
   Trash2,
-  RotateCcw,
   Save,
   CheckCircle2,
   Calculator,
@@ -198,22 +197,6 @@ export default function StaffSalariesPage() {
     })
   }
 
-  const handleReset = () => {
-    if (!canEditAccounts) return
-    askConfirm({
-      title: 'Reset staff sheet?',
-      message: 'Default template values pe reset ho jayega. Undo nahi hoga.',
-      confirmText: 'Reset',
-      danger: true,
-      onConfirm: () => {
-        localStorage.removeItem('sara_payroll_staff_v6')
-        localStorage.removeItem('sara_payroll_staff_v2')
-        setCustomColumns([])
-        setStaffList(payrollService.getStaffSalaries(selectedMonth))
-        showSuccess('Reset complete', 'Staff sheet template pe restore ho gaya.')
-      },
-    })
-  }
 
   const totalBasic = staffList.reduce((s, st) => s + (st.basicSalary || 0), 0)
   const totalOT = staffList.reduce((s, st) => s + (st.otAmount || 0), 0)
@@ -273,16 +256,7 @@ export default function StaffSalariesPage() {
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!canEditAccounts}
-                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}

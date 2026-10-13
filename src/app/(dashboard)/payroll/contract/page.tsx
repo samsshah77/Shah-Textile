@@ -17,7 +17,6 @@ import {
   Clock,
   Zap,
   Trash2,
-  RotateCcw,
   Save,
   CheckCircle2,
   Lock,
@@ -226,21 +225,6 @@ function ContractPayrollContent() {
     setContractList(filtered)
   }
 
-  const handleReset = () => {
-    if (!canEditAccounts) return
-    askConfirm({
-      title: 'Reset contract sheet?',
-      message: 'Template default values pe reset ho jayega. Undo nahi hoga.',
-      confirmText: 'Reset',
-      danger: true,
-      onConfirm: () => {
-        payrollService.resetMonthSheetToSeed('contract', selectedMonth)
-        setContractList(payrollService.getContractSalaries(selectedMonth))
-        setCustomColumns([])
-        showSuccess('Reset complete', 'Is month ka contract sheet template pe restore ho gaya.')
-      },
-    })
-  }
 
   const handleSave = () => {
     if (!canEditAccounts) return
@@ -341,16 +325,7 @@ function ContractPayrollContent() {
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!canEditAccounts}
-                  title={canEditAccounts ? 'Reset to template default values' : 'Enable Editing to reset'}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}

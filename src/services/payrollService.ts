@@ -4977,6 +4977,12 @@ export async function hydratePayrollFromDb(): Promise<void> {
       } catch (chequeErr) {
         console.error('[payroll] staff cheque repair skipped', chequeErr)
       }
+      // Fix Contract rows where ratePerDay does not match calendar days (e.g. Sep rows copied with 31-day Aug rates).
+      try {
+        payrollService.repairCorruptedContractRates()
+      } catch (rateErr) {
+        console.error('[payroll] contract rate repair skipped', rateErr)
+      }
       // Drop same-person duplicates (local mirror + DB often keep two ids for one advance).
       try {
         payrollService.repairDuplicatePayrollRows()
@@ -6710,6 +6716,35 @@ class PayrollService {
       )
     })
     if (fixed > 0) this.saveStaffSalaries(next, false)
+    return fixed
+  }
+
+  /**
+   * Fix Contract rows where ratePerDay does not match daysInCalendarMonth (e.g. Sep rows copied with 31-day Aug rates).
+   */
+  repairCorruptedContractRates(): number {
+    if (this.isClient() && !hydrated) return 0
+    const contracts = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
+    let fixed = 0
+    const next = contracts.map((ct) => {
+      const m = sheetMonthKey(ct.month)
+      const calDays = daysInCalendarMonth(m)
+      const salary = Number(ct.salary) || 0
+      if (salary <= 0) return ct
+      const expectedRate = Math.round((salary / calDays) * 100) / 100
+      if (Math.abs((Number(ct.ratePerDay) || 0) - expectedRate) > 1) {
+        fixed += 1
+        return this.calculateContractSalaryRow(
+          {
+            ...ct,
+            ratePerDay: expectedRate,
+          },
+          calDays
+        )
+      }
+      return ct
+    })
+    if (fixed > 0) this.saveContractSalaries(next, false)
     return fixed
   }
 
@@ -9259,6 +9294,7 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
   allowServerSheetWrite = true
   try {
     payrollService.repairCorruptedStaffChequeAmounts()
+    payrollService.repairCorruptedContractRates()
     payrollService.repairDuplicatePayrollRows()
   } finally {
     allowServerSheetWrite = false

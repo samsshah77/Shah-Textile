@@ -144,9 +144,9 @@ function EmployeeProfilesContent() {
             onChange={
               canEditAccounts
                 ? async (m) => {
-                    await payrollService.setActiveSalariedMonthAsync(m)
-                    setActiveMonth(m)
-                    reload()
+              await payrollService.setActiveSalariedMonthAsync(m)
+              setActiveMonth(m)
+              reload()
                     setStatusNotice(`Viewing ${formatPayrollMonthLabel(m)}.`)
                     setTimeout(() => setStatusNotice(null), 2500)
                   }
@@ -179,62 +179,62 @@ function EmployeeProfilesContent() {
       {/* Filters + view */}
       <div className="flex flex-wrap items-center gap-2 justify-between border-b border-slate-200 pb-2">
         <div className="flex flex-wrap items-center gap-0.5">
-          {HR_TABS.map((tab) => {
-            const count = getCategoryCount(tab.id)
-            const isSelected = filterCategory === tab.id
-            const isResignedTab = tab.id === 'RESIGNED'
-            return (
-              <button
-                key={tab.id}
+            {HR_TABS.map((tab) => {
+              const count = getCategoryCount(tab.id)
+              const isSelected = filterCategory === tab.id
+              const isResignedTab = tab.id === 'RESIGNED'
+              return (
+                <button
+                  key={tab.id}
                 type="button"
-                onClick={() => setFilterCategory(tab.id)}
-                className={cn(
+                  onClick={() => setFilterCategory(tab.id)}
+                  className={cn(
                   'rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer',
-                  isSelected
-                    ? isResignedTab
+                    isSelected
+                      ? isResignedTab
                       ? 'bg-rose-600 text-white'
                       : 'bg-[#0066cc] text-white'
-                    : isResignedTab
+                      : isResignedTab
                       ? 'text-rose-600 hover:bg-rose-50'
                       : 'text-slate-600 hover:bg-slate-100'
-                )}
-              >
-                {tab.label}
-                <span
-                  className={cn(
-                    'ml-1 font-mono text-[10px]',
-                    isSelected ? 'opacity-90' : 'text-slate-400'
                   )}
                 >
-                  {count}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+                {tab.label}
+                  <span
+                    className={cn(
+                    'ml-1 font-mono text-[10px]',
+                    isSelected ? 'opacity-90' : 'text-slate-400'
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         <div className="inline-flex rounded-md border border-slate-200 p-0.5">
-          <button
+            <button
             type="button"
             title="Table"
             onClick={() => setViewMode('table')}
-            className={cn(
+              className={cn(
               'rounded p-1.5 cursor-pointer',
               viewMode === 'table' ? 'bg-[#0066cc] text-white' : 'text-slate-500 hover:bg-slate-50'
             )}
           >
             <TableIcon className="size-3.5" />
-          </button>
-          <button
+            </button>
+            <button
             type="button"
             title="Grid"
             onClick={() => setViewMode('grid')}
-            className={cn(
+              className={cn(
               'rounded p-1.5 cursor-pointer',
               viewMode === 'grid' ? 'bg-[#0066cc] text-white' : 'text-slate-500 hover:bg-slate-50'
             )}
           >
             <LayoutGrid className="size-3.5" />
-          </button>
+            </button>
         </div>
       </div>
 
@@ -254,21 +254,21 @@ function EmployeeProfilesContent() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+          {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
                     No profiles match this filter.
                   </td>
                 </tr>
-              ) : (
-                filtered.map((emp) => {
+          ) : (
+            filtered.map((emp) => {
                   const { cat, isDaily, pay } = payFor(emp)
-                  const isResigned = (emp.status || 'Active') === 'Resigned'
-                  return (
+              const isResigned = (emp.status || 'Active') === 'Resigned'
+              return (
                     <tr
-                      key={emp.id}
+                  key={emp.id}
                       onClick={() => openProfile(emp.id)}
-                      className={cn(
+                  className={cn(
                         'border-b border-slate-100 cursor-pointer transition-colors hover:bg-slate-50',
                         isResigned && 'bg-rose-50/30'
                       )}
@@ -284,12 +284,12 @@ function EmployeeProfilesContent() {
                         />
                         <div className="min-w-0">
                           <span className="font-semibold text-slate-900 block truncate">{emp.name}</span>
-                          {emp.fatherName && (
+                      {emp.fatherName && (
                             <span className="block text-[10px] text-slate-500 truncate">S/O {emp.fatherName}</span>
                           )}
-                        </div>
                       </div>
-                    </td>
+                      </div>
+                      </td>
                       <td className="px-3 py-2.5 text-slate-700">{emp.designation}</td>
                       <td className="px-3 py-2.5">
                         <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
@@ -302,7 +302,7 @@ function EmployeeProfilesContent() {
                         {pay ? formatCurrency(pay) : '—'}
                         {isDaily && pay ? (
                           <span className="block text-[10px] font-sans font-normal text-slate-400">/ day</span>
-                        ) : null}
+                          ) : null}
                       </td>
                       <td className="px-3 py-2.5 text-right print:hidden text-slate-400">
                         <Pencil className="size-3.5 inline-block" />
@@ -311,8 +311,8 @@ function EmployeeProfilesContent() {
                   )
                 })
               )}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
         </div>
       )}
 
@@ -327,11 +327,11 @@ function EmployeeProfilesContent() {
               const { cat, isDaily, pay } = payFor(emp)
               const isResigned = (emp.status || 'Active') === 'Resigned'
               return (
-                <button
+                  <button
                   key={emp.id}
-                  type="button"
+                    type="button"
                   onClick={() => openProfile(emp.id)}
-                  className={cn(
+                    className={cn(
                     'text-left rounded-lg border bg-white p-3.5 transition-colors cursor-pointer hover:border-[#0066cc]',
                     isResigned ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200'
                   )}
@@ -348,22 +348,22 @@ function EmployeeProfilesContent() {
                         <p className="text-[10px] font-mono text-slate-400">#{emp.serialNo}</p>
                         <h3 className="font-semibold text-slate-900 text-sm leading-snug truncate">{emp.name}</h3>
                         <p className="text-xs text-slate-600 mt-0.5 truncate">{emp.designation}</p>
-                      </div>
-                    </div>
+                </div>
+                </div>
                     <span className="shrink-0 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
                       {cat}
-                    </span>
-                  </div>
+                      </span>
+                    </div>
                   <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
                     <span className="flex items-center gap-1 truncate">
                       <Phone className="size-3 text-slate-400 shrink-0" />
                       {emp.phone || '—'}
-                    </span>
+                        </span>
                     <span className="font-mono font-semibold text-slate-800">
                       {pay ? formatCurrency(pay) : '—'}
                       {isDaily && pay ? <span className="font-sans font-normal text-slate-400"> /d</span> : null}
-                    </span>
-                  </div>
+                        </span>
+                      </div>
                   <p className="mt-2 text-[11px] text-slate-500">DOJ {emp.doj || '—'} · Open to edit</p>
                 </button>
               )

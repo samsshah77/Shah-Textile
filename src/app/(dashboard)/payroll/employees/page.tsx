@@ -17,7 +17,6 @@ import { useAuth } from '@/context/AuthContext'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import {
   Printer,
-  RotateCcw,
   Save,
   CheckCircle2,
   Lock,
@@ -261,23 +260,6 @@ export default function GeneralWagesPage() {
     })
   }
 
-  const handleReset = () => {
-    if (!canEditAccounts) return
-    askConfirm({
-      title: 'Reset General Wages?',
-      message: 'Default Excel roster template se reset ho jayega. Yeh undo nahi hoga.',
-      confirmText: 'Reset',
-      danger: true,
-      onConfirm: () => {
-        localStorage.removeItem('sara_payroll_employees_v9')
-        localStorage.removeItem('sara_payroll_employees_v8')
-        localStorage.removeItem('sara_payroll_employees_v7')
-        setCustomColumns([])
-        reload()
-        showSuccess('Reset complete', 'General Wages roster default template pe restore ho gaya.')
-      },
-    })
-  }
 
   const handlePrint = () => {
     window.print()
@@ -287,7 +269,10 @@ export default function GeneralWagesPage() {
   const totalBaseSalary = employees.reduce((s, e) => s + (monthPay(e).salary || 0), 0)
   const totalRatePerDay30 = employees.reduce((s, e) => {
     const pay = monthPay(e)
-    return s + (pay.ratePerDay || Math.round(pay.salary / 30))
+    const rate30 = pay.isDaily
+      ? (pay.ratePerDay || 0)
+      : (pay.salary ? pay.salary / 30 : (e.ratePerDay30 || 0))
+    return s + rate30
   }, 0)
   const totalRatePerDay31 = employees.reduce((s, e) => {
     const pay = monthPay(e)
@@ -331,16 +316,7 @@ export default function GeneralWagesPage() {
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 {canEditAccounts && <AddColumnButton onAddColumn={handleAddCustomColumn} />}
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!canEditAccounts}
-                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}
@@ -749,7 +725,11 @@ export default function GeneralWagesPage() {
 
                       {/* 30 days - Per day */}
                       <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-900 font-medium">
-                        {formatNumber(pay.ratePerDay || Math.round(pay.salary / 30))}
+                        {formatNumber(
+                          pay.isDaily
+                            ? (pay.ratePerDay || 0)
+                            : (pay.salary ? pay.salary / 30 : (emp.ratePerDay30 || 0))
+                        )}
                       </td>
 
                       {/* 30 days - Per Hr */}

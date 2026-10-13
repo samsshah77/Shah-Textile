@@ -4342,12 +4342,12 @@ class ProductionMastersService {
       // After Quality End, loom.qualityId is null — do NOT carry prior day's pick/quality
       // onto the next day (show empty / B/End only until a new quality is assigned).
       const cleared = prev ? !namedQualityOnRow(prev.qualityName) && !poseEnded : false
-      // After End stub, a new Active quality on the loom must use live recipe (not stale ended row).
+      // Only revive after a real "Quality Ended" stub + new live assign.
+      // Do NOT treat Part1≠loom.qualityId as revive — that is normal dual quality (P1/P2)
+      // and overwriting P1 with live destroyed live Part 1/2 rows after deploy.
       const reviveFromLive =
         Boolean(loomHasLivePose && namedQualityOnRow(live.qualityName)) &&
-        (isQualityEndedSheetRow(prev) ||
-          (prevNamed &&
-            qualityNameKey(prev!.qualityName || '') !== qualityNameKey(live.qualityName || '')))
+        isQualityEndedSheetRow(prev)
       const identity = poseEnded
         ? null
         : cleared

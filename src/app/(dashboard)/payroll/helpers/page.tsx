@@ -17,7 +17,6 @@ import {
   DollarSign,
   Clock,
   Trash2,
-  RotateCcw,
   Save,
   CheckCircle2,
   Calculator,
@@ -172,22 +171,6 @@ function HelpersPayrollContent() {
     setHelpersList(filtered)
   }
 
-  const handleReset = () => {
-    if (!canEditAccounts) return
-    askConfirm({
-      title: 'Reset helpers sheet?',
-      message: 'Yeh fortnight template values pe reset ho jayega. Undo nahi hoga.',
-      confirmText: 'Reset',
-      danger: true,
-      onConfirm: () => {
-        payrollService.resetFortnightSheetToSeed('helpers', selectedMonth, activeFortnight)
-        setHelpersList(payrollService.getHelpersWages(selectedMonth, activeFortnight))
-        setCustomColumns([])
-        resetAllWidths()
-        showSuccess('Reset complete', 'Is fortnight ka helpers sheet template pe restore ho gaya.')
-      },
-    })
-  }
 
   const handleSave = () => {
     if (!canEditAccounts) return
@@ -257,16 +240,7 @@ function HelpersPayrollContent() {
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!canEditAccounts}
-                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}

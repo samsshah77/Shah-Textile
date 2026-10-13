@@ -17,7 +17,6 @@ import {
   Briefcase,
   FileCheck,
   Trash2,
-  RotateCcw,
   Save,
   CheckCircle2,
   Calculator,
@@ -170,22 +169,6 @@ function ContractorsPayrollContent() {
     setContractorsList(filtered)
   }
 
-  const handleReset = () => {
-    if (!canEditAccounts) return
-    askConfirm({
-      title: 'Reset contractors sheet?',
-      message: 'Yeh sheet template values pe reset ho jayegi. Undo nahi hoga.',
-      confirmText: 'Reset',
-      danger: true,
-      onConfirm: () => {
-        payrollService.resetFortnightSheetToSeed('contractors', selectedMonth, activeFortnight)
-        setContractorsList(payrollService.getContractorsPayments(selectedMonth, activeFortnight))
-        setCustomColumns([])
-        resetAllWidths()
-        showSuccess('Reset complete', 'Contractors sheet template pe restore ho gaya.')
-      },
-    })
-  }
 
   const handleSave = () => {
     if (!canEditAccounts) return
@@ -257,16 +240,7 @@ function ContractorsPayrollContent() {
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!canEditAccounts}
-                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}

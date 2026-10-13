@@ -13,7 +13,6 @@ import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Wallet,
   Printer,
-  RotateCcw,
   Save,
   CheckCircle2,
   Plus,
@@ -208,22 +207,6 @@ function PettyCashContent() {
     })
   }
 
-  const handleReset = () => {
-    if (!canEditAccounts) return
-    askConfirm({
-      title: 'Reset petty cash?',
-      message: 'Template values pe reset ho jayega. Undo nahi hoga.',
-      confirmText: 'Reset',
-      danger: true,
-      onConfirm: () => {
-        payrollService.resetFortnightSheetToSeed('petty-cash', selectedMonth, activeFortnight)
-        setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
-        setCustomColumns([])
-        resetAllWidths()
-        showSuccess('Reset complete', 'Petty cash template pe restore ho gaya.')
-      },
-    })
-  }
 
   const handleSave = () => {
     if (!canEditAccounts) return
@@ -308,16 +291,7 @@ function PettyCashContent() {
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!canEditAccounts}
-                  title={canEditAccounts ? 'Reset to default template' : 'Enable Editing to reset'}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}

@@ -13,7 +13,6 @@ import {
   Printer,
   PlusCircle,
   Trash2,
-  RotateCcw,
   Save,
   Lock,
   Search,
@@ -215,23 +214,6 @@ export default function SalaryAdvancesPage() {
     payrollService.saveAdvances(updated, true, selectedMonth)
   }
 
-  const handleReset = () => {
-    if (!canEditAccounts) return
-    askConfirm({
-      title: 'Reset advances?',
-      message: 'Default Excel template values pe reset ho jayega. Undo nahi hoga.',
-      confirmText: 'Reset',
-      danger: true,
-      onConfirm: () => {
-        localStorage.removeItem('sara_payroll_advances_v7')
-        localStorage.removeItem('sara_payroll_advances_v6')
-        reload()
-        setCustomColumns([])
-        resetAllWidths()
-        showSuccess('Reset complete', 'Advances template pe restore ho gaye.')
-      },
-    })
-  }
 
   const handleSave = () => {
     if (!canEditAccounts) return
@@ -327,16 +309,7 @@ export default function SalaryAdvancesPage() {
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!canEditAccounts}
-                  title={canEditAccounts ? 'Reset to default template values' : 'Enable Editing to reset'}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}
