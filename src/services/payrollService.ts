@@ -174,8 +174,20 @@ class PayrollService {
   // FORMULA CALCULATION UTILITIES (LIVE EXCEL MATH)
   // ==========================================
 
-  calculateStaffSalaryRow(row: Partial<StaffSalaryRecord>, daysInMonth = 31): StaffSalaryRecord {
-    return calculateStaffSalaryRow(row, daysInMonth, this.getActiveSalariedMonth())
+  calculateStaffSalaryRow(
+    row: Partial<StaffSalaryRecord>,
+    daysInMonth = 31,
+    matchedEmp?: EmployeeProfile
+  ): StaffSalaryRecord {
+    const emp =
+      matchedEmp ||
+      findLinkedEmployee(
+        this.getEmployees(),
+        row.employeeName,
+        row.designation,
+        row.employeeId
+      )
+    return calculateStaffSalaryRow(row, daysInMonth, this.getActiveSalariedMonth(), emp)
   }
 
   calculateContractSalaryRow(
@@ -183,7 +195,15 @@ class PayrollService {
     daysInMonth = 31,
     matchedEmp?: EmployeeProfile
   ): ContractSalaryRecord {
-    return calculateContractSalaryRow(row, daysInMonth, this.getActiveSalariedMonth(), matchedEmp)
+    const emp =
+      matchedEmp ||
+      findLinkedEmployee(
+        this.getEmployees(),
+        row.employeeName,
+        row.designation,
+        row.employeeId
+      )
+    return calculateContractSalaryRow(row, daysInMonth, this.getActiveSalariedMonth(), emp)
   }
 
   calculateEfficiencyRow(row: Partial<EfficiencyIncentiveRecord>): EfficiencyIncentiveRecord {

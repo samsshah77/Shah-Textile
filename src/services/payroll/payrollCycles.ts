@@ -146,7 +146,8 @@ export function applySalariedMonthGenerateToStore(
           month: m,
         },
         days,
-        m
+        m,
+        emp
       )
     )
     const newContract = contractPeople.map((emp, i) =>
@@ -168,7 +169,8 @@ export function applySalariedMonthGenerateToStore(
           month: m,
         },
         days,
-        m
+        m,
+        emp
       )
     )
 

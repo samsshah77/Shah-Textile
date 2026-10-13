@@ -506,7 +506,8 @@ export function formatPayrollMonthLabel(month: string): string {
 export function calculateStaffSalaryRow(
   row: Partial<StaffSalaryRecord>,
   daysInMonth = 31,
-  activeSalariedMonth = '2026-08'
+  activeSalariedMonth = '2026-08',
+  matchedEmp?: EmployeeProfile
 ): StaffSalaryRecord {
   const salary = Number(row.salary) || 0
   const attendance = Number(row.attendanceDays) || 0
@@ -544,7 +545,18 @@ export function calculateStaffSalaryRow(
     basicSalary = salary
   }
 
-  const perHrRate = Math.round((salary / (30 * 8)) * 100) / 100
+  // Same as General Wages 30-day Per Hr (not hardcoded 8hr / 240)
+  const dutyHrs = Number(matchedEmp?.dutyHrs) > 0 ? Number(matchedEmp!.dutyHrs) : 8
+  const gwRatePerHr =
+    matchedEmp &&
+    Number(matchedEmp.ratePerHr30) > 0 &&
+    Math.abs((Number(matchedEmp.salary) || 0) - salary) < 1
+      ? Number(Number(matchedEmp.ratePerHr30).toFixed(2))
+      : 0
+  const perHrRate =
+    gwRatePerHr > 0
+      ? gwRatePerHr
+      : Number((salary / (30 * dutyHrs)).toFixed(2))
   const otAmount = Math.round(otHours * perHrRate)
   const grossAmount = basicSalary + otAmount
   const synopsisAmount = grossAmount - lessAdvance
@@ -617,30 +629,50 @@ export function calculateContractSalaryRow(
     basicSalary = salary
   }
 
-  let dutyHrs = 12
-  const dLow = (row.designation || '').toLowerCase()
-  if (
-    dLow.includes('sweeper') ||
-    dLow.includes('kitchen') ||
-    dLow.includes('office boy') ||
-    dLow.includes('cook') ||
-    dLow.includes('guard')
-  ) {
-    dutyHrs = 8
-  } else {
-    const nameLow = (row.employeeName || '').toLowerCase()
+  // Same formula as General Wages "30 DAYS → Per Hr": salary / (30 × dutyHrs)
+  let dutyHrs = Number(matchedEmp?.dutyHrs) || 0
+  if (dutyHrs <= 0) {
+    dutyHrs = 12
+    const dLow = (row.designation || matchedEmp?.designation || '').toLowerCase()
     if (
-      nameLow.includes('ali zar') ||
-      nameLow.includes('adison') ||
-      nameLow.includes('christopher') ||
-      nameLow.includes('dawood')
+      dLow.includes('sweeper') ||
+      dLow.includes('kitchen') ||
+      dLow.includes('office boy') ||
+      dLow.includes('cook') ||
+      dLow.includes('guard') ||
+      dLow.includes('accountant') ||
+      dLow.includes('incharge') ||
+      dLow.includes('supervisor') ||
+      dLow.includes('store')
     ) {
       dutyHrs = 8
+    } else if (dLow.includes('d.e.o') || dLow.includes('deo')) {
+      dutyHrs = 9
+    } else if (
+      dLow.includes('quality') ||
+      dLow.includes('oilman') ||
+      dLow.includes('oil man') ||
+      dLow.includes('folding') ||
+      dLow.includes('time keeper') ||
+      dLow.includes('technician') ||
+      dLow.includes('beem')
+    ) {
+      dutyHrs = 12
     }
   }
 
   let ratePerHr = Number(row.ratePerHr) || 0
-  const calculatedRatePerHr = Number((salary / (30 * dutyHrs)).toFixed(2))
+  // Prefer live General Wages ratePerHr30 when sheet salary still matches profile pay.
+  const gwRatePerHr =
+    matchedEmp &&
+    Number(matchedEmp.ratePerHr30) > 0 &&
+    Math.abs((Number(matchedEmp.salary) || 0) - salary) < 1
+      ? Number(Number(matchedEmp.ratePerHr30).toFixed(2))
+      : 0
+  const calculatedRatePerHr =
+    gwRatePerHr > 0
+      ? gwRatePerHr
+      : Number((salary / (30 * dutyHrs)).toFixed(2))
 
   if (isHistorical) {
     if (ratePerHr <= 0) {
