@@ -252,7 +252,8 @@ export async function writeStoreAndWait(key: string, value: unknown): Promise<bo
   return persistPayrollKey(key, value)
 }
 
-/** Prefer DB rows for periods already saved; only add mirror rows for brand-new month/fortnight. */
+/** Prefer DB rows for periods already saved; only add mirror rows for brand-new month/fortnight.
+ *  Also keep mirror-only ids in an existing period (e.g. new advance saved before DB persist). */
 export function mergeMirrorPreferDbPeriods<
   T extends { id?: string; month?: string; fortnight?: string },
 >(dbRows: T[], mirrorRows: T[]): T[] {
@@ -262,9 +263,11 @@ export function mergeMirrorPreferDbPeriods<
   const periodsInDb = new Set(
     db.map((r) => `${r.month || ''}|${r.fortnight || ''}`)
   )
-  const extras = mirror.filter(
-    (r) => !periodsInDb.has(`${r.month || ''}|${r.fortnight || ''}`)
-  )
+  const dbIds = new Set(db.map((r) => r.id).filter(Boolean) as string[])
+  const extras = mirror.filter((r) => {
+    if (r.id && !dbIds.has(r.id)) return true
+    return !periodsInDb.has(`${r.month || ''}|${r.fortnight || ''}`)
+  })
   return extras.length ? mergeRowsById(db, extras) : [...db]
 }
 

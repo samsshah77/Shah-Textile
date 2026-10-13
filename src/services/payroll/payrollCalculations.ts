@@ -743,21 +743,11 @@ export function calculateContractSalaryRow(
     grossSalary = Number(row.grossSalary)
   }
 
-  let netAmount = Math.max(
+  // Always recompute: Gross − Late − Advance − Ticket (never freeze stale OT-era nets).
+  const netAmount = Math.max(
     0,
     grossSalary - lateAmount - advanceDeduction - ticketCharges
   )
-  if (
-    isHistorical &&
-    row.netAmount !== undefined &&
-    row.salary === salary &&
-    row.attendanceDays === attendance &&
-    row.advanceDeduction === advanceDeduction &&
-    row.efficiencyAmount === efficiencyAmount &&
-    row.ticketCharges === ticketCharges
-  ) {
-    netAmount = Math.max(0, Number(row.netAmount))
-  }
 
   return {
     id: row.id || `cnt-${Date.now()}`,

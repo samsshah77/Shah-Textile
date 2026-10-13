@@ -1359,9 +1359,11 @@ class PayrollService {
       if (!emp && rowName) {
         emp = roster.find((e) => namesMatch(e.name, rowName))
       }
-      // Day>15 hide ONLY when the row itself is on a fortnight sheet (Weaver/Helper/Contractor/Advances).
-      // Never use the caller fortnight for monthly Staff/Contract — that wrongly hid mid-month joiners.
-      return employeeBelongsInMonth(emp, month, row.fortnight)
+      // Day>15 / resign-day hide ONLY on real fortnight sheets (1-15 / 16-31).
+      // Monthly advances use fortnight "all" — never apply mid-month joiner hide (Dawood etc.).
+      const rowFortnight =
+        row.fortnight === '1-15' || row.fortnight === '16-31' ? row.fortnight : undefined
+      return employeeBelongsInMonth(emp, month, rowFortnight)
     })
     return filtered.map((row, idx) =>
       row.serialNo !== undefined && row.serialNo !== null ? { ...row, serialNo: idx + 1 } : row
@@ -1743,15 +1745,11 @@ class PayrollService {
       const seedAttn = Number(seed.attendanceDays) || 0
       const liveEff = Number(ct.efficiencyAmount) || 0
       const seedEff = Number(seed.efficiencyAmount) || 0
-      const liveNet = Number(ct.netAmount) || 0
-      const seedNet = Number(seed.netAmount) || 0
-      // Restore empty rows always; for Excel Sep snapshot also fix wrong efficiency/net.
+      // Restore empty rows; Sep Excel snapshot also fixes wiped attendance / efficiency.
+      // Do NOT key off netAmount — nets are always Gross−Late−Advance−Ticket (OT-era seed nets differ).
       const needsRestore =
         liveAttn <= 0 ||
-        (m === '2026-09' &&
-          (liveAttn !== seedAttn ||
-            liveEff !== seedEff ||
-            Math.abs(liveNet - seedNet) > 1))
+        (m === '2026-09' && (liveAttn !== seedAttn || liveEff !== seedEff))
       if (!needsRestore) return ct
       fixed += 1
       const dayBase = daysInCalendarMonth(m) === 28 ? 28 : 30
@@ -1768,10 +1766,13 @@ class PayrollService {
           otHours: seed.otHours ?? 0,
           otAmount: seed.otAmount ?? 0,
           efficiencyAmount: seedEff,
-          advanceDeduction: seed.advanceDeduction ?? ct.advanceDeduction,
+          // Keep live advance if already entered (Dawood etc.); seed only as fallback.
+          advanceDeduction:
+            Number(ct.advanceDeduction) > 0
+              ? ct.advanceDeduction
+              : (seed.advanceDeduction ?? 0),
           ticketCharges: seed.ticketCharges ?? ct.ticketCharges,
           grossSalary: seed.grossSalary,
-          netAmount: seed.netAmount,
         },
         dayBase
       )
@@ -3354,7 +3355,27 @@ class PayrollService {
     if (fortnight && fortnight !== 'all') {
       filtered = filtered.filter((a) => (a.fortnight || '1-15') === fortnight)
     }
-    return this.filterRowsForMonth(filtered, month, 'employeeName')
+    // Monthly advance sheet: belong by DOJ/resign month only — never 1-15 mid-month hide
+    // (Dawood joined 26th; fortnight "1-15" on a row must not drop him after refresh).
+    const roster = this.getEmployees()
+    return filtered
+      .filter((row) => {
+        let emp = findLinkedEmployee(
+          roster,
+          row.employeeName,
+          row.designation,
+          row.employeeId
+        )
+        if (!emp && row.employeeName) {
+          emp = roster.find((e) => namesMatch(e.name, row.employeeName))
+        }
+        return employeeBelongsInMonth(emp, month)
+      })
+      .map((row, idx) =>
+        row.serialNo !== undefined && row.serialNo !== null
+          ? { ...row, serialNo: idx + 1 }
+          : row
+      )
   }
 
   saveAdvances(list: AdvanceRecord[], triggerCascade: boolean = true, month?: string, fortnight?: string): void {
