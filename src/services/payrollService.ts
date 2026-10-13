@@ -243,8 +243,8 @@ function hydrateResignedDates(list: EmployeeProfile[]): { list: EmployeeProfile[
 /**
  * Include in a payroll month sheet?
  * - New joiners: only from DOJ month onward (Sep joiner does not show in Aug).
- * - Fortnight: if fortnight is '1-15' and joining day in that month is > 15 (e.g. joined after 15th),
- *   do not show in the first 15 dates.
+ * - Fortnight (Weaver/Helper/Contractor ONLY): if fortnight is explicitly '1-15' and joining day
+ *   in that month is > 15, do not show on the first-15 sheet. Monthly Staff/Contract ignore this.
  * - Resigned: stay through resign month, then drop from later months.
  */
 export function employeeBelongsInMonth(
@@ -255,6 +255,7 @@ export function employeeBelongsInMonth(
   if (!emp) return true
   const start = joiningMonth(emp)
   if (start && month < start) return false
+  // Only when caller passes a real fortnight sheet key — never treat monthly as 1-15.
   if (fortnight === '1-15' && start && month === start) {
     const iso = parseDojToIso(emp.doj)
     if (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) {
@@ -1167,6 +1168,12 @@ export async function hydratePayrollFromDb(): Promise<void> {
         payrollService.purgeAllJoinersFromPastMonths()
       } catch (purgeErr) {
         console.error('[payroll] joiner purge skipped', purgeErr)
+      }
+      // Restore Contract monthly rows wrongly removed by old day>15 purge / filter.
+      try {
+        payrollService.repairMissingContractSheetRows()
+      } catch (missingErr) {
+        console.error('[payroll] missing contract repair skipped', missingErr)
       }
     } catch (err) {
       console.error('[payroll] hydrate failed — falling back to seed/local', err)
@@ -2680,7 +2687,7 @@ class PayrollService {
     rows: T[],
     month: string,
     nameKey: 'employeeName' | 'name' = 'employeeName',
-    fortnight?: string
+    _fortnight?: string
   ): T[] {
     const roster = this.getEmployees()
     const filtered = rows.filter((row) => {
@@ -2690,8 +2697,9 @@ class PayrollService {
       if (!emp && rowName) {
         emp = roster.find((e) => namesMatch(e.name, rowName))
       }
-      const fn = row.fortnight || fortnight
-      return employeeBelongsInMonth(emp, month, fn)
+      // Day>15 hide ONLY when the row itself is on a fortnight sheet (Weaver/Helper/Contractor/Advances).
+      // Never use the caller fortnight for monthly Staff/Contract — that wrongly hid mid-month joiners.
+      return employeeBelongsInMonth(emp, month, row.fortnight)
     })
     return filtered.map((row, idx) =>
       row.serialNo !== undefined && row.serialNo !== null ? { ...row, serialNo: idx + 1 } : row
@@ -3002,6 +3010,114 @@ class PayrollService {
     })
     if (fixed > 0) this.saveContractSalaries(next, false)
     return fixed
+  }
+
+  /**
+   * Re-add Contract salary rows wiped by the old mid-month (day>15) purge bug,
+   * and ensure every active Contract roster person has a monthly row (no 1-15 rule).
+   */
+  repairMissingContractSheetRows(): number {
+    if (this.isClient() && !hydrated) return 0
+    let all = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
+    // Strip accidental fortnight on monthly contract rows (would trigger 1-15 hide).
+    let changed = false
+    all = all.map((ct) => {
+      if ((ct as { fortnight?: string }).fortnight) {
+        changed = true
+        const { fortnight: _fn, ...rest } = ct as ContractSalaryRecord & { fortnight?: string }
+        return rest as ContractSalaryRecord
+      }
+      return ct
+    })
+
+    const roster = this.getActiveEmployees().filter(
+      (e) => inferEmployeeCategory(e) === 'Contract'
+    )
+    const months = new Set<string>([
+      ...all.map((r) => sheetMonthKey(r.month)),
+      this.getActiveSalariedMonth(),
+      ...INITIAL_CONTRACT_SALARIES.map((r) => sheetMonthKey(r.month)),
+    ])
+
+    let added = 0
+    const next = [...all]
+
+    const hasRow = (m: string, emp: EmployeeProfile) =>
+      next.some(
+        (c) =>
+          sheetMonthKey(c.month) === m &&
+          (c.employeeId === emp.id || namesMatch(c.employeeName, emp.name))
+      )
+
+    for (const m of months) {
+      if (!m) continue
+      const days = daysInCalendarMonth(m)
+      for (const emp of roster) {
+        if (!employeeBelongsInMonth(emp, m)) continue
+        if (hasRow(m, emp)) continue
+        const seed = INITIAL_CONTRACT_SALARIES.find(
+          (s) =>
+            sheetMonthKey(s.month) === m &&
+            (namesMatch(s.employeeName, emp.name) ||
+              (s.employeeId && emp.id && s.employeeId === emp.id))
+        )
+        const peers = next.filter((c) => sheetMonthKey(c.month) === m)
+        next.push(
+          this.calculateContractSalaryRow(
+            {
+              ...(seed || {}),
+              id: seed?.id || `ct-${m}-${emp.id}`,
+              serialNo: peers.length + 1,
+              employeeId: emp.id,
+              employeeName: emp.name,
+              designation: emp.designation,
+              salary: seed?.salary ?? emp.salary,
+              attendanceDays: seed?.attendanceDays ?? 0,
+              otHours: seed?.otHours ?? 0,
+              lateHours: seed?.lateHours ?? 0,
+              efficiencyAmount: seed?.efficiencyAmount ?? 0,
+              advanceDeduction: seed?.advanceDeduction ?? 0,
+              ticketCharges: seed?.ticketCharges ?? 5,
+              month: m,
+            },
+            days
+          )
+        )
+        added += 1
+        changed = true
+      }
+
+      // Historical seed people still on roster name-match for that month
+      for (const seed of INITIAL_CONTRACT_SALARIES.filter((s) => sheetMonthKey(s.month) === m)) {
+        const emp =
+          findLinkedEmployee(roster, seed.employeeName, seed.designation, seed.employeeId) ||
+          roster.find((e) => namesMatch(e.name, seed.employeeName))
+        if (!emp) continue
+        if (!employeeBelongsInMonth(emp, m)) continue
+        if (hasRow(m, emp)) continue
+        const peers = next.filter((c) => sheetMonthKey(c.month) === m)
+        next.push(
+          this.calculateContractSalaryRow(
+            {
+              ...seed,
+              serialNo: peers.length + 1,
+              employeeId: emp.id,
+              employeeName: emp.name,
+              designation: emp.designation || seed.designation,
+            },
+            days
+          )
+        )
+        added += 1
+        changed = true
+      }
+    }
+
+    if (changed) {
+      const renumbered = this.renumberByMonth(next)
+      this.saveContractSalaries(renumbered, false)
+    }
+    return added
   }
 
   /**
@@ -5389,6 +5505,7 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
     payrollService.repairCorruptedContractRates()
     payrollService.repairDuplicatePayrollRows()
     payrollService.purgeAllJoinersFromPastMonths()
+    payrollService.repairMissingContractSheetRows()
   } finally {
     allowServerSheetWrite = false
     hydrated = prevHydrated

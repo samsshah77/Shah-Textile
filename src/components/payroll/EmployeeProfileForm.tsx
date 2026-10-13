@@ -777,7 +777,7 @@ export function EmployeeProfileForm({
               onChange={(e) => setDoj(e.target.value)}
             />
             <span className="block text-[11px] text-slate-500 mt-0.5">
-              Save ke baad DOJ se pehle ke months aur agar joining 15 ke baad ho to 1-15 ki table se hat jayega.
+              Save ke baad DOJ se pehle ke months se hat jayega. Agar joining 15 ke baad ho to sirf Weaver/Helper/Contractor ki 1-15 fortnight sheet se hatayega — Staff/Contract monthly pe nahi.
             </span>
           </label>
 
