@@ -1,6 +1,6 @@
 // src/services/payroll/payrollStorage.ts
 import { STORAGE_KEYS, NAME_ALIASES } from './payrollConstants'
-import type { EmployeeProfile } from '@/types/payroll'
+import type { EmployeeProfile, MonthLockInfo } from '@/types/payroll'
 
 /** In-memory cache hydrated from PostgreSQL via /api/payroll/store. */
 export const memoryStore = new Map<string, string>()
@@ -153,10 +153,17 @@ export function writeStore(key: string, value: unknown): void {
       const prev = pendingPersists.get(key)
       const prevObj =
         prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
-      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
+      const incoming = value as {
+        pettyCashInflowOverrides?: Record<string, number>
+        monthLocks?: Record<string, MonthLockInfo>
+      }
       const prevOverrides =
         prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
           ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
+          : {}
+      const prevLocks =
+        prevObj.monthLocks && typeof prevObj.monthLocks === 'object'
+          ? (prevObj.monthLocks as Record<string, MonthLockInfo>)
           : {}
       pendingPersists.set(key, {
         ...prevObj,
@@ -164,6 +171,10 @@ export function writeStore(key: string, value: unknown): void {
         pettyCashInflowOverrides: {
           ...prevOverrides,
           ...(incoming.pettyCashInflowOverrides || {}),
+        },
+        monthLocks: {
+          ...prevLocks,
+          ...(incoming.monthLocks || {}),
         },
       })
     } else {
@@ -194,10 +205,17 @@ export async function writeStoreAndWait(key: string, value: unknown): Promise<bo
       const prev = pendingPersists.get(key)
       const prevObj =
         prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
-      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
+      const incoming = value as {
+        pettyCashInflowOverrides?: Record<string, number>
+        monthLocks?: Record<string, MonthLockInfo>
+      }
       const prevOverrides =
         prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
           ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
+          : {}
+      const prevLocks =
+        prevObj.monthLocks && typeof prevObj.monthLocks === 'object'
+          ? (prevObj.monthLocks as Record<string, MonthLockInfo>)
           : {}
       pendingPersists.set(key, {
         ...prevObj,
@@ -205,6 +223,10 @@ export async function writeStoreAndWait(key: string, value: unknown): Promise<bo
         pettyCashInflowOverrides: {
           ...prevOverrides,
           ...(incoming.pettyCashInflowOverrides || {}),
+        },
+        monthLocks: {
+          ...prevLocks,
+          ...(incoming.monthLocks || {}),
         },
       })
     } else {
@@ -231,10 +253,17 @@ export async function writeStoreAndWait(key: string, value: unknown): Promise<bo
       } catch {
         current = {}
       }
-      const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
+      const incoming = value as {
+        pettyCashInflowOverrides?: Record<string, number>
+        monthLocks?: Record<string, MonthLockInfo>
+      }
       const curOverrides =
         current.pettyCashInflowOverrides && typeof current.pettyCashInflowOverrides === 'object'
           ? (current.pettyCashInflowOverrides as Record<string, number>)
+          : {}
+      const curLocks =
+        current.monthLocks && typeof current.monthLocks === 'object'
+          ? (current.monthLocks as Record<string, MonthLockInfo>)
           : {}
       const merged = {
         ...current,
@@ -242,6 +271,10 @@ export async function writeStoreAndWait(key: string, value: unknown): Promise<bo
         pettyCashInflowOverrides: {
           ...curOverrides,
           ...(incoming.pettyCashInflowOverrides || {}),
+        },
+        monthLocks: {
+          ...curLocks,
+          ...(incoming.monthLocks || {}),
         },
       }
       memoryStore.set(key, JSON.stringify(merged))
@@ -392,6 +425,8 @@ export type HrMetaShape = {
   activeFortnightMonth?: string
   activeFortnight?: '1-15' | '16-31'
   pettyCashInflowOverrides?: Record<string, number>
+  /** Month lock & finalization state */
+  monthLocks?: Record<string, MonthLockInfo>
   /** Profiles permanently removed — repairRoster must not resurrect from seed. */
   deletedEmployeeIds?: string[]
   deletedEmployeeNames?: string[]
@@ -404,6 +439,7 @@ export function writeHrMeta(custom: {
   activeFortnightMonth?: string
   activeFortnight?: '1-15' | '16-31'
   pettyCashInflowOverrides?: Record<string, number>
+  monthLocks?: Record<string, MonthLockInfo>
   deletedEmployeeIds?: string[]
   deletedEmployeeNames?: string[]
 }): void {
@@ -412,6 +448,7 @@ export function writeHrMeta(custom: {
     ...custom,
     pettyCashInflowOverrides:
       custom.pettyCashInflowOverrides ?? raw.pettyCashInflowOverrides,
+    monthLocks: custom.monthLocks ?? raw.monthLocks,
     deletedEmployeeIds: custom.deletedEmployeeIds ?? raw.deletedEmployeeIds,
     deletedEmployeeNames: custom.deletedEmployeeNames ?? raw.deletedEmployeeNames,
   })
@@ -460,6 +497,26 @@ export function rememberDeletedEmployee(emp: EmployeeProfile): void {
   const names = new Set(raw.deletedEmployeeNames || [])
   const key = normalizeNameLocal(emp.name)
   if (key) names.add(key)
+  writeHrMeta({
+    categories: raw.categories || [],
+    designations: raw.designations || [],
+    activeSalariedMonth: raw.activeSalariedMonth,
+    activeFortnightMonth: raw.activeFortnightMonth,
+    activeFortnight: raw.activeFortnight,
+    pettyCashInflowOverrides: raw.pettyCashInflowOverrides,
+    deletedEmployeeIds: [...ids],
+    deletedEmployeeNames: [...names],
+  })
+}
+
+/** Re-hire after permanent delete: allow this name again (keep other tombstones). */
+export function clearDeletedEmployeeTombstone(id?: string, name?: string): void {
+  const raw = readHrMetaRaw()
+  const ids = new Set(raw.deletedEmployeeIds || [])
+  const names = new Set(raw.deletedEmployeeNames || [])
+  if (id) ids.delete(id)
+  const key = normalizeNameLocal(name)
+  if (key) names.delete(key)
   writeHrMeta({
     categories: raw.categories || [],
     designations: raw.designations || [],
@@ -525,8 +582,22 @@ export async function hydratePayrollFromDb(): Promise<void> {
               ...(dbMeta.pettyCashInflowOverrides || {}),
               ...(localMeta.pettyCashInflowOverrides || {}),
             },
-            deletedEmployeeIds: localMeta.deletedEmployeeIds || dbMeta.deletedEmployeeIds || [],
-            deletedEmployeeNames: localMeta.deletedEmployeeNames || dbMeta.deletedEmployeeNames || [],
+            monthLocks: {
+              ...(dbMeta.monthLocks || {}),
+              ...(localMeta.monthLocks || {}),
+            },
+            deletedEmployeeIds: [
+              ...new Set([
+                ...(dbMeta.deletedEmployeeIds || []),
+                ...(localMeta.deletedEmployeeIds || []),
+              ]),
+            ],
+            deletedEmployeeNames: [
+              ...new Set([
+                ...(dbMeta.deletedEmployeeNames || []),
+                ...(localMeta.deletedEmployeeNames || []),
+              ]),
+            ],
           }
           memoryStore.set(key, JSON.stringify(merged))
           pendingPersists.set(key, merged)
@@ -645,4 +716,36 @@ export async function hydratePayrollFromDb(): Promise<void> {
   })()
 
   return hydratePromise
+}
+
+export function readMonthLock(month: string): MonthLockInfo | null {
+  const meta = readHrMetaRaw()
+  return meta.monthLocks?.[month] ?? null
+}
+
+export function isMonthLocked(month: string): boolean {
+  const lock = readMonthLock(month)
+  return Boolean(lock?.locked)
+}
+
+export async function writeMonthLockAsync(
+  month: string,
+  lockInfo: MonthLockInfo
+): Promise<boolean> {
+  const meta = readHrMetaRaw()
+  const nextLocks: Record<string, MonthLockInfo> = {
+    ...(meta.monthLocks || {}),
+    [month]: lockInfo,
+  }
+  const payload: HrMetaShape = {
+    ...meta,
+    monthLocks: nextLocks,
+  }
+  const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, payload)
+  if (isPayrollClient()) {
+    window.dispatchEvent(
+      new CustomEvent('payroll_synced', { detail: { month, lockChanged: true } })
+    )
+  }
+  return ok
 }

@@ -7,7 +7,7 @@ import {
   formatPayrollMonthLabel,
   hydratePayrollFromDb,
 } from '@/services/payrollService'
-import { ContractSalaryRecord, CustomColumn } from '@/types/payroll'
+import { ContractSalaryRecord, CustomColumn, EmployeePaySlip } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -25,11 +25,14 @@ import {
   CheckCircle2,
   Lock,
   FileSpreadsheet,
+  FileText,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
+import { EmployeePaySlipModal } from '@/components/payroll/EmployeePaySlipModal'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_CONTRACT_SALARY_WIDTHS = {
@@ -94,6 +97,10 @@ function ContractPayrollContent() {
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   // Contract Excel Sheet 4 / General Wages use 30-day rate base (not calendar 31).
   const [daysInMonth, setDaysInMonth] = useState<number>(30)
+  const [activeSlip, setActiveSlip] = useState<EmployeePaySlip | null>(null)
+
+  const isLocked = payrollService.isMonthLocked(selectedMonth)
+  const isEditable = canEditAccounts && !isLocked
 
   // Resizable column width hooks for all 3 views
   const {
@@ -273,12 +280,29 @@ function ContractPayrollContent() {
 
   // Totals calculations
   const totalBasic = contractList.reduce((sum, c) => sum + (c.basicSalary || 0), 0)
+  const totalLateAmount = contractList.reduce((sum, c) => sum + (c.lateAmount || 0), 0)
   const totalOT = contractList.reduce((sum, c) => sum + (c.otAmount || 0), 0)
   const totalOTHours = contractList.reduce((sum, c) => sum + (c.otHours || 0), 0)
   const totalEfficiency = contractList.reduce((sum, c) => sum + (c.efficiencyAmount || 0), 0)
   const totalGross = contractList.reduce((sum, c) => sum + (c.grossSalary || 0), 0)
   const totalAdvance = contractList.reduce((sum, c) => sum + (c.advanceDeduction || 0), 0)
   const totalTicket = contractList.reduce((sum, c) => sum + (c.ticketCharges || 0), 0)
+  // Sheet 4 Net Base Salary (Basic - Late - Advance - Ticket) - NO OT, NO Efficiency
+  const totalNetSalary = contractList.reduce(
+    (sum, c) =>
+      sum +
+      (c.netSalary !== undefined
+        ? c.netSalary
+        : Math.max(
+            0,
+            (c.basicSalary || 0) -
+              (c.lateAmount || 0) -
+              (c.advanceDeduction || 0) -
+              (c.ticketCharges || 0)
+          )),
+    0
+  )
+  // Sheet 10 Consolidated Net Amount (Gross - Late - Advance - Ticket) - INCLUDES Basic + OT + Efficiency
   const totalNet = contractList.reduce((sum, c) => sum + (c.netAmount || 0), 0)
 
   return (
@@ -364,6 +388,9 @@ function ContractPayrollContent() {
           }
         />
       </div>
+
+      {/* Month Lock & Finalization Status Banner */}
+      <MonthLockBanner month={selectedMonth} onStatusChange={reload} />
 
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
@@ -697,13 +724,24 @@ function ContractPayrollContent() {
                       />
                     </td>
 
-                    {/* Net Salary */}
+                    {/* Net Salary (Sheet 4 Base Net: Basic - Late - Advance - Ticket) - NO OT, NO Efficiency! */}
                     <td
                       style={{ width: `${salaryWidths.netAmount}px`, minWidth: `${salaryWidths.netAmount}px` }}
                       className="border-r border-slate-100 py-1.5 px-2 text-right font-bold text-[#0066cc] whitespace-nowrap bg-slate-50"
-                      title="Gross − Late − Advance − Ticket"
+                      title="Basic Salary − Late − Advance − Ticket (Sheet 4 Base Net)"
                     >
-                      {formatNumber(c.netAmount, 0)}
+                      {formatNumber(
+                        c.netSalary !== undefined
+                          ? c.netSalary
+                          : Math.max(
+                              0,
+                              (c.basicSalary || 0) -
+                                (c.lateAmount || 0) -
+                                (c.advanceDeduction || 0) -
+                                (c.ticketCharges || 0)
+                            ),
+                        0
+                      )}
                     </td>
 
                     {/* Custom Column Cells */}
@@ -732,13 +770,26 @@ function ContractPayrollContent() {
                       style={{ width: `${salaryWidths.action}px`, minWidth: `${salaryWidths.action}px` }}
                       className="py-1 px-1 text-center print:hidden"
                     >
-                      <button
-                        onClick={() => handleDeleteRow(c.id)}
-                        disabled={!canEditAccounts}
-                        className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const slip = payrollService.generateEmployeePaySlip(selectedMonth, c.id)
+                            setActiveSlip(slip)
+                          }}
+                          title="View Official Salary Slip / پرچی"
+                          className="p-1 text-slate-400 hover:text-[#0066cc] transition-colors cursor-pointer"
+                        >
+                          <FileText className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRow(c.id)}
+                          disabled={!isEditable}
+                          className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -752,10 +803,10 @@ function ContractPayrollContent() {
                   <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm">{formatCurrency(totalBasic)}</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
-                  <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(contractList.reduce((s, c) => s + (c.lateAmount || 0), 0), 0)}</td>
+                  <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalLateAmount, 0)}</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalAdvance, 0)}</td>
-                  <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalTicket, 0)}</td>
-                  <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm">{formatCurrency(totalNet)}</td>
+                  <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold" title="Total Ticket Charges Deductions">{formatNumber(totalTicket, 0)}</td>
+                  <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm" title="Total Net Base Salary (Sheet 4)">{formatCurrency(totalNetSalary)}</td>
                   {customColumns.map((col) => (
                     <td key={col.id} className="border-r border-slate-200 py-2 px-2 text-center font-sans text-[10px] text-slate-500">
                       —
@@ -767,15 +818,32 @@ function ContractPayrollContent() {
             </table>
           </div>
 
-          {/* Prominent Calculated Base Salary in Words */}
-          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
-            <div>
-              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Contract Basic in Words (PKR):</span>
-              <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(totalBasic)}</div>
+          {/* Prominent Calculated Base Salary & Deductions Breakdown */}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Gross Base Earned:</span>
+              <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(totalBasic)}</div>
+              <div className="text-[10px] text-slate-500 font-mono mt-1">Attn Days × Rate Per Day</div>
             </div>
-            <div className="sm:text-right border-t sm:border-t-0 border-slate-200 pt-2 sm:pt-0 w-full sm:w-auto">
-              <span className="text-[11px] font-semibold uppercase text-slate-500">Calculated Basic Earned:</span>
-              <div className="text-lg font-bold text-[#0066cc]">{formatCurrency(totalBasic)}</div>
+
+            <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-amber-700 tracking-wider">Advance Recovered:</span>
+              <div className="text-base font-bold text-amber-900 mt-0.5">- {formatCurrency(totalAdvance)}</div>
+              <div className="text-[10px] text-amber-600 font-mono mt-1">Deducted from staff ledger</div>
+            </div>
+
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Ticket Charges:</span>
+              <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(totalTicket)}</div>
+              <div className="text-[10px] text-slate-500 font-mono mt-1">{contractList.length} employees × Rs. 5 = 75</div>
+            </div>
+
+            <div className="rounded-md border border-blue-200 bg-blue-50/60 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-[#0066cc] tracking-wider">Net Base Salary Disbursal:</span>
+              <div className="text-lg font-bold text-[#0066cc] mt-0.5">{formatCurrency(totalNetSalary)}</div>
+              <div className="text-[10px] text-slate-600 font-medium mt-1 truncate" title={numberToWordsPKR(totalNetSalary)}>
+                {numberToWordsPKR(totalNetSalary)}
+              </div>
             </div>
           </div>
         </div>
@@ -1318,13 +1386,26 @@ function ContractPayrollContent() {
                       style={{ width: `${netWidths.action}px`, minWidth: `${netWidths.action}px` }}
                       className="py-1 px-1 text-center print:hidden"
                     >
-                      <button
-                        onClick={() => handleDeleteRow(c.id)}
-                        disabled={!canEditAccounts}
-                        className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const slip = payrollService.generateEmployeePaySlip(selectedMonth, c.id)
+                            setActiveSlip(slip)
+                          }}
+                          title="View Official Salary Slip / پرچی"
+                          className="p-1 text-slate-400 hover:text-[#0066cc] transition-colors cursor-pointer"
+                        >
+                          <FileText className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRow(c.id)}
+                          disabled={!isEditable}
+                          className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1340,7 +1421,7 @@ function ContractPayrollContent() {
                   <td className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-[#0066cc]">{formatNumber(totalEfficiency, 0)}</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right font-semibold">{formatNumber(totalGross, 0)}</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalAdvance, 0)}</td>
-                  <td className="border-r border-slate-200 py-2 px-1 text-center text-slate-500">{totalTicket}</td>
+                  <td className="border-r border-slate-200 py-2 px-1 text-center text-red-600 font-semibold" title="Total Ticket Charges Deductions">{formatNumber(totalTicket, 0)}</td>
                   <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm">{formatCurrency(totalNet)}</td>
                   {customColumns.map((col) => (
                     <td key={col.id} className="border-r border-slate-200 py-2 px-2 text-center font-sans text-[10px] text-slate-500">
@@ -1353,18 +1434,42 @@ function ContractPayrollContent() {
             </table>
           </div>
 
-          {/* Prominent Calculated Net Disbursal in Words */}
-          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
-            <div>
-              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Net Contract Disbursal in Words (PKR):</span>
-              <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(totalNet)}</div>
+          {/* Prominent Calculated Consolidated Payout Breakdown */}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Consolidated Gross:</span>
+              <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(totalGross)}</div>
+              <div className="text-[10px] text-slate-500 font-mono mt-1">Basic + OT ({formatNumber(totalOT, 0)}) + Eff ({formatNumber(totalEfficiency, 0)})</div>
             </div>
-            <div className="sm:text-right border-t sm:border-t-0 border-slate-200 pt-2 sm:pt-0 w-full sm:w-auto">
-              <span className="text-[11px] font-semibold uppercase text-slate-500">Calculated Net Payout:</span>
-              <div className="text-lg font-bold text-[#0066cc]">{formatCurrency(totalNet)}</div>
+
+            <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-amber-700 tracking-wider">Advance Recovered:</span>
+              <div className="text-base font-bold text-amber-900 mt-0.5">- {formatCurrency(totalAdvance)}</div>
+              <div className="text-[10px] text-amber-600 font-mono mt-1">Deducted from staff ledger</div>
+            </div>
+
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Ticket Charges:</span>
+              <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(totalTicket)}</div>
+              <div className="text-[10px] text-slate-500 font-mono mt-1">{contractList.length} employees × Rs. 5 = 75</div>
+            </div>
+
+            <div className="rounded-md border border-blue-200 bg-blue-50/60 p-3.5 font-sans">
+              <span className="text-[11px] font-semibold uppercase text-[#0066cc] tracking-wider">Net Contract Disbursal:</span>
+              <div className="text-lg font-bold text-[#0066cc] mt-0.5">{formatCurrency(totalNet)}</div>
+              <div className="text-[10px] text-slate-600 font-medium mt-1 truncate" title={numberToWordsPKR(totalNet)}>
+                {numberToWordsPKR(totalNet)}
+              </div>
             </div>
           </div>
         </div>
+      )}
+      {/* Employee Pay Slip Modal */}
+      {activeSlip && (
+        <EmployeePaySlipModal
+          slip={activeSlip}
+          onClose={() => setActiveSlip(null)}
+        />
       )}
     </div>
   )

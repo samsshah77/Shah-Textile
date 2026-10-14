@@ -167,7 +167,21 @@ function HelpersPayrollContent() {
 
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
-    const filtered = helpersList.filter((h) => h.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+    const row = helpersList.find((h) => h.id === id)
+    if (!row) return
+    payrollService.deleteWageSheetPerson('helper', row)
+    const filtered = helpersList
+      .filter((h) => h.id !== id)
+      .filter(
+        (h) =>
+          !(
+            (row.employeeId && h.employeeId === row.employeeId) ||
+            (row.employeeName &&
+              h.employeeName &&
+              h.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
+          )
+      )
+      .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
     setHelpersList(filtered)
   }
 

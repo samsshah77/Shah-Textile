@@ -15,9 +15,10 @@ import { EmployeeProfile, EmployeeStatus } from '@/types/payroll'
 import { useAuth } from '@/context/AuthContext'
 import { AlertModal } from '@/components/ui/AlertModal'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
-import { ArrowLeft, Clock, Loader2, Pencil, Trash2, UserPlus, UserX, X } from 'lucide-react'
+import { ArrowLeft, Clock, Loader2, Pencil, Trash2, UserPlus, UserX, X, History } from 'lucide-react'
 import { ProfileAvatar } from '@/components/payroll/ProfileAvatar'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { EmployeeSalaryHistoryModal } from '@/components/payroll/EmployeeSalaryHistoryModal'
 
 const DOJ_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
 
@@ -77,6 +78,7 @@ export function EmployeeProfileForm({
   const [showRejoinConfirm, setShowRejoinConfirm] = useState(false)
   const [rejoinDoj, setRejoinDoj] = useState(() => new Date().toISOString().slice(0, 10))
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showSalaryHistory, setShowSalaryHistory] = useState(false)
   /** Edit mode page starts locked until user clicks corner Edit. Register starts open. */
   const [isFormEditing, setIsFormEditing] = useState(mode === 'create')
 
@@ -434,6 +436,16 @@ export function EmployeeProfileForm({
               if (editingEmployee) loadEmployee(editingEmployee, m)
             }}
           />
+          {mode === 'edit' && editingEmployee && (
+            <button
+              type="button"
+              onClick={() => setShowSalaryHistory(true)}
+              className="erp-btn-secondary text-xs !text-slate-800"
+            >
+              <History className="size-3.5 text-[#0066cc]" />
+              Salary History & Slips
+            </button>
+          )}
           {mode === 'edit' && canEditAccounts && !isFormEditing && (
             <button
               type="button"
@@ -1063,6 +1075,13 @@ export function EmployeeProfileForm({
         type="confirm"
         danger
       />
+
+      {showSalaryHistory && editingEmployee && (
+        <EmployeeSalaryHistoryModal
+          employee={editingEmployee}
+          onClose={() => setShowSalaryHistory(false)}
+        />
+      )}
     </div>
   )
 }

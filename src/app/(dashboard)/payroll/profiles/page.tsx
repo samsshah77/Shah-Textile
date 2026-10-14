@@ -22,10 +22,12 @@ import {
   Table as TableIcon,
   Phone,
   Pencil,
+  History,
 } from 'lucide-react'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { ProfileAvatar } from '@/components/payroll/ProfileAvatar'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { EmployeeSalaryHistoryModal } from '@/components/payroll/EmployeeSalaryHistoryModal'
 
 const HR_TABS = [
   { id: 'ALL', label: 'All' },
@@ -50,6 +52,7 @@ function EmployeeProfilesContent() {
   const [filterCategory, setFilterCategory] = useState<string>(initialTab)
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
+  const [selectedHistoryEmp, setSelectedHistoryEmp] = useState<EmployeeProfile | null>(null)
 
   const reload = () => {
     setEmployees(payrollService.getEmployees())
@@ -305,7 +308,24 @@ function EmployeeProfilesContent() {
                           ) : null}
                       </td>
                       <td className="px-3 py-2.5 text-right print:hidden text-slate-400">
-                        <Pencil className="size-3.5 inline-block" />
+                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            title="View Salary History & Pay Slips"
+                            onClick={() => setSelectedHistoryEmp(emp)}
+                            className="p-1 text-slate-400 hover:text-[#0066cc] hover:bg-slate-100 rounded transition-colors cursor-pointer"
+                          >
+                            <History className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Edit Profile"
+                            onClick={() => openProfile(emp.id)}
+                            className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors cursor-pointer"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -376,6 +396,14 @@ function EmployeeProfilesContent() {
         <p className="mt-3 text-xs text-rose-700">
           Resigned archive — profile kholo: Re-Join ya permanent Delete wahan milenge.
         </p>
+      )}
+
+      {/* Employee Salary & Wages History Modal */}
+      {selectedHistoryEmp && (
+        <EmployeeSalaryHistoryModal
+          employee={selectedHistoryEmp}
+          onClose={() => setSelectedHistoryEmp(null)}
+        />
       )}
     </main>
   )

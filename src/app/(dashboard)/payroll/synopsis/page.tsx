@@ -21,7 +21,8 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
-import { fortnightDisplayLabel, secondHalfLabel } from '@/components/payroll/FortnightSelect'
+import { FortnightSelect, fortnightDisplayLabel, secondHalfLabel } from '@/components/payroll/FortnightSelect'
+import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 function DisbursementSynopsisContent() {
@@ -205,6 +206,9 @@ function DisbursementSynopsisContent() {
           }
         />
       </div>
+
+      {/* Month Lock & Finalization Status Banner */}
+      <MonthLockBanner month={selectedMonth} onStatusChange={reloadData} />
 
       {/* Tab 1: Grand Monthly Summary */}
       {activeTab === 'grand' && (

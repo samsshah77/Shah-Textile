@@ -111,7 +111,7 @@ export function buildFortnightSynopsis(
       totalWeaverHol2 +
       totalWeaverEff2 +
       totalHelperWages2 +
-      totalContractor2 -
+      totalContractor2 +
       totalTicket
   )
   const pettyCashInflow = ctx.getPettyCashInflow(month, '16-31')
@@ -150,7 +150,7 @@ export function buildFortnightSynopsis(
         description: `Contractors Bill Payments (${contractors2.length} Contractors)`,
         amount: totalContractor2,
       },
-      { serialNo: 10, description: 'Ticket Charges Deductions', amount: -totalTicket },
+      { serialNo: 10, description: 'Ticket amount', amount: totalTicket },
     ],
     totalPayrollCash,
     pettyCashInflow,
@@ -200,6 +200,7 @@ export function buildMonthlyGrandSummary(
   const totalContractorPayments =
     contractors1.reduce((s, c) => s + (c.netPayment || 0), 0) +
     contractors2.reduce((s, c) => s + (c.netPayment || 0), 0)
+  const totalTicket = contract.reduce((s, c) => s + (c.ticketCharges || 0), 0)
 
   return {
     month,
@@ -283,6 +284,14 @@ export function buildMonthlyGrandSummary(
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalContractorPayments,
+      },
+      {
+        serialNo: 10,
+        description: 'Ticket Charges',
+        amount: totalTicket,
+        chequeAmount: 0,
+        advance: 0,
+        totalGrossHead: totalTicket,
       },
     ],
   }

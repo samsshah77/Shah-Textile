@@ -35,6 +35,7 @@ export function EditLoomModal({
   const [defaultRpm, setDefaultRpm] = useState<number>(340)
   const [status, setStatus] = useState<LoomStatus>('RUNNING')
   const [qualityId, setQualityId] = useState<string>('')
+  const [isTwinBeam, setIsTwinBeam] = useState<boolean>(false)
   const [pictureDataUrls, setPictureDataUrls] = useState<string[]>([])
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export function EditLoomModal({
       setShed(loom.shed || 'Main Floor')
       setDefaultRpm(loom.defaultRpm || 340)
       setStatus(loom.status || 'RUNNING')
+      setIsTwinBeam(Boolean(loom.isTwinBeam))
       {
         const qid = loom.qualityId || ''
         const q = qid ? qualities.find((item) => item.id === qid) : null
@@ -71,6 +73,7 @@ export function EditLoomModal({
       defaultRpm: Number(defaultRpm) || 0,
       status,
       qualityId: qualityId || null,
+      isTwinBeam,
       ...pictures,
     })
     onClose()
@@ -223,6 +226,28 @@ export function EditLoomModal({
                     value={status}
                     onChange={(newStatus) => setStatus(newStatus)}
                   />
+                </div>
+
+                <div className="col-12">
+                  <div className="form-check form-switch p-2.5 ps-5 rounded-3 border bg-light d-flex align-items-center justify-content-between">
+                    <div>
+                      <label className="form-check-label fw-bold small text-dark d-block mb-0" htmlFor="edit-twin-beam-toggle">
+                        <i className="bi bi-layers-half text-primary me-1" /> Twin Beam Loom
+                      </label>
+                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                        Is loom par 2 beams ek sath issue/mount kiye ja sakte hain
+                      </span>
+                    </div>
+                    <input
+                      className="form-check-input ms-0"
+                      type="checkbox"
+                      role="switch"
+                      id="edit-twin-beam-toggle"
+                      checked={isTwinBeam}
+                      onChange={(e) => setIsTwinBeam(e.target.checked)}
+                      style={{ cursor: 'pointer', transform: 'scale(1.2)' }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

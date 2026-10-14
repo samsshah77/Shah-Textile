@@ -157,6 +157,8 @@ export interface LoomMaster {
   statusSince?: string | null
   qualityId: string | null
   weftYarnId: string | null
+  /** Twin Beam loom: supports mounting up to 2 beams simultaneously */
+  isTwinBeam?: boolean
 }
 
 export interface BeamMaster {
@@ -1238,7 +1240,18 @@ function beamOnLoom(beam: BeamMaster, loomNumber: number) {
   return normalizeLoomRef(beam.usedInLoom) === String(loomNumber)
 }
 
-/** Beam currently mounted on loom — blocks a second mount until first is moved. */
+/** All beams currently mounted on a given loom. */
+export function getMountedBeamsOnLoom(
+  beams: BeamMaster[],
+  loomNumber: number,
+  exceptBeamNo?: string
+): BeamMaster[] {
+  return beams.filter(
+    (b) => beamOnLoom(b, loomNumber) && (!exceptBeamNo || b.beamNo !== exceptBeamNo)
+  )
+}
+
+/** Beam currently mounted on loom — blocks a second mount until first is moved (for single-beam looms). */
 export function findMountedBeamOnLoom(
   beams: BeamMaster[],
   loomNumber: number,
@@ -1391,6 +1404,7 @@ function seedLooms(): LoomMaster[] {
       statusSince: l.loomNumber === 13 ? '2026-09-22' : l.loomNumber === 27 ? '2026-09-23' : null,
       qualityId: null,
       weftYarnId: null,
+      isTwinBeam: false,
     }
   })
 }
@@ -3034,6 +3048,7 @@ class ProductionMastersService {
       status: partial?.status || 'RUNNING',
       qualityId: partial?.qualityId ?? null,
       weftYarnId: partial?.weftYarnId ?? null,
+      isTwinBeam: Boolean(partial?.isTwinBeam),
     })
     this.saveLooms(looms)
     return looms
@@ -3143,10 +3158,16 @@ class ProductionMastersService {
         ? Number(partial.usedInLoom)
         : NaN
     if (Number.isFinite(loomNum) && loomNum > 0) {
-      const blocking = findMountedBeamOnLoom(beams, loomNum)
-      if (blocking) {
+      const loom = this.getLooms().find((l) => l.loomNumber === loomNum)
+      const isTwin = Boolean(loom?.isTwinBeam)
+      const maxBeams = isTwin ? 2 : 1
+      const mountedBeams = getMountedBeamsOnLoom(beams, loomNum)
+      if (mountedBeams.length >= maxBeams) {
+        const names = mountedBeams.map((b) => `"${b.beamNo}"`).join(' aur ')
         throw new Error(
-          `Loom ${loomNum} pe pehle se Beam "${blocking.beamNo}" laga hai. Pehle us beam ko Store / Sizing pe shift karein, phir naya beam lagaen.`
+          isTwin
+            ? `Loom ${loomNum} Twin Beam loom hai aur is par pehle se 2 Beams (${names}) lage hain. Pehle kisi ek beam ko Store / Sizing pe shift karein, phir naya beam lagaen.`
+            : `Loom ${loomNum} pe pehle se Beam ${names} laga hai. Pehle us beam ko Store / Sizing pe shift karein, phir naya beam lagaen.`
         )
       }
     }
@@ -3231,14 +3252,21 @@ class ProductionMastersService {
       }
     }
 
-    const blocking = findMountedBeamOnLoom(current, loomNumber, beamNo)
-    if (blocking) {
+    const loom = this.getLooms().find((l) => l.loomNumber === loomNumber)
+    const isTwin = Boolean(loom?.isTwinBeam)
+    const maxBeams = isTwin ? 2 : 1
+    const mountedBeams = getMountedBeamsOnLoom(current, loomNumber, beamNo)
+
+    if (mountedBeams.length >= maxBeams) {
+      const names = mountedBeams.map((b) => `"${b.beamNo}"`).join(' aur ')
       return {
         ok: false,
         beams: current,
         loomNumber,
-        blockingBeamNo: blocking.beamNo,
-        message: `Loom ${loomNumber} pe pehle se Beam "${blocking.beamNo}" laga hai.\n\nPehle us beam ki location Store ya Sizing pe change karein, phir ye beam lagaen.`,
+        blockingBeamNo: mountedBeams[0]?.beamNo,
+        message: isTwin
+          ? `Loom ${loomNumber} Twin Beam loom hai aur is par pehle se 2 Beams (${names}) lage hain.\n\nPehle kisi ek beam ki location Store ya Sizing pe change karein, phir ye beam lagaen.`
+          : `Loom ${loomNumber} pe pehle se Beam ${names} laga hai.\n\nPehle us beam ki location Store ya Sizing pe change karein, phir ye beam lagaen.`,
       }
     }
 
@@ -3257,10 +3285,11 @@ class ProductionMastersService {
       return b
     })
     this.saveBeams(beams)
-    const mounted = beams.find((b) => b.beamNo === beamNo)
+    const allMounted = getMountedBeamsOnLoom(beams, loomNumber)
+    const lotStr = allMounted.map((b) => beamDailyEntryLot(b) || b.beamNo).filter(Boolean).join(' + ')
     // Stamp Sw# lot on Daily Entry (Excel SW # Lot column).
     this.updateSheetEntry(dateStr, loomNumber, {
-      lot: mounted ? beamDailyEntryLot(mounted) : beamNo,
+      lot: lotStr,
     })
     return { ok: true, beams }
   }
@@ -3309,6 +3338,8 @@ class ProductionMastersService {
   }
 
   unmountBeam(beamNo: string, location: 'STORE' | 'SIZING' = 'STORE', dateStr?: string): BeamMaster[] {
+    const prev = this.getBeams().find((b) => b.beamNo === beamNo)
+    const prevLoom = prev?.usedInLoom ? Number(prev.usedInLoom) : NaN
     const patch: Partial<BeamMaster> = {
       usedInLoom: null,
       location,
@@ -3316,7 +3347,16 @@ class ProductionMastersService {
       beamEndedOn: dateStr || null,
     }
     if (location === 'SIZING') patch.fillStatus = 'EMPTY'
-    return this.updateBeam(beamNo, patch)
+    const updated = this.updateBeam(beamNo, patch)
+    if (Number.isFinite(prevLoom) && prevLoom > 0) {
+      const remainingMounted = getMountedBeamsOnLoom(updated, prevLoom)
+      const day = String(dateStr || getProductionToday()).slice(0, 10)
+      const lotStr = remainingMounted.map((b) => beamDailyEntryLot(b) || b.beamNo).filter(Boolean).join(' + ')
+      this.updateSheetEntry(day, prevLoom, { lot: lotStr })
+      const today = getProductionToday()
+      if (today !== day) this.updateSheetEntry(today, prevLoom, { lot: lotStr })
+    }
+    return updated
   }
 
   /**
@@ -4429,9 +4469,10 @@ class ProductionMastersService {
         shiftBMeters: shiftB,
         loomNumber: loom.loomNumber,
       })
-      const fromBeam = beam ? beamDailyEntryLot(beam) : ''
+      const mountedBeams = getMountedBeamsOnLoom(beams, loom.loomNumber)
+      const fromBeam = mountedBeams.map((b) => beamDailyEntryLot(b)).filter(Boolean).join(' + ')
       // Mounted beam owns SW # (read-only in Daily Entry). Beam Identity is never the lot.
-      const lot = beam ? fromBeam : ''
+      const lot = fromBeam || (beam ? beamDailyEntryLot(beam) : '')
 
       const built: DailyLoomProductionEntry = {
         id: sheetEntryId(dateStr, loom.loomNumber, 1),

@@ -12,6 +12,7 @@ import {
   productionMastersService,
   type LotKind,
   type MountBeamResult,
+  getMountedBeamsOnLoom,
 } from '@/services/productionMastersService'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -340,15 +341,30 @@ export function BeamMasterTable({
     [visibleColKeys, widths]
   )
 
-  const filteredBeams = useMemo(() => {
-    let list: BeamMaster[]
+  const baseBeamsForTab = useMemo(() => {
     if (filter === 'IN_STOCK') {
-      list = beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE')
+      return beams.filter((b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE')
     } else if (filter === 'AT_SIZING') {
-      list = beams.filter((b) => isEmptyBeam(b))
+      return beams.filter((b) => isEmptyBeam(b))
     } else {
-      list = beams.filter((b) => Boolean(b.usedInLoom))
+      return beams.filter((b) => Boolean(b.usedInLoom))
     }
+  }, [beams, filter])
+
+  const lotCounts = useMemo(() => {
+    let all = baseBeamsForTab.length
+    let sw = 0
+    let wp = 0
+    for (const b of baseBeamsForTab) {
+      const kind = parseLotKind(b.swLot).kind
+      if (kind === 'Sw') sw++
+      else if (kind === 'Wp') wp++
+    }
+    return { all, sw, wp }
+  }, [baseBeamsForTab])
+
+  const filteredBeams = useMemo(() => {
+    let list = baseBeamsForTab
 
     if (lotKindFilter !== 'ALL') {
       list = list.filter((b) => parseLotKind(b.swLot).kind === lotKindFilter)
@@ -370,7 +386,7 @@ export function BeamMasterTable({
       return (a.beamNo || '').localeCompare(b.beamNo || '', undefined, { numeric: true })
     }
     return list.slice().sort(swSort)
-  }, [beams, filter, lotKindFilter])
+  }, [baseBeamsForTab, lotKindFilter])
 
   const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
   const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
@@ -491,12 +507,21 @@ export function BeamMasterTable({
         <option value="STORE">In Stock (Store)</option>
         <option value="SIZING">Empty Beam</option>
         <optgroup label="Mount on Loom">
-          {activeLooms.map((l) => (
-            <option key={l.loomNumber} value={String(l.loomNumber)}>
-              Loom {l.loomNumber}
-              {l.model ? ` (${l.model})` : ''} — {LOOM_STATUS_LABEL[l.status as LoomStatus]}
-            </option>
-          ))}
+          {activeLooms.map((l) => {
+            const isTwin = Boolean(l.isTwinBeam)
+            const otherMounted = getMountedBeamsOnLoom(beams, l.loomNumber, b.beamNo)
+            const count = otherMounted.length
+            const max = isTwin ? 2 : 1
+            const isFull = count >= max
+            return (
+              <option key={l.loomNumber} value={String(l.loomNumber)}>
+                Loom {l.loomNumber}
+                {l.model ? ` (${l.model})` : ''}
+                {isTwin ? ` [Twin Beam${count > 0 ? `: ${count}/${max}` : ''}]` : ''}
+                {isFull ? ' — FULL' : ` — ${LOOM_STATUS_LABEL[l.status as LoomStatus]}`}
+              </option>
+            )
+          })}
         </optgroup>
       </select>
     )
@@ -519,21 +544,21 @@ export function BeamMasterTable({
               className={`btn ${lotKindFilter === 'ALL' ? 'btn-primary' : 'btn-outline-primary'}`}
               onClick={() => setLotKindFilter('ALL')}
             >
-              All
+              All ({lotCounts.all})
             </button>
             <button
               type="button"
               className={`btn ${lotKindFilter === 'Sw' ? 'btn-primary' : 'btn-outline-primary'}`}
               onClick={() => setLotKindFilter('Sw')}
             >
-              Sw #
+              Sw # ({lotCounts.sw})
             </button>
             <button
               type="button"
               className={`btn ${lotKindFilter === 'Wp' ? 'btn-primary' : 'btn-outline-primary'}`}
               onClick={() => setLotKindFilter('Wp')}
             >
-              Wp #
+              Wp # ({lotCounts.wp})
             </button>
           </div>
           {!toolbarInChrome && editToggle}

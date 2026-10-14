@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
-import { StaffSalaryRecord, CustomColumn } from '@/types/payroll'
+import { StaffSalaryRecord, CustomColumn, EmployeePaySlip } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -22,11 +22,14 @@ import {
   X,
   Lock,
   FileSpreadsheet,
+  FileText,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
+import { EmployeePaySlipModal } from '@/components/payroll/EmployeePaySlipModal'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
@@ -56,6 +59,10 @@ export default function StaffSalariesPage() {
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   // Staff Excel / General Wages use 30-day rate base (not calendar 31).
   const [daysInMonth, setDaysInMonth] = useState<number>(30)
+  const [activeSlip, setActiveSlip] = useState<EmployeePaySlip | null>(null)
+
+  const isLocked = payrollService.isMonthLocked(selectedMonth)
+  const isEditable = canEditAccounts && !isLocked
 
   const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
     'staff_salaries_v1',
@@ -262,8 +269,8 @@ export default function StaffSalariesPage() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                  disabled={!isEditable}
+                  className="erp-btn-primary text-xs !min-h-9 !h-9 disabled:opacity-50"
                 >
                   <Save className="size-3.5" />
                   <span>Save</span>
@@ -282,6 +289,9 @@ export default function StaffSalariesPage() {
           }
         />
       </div>
+
+      {/* Month Lock & Finalization Status Banner */}
+      <MonthLockBanner month={selectedMonth} onStatusChange={reload} />
 
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
@@ -551,7 +561,7 @@ export default function StaffSalariesPage() {
                   >
                     <NumericCellInput
                       value={st.attendanceDays || 0}
-                      disabled={!canEditAccounts}
+                      disabled={!isEditable}
                       navRow={idx}
                       navCol={0}
                       onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
@@ -593,7 +603,7 @@ export default function StaffSalariesPage() {
                   >
                     <NumericCellInput
                       value={st.otHours || 0}
-                      disabled={!canEditAccounts}
+                      disabled={!isEditable}
                       navRow={idx}
                       navCol={1}
                       onValueChange={(v) => handleCellChange(idx, 'otHours', v)}
@@ -624,7 +634,7 @@ export default function StaffSalariesPage() {
                   >
                     <NumericCellInput
                       value={st.lessAdvance || 0}
-                      disabled={!canEditAccounts}
+                      disabled={!isEditable}
                       navRow={idx}
                       navCol={2}
                       onValueChange={(v) => handleCellChange(idx, 'lessAdvance', v)}
@@ -639,7 +649,7 @@ export default function StaffSalariesPage() {
                   >
                     <NumericCellInput
                       value={st.chequeAmount || 0}
-                      disabled={!canEditAccounts}
+                      disabled={!isEditable}
                       navRow={idx}
                       navCol={3}
                       onValueChange={(v) => handleCellChange(idx, 'chequeAmount', v)}
@@ -689,14 +699,27 @@ export default function StaffSalariesPage() {
                     style={{ width: `${widths.action}px`, minWidth: `${widths.action}px` }}
                     className="py-1 px-1 text-center print:hidden"
                   >
-                    <button
-                      onClick={() => handleDeleteRow(st.id)}
-                      disabled={!canEditAccounts}
-                      title="Delete row"
-                      className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const slip = payrollService.generateEmployeePaySlip(selectedMonth, st.id)
+                          setActiveSlip(slip)
+                        }}
+                        title="View Official Salary Slip / پرچی"
+                        className="p-1 text-slate-400 hover:text-[#0066cc] transition-colors cursor-pointer"
+                      >
+                        <FileText className="size-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRow(st.id)}
+                        disabled={!isEditable}
+                        title="Delete row"
+                        className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -770,6 +793,13 @@ export default function StaffSalariesPage() {
           <div>• <span className="font-semibold text-slate-800">Per Day</span> = Salary ÷ {daysInMonth}</div>
         </div>
       </div>
+      {/* Employee Pay Slip Modal */}
+      {activeSlip && (
+        <EmployeePaySlipModal
+          slip={activeSlip}
+          onClose={() => setActiveSlip(null)}
+        />
+      )}
     </div>
   )
 }

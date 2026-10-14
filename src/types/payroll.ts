@@ -107,6 +107,7 @@ export interface ContractSalaryRecord {
   grossSalary: number;
   advanceDeduction: number;
   ticketCharges: number;
+  netSalary?: number;
   netAmount: number;
   month: string;
   customFields?: Record<string, string | number>;
@@ -233,4 +234,81 @@ export interface PettyCashRecord {
   fortnight: '1-15' | '16-31';
   month: string;
   customFields?: Record<string, string | number>;
+}
+
+export interface MonthLockInfo {
+  locked: boolean;
+  lockedAt?: string;
+  lockedBy?: string;
+  notes?: string;
+  disbursalSummary?: {
+    staffTotal: number;
+    weaversTotal: number;
+    contractTotal: number;
+    helpersTotal: number;
+    contractorsTotal: number;
+    grandTotal: number;
+    employeeCount: number;
+  };
+}
+
+export interface EmployeePaySlip {
+  month: string;
+  slipNo: string;
+  employeeId?: string;
+  employeeName: string;
+  fatherName?: string;
+  cnic?: string;
+  phone?: string;
+  designation: string;
+  department?: string;
+  category: EmployeeCategory;
+  doj?: string;
+  
+  // Attendance & Rates
+  dutyHrs?: number;
+  attendanceDays: number;
+  ratePerDay: number;
+  basicSalary: number;
+  
+  // Earnings
+  otHours?: number;
+  otRate?: number;
+  otAmount?: number;
+  efficiencyAmount?: number;
+  extraLoomAmount?: number;
+  attendanceAllowance?: number;
+  holidayAmount?: number;
+  grossAmount: number;
+  
+  // Deductions
+  advanceDeduction: number;
+  lateDeduction?: number;
+  ticketCharges?: number;
+  totalDeductions: number;
+  
+  // Net Payable
+  netPayable: number;
+  paymentMode: 'Cash' | 'Bank Cheque';
+  chequeAmount?: number;
+  netCashAmount?: number;
+  
+  // Status & Meta
+  isLocked: boolean;
+  lockedAt?: string;
+  lockedBy?: string;
+  remarks?: string;
+}
+
+export interface EmployeeSalaryHistoryItem {
+  month: string;
+  category: EmployeeCategory;
+  designation: string;
+  attendanceDays: number;
+  basicSalary: number;
+  otAmount: number;
+  grossAmount: number;
+  advanceDeduction: number;
+  netPayable: number;
+  isLocked: boolean;
 }

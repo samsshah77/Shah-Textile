@@ -30,6 +30,7 @@ export function loomRowToMaster(row: {
   statusSince: string | null
   qualityId: string | null
   weftYarnId: string | null
+  isTwinBeam?: boolean | null
 }): LoomMaster {
   const urls = asUrls(row.pictureDataUrls)
   const primary = row.pictureDataUrl || urls[0] || ''
@@ -48,6 +49,7 @@ export function loomRowToMaster(row: {
     statusSince: row.statusSince,
     qualityId: row.qualityId,
     weftYarnId: row.weftYarnId,
+    isTwinBeam: Boolean((row as { isTwinBeam?: boolean | null }).isTwinBeam),
   }
 }
 
@@ -136,6 +138,7 @@ export async function dbSaveLooms(looms: LoomMaster[]): Promise<void> {
         statusSince: l.statusSince ?? null,
         qualityId: l.qualityId,
         weftYarnId: l.weftYarnId,
+        isTwinBeam: Boolean(l.isTwinBeam),
       })),
     })
   })

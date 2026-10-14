@@ -205,6 +205,7 @@ model FloorLoom {
   statusSince     String?
   qualityId       String?
   weftYarnId      String?
+  isTwinBeam      Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

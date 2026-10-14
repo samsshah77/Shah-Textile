@@ -515,6 +515,22 @@ export function sheetRowBelongsToEmployee(
   return Boolean(canonical && canonical.id === emp.id)
 }
 
+/**
+ * Match sheet rows to a person being permanently deleted.
+ * Do NOT require `emp` to still be on the live roster (delete already removed them).
+ */
+export function sheetRowBelongsToDeletedEmployee(
+  emp: EmployeeProfile,
+  name?: string,
+  designation?: string,
+  employeeId?: string
+): boolean {
+  if (employeeId && emp.id) return employeeId === emp.id
+  if (!namesMatch(name, emp.name)) return false
+  if (designation && !sameJobFamily(emp, designation)) return false
+  return true
+}
+
 export function formatPayrollMonthLabel(month: string): string {
   try {
     const [y, m] = month.split('-').map(Number)
@@ -758,11 +774,16 @@ export function calculateContractSalaryRow(
         ? Math.round(lateHours * ratePerHr)
         : 0
 
-  // Contract Sheet 7 (OT & Efficiency): Gross = Basic + OT + Efficiency
-  const grossSalary = basicSalary + otAmount + efficiencyAmount
+  // Contract Excel Sheet 4 (Contract Employees Salaries):
+  // Gross Salary = Basic Salary = attendanceDays × ratePerDay
+  // Net Base Salary = Basic − Late − Advance − Ticket (No OT or Efficiency added!)
+  const netSalary = Math.max(0, basicSalary - lateAmount - advanceDeduction - ticketCharges)
 
-  // Net = Gross − Advance − Ticket
-  const netAmount = Math.max(0, grossSalary - advanceDeduction - ticketCharges)
+  // Contract Excel Sheet 10 (Net Payment Contract 1 to 30 / Consolidated Settlement):
+  // Gross = Basic + OT + Efficiency
+  // Net Amount = Gross − Late − Advance − Ticket
+  const grossSalary = basicSalary + otAmount + efficiencyAmount
+  const netAmount = Math.max(0, grossSalary - lateAmount - advanceDeduction - ticketCharges)
 
   return {
     id: row.id || `cnt-${Date.now()}`,
@@ -783,6 +804,7 @@ export function calculateContractSalaryRow(
     grossSalary,
     advanceDeduction,
     ticketCharges,
+    netSalary,
     netAmount,
     month,
     customFields: row.customFields,

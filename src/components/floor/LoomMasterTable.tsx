@@ -38,7 +38,7 @@ import { useAlertDialog } from '@/context/AlertDialogContext'
 const MODELS: LoomCategory[] = ['G6200', 'G6300', 'PU']
 
 const DEFAULT_WIDTHS: Record<string, number> = {
-  loom: 72,
+  loom: 85,
   picture: 72,
   name: 150,
   model: 95,
@@ -276,6 +276,15 @@ export function LoomMasterTable({
     return (
       <div className="sara-loom-num-cell position-relative d-inline-flex align-items-center gap-1">
         <span className="fw-semibold">{loom.loomNumber}</span>
+        {loom.isTwinBeam && (
+          <span
+            className="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0"
+            style={{ fontSize: '0.62rem' }}
+            title="Twin Beam Loom (Up to 2 Beams mounted)"
+          >
+            Twin
+          </span>
+        )}
         {segs > 1 && (
           <span
             className="d-inline-flex align-items-center"
@@ -828,6 +837,30 @@ export function LoomMasterTable({
                     </div>
                   ) : (
                     <div className={`small ${qualityCellClass(l)}`}>{qualityPartsView(l)}</div>
+                  )}
+                </div>
+
+                <div className="d-flex align-items-center justify-content-between py-1 border-top border-bottom my-1">
+                  <span className="small fw-semibold text-secondary">Beam Type:</span>
+                  {masterEdit ? (
+                    <div className="form-check form-switch m-0 d-flex align-items-center gap-1">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        role="switch"
+                        id={`twin-switch-${l.loomNumber}`}
+                        checked={Boolean(l.isTwinBeam)}
+                        onChange={(e) => onUpdate(l.loomNumber, { isTwinBeam: e.target.checked })}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <label className="form-check-label small mb-0 fw-semibold" htmlFor={`twin-switch-${l.loomNumber}`}>
+                        {l.isTwinBeam ? 'Twin Beam' : 'Single'}
+                      </label>
+                    </div>
+                  ) : (
+                    <span className={`badge ${l.isTwinBeam ? 'bg-primary-subtle text-primary border border-primary-subtle' : 'bg-light text-secondary border'}`}>
+                      {l.isTwinBeam ? 'Twin Beam (2 Beams)' : 'Single Beam'}
+                    </span>
                   )}
                 </div>
 

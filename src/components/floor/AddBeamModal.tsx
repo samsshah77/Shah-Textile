@@ -362,7 +362,8 @@ export function AddBeamModal({
                     <optgroup label="Mount on Loom">
                       {activeLooms.map((l) => (
                         <option key={l.loomNumber} value={String(l.loomNumber)}>
-                          Loom {l.loomNumber} — {LOOM_STATUS_LABEL[l.status as LoomStatus]}
+                          Loom {l.loomNumber}
+                          {l.isTwinBeam ? ' [Twin Beam]' : ''} — {LOOM_STATUS_LABEL[l.status as LoomStatus]}
                         </option>
                       ))}
                     </optgroup>

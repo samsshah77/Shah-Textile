@@ -26,6 +26,7 @@ export function AddLoomModal({
   const [shed, setShed] = useState('Main Floor')
   const [defaultRpm, setDefaultRpm] = useState<number>(340)
   const [status, setStatus] = useState<LoomStatus>('RUNNING')
+  const [isTwinBeam, setIsTwinBeam] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
@@ -37,6 +38,7 @@ export function AddLoomModal({
     setShed('Main Floor')
     setDefaultRpm(340)
     setStatus('RUNNING')
+    setIsTwinBeam(false)
     setError(null)
   }
 
@@ -55,6 +57,7 @@ export function AddLoomModal({
       shed: shed.trim() || 'Main Floor',
       defaultRpm: Number(defaultRpm) || 340,
       status,
+      isTwinBeam,
     })
     resetForm()
     onClose()
@@ -174,6 +177,28 @@ export function AddLoomModal({
                     Operational Status
                   </label>
                   <LoomStatusSelect value={status} onChange={setStatus} />
+                </div>
+
+                <div className="col-12">
+                  <div className="form-check form-switch p-2.5 ps-5 rounded-3 border bg-light d-flex align-items-center justify-content-between">
+                    <div>
+                      <label className="form-check-label fw-bold small text-dark d-block mb-0" htmlFor="twin-beam-toggle">
+                        <i className="bi bi-layers-half text-primary me-1" /> Twin Beam Loom
+                      </label>
+                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                        Is loom par 2 beams ek sath issue/mount kiye ja sakte hain
+                      </span>
+                    </div>
+                    <input
+                      className="form-check-input ms-0"
+                      type="checkbox"
+                      role="switch"
+                      id="twin-beam-toggle"
+                      checked={isTwinBeam}
+                      onChange={(e) => setIsTwinBeam(e.target.checked)}
+                      style={{ cursor: 'pointer', transform: 'scale(1.2)' }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

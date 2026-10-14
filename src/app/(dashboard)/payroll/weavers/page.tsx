@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
-import { WeaverWageRecord, CustomColumn } from '@/types/payroll'
+import { WeaverWageRecord, CustomColumn, EmployeePaySlip } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -23,12 +23,15 @@ import {
   CalendarPlus,
   Edit2,
   X,
+  FileText,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
+import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
+import { EmployeePaySlipModal } from '@/components/payroll/EmployeePaySlipModal'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_WEAVER_WAGES_WIDTHS = {
@@ -99,6 +102,10 @@ function WeaversPayrollContent() {
   const [weaversList, setWeaversList] = useState<WeaverWageRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
+  const [activeSlip, setActiveSlip] = useState<EmployeePaySlip | null>(null)
+
+  const isLocked = payrollService.isMonthLocked(selectedMonth)
+  const isEditable = canEditAccounts && !isLocked
   const [newMonth, setNewMonth] = useState(() => {
     const months = payrollService.listFortnightMonths()
     const last = months[months.length - 1] || '2026-08'
@@ -289,8 +296,21 @@ function WeaversPayrollContent() {
 
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
+    const row = weaversList.find((w) => w.id === id)
+    if (!row) return
+    // Tombstone + purge all sheets so hydrate/repair cannot put them back at table end.
+    payrollService.deleteWageSheetPerson('weaver', row)
     const filtered = weaversList
       .filter((w) => w.id !== id)
+      .filter(
+        (w) =>
+          !(
+            (row.employeeId && w.employeeId === row.employeeId) ||
+            (row.employeeName &&
+              w.employeeName &&
+              w.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
+          )
+      )
       .map((item, i) => ({ ...item, serialNo: i + 1 }))
     setWeaversList(filtered)
   }
@@ -511,6 +531,9 @@ function WeaversPayrollContent() {
           </div>
         </div>
       )}
+
+      {/* Month Lock & Finalization Status Banner */}
+      <MonthLockBanner month={selectedMonth} onStatusChange={reload} />
 
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
@@ -827,13 +850,26 @@ function WeaversPayrollContent() {
                       style={{ width: `${wageWidths.action}px`, minWidth: `${wageWidths.action}px` }}
                       className="py-1 px-1 text-center print:hidden"
                     >
-                      <button
-                        onClick={() => handleDeleteRow(w.id)}
-                        disabled={!canEditAccounts}
-                        className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const slip = payrollService.generateEmployeePaySlip(selectedMonth, w.id)
+                            setActiveSlip(slip)
+                          }}
+                          title="View Official Salary Slip / پرچی"
+                          className="p-1 text-slate-400 hover:text-[#0066cc] transition-colors cursor-pointer"
+                        >
+                          <FileText className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRow(w.id)}
+                          disabled={!isEditable}
+                          className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1401,13 +1437,26 @@ function WeaversPayrollContent() {
                       style={{ width: `${netWidths.action}px`, minWidth: `${netWidths.action}px` }}
                       className="py-1 px-1 text-center print:hidden"
                     >
-                      <button
-                        onClick={() => handleDeleteRow(w.id)}
-                        disabled={!canEditAccounts}
-                        className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const slip = payrollService.generateEmployeePaySlip(selectedMonth, w.id)
+                            setActiveSlip(slip)
+                          }}
+                          title="View Official Salary Slip / پرچی"
+                          className="p-1 text-slate-400 hover:text-[#0066cc] transition-colors cursor-pointer"
+                        >
+                          <FileText className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRow(w.id)}
+                          disabled={!isEditable}
+                          className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1446,6 +1495,13 @@ function WeaversPayrollContent() {
             </div>
           </div>
         </div>
+      )}
+      {/* Employee Pay Slip Modal */}
+      {activeSlip && (
+        <EmployeePaySlipModal
+          slip={activeSlip}
+          onClose={() => setActiveSlip(null)}
+        />
       )}
     </div>
   )
