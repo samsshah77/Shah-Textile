@@ -125,7 +125,7 @@ export function FabricFaultTable({
                 <th className="px-2" style={{ minWidth: 140 }}>
                   Shift B
                 </th>
-                <th className="px-2" style={{ width: 88 }} className="text-center">
+                <th className="px-2 text-center" style={{ width: 88 }}>
                   Edit
                 </th>
               </tr>
