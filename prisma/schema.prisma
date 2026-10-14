@@ -294,6 +294,7 @@ model FloorQuality {
   name       String
   fabricType String   @default("Suiting")
   weavePlan  String   @default("")
+  weftPlan   String   @default("")
   warpYarn   String   @default("")
   weftYarn   String   @default("")
   reed       Int      @default(120)

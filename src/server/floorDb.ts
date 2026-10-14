@@ -441,6 +441,7 @@ export async function dbGetQualities(): Promise<QualityMaster[]> {
       name: q.name,
       fabricType: q.fabricType,
       weavePlan: (q as { weavePlan?: string | null }).weavePlan ?? '',
+      weftPlan: (q as { weftPlan?: string | null }).weftPlan ?? '',
       warpYarn: q.warpYarn,
       weftYarn: q.weftYarn,
       reed: q.reed,
@@ -476,6 +477,7 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
         name: q.name,
         fabricType: q.fabricType,
         weavePlan: q.weavePlan ?? '',
+        weftPlan: q.weftPlan ?? '',
         warpYarn: q.warpYarn,
         weftYarn: q.weftYarn,
         reed: q.reed,
@@ -544,6 +546,7 @@ export async function dbUpsertQuality(q: QualityMaster): Promise<void> {
     name: q.name,
     fabricType: q.fabricType || 'Suiting',
     weavePlan: q.weavePlan ?? '',
+    weftPlan: q.weftPlan ?? '',
     warpYarn: q.warpYarn || '',
     weftYarn: q.weftYarn || '',
     reed: Number(q.reed) || 0,
@@ -607,6 +610,10 @@ export async function dbReuseQuality(params: {
       incoming?.weavePlan != null
         ? String(incoming.weavePlan)
         : ((row as { weavePlan?: string | null }).weavePlan ?? ''),
+    weftPlan:
+      incoming?.weftPlan != null
+        ? String(incoming.weftPlan)
+        : ((row as { weftPlan?: string | null }).weftPlan ?? ''),
     warpYarn: incoming?.warpYarn ?? row.warpYarn ?? '',
     weftYarn: incoming?.weftYarn ?? row.weftYarn ?? '',
     reed: Number(incoming?.reed ?? row.reed) || 0,
@@ -625,6 +632,7 @@ export async function dbReuseQuality(params: {
     name: row.name,
     fabricType: row.fabricType,
     weavePlan: (row as { weavePlan?: string | null }).weavePlan ?? '',
+    weftPlan: (row as { weftPlan?: string | null }).weftPlan ?? '',
     warpYarn: row.warpYarn,
     weftYarn: row.weftYarn,
     reed: row.reed,

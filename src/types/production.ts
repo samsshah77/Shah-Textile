@@ -34,8 +34,12 @@ export interface DailyLoomProductionEntry {
   loss24h?: number;
   status: LoomStatus;
   remarks?: string;
-  /** Per-loom fabric fault note for the day (Daily Entry + Fabric Fault tab). */
+  /** Per-loom fabric fault note for the day (Daily Entry + Fabric Fault tab). Summary of A/B. */
   fabricFault?: string;
+  /** Shift A fabric faults (newline-separated). Optional — legacy rows only have fabricFault. */
+  fabricFaultA?: string;
+  /** Shift B fabric faults (newline-separated). */
+  fabricFaultB?: string;
   lot?: string;
   approvalStatus?: 'DRAFT' | 'APPROVED';
   submittedBy?: string;

@@ -10,7 +10,10 @@ import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { loomConditionRowStyle } from '@/constants/loomConditions'
 import { isQualityEndedSheetRow } from '@/services/productionMastersService'
-import { FabricFaultMultiInput } from '@/components/floor/FabricFaultMultiInput'
+import {
+  FabricFaultShiftDialog,
+  fabricFaultPreview,
+} from '@/components/floor/FabricFaultShiftDialog'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 interface FloorEntryTableProps {
@@ -66,6 +69,7 @@ export function FloorEntryTable({
   const [editedSinceFinalize, setEditedSinceFinalize] = useState(false)
   /** Loom# cell highlight while any field in that row is focused. */
   const [activeLoom, setActiveLoom] = useState<number | null>(null)
+  const [faultDialogEntry, setFaultDialogEntry] = useState<DailyLoomProductionEntry | null>(null)
 
   const tableEdit = tableEditProp ?? tableEditLocal
   const setTableEdit = (next: boolean) => {
@@ -506,14 +510,16 @@ export function FloorEntryTable({
               </div>
 
               <label className="small mb-0">Fabric Fault</label>
-              <FabricFaultMultiInput
-                value={e.fabricFault}
-                canEdit={canEdit}
-                placeholder="Loom fabric fault…"
-                navRow={rowIdx}
-                navCol={4}
-                onChange={(v) => patchEntry(e, { fabricFault: v })}
-              />
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary text-start w-100"
+                onClick={() => setFaultDialogEntry(e)}
+                title="Shift A / Shift B alag fault"
+              >
+                <span className="text-truncate d-inline-block w-100" style={{ maxWidth: '100%' }}>
+                  {fabricFaultPreview(e) || (canEdit ? 'Shift A / B fault…' : '—')}
+                </span>
+              </button>
             </div>
           ))}
         </div>
@@ -683,14 +689,20 @@ export function FloorEntryTable({
                     </div>
                   </td>
                   <td className="px-1" style={{ whiteSpace: 'normal' }}>
-                    <FabricFaultMultiInput
-                      value={e.fabricFault}
-                      canEdit={canEdit}
-                      placeholder="Loom fabric fault…"
-                      navRow={rowIdx}
-                      navCol={4}
-                      onChange={(v) => patchEntry(e, { fabricFault: v })}
-                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-link text-decoration-none text-start p-0 w-100"
+                      onClick={() => setFaultDialogEntry(e)}
+                      title="Shift A / Shift B fabric fault"
+                    >
+                      <span className="small d-block text-truncate" style={{ maxWidth: '12rem' }}>
+                        {fabricFaultPreview(e) || (
+                          <span className="text-secondary">
+                            {canEdit ? 'Open Shift A / B…' : '—'}
+                          </span>
+                        )}
+                      </span>
+                    </button>
                   </td>
                 </tr>
               )})}
@@ -698,6 +710,17 @@ export function FloorEntryTable({
           </table>
         </TablePanScroll>
       )}
+
+      <FabricFaultShiftDialog
+        entry={faultDialogEntry}
+        open={Boolean(faultDialogEntry)}
+        canEdit={canEdit}
+        onClose={() => setFaultDialogEntry(null)}
+        onSave={(patch) => {
+          if (!faultDialogEntry) return
+          patchEntry(faultDialogEntry, patch)
+        }}
+      />
     </div>
   )
 }

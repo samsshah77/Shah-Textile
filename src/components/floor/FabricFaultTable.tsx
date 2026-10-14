@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from 'react'
 import { DailyLoomProductionEntry } from '@/types/production'
-import { FabricFaultMultiInput } from '@/components/floor/FabricFaultMultiInput'
+import {
+  FabricFaultShiftDialog,
+  fabricFaultPreview,
+  resolveShiftFaults,
+} from '@/components/floor/FabricFaultShiftDialog'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { cn } from '@/lib/utils'
@@ -19,7 +23,7 @@ interface FabricFaultTableProps {
 }
 
 /**
- * Per-loom fabric faults for the selected day (same field as Daily Entry → Fabric Fault).
+ * Per-loom fabric faults for the selected day — Shift A / B via dialog.
  */
 export function FabricFaultTable({
   entries,
@@ -30,12 +34,13 @@ export function FabricFaultTable({
   /** Default: only looms with a fault (overall view). */
   const [onlyWithFault, setOnlyWithFault] = useState(true)
   const [search, setSearch] = useState('')
+  const [faultDialogEntry, setFaultDialogEntry] = useState<DailyLoomProductionEntry | null>(null)
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     return [...entries]
       .filter((e) => {
-        const fault = (e.fabricFault || '').trim()
+        const fault = fabricFaultPreview(e).trim()
         if (onlyWithFault && !fault) return false
         if (!q) return true
         return (
@@ -48,7 +53,7 @@ export function FabricFaultTable({
   }, [entries, onlyWithFault, search])
 
   const faultCount = useMemo(
-    () => entries.filter((e) => (e.fabricFault || '').trim()).length,
+    () => entries.filter((e) => fabricFaultPreview(e).trim()).length,
     [entries]
   )
 
@@ -83,7 +88,7 @@ export function FabricFaultTable({
           </div>
         </div>
         <div className="small text-secondary">
-          Date: <strong>{selectedDate}</strong> — edit Daily Entry or yahan; same field.
+          Date: <strong>{selectedDate}</strong> — Shift A / B alag dialog se.
         </div>
       </div>
 
@@ -93,7 +98,7 @@ export function FabricFaultTable({
           title={onlyWithFault ? 'Is din koi fabric fault nahi' : 'Koi loom row nahi'}
           hint={
             onlyWithFault
-              ? 'Daily Entry me Fabric Fault likho, phir yahan “With fault” pe dikhega.'
+              ? 'Daily Entry ya yahan dialog se Shift A / B fault likho.'
               : 'Pehle Daily Entry / Production day load karo.'
           }
         />
@@ -114,14 +119,21 @@ export function FabricFaultTable({
                 <th className="px-2" style={{ width: 100 }}>
                   Status
                 </th>
-                <th className="px-2" style={{ minWidth: 280 }}>
-                  Fabric Fault
+                <th className="px-2" style={{ minWidth: 140 }}>
+                  Shift A
+                </th>
+                <th className="px-2" style={{ minWidth: 140 }}>
+                  Shift B
+                </th>
+                <th className="px-2" style={{ width: 88 }} className="text-center">
+                  Edit
                 </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((e, idx) => {
+              {rows.map((e) => {
                 const seg = e.segmentIndex && e.segmentIndex > 1 ? ` · P${e.segmentIndex}` : ''
+                const { shiftA, shiftB } = resolveShiftFaults(e)
                 return (
                   <tr key={e.id || `${e.loomNumber}-${e.segmentIndex || 1}`}>
                     <td className="fw-semibold px-2">
@@ -133,20 +145,20 @@ export function FabricFaultTable({
                       {e.fabricType || '—'}
                     </td>
                     <td className="small px-2">{e.status || '—'}</td>
-                    <td className="px-1" style={{ whiteSpace: 'normal', minWidth: 280 }}>
-                      <FabricFaultMultiInput
-                        value={e.fabricFault}
-                        canEdit={canEdit}
-                        placeholder="Loom fabric fault…"
-                        navRow={idx}
-                        navCol={0}
-                        onChange={(v) =>
-                          onUpdateEntry(e.loomNumber, {
-                            fabricFault: v,
-                            segmentIndex: e.segmentIndex,
-                          })
-                        }
-                      />
+                    <td className="small px-2" style={{ whiteSpace: 'pre-wrap' }}>
+                      {shiftA.trim() || '—'}
+                    </td>
+                    <td className="small px-2" style={{ whiteSpace: 'pre-wrap' }}>
+                      {shiftB.trim() || '—'}
+                    </td>
+                    <td className="px-1 text-center">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary py-0"
+                        onClick={() => setFaultDialogEntry(e)}
+                      >
+                        {canEdit ? 'Edit' : 'View'}
+                      </button>
                     </td>
                   </tr>
                 )
@@ -155,6 +167,20 @@ export function FabricFaultTable({
           </table>
         </TablePanScroll>
       )}
+
+      <FabricFaultShiftDialog
+        entry={faultDialogEntry}
+        open={Boolean(faultDialogEntry)}
+        canEdit={canEdit}
+        onClose={() => setFaultDialogEntry(null)}
+        onSave={(patch) => {
+          if (!faultDialogEntry) return
+          onUpdateEntry(faultDialogEntry.loomNumber, {
+            ...patch,
+            segmentIndex: faultDialogEntry.segmentIndex,
+          })
+        }}
+      />
     </div>
   )
 }

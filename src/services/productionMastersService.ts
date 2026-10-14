@@ -251,6 +251,8 @@ export interface QualityMaster {
   fabricType: string
   /** Weave plan text entered on quality (before reed). */
   weavePlan?: string
+  /** Weft plan text (separate from weave plan / weft yarn). */
+  weftPlan?: string
   warpYarn: string
   weftYarn: string
   reed: number
@@ -300,6 +302,7 @@ function normalizeQuality(q: QualityMaster): QualityMaster {
     ...q,
     fabricType: q.fabricType ? String(q.fabricType) : 'Suiting',
     weavePlan: q.weavePlan != null ? String(q.weavePlan) : '',
+    weftPlan: q.weftPlan != null ? String(q.weftPlan) : '',
     status,
     createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
@@ -3892,6 +3895,7 @@ class ProductionMastersService {
       name: partial?.name || 'New Quality',
       fabricType: normalizeFabricType(partial?.fabricType),
       weavePlan: partial?.weavePlan != null ? String(partial.weavePlan) : '',
+      weftPlan: partial?.weftPlan != null ? String(partial.weftPlan) : '',
       warpYarn: partial?.warpYarn != null ? partial.warpYarn : '20/1',
       weftYarn: partial?.weftYarn != null ? partial.weftYarn : '20/1',
       reed: partial?.reed ?? 120,
@@ -3940,6 +3944,7 @@ class ProductionMastersService {
       name: src.name,
       fabricType: src.fabricType,
       weavePlan: src.weavePlan || '',
+      weftPlan: src.weftPlan || '',
       warpYarn: src.warpYarn,
       weftYarn: src.weftYarn,
       reed: src.reed,

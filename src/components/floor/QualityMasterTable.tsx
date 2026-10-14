@@ -66,6 +66,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   warp: 110,
   weft: 110,
   weavePlan: 110,
+  weftPlan: 110,
   reed: 65,
   pick: 65,
   width: 65,
@@ -229,6 +230,7 @@ export function QualityMasterTable({
     name: '',
     fabricType: 'Suiting' as string,
     weavePlan: '',
+    weftPlan: '',
     warpYarn: '',
     weftYarn: '',
     reed: '',
@@ -262,7 +264,7 @@ export function QualityMasterTable({
   }, [isAddModalOpen])
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_quality_col_widths_v12',
+    'sara_quality_col_widths_v13',
     DEFAULT_WIDTHS
   )
 
@@ -889,6 +891,7 @@ export function QualityMasterTable({
     'warpYarn',
     'weftYarn',
     'weavePlan',
+    'weftPlan',
     'reed',
     'pick',
     'gsm',
@@ -961,6 +964,7 @@ export function QualityMasterTable({
       name,
       fabricType: normalizeFabricType(addForm.fabricType),
       weavePlan: addForm.weavePlan.trim(),
+      weftPlan: addForm.weftPlan.trim(),
       warpYarn: addForm.warpYarn.trim(),
       weftYarn: addForm.weftYarn.trim(),
       reed: Number(addForm.reed) || 0,
@@ -1168,6 +1172,7 @@ export function QualityMasterTable({
                       <span>Warp: {q.warpYarn || '—'}</span>
                       <span>Weft: {q.weftYarn || '—'}</span>
                       <span>Weave: {q.weavePlan || '—'}</span>
+                      <span>Weft plan: {q.weftPlan || '—'}</span>
                       <span>Reed: {q.reed || '—'}</span>
                       <span>Pick: {q.pick || '—'}</span>
                       <span>Width: {q.widthInch ? `${q.widthInch}"` : '—'}</span>
@@ -1350,6 +1355,19 @@ export function QualityMasterTable({
                   <div className="small">{q.weavePlan || '—'}</div>
                 )}
 
+                <label className="small mb-0">Weft Plan</label>
+                {rowMasterEdit ? (
+                  <TextCellInput
+                    className="form-control form-control-sm"
+                    value={q.weftPlan || ''}
+                    navRow={rowIdx}
+                    navCol={5}
+                    onValueChange={(v) => onUpdate(q.id, { weftPlan: v })}
+                  />
+                ) : (
+                  <div className="small">{q.weftPlan || '—'}</div>
+                )}
+
                 <div className="d-flex gap-2">
                   <div className="flex-fill">
                     <label className="small mb-0">Reed</label>
@@ -1358,7 +1376,7 @@ export function QualityMasterTable({
                         className="form-control form-control-sm text-end"
                         value={q.reed}
                         navRow={rowIdx}
-                        navCol={5}
+                        navCol={6}
                         onValueChange={(v) => onUpdate(q.id, { reed: v })}
                       />
                     ) : (
@@ -1447,6 +1465,7 @@ export function QualityMasterTable({
                 <th className="px-2">Warp Yarn</th>
                 <th className="px-2">Weft Yarn</th>
                 <th className="px-2">Weave Plan</th>
+                <th className="px-2">Weft Plan</th>
                 <th className="px-2 text-end">Reed</th>
                 <th className="px-2 text-end">Pick</th>
                 <th className="px-2 text-end">Width</th>
@@ -1464,7 +1483,7 @@ export function QualityMasterTable({
             <tbody>
               {orderedForView.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="p-0 border-0">
+                  <td colSpan={15} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon={emptyCopy.icon}
                       title={emptyCopy.title}
@@ -1487,6 +1506,7 @@ export function QualityMasterTable({
                     <td className="px-2 small">{q.warpYarn || '—'}</td>
                     <td className="px-2 small">{q.weftYarn || '—'}</td>
                     <td className="px-2 small">{q.weavePlan || '—'}</td>
+                    <td className="px-2 small">{q.weftPlan || '—'}</td>
                     <td className="px-2 text-end font-monospace">{q.reed || '—'}</td>
                     <td className="px-2 text-end font-monospace">{q.pick || '—'}</td>
                     <td className="px-2 text-end font-monospace">{q.widthInch ? `${q.widthInch}"` : '—'}</td>
@@ -1571,6 +1591,9 @@ export function QualityMasterTable({
                 <ResizableTh columnKey="weavePlan" width={widths.weavePlan} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Weave Plan
                 </ResizableTh>
+                <ResizableTh columnKey="weftPlan" width={widths.weftPlan} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                  Weft Plan
+                </ResizableTh>
                 <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
                   Reed
                 </ResizableTh>
@@ -1598,7 +1621,7 @@ export function QualityMasterTable({
             <tbody>
               {orderedForView.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="p-0 border-0">
+                  <td colSpan={15} className="p-0 border-0">
                     <EmptyPlaceholder
                       icon={emptyCopy.icon}
                       title={emptyCopy.title}
@@ -1701,12 +1724,28 @@ export function QualityMasterTable({
                     </td>
                     <td className="px-1">
                       {rowOpsEdit ? (
+                        <TextCellInput
+                          className="form-control form-control-sm"
+                          style={{ width: '100%', minWidth: 0 }}
+                          value={q.weftPlan || ''}
+                          navRow={rowIdx}
+                          navCol={5}
+                          onValueChange={(v) => onUpdate(q.id, { weftPlan: v })}
+                        />
+                      ) : (
+                        <span className="text-secondary text-truncate d-inline-block" style={{ maxWidth: '100%' }}>
+                          {q.weftPlan || '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-1">
+                      {rowOpsEdit ? (
                         <NumericCellInput
                           className="form-control form-control-sm text-end"
                           style={{ width: '100%', minWidth: 0 }}
                           value={q.reed}
                           navRow={rowIdx}
-                          navCol={5}
+                          navCol={6}
                           onValueChange={(v) => onUpdate(q.id, { reed: v })}
                         />
                       ) : (
@@ -1950,6 +1989,21 @@ export function QualityMasterTable({
                         value={addForm.weavePlan}
                         onChange={(e) => setAddForm({ ...addForm, weavePlan: e.target.value })}
                         onKeyDown={(e) => handleAddFormKeyDown(e, 'weavePlan')}
+                      />
+                    </div>
+
+                    <div className="col-md-4">
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
+                        Weft Plan
+                      </label>
+                      <input
+                        type="text"
+                        data-add-q-field="weftPlan"
+                        className="form-control"
+                        placeholder="e.g. weft arrangement"
+                        value={addForm.weftPlan}
+                        onChange={(e) => setAddForm({ ...addForm, weftPlan: e.target.value })}
+                        onKeyDown={(e) => handleAddFormKeyDown(e, 'weftPlan')}
                       />
                     </div>
 
