@@ -758,9 +758,8 @@ export function calculateContractSalaryRow(
         ? Math.round(lateHours * ratePerHr)
         : 0
 
-  // Contract Excel Sheet 4: Gross = Basic + Efficiency only (OT is shown but NOT in gross/net).
-  // Shahid etc.: live must match Excel (e.g. 50,000 − 25,000 − 5 = 24,995, not +OT).
-  const grossSalary = basicSalary + efficiencyAmount
+  // Contract net-payment: Gross = Basic + OT Amount
+  const grossSalary = basicSalary + otAmount
 
   // Net = Gross − Advance − Ticket
   const netAmount = Math.max(0, grossSalary - advanceDeduction - ticketCharges)
