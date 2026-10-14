@@ -758,8 +758,8 @@ export function calculateContractSalaryRow(
         ? Math.round(lateHours * ratePerHr)
         : 0
 
-  // Contract net-payment: Gross = Basic + OT Amount
-  const grossSalary = basicSalary + otAmount
+  // Contract Sheet 7 (OT & Efficiency): Gross = Basic + OT + Efficiency
+  const grossSalary = basicSalary + otAmount + efficiencyAmount
 
   // Net = Gross − Advance − Ticket
   const netAmount = Math.max(0, grossSalary - advanceDeduction - ticketCharges)
