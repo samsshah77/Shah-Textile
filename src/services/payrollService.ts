@@ -1745,16 +1745,14 @@ class PayrollService {
       if (!seed || (Number(seed.attendanceDays) || 0) <= 0) return ct
       const liveAttn = Number(ct.attendanceDays) || 0
       const seedAttn = Number(seed.attendanceDays) || 0
-      const liveEff = Number(ct.efficiencyAmount) || 0
-      const seedEff = Number(seed.efficiencyAmount) || 0
-      // Restore empty rows; Sep Excel snapshot also fixes wiped attendance / efficiency.
-      // Do NOT key off netAmount — nets are always Gross−Late−Advance−Ticket (OT-era seed nets differ).
+      // Restore only wiped attendance — never reset live efficiency/advance edits to seed zeros.
       const needsRestore =
-        liveAttn <= 0 ||
-        (m === '2026-09' && (liveAttn !== seedAttn || liveEff !== seedEff))
+        liveAttn <= 0 || (m === '2026-09' && liveAttn !== seedAttn)
       if (!needsRestore) return ct
       fixed += 1
       const dayBase = daysInCalendarMonth(m) === 28 ? 28 : 30
+      const liveEff = Number(ct.efficiencyAmount)
+      const seedEff = Number(seed.efficiencyAmount) || 0
       return this.calculateContractSalaryRow(
         {
           ...ct,
@@ -1765,10 +1763,10 @@ class PayrollService {
           basicSalary: seed.basicSalary,
           lateHours: seed.lateHours ?? 0,
           lateAmount: seed.lateAmount ?? 0,
-          otHours: seed.otHours ?? 0,
-          otAmount: seed.otAmount ?? 0,
-          efficiencyAmount: seedEff,
-          // Keep live advance if already entered (Dawood etc.); seed only as fallback.
+          otHours: seed.otHours ?? ct.otHours ?? 0,
+          otAmount: seed.otAmount ?? ct.otAmount ?? 0,
+          // Keep whatever user typed on Contract net sheet (incl. 0 if they cleared it).
+          efficiencyAmount: Number.isFinite(liveEff) ? liveEff : seedEff,
           advanceDeduction:
             Number(ct.advanceDeduction) > 0
               ? ct.advanceDeduction
@@ -3572,7 +3570,9 @@ class PayrollService {
       changed = true
       return next
     })
-    if (changed) this.saveEfficiencyIncentives(updated, true)
+    // Never cascade amount→contract here: that pushed sheet amount 0 back onto
+    // Contract net-payment efficiency the user just typed, wiping it on Save/refresh.
+    if (changed) this.saveEfficiencyIncentives(updated, false)
   }
 
   // ==========================================

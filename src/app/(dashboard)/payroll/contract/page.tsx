@@ -153,7 +153,7 @@ function ContractPayrollContent() {
     }
   }, [selectedMonth, daysInMonth])
 
-  // Handle cell edit with live formula recalculation
+  // Handle cell edit with live formula recalculation + persist (so refresh keeps values)
   const handleCellChange = (
     index: number,
     field: keyof ContractSalaryRecord,
@@ -169,6 +169,7 @@ function ContractPayrollContent() {
       }
       const recalculated = payrollService.calculateContractSalaryRow(current, daysInMonth)
       updated[index] = recalculated
+      payrollService.saveContractSalaries(selectedMonth, updated)
       return updated
     })
   }
