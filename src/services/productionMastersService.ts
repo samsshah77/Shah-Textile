@@ -1251,6 +1251,20 @@ export function getMountedBeamsOnLoom(
   )
 }
 
+export function loomBeamCapacity(loom: { isTwinBeam?: boolean | null }): number {
+  return loom.isTwinBeam ? 2 : 1
+}
+
+/** Single: free if 0 beams. Twin: free until 2 beams are mounted. */
+export function loomHasFreeBeamSlot(
+  loom: { loomNumber: number; isTwinBeam?: boolean | null },
+  beams: BeamMaster[],
+  exceptBeamNo?: string
+): boolean {
+  const mounted = getMountedBeamsOnLoom(beams, loom.loomNumber, exceptBeamNo)
+  return mounted.length < loomBeamCapacity(loom)
+}
+
 /** Beam currently mounted on loom — blocks a second mount until first is moved (for single-beam looms). */
 export function findMountedBeamOnLoom(
   beams: BeamMaster[],

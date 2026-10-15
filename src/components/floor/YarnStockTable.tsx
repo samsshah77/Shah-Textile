@@ -327,8 +327,8 @@ export function YarnStockTable({
   const displayWeight = (kg: number, lbs: number) => {
     const val = unit === 'KG' ? kg : lbs
     return Number(val || 0).toLocaleString(undefined, {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     })
   }
 
@@ -344,7 +344,7 @@ export function YarnStockTable({
                   Total Inward (Received)
                 </span>
                 <div className="fs-4 fw-bold text-success">
-                  {totals.received.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
+                  {totals.received.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                   <span className="fs-6 fw-semibold text-secondary">{unit.toLowerCase()}</span>
                 </div>
                 <div className="small text-muted mt-1">
@@ -373,7 +373,7 @@ export function YarnStockTable({
                   Total Outward (To Looms)
                 </span>
                 <div className="fs-4 fw-bold text-danger">
-                  {totals.issued.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
+                  {totals.issued.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                   <span className="fs-6 fw-semibold text-secondary">{unit.toLowerCase()}</span>
                 </div>
                 <div className="small text-muted mt-1">
@@ -402,7 +402,7 @@ export function YarnStockTable({
                   Available Warehouse Balance
                 </span>
                 <div className="fs-4 fw-bold text-primary">
-                  {totals.balance.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
+                  {totals.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                   <span className="fs-6 fw-semibold text-secondary">{unit.toLowerCase()}</span>
                 </div>
                 <div className="small text-muted mt-1">
@@ -997,10 +997,11 @@ export function YarnStockTable({
           onAdd(newYarn, arrival)
           showSuccessSoon({
             title: 'Yarn Added',
-            message: `"${newYarn.yarnType || 'Yarn'}" add ho gaya.`,
+            message: `"${newYarn.yarnType || 'Yarn'}" — ${arrival?.bags ?? newYarn.bags ?? 0} bags, ${(arrival?.weightKg ?? newYarn.receivedKg ?? 0).toFixed(2)} kg.`,
           })
         }}
         activeDate={selectedDate}
+        existingYarns={yarn}
       />
 
       {/* Issue Yarn Modal */}

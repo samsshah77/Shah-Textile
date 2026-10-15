@@ -6,10 +6,14 @@ import {
   LoomMaster,
   calcTotalThreads,
   composeLot,
+  getMountedBeamsOnLoom,
+  loomBeamCapacity,
+  loomHasFreeBeamSlot,
   type LotKind,
 } from '@/services/productionMastersService'
 import { LOOM_STATUS_LABEL } from '@/components/floor/LoomStatusSelect'
 import type { LoomStatus } from '@/types/loom'
+import { DateStepper } from '@/components/floor/DateStepper'
 
 interface AddBeamModalProps {
   isOpen: boolean
@@ -17,6 +21,7 @@ interface AddBeamModalProps {
   onAdd: (beam: Partial<BeamMaster> & { beamNo: string }) => void | Promise<void>
   existingBeamNos: string[]
   activeLooms: LoomMaster[]
+  beams?: BeamMaster[]
   /** Unused — kept for API compat with BeamMasterTable. */
   qualities?: unknown[]
 }
@@ -40,6 +45,7 @@ export function AddBeamModal({
   onAdd,
   existingBeamNos,
   activeLooms,
+  beams = [],
 }: AddBeamModalProps) {
   const [beamNo, setBeamNo] = useState('')
   const [swLot, setSwLot] = useState('')
@@ -360,12 +366,21 @@ export function AddBeamModal({
                       <option value="SIZING">Sizing Section</option>
                     </optgroup>
                     <optgroup label="Mount on Loom">
-                      {activeLooms.map((l) => (
-                        <option key={l.loomNumber} value={String(l.loomNumber)}>
-                          Loom {l.loomNumber}
-                          {l.isTwinBeam ? ' [Twin Beam]' : ''} — {LOOM_STATUS_LABEL[l.status as LoomStatus]}
-                        </option>
-                      ))}
+                      {activeLooms
+                        .filter((l) => loomHasFreeBeamSlot(l, beams))
+                        .map((l) => {
+                          const count = getMountedBeamsOnLoom(beams, l.loomNumber).length
+                          const max = loomBeamCapacity(l)
+                          return (
+                            <option key={l.loomNumber} value={String(l.loomNumber)}>
+                              Loom {l.loomNumber}
+                              {l.isTwinBeam
+                                ? ` [Twin Beam${count > 0 ? `: ${count}/${max}` : ''}]`
+                                : ''}{' '}
+                              — {LOOM_STATUS_LABEL[l.status as LoomStatus]}
+                            </option>
+                          )
+                        })}
                     </optgroup>
                   </select>
                 </div>
@@ -375,13 +390,10 @@ export function AddBeamModal({
                     <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                       Mount Date
                     </label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      data-add-beam-field="mountedDate"
+                    <DateStepper
                       value={mountedDate}
-                      onChange={(e) => setMountedDate(e.target.value)}
-                      onKeyDown={(e) => handleFieldKeyDown(e, 'mountedDate')}
+                      onChange={setMountedDate}
+                      ariaLabel="Mount date"
                     />
                   </div>
                 )}

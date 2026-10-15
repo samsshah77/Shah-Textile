@@ -13,6 +13,8 @@ import {
   type LotKind,
   type MountBeamResult,
   getMountedBeamsOnLoom,
+  loomBeamCapacity,
+  loomHasFreeBeamSlot,
 } from '@/services/productionMastersService'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -507,21 +509,26 @@ export function BeamMasterTable({
         <option value="STORE">In Stock (Store)</option>
         <option value="SIZING">Empty Beam</option>
         <optgroup label="Mount on Loom">
-          {activeLooms.map((l) => {
-            const isTwin = Boolean(l.isTwinBeam)
-            const otherMounted = getMountedBeamsOnLoom(beams, l.loomNumber, b.beamNo)
-            const count = otherMounted.length
-            const max = isTwin ? 2 : 1
-            const isFull = count >= max
-            return (
-              <option key={l.loomNumber} value={String(l.loomNumber)}>
-                Loom {l.loomNumber}
-                {l.model ? ` (${l.model})` : ''}
-                {isTwin ? ` [Twin Beam${count > 0 ? `: ${count}/${max}` : ''}]` : ''}
-                {isFull ? ' — FULL' : ` — ${LOOM_STATUS_LABEL[l.status as LoomStatus]}`}
-              </option>
-            )
-          })}
+          {activeLooms
+            .filter((l) => {
+              if (String(l.loomNumber) === currentValue) return true
+              return loomHasFreeBeamSlot(l, beams, b.beamNo)
+            })
+            .map((l) => {
+              const isTwin = Boolean(l.isTwinBeam)
+              const otherMounted = getMountedBeamsOnLoom(beams, l.loomNumber, b.beamNo)
+              const count = otherMounted.length
+              const max = loomBeamCapacity(l)
+              const isFull = count >= max
+              return (
+                <option key={l.loomNumber} value={String(l.loomNumber)}>
+                  Loom {l.loomNumber}
+                  {l.model ? ` (${l.model})` : ''}
+                  {isTwin ? ` [Twin Beam${count > 0 ? `: ${count}/${max}` : ''}]` : ''}
+                  {isFull ? ' — FULL' : ` — ${LOOM_STATUS_LABEL[l.status as LoomStatus]}`}
+                </option>
+              )
+            })}
         </optgroup>
       </select>
     )
@@ -1035,6 +1042,7 @@ export function BeamMasterTable({
         }}
         existingBeamNos={beams.map((b) => b.beamNo)}
         activeLooms={activeLooms}
+        beams={beams}
         qualities={qualities}
       />
     </div>

@@ -8,6 +8,7 @@ import {
   qualityDisplayName,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
+import { DateStepper } from '@/components/floor/DateStepper'
 
 interface IssueYarnModalProps {
   yarn: YarnMaster | null
@@ -173,13 +174,7 @@ export function IssueYarnModal({
                   <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Issue Date
                   </label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={issueDate}
-                    onChange={(e) => setIssueDate(e.target.value)}
-                    required
-                  />
+                  <DateStepper value={issueDate} onChange={setIssueDate} required ariaLabel="Issue date" />
                 </div>
 
                 <div className="col-6">
@@ -190,8 +185,8 @@ export function IssueYarnModal({
                     type="number"
                     className="form-control"
                     placeholder="e.g. 50"
-                    min={1}
-                    step="0.5"
+                    min={0.01}
+                    step="0.01"
                     value={issuedKg}
                     onChange={(e) => setIssuedKg(e.target.value === '' ? '' : Number(e.target.value))}
                     required

@@ -28,6 +28,7 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
+import { DateStepper } from '@/components/floor/DateStepper'
 
 function ProductionWorkspaceContent() {
   const router = useRouter()
@@ -201,16 +202,14 @@ function ProductionWorkspaceContent() {
               )}
               {isYarnTab && (
                 <>
-                  <input
-                    type="date"
-                    className="form-control form-control-sm"
-                    style={{ width: 145 }}
+                  <DateStepper
+                    size="sm"
                     value={selectedDate}
-                    onChange={(e) => {
-                      setSelectedDate(e.target.value)
+                    ariaLabel="Yarn date"
+                    onChange={(next) => {
+                      setSelectedDate(next)
                       if (yarnDateMode === 'ALL') setYarnDateMode('DAILY')
                     }}
-                    aria-label="Yarn date"
                   />
                   <div className="btn-group btn-group-sm" role="group" aria-label="Yarn period">
                     {(['ALL', 'DAILY', 'WEEKLY', 'MONTHLY'] as const).map((mode) => (
