@@ -7,8 +7,7 @@ import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomC
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { AlertModal } from '@/components/ui/AlertModal'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Printer,
   PlusCircle,
@@ -22,6 +21,9 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_ADVANCE_WIDTHS = {
@@ -43,16 +45,6 @@ export default function SalaryAdvancesPage() {
   const [search, setSearch] = useState('')
   const [showAddDialog, setShowAddDialog] = useState(false)
 
-  // Delete confirmation modal state
-  const [deleteConfirmState, setDeleteConfirmState] = useState<{
-    isOpen: boolean
-    advanceId: string
-    employeeName: string
-  }>({
-    isOpen: false,
-    advanceId: '',
-    employeeName: '',
-  })
 
   // Resizable columns hook
   const {
@@ -61,6 +53,21 @@ export default function SalaryAdvancesPage() {
     resetColumnWidth,
     resetAllWidths,
   } = useResizableColumns('salary_advances_v2', DEFAULT_ADVANCE_WIDTHS)
+
+  // Unsaved / dirty cell tracker
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(advances, selectedMonth, {
+    sheetName: 'Advance',
+    editableFields: ['date', 'amount', 'remarks'],
+  })
 
   // Form State
   const [employeeName, setEmployeeName] = useState('')
@@ -83,8 +90,11 @@ export default function SalaryAdvancesPage() {
     setFormDate(`${selectedMonth}-05`)
   }
 
-  const reload = () => {
-    setAdvances(payrollService.getAdvances(selectedMonth, 'all'))
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
+    const fresh = payrollService.getAdvances(selectedMonth, 'all')
+    setAdvances(fresh)
+    resetSnapshot(fresh)
     setMasterEmployees(payrollService.getAdvanceEligibleEmployees())
   }
 
@@ -114,23 +124,11 @@ export default function SalaryAdvancesPage() {
   // Direct ID-based cell editing
   const handleCellChange = (id: string, field: keyof AdvanceRecord, value: string | number) => {
     if (!canEditAccounts) return
-    setAdvances((prev) => {
-      const updated = prev.map((item) => {
-        if (item.id === id) {
-          const modified = { ...item, [field]: value }
-          if (field === 'amount') {
-            payrollService.syncAdvanceToSalaries(
-              modified.employeeId || modified.employeeName,
-              selectedMonth,
-              Number(value) || 0
-            )
-          }
-          return modified
-        }
-        return item
-      })
-      return updated
-    })
+    // Sirf local state update — sync/persist Save dabane pe hoga.
+    // (Pehle har keystroke pe sync -> payroll_synced -> reload() purani value wapis le aata tha)
+    setAdvances((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+    )
   }
 
   const handleSelectMasterEmployee = (empName: string) => {
@@ -190,6 +188,7 @@ export default function SalaryAdvancesPage() {
     setShowAddDialog(false)
     resetAddForm()
     if (ok) {
+      commitSaved(updated)
       showSuccess('Advance saved', `"${employeeName}" ka advance record ho gaya.`)
     } else {
       showError('Save failed', 'Advance local me save hua lekin server pe nahi gaya. Dobara Save dabao.')
@@ -198,26 +197,29 @@ export default function SalaryAdvancesPage() {
 
   const requestDeleteAdvance = (id: string, empName: string) => {
     if (!canEditAccounts) return
-    setDeleteConfirmState({
-      isOpen: true,
-      advanceId: id,
-      employeeName: empName || 'Employee',
+    askConfirm({
+      title: 'Delete Advance Entry?',
+      danger: true,
+      confirmText: 'Delete Advance',
+      cancelText: 'Cancel',
+      message: (
+        <div className="space-y-2 text-xs text-slate-600 text-left">
+          <p>
+            Kya aap waqai <strong>{empName || 'Employee'}</strong> ka yeh advance record delete karna chahte hain?
+          </p>
+          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+          </div>
+        </div>
+      ),
+      onConfirm: async () => {
+        const updated = advances.filter((a) => a.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+        setAdvances(updated)
+        const ok = await payrollService.saveAdvancesAsync(updated, true, selectedMonth)
+        if (ok) commitSaved(updated)
+      },
     })
   }
-
-  const confirmDeleteAdvance = () => {
-    if (deleteConfirmState.advanceId) {
-      handleDelete(deleteConfirmState.advanceId)
-    }
-    setDeleteConfirmState({ isOpen: false, advanceId: '', employeeName: '' })
-  }
-
-  const handleDelete = (id: string) => {
-    const updated = advances.filter((a) => a.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setAdvances(updated)
-    payrollService.saveAdvances(updated, true, selectedMonth)
-  }
-
 
   const handleSave = () => {
     if (!canEditAccounts) return
@@ -225,9 +227,25 @@ export default function SalaryAdvancesPage() {
       title: 'Save advances?',
       message: `Save advances for ${formatMonthName(selectedMonth)}?`,
       confirmText: 'Save',
+      onConfirm: async () => {
+        const ok = await payrollService.saveAdvancesAsync(advances, true, selectedMonth)
+        if (ok) {
+          commitSaved(advances)
+          showSuccess('Saved', 'Advances successfully saved.')
+        } else {
+          showError('Save failed', 'Advances server pe save nahi huay. Dobara Save dabao.')
+        }
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Aap ke unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
       onConfirm: () => {
-        payrollService.saveAdvances(advances, true, selectedMonth)
-        showSuccess('Saved', 'Advances successfully saved.')
+        setAdvances(discardChanges())
       },
     })
   }
@@ -289,8 +307,23 @@ export default function SalaryAdvancesPage() {
                   disabled={!canEditAccounts}
                   onChange={
                     canEditAccounts
-                      ? async (m) => {
-                          await payrollService.setActiveSalariedMonthAsync(m)
+                      ? (m) => {
+                          if (m === selectedMonth) return
+                          if (hasUnsavedChanges) {
+                            askConfirm({
+                              title: 'Unsaved changes',
+                              message:
+                                'Aap ke paas unsaved edits hain. Month badalne se yeh discard ho jayenge. Proceed karein?',
+                              confirmText: 'Discard & Switch',
+                              onConfirm: async () => {
+                                await payrollService.setActiveSalariedMonthAsync(m)
+                                setSelectedMonth(m)
+                                setFormDate(`${m}-05`)
+                              },
+                            })
+                            return
+                          }
+                          void payrollService.setActiveSalariedMonthAsync(m)
                           setSelectedMonth(m)
                           setFormDate(`${m}-05`)
                         }
@@ -314,15 +347,11 @@ export default function SalaryAdvancesPage() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
                   disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  dirtyCount={dirtyCount}
+                />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -474,6 +503,13 @@ export default function SalaryAdvancesPage() {
         </div>
       )}
 
+      {/* Unsaved changes alert banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
+
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
         {/* Sheet Header */}
@@ -587,7 +623,13 @@ export default function SalaryAdvancesPage() {
                 </tr>
               ) : (
                 filtered.map((adv, idx) => (
-                  <tr key={adv.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                  <tr
+                    key={adv.id}
+                    className={cn(
+                      'text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors',
+                      isRowDirty(adv.id) && 'payroll-row-dirty'
+                    )}
+                  >
                     <td
                       style={{ width: `${widths.serialNo}px`, minWidth: `${widths.serialNo}px` }}
                       className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center font-mono text-slate-700"
@@ -605,7 +647,10 @@ export default function SalaryAdvancesPage() {
                           type="text"
                           value={adv.date || (adv.fortnight === '16-31' ? '16-31 Half' : '01-15 Half')}
                           onChange={(e) => handleCellChange(adv.id, 'date', e.target.value)}
-                          className="w-full text-center bg-transparent px-1 py-1 font-medium focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-[11px]"
+                          className={cn(
+                            'w-full text-center bg-transparent px-1 py-1 font-medium focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-[11px] transition-colors',
+                            isCellDirty(adv.id, 'date') && 'payroll-cell-dirty'
+                          )}
                         />
                       ) : (
                         <span>{adv.date || (adv.fortnight === '16-31' ? '16-31 Half' : '01-15 Half')}</span>
@@ -640,6 +685,7 @@ export default function SalaryAdvancesPage() {
                           value={adv.amount || 0}
                           navRow={idx}
                           navCol={0}
+                          isDirty={isCellDirty(adv.id, 'amount')}
                           onValueChange={(v) => handleCellChange(adv.id, 'amount', v)}
                           className="w-full text-right bg-transparent px-2 py-1 font-semibold text-xs text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono"
                         />
@@ -661,7 +707,10 @@ export default function SalaryAdvancesPage() {
                           value={adv.remarks || ''}
                           placeholder="Voucher / note..."
                           onChange={(e) => handleCellChange(adv.id, 'remarks', e.target.value)}
-                          className="w-full bg-transparent px-2 py-1 font-normal font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-700 dark:text-slate-300"
+                          className={cn(
+                            'w-full bg-transparent px-2 py-1 font-normal font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-700 dark:text-slate-300 transition-colors',
+                            isCellDirty(adv.id, 'remarks') && 'payroll-cell-dirty'
+                          )}
                         />
                       ) : (
                         <span className="px-2 text-slate-500">{adv.remarks || '—'}</span>
@@ -683,7 +732,11 @@ export default function SalaryAdvancesPage() {
                               value={adv.customFields?.[col.id] || ''}
                               onChange={(e) => handleCustomCellChange(adv.id, col.id, e.target.value)}
                               placeholder="—"
-                              className="w-full bg-transparent px-1 py-1 font-medium font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-center"
+                              className={cn(
+                                'w-full bg-transparent px-1 py-1 font-medium font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-center transition-colors',
+                                isCellDirty(adv.id, `cf_${col.id}`, adv.customFields?.[col.id]) &&
+                                  'payroll-cell-dirty'
+                              )}
                             />
                           ) : (
                             <div className="text-center px-1 font-sans text-xs">{adv.customFields?.[col.id] || '—'}</div>
@@ -753,17 +806,7 @@ export default function SalaryAdvancesPage() {
         </div>
       </div>
 
-      {/* Delete Advance Confirmation Modal */}
-      <AlertModal
-        isOpen={deleteConfirmState.isOpen}
-        onClose={() => setDeleteConfirmState({ isOpen: false, advanceId: '', employeeName: '' })}
-        onConfirm={confirmDeleteAdvance}
-        type="confirm"
-        title="Confirm Delete Advance Record"
-        message={`Are you sure you want to delete the salary advance record for "${deleteConfirmState.employeeName}"?`}
-        confirmText="Yes, Delete Record"
-        cancelText="Cancel"
-      />
+      {modals}
     </div>
   )
 }

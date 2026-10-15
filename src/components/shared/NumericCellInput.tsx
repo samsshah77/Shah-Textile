@@ -59,6 +59,8 @@ export interface NumericCellInputProps
   onValueChange: (value: number) => void
   navRow?: number
   navCol?: number
+  /** When true, marks cell as unsaved / modified with distinct amber styling */
+  isDirty?: boolean
 }
 
 /**
@@ -72,6 +74,7 @@ export function NumericCellInput({
   onValueChange,
   navRow,
   navCol,
+  isDirty,
   className,
   onFocus,
   onBlur,
@@ -157,11 +160,12 @@ export function NumericCellInput({
       data-nav-col={navCol}
       value={focused ? text : value === 0 ? '' : String(value)}
       placeholder={focused ? '' : '0'}
-      className={cn('sara-num-input', className)}
+      className={cn('sara-num-input', isDirty && 'payroll-cell-dirty', className)}
       onFocus={(e) => {
         setFocused(true)
         setText(value === 0 ? '' : String(value))
-        requestAnimationFrame(() => e.currentTarget.select())
+        const target = e.currentTarget
+        requestAnimationFrame(() => target?.select?.())
         onFocus?.(e)
       }}
       onBlur={(e) => {
@@ -192,6 +196,8 @@ export interface TextCellInputProps
   onValueChange: (value: string) => void
   navRow?: number
   navCol?: number
+  /** When true, marks cell as unsaved / modified with distinct amber styling */
+  isDirty?: boolean
 }
 
 /** Text cell with same Enter / arrow nav as NumericCellInput. */
@@ -200,6 +206,7 @@ export function TextCellInput({
   onValueChange,
   navRow,
   navCol,
+  isDirty,
   className,
   onKeyDown,
   onFocus,
@@ -240,9 +247,10 @@ export function TextCellInput({
       data-nav-row={navRow}
       data-nav-col={navCol}
       value={value}
-      className={className}
+      className={cn(isDirty && 'payroll-cell-dirty', className)}
       onFocus={(e) => {
-        requestAnimationFrame(() => e.currentTarget.select())
+        const target = e.currentTarget
+        requestAnimationFrame(() => target?.select?.())
         onFocus?.(e)
       }}
       onChange={(e) => onValueChange(e.target.value)}

@@ -8,7 +8,7 @@ import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/Inl
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Users,
   Printer,
@@ -28,8 +28,11 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
-import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
+import { MonthLockButton } from '@/components/payroll/MonthLockBanner'
 import { EmployeePaySlipModal } from '@/components/payroll/EmployeePaySlipModal'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
@@ -64,18 +67,33 @@ export default function StaffSalariesPage() {
   const isLocked = payrollService.isMonthLocked(selectedMonth)
   const isEditable = canEditAccounts && !isLocked
 
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(staffList, selectedMonth, {
+    sheetName: 'Staff Salary & OT',
+    editableFields: ['attendanceDays', 'otHours', 'lessAdvance', 'chequeAmount'],
+  })
+
   const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
     'staff_salaries_v1',
     DEFAULT_STAFF_WIDTHS
   )
 
-  const reload = () => {
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
     const days = daysInMonth || 30
-    setStaffList(
-      payrollService
-        .getStaffSalaries(selectedMonth)
-        .map((row) => payrollService.calculateStaffSalaryRow(row, days))
-    )
+    const fresh = payrollService
+      .getStaffSalaries(selectedMonth)
+      .map((row) => payrollService.calculateStaffSalaryRow(row, days))
+    setStaffList(fresh)
+    resetSnapshot(fresh)
   }
 
   useEffect(() => {
@@ -83,7 +101,7 @@ export default function StaffSalariesPage() {
     if (daysInMonth !== 28 && daysInMonth !== 30 && daysInMonth !== 31) {
       setDaysInMonth(30)
     }
-    reload()
+    reload(true)
     const handleSync = (e: Event) => {
       const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
       const next =
@@ -173,12 +191,34 @@ export default function StaffSalariesPage() {
     payrollService.saveStaffSalaries(next)
   }
 
-  // Delete row and auto-renumber
+  // Delete row and auto-renumber with confirmation
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
-    const updated = staffList.filter((item) => item.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setStaffList(updated)
-    payrollService.saveStaffSalaries(updated)
+    const row = staffList.find((item) => item.id === id)
+    const empName = row?.employeeName || 'Staff Member'
+    askConfirm({
+      title: 'Delete Staff Row?',
+      danger: true,
+      confirmText: 'Delete Row',
+      cancelText: 'Cancel',
+      message: (
+        <div className="space-y-2 text-xs text-slate-600 text-left">
+          <p>
+            Kya aap waqai <strong>{empName}</strong> ko is sheet se delete karna chahte hain?
+          </p>
+          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+          </div>
+        </div>
+      ),
+      onConfirm: () => {
+        const updated = staffList
+          .filter((item) => item.id !== id)
+          .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+        setStaffList(updated)
+        payrollService.saveStaffSalaries(updated)
+      },
+    })
   }
 
   const handleAddCustomColumn = (col: CustomColumn) => {
@@ -201,7 +241,19 @@ export default function StaffSalariesPage() {
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveStaffSalaries(staffList)
+        commitSaved(staffList)
         showSuccess('Saved', 'Staff salaries successfully saved.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setStaffList(discardChanges())
       },
     })
   }
@@ -238,9 +290,22 @@ export default function StaffSalariesPage() {
                   disabled={!canEditAccounts}
                   onChange={
                     canEditAccounts
-                      ? async (m) => {
-                          await payrollService.setActiveSalariedMonthAsync(m)
-                          setSelectedMonth(m)
+                      ? (m) => {
+                          if (m === selectedMonth) return
+                          if (hasUnsavedChanges) {
+                            askConfirm({
+                              title: 'Unsaved Changes',
+                              message:
+                                'Aap ke paas unsaved changes hain. Agar aap month change karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                              confirmText: 'Discard & Switch',
+                              onConfirm: async () => {
+                                await payrollService.setActiveSalariedMonthAsync(m)
+                                setSelectedMonth(m)
+                              },
+                            })
+                            return
+                          }
+                          payrollService.setActiveSalariedMonthAsync(m).then(() => setSelectedMonth(m))
                         }
                       : undefined
                   }
@@ -250,10 +315,13 @@ export default function StaffSalariesPage() {
                   disabled={!canEditAccounts}
                   onChange={(e) => {
                     const days = Number(e.target.value)
-                    setDaysInMonth(days)
-                    setStaffList((prev) =>
-                      prev.map((row) => payrollService.calculateStaffSalaryRow(row, days))
-                    )
+                    if (days === daysInMonth) return
+                    requestNavigationGuard(() => {
+                      setDaysInMonth(days)
+                      setStaffList((prev) =>
+                        prev.map((row) => payrollService.calculateStaffSalaryRow(row, days))
+                      )
+                    })
                   }}
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                   aria-label="Days in month"
@@ -266,15 +334,12 @@ export default function StaffSalariesPage() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
                   disabled={!isEditable}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9 disabled:opacity-50"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  dirtyCount={dirtyCount}
+                />
+                <MonthLockButton month={selectedMonth} onStatusChange={reload} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -290,9 +355,6 @@ export default function StaffSalariesPage() {
         />
       </div>
 
-      {/* Month Lock & Finalization Status Banner */}
-      <MonthLockBanner month={selectedMonth} onStatusChange={reload} />
-
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
         <div className="flex items-center gap-2.5 p-3 rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 text-xs font-medium print:hidden">
@@ -302,6 +364,13 @@ export default function StaffSalariesPage() {
           </span>
         </div>
       )}
+
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {modals}
 
@@ -517,7 +586,13 @@ export default function StaffSalariesPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {staffList.map((st, idx) => (
-                <tr key={st.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
+                <tr
+                  key={st.id}
+                  className={cn(
+                    'text-slate-800 hover:bg-slate-50/80 transition-colors',
+                    isRowDirty(st.id) && 'payroll-row-dirty'
+                  )}
+                >
                   <SerialCellWithInsert
                     serialNo={st.serialNo}
                     index={idx}
@@ -562,6 +637,7 @@ export default function StaffSalariesPage() {
                     <NumericCellInput
                       value={st.attendanceDays || 0}
                       disabled={!isEditable}
+                      isDirty={isCellDirty(st.id, 'attendanceDays')}
                       navRow={idx}
                       navCol={0}
                       onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
@@ -604,6 +680,7 @@ export default function StaffSalariesPage() {
                     <NumericCellInput
                       value={st.otHours || 0}
                       disabled={!isEditable}
+                      isDirty={isCellDirty(st.id, 'otHours')}
                       navRow={idx}
                       navCol={1}
                       onValueChange={(v) => handleCellChange(idx, 'otHours', v)}
@@ -635,6 +712,7 @@ export default function StaffSalariesPage() {
                     <NumericCellInput
                       value={st.lessAdvance || 0}
                       disabled={!isEditable}
+                      isDirty={isCellDirty(st.id, 'lessAdvance')}
                       navRow={idx}
                       navCol={2}
                       onValueChange={(v) => handleCellChange(idx, 'lessAdvance', v)}
@@ -650,6 +728,7 @@ export default function StaffSalariesPage() {
                     <NumericCellInput
                       value={st.chequeAmount || 0}
                       disabled={!isEditable}
+                      isDirty={isCellDirty(st.id, 'chequeAmount')}
                       navRow={idx}
                       navCol={3}
                       onValueChange={(v) => handleCellChange(idx, 'chequeAmount', v)}
@@ -688,7 +767,11 @@ export default function StaffSalariesPage() {
                           disabled={!canEditAccounts}
                           onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
                           placeholder="—"
-                          className="w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center"
+                          className={cn(
+                            'w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center transition-colors',
+                            isCellDirty(st.id, `cf_${col.id}`, st.customFields?.[col.id]) &&
+                              'payroll-cell-dirty'
+                          )}
                         />
                       </td>
                     )

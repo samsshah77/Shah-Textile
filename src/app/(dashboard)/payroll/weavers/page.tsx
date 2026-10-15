@@ -10,7 +10,7 @@ import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/Inl
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   DollarSign,
   Award,
@@ -30,8 +30,11 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
-import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
+import { MonthLockButton } from '@/components/payroll/MonthLockBanner'
 import { EmployeePaySlipModal } from '@/components/payroll/EmployeePaySlipModal'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_WEAVER_WAGES_WIDTHS = {
@@ -133,6 +136,31 @@ function WeaversPayrollContent() {
     resetColumnWidth: resetNetColWidth,
   } = useResizableColumns('weavers_net', DEFAULT_WEAVER_NET_WIDTHS)
 
+  // Unsaved changes / dirty cell tracker
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(
+    weaversList,
+    `${selectedMonth}-${activeFortnight}`,
+    {
+      sheetName: 'Weavers',
+      editableFields: [
+        'attendanceDays',
+        'extraLooms',
+        'attendanceAllowance',
+        'holidayAttendance',
+        'efficiencyAmount',
+      ],
+    }
+  )
+
   useEffect(() => {
     const fn = searchParams.get('fortnight') as '1-15' | '16-31'
     if (fn === '1-15' || fn === '16-31') setActiveFortnight(fn)
@@ -141,8 +169,11 @@ function WeaversPayrollContent() {
     if (tab === 'overtime' || tab === 'net-payment' || tab === 'wages') setActiveTab(tab)
   }, [searchParams])
 
-  const reload = () => {
-    setWeaversList(payrollService.getWeaversWages(selectedMonth, activeFortnight))
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
+    const fresh = payrollService.getWeaversWages(selectedMonth, activeFortnight)
+    setWeaversList(fresh)
+    resetSnapshot(fresh)
   }
 
   useEffect(() => {
@@ -294,25 +325,45 @@ function WeaversPayrollContent() {
     setWeaversList(next)
   }
 
+  // Delete row with confirmation
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
     const row = weaversList.find((w) => w.id === id)
     if (!row) return
-    // Tombstone + purge all sheets so hydrate/repair cannot put them back at table end.
-    payrollService.deleteWageSheetPerson('weaver', row)
-    const filtered = weaversList
-      .filter((w) => w.id !== id)
-      .filter(
-        (w) =>
-          !(
-            (row.employeeId && w.employeeId === row.employeeId) ||
-            (row.employeeName &&
-              w.employeeName &&
-              w.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
+    const empName = row.employeeName || 'Weaver'
+    askConfirm({
+      title: 'Delete Weaver Row?',
+      danger: true,
+      confirmText: 'Delete Row',
+      cancelText: 'Cancel',
+      message: (
+        <div className="space-y-2 text-xs text-slate-600 text-left">
+          <p>
+            Kya aap waqai <strong>{empName}</strong> ko is weavers sheet se delete karna chahte hain?
+          </p>
+          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+          </div>
+        </div>
+      ),
+      onConfirm: () => {
+        // Tombstone + purge all sheets so hydrate/repair cannot put them back at table end.
+        payrollService.deleteWageSheetPerson('weaver', row)
+        const filtered = weaversList
+          .filter((w) => w.id !== id)
+          .filter(
+            (w) =>
+              !(
+                (row.employeeId && w.employeeId === row.employeeId) ||
+                (row.employeeName &&
+                  w.employeeName &&
+                  w.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
+              )
           )
-      )
-      .map((item, i) => ({ ...item, serialNo: i + 1 }))
-    setWeaversList(filtered)
+          .map((item, i) => ({ ...item, serialNo: i + 1 }))
+        setWeaversList(filtered)
+      },
+    })
   }
 
 
@@ -324,7 +375,19 @@ function WeaversPayrollContent() {
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveWeaversWages(selectedMonth, activeFortnight, weaversList)
+        commitSaved(weaversList)
         showSuccess('Saved', 'Weavers wages successfully saved.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setWeaversList(discardChanges())
       },
     })
   }
@@ -357,6 +420,7 @@ function WeaversPayrollContent() {
 
   return (
     <div className="space-y-6 print:space-y-2">
+      {modals}
       <div className="print:hidden">
         <PageHeader
           title={
@@ -388,15 +452,18 @@ function WeaversPayrollContent() {
                   disabled={!canEditAccounts}
                   onChange={
                     canEditAccounts
-                      ? async (m) => {
-                          const halves = payrollService.listAvailableFortnightsForMonth(m)
-                          const nextFn = halves.includes(activeFortnight)
-                            ? activeFortnight
-                            : halves[0] || '1-15'
-                          await payrollService.setActiveFortnightPeriodAsync(m, nextFn)
-                          setSelectedMonth(m)
-                          setActiveFortnight(nextFn)
-                          pushFilters({ month: m, fortnight: nextFn, tab: activeTab })
+                      ? (m) => {
+                          if (m === selectedMonth) return
+                          requestNavigationGuard(async () => {
+                            const halves = payrollService.listAvailableFortnightsForMonth(m)
+                            const nextFn = halves.includes(activeFortnight)
+                              ? activeFortnight
+                              : halves[0] || '1-15'
+                            await payrollService.setActiveFortnightPeriodAsync(m, nextFn)
+                            setSelectedMonth(m)
+                            setActiveFortnight(nextFn)
+                            pushFilters({ month: m, fortnight: nextFn, tab: activeTab })
+                          })
                         }
                       : undefined
                   }
@@ -407,10 +474,13 @@ function WeaversPayrollContent() {
                   disabled={!canEditAccounts}
                   onChange={
                     canEditAccounts
-                      ? async (fn) => {
-                          await payrollService.setActiveFortnightPeriodAsync(selectedMonth, fn)
-                          setActiveFortnight(fn)
-                          pushFilters({ fortnight: fn, tab: activeTab })
+                      ? (fn) => {
+                          if (fn === activeFortnight) return
+                          requestNavigationGuard(async () => {
+                            await payrollService.setActiveFortnightPeriodAsync(selectedMonth, fn)
+                            setActiveFortnight(fn)
+                            pushFilters({ fortnight: fn, tab: activeTab })
+                          })
                         }
                       : undefined
                   }
@@ -419,8 +489,11 @@ function WeaversPayrollContent() {
                   value={activeTab}
                   onChange={(e) => {
                     const tab = e.target.value as 'wages' | 'overtime' | 'net-payment'
-                    setActiveTab(tab)
-                    pushFilters({ tab, fortnight: activeFortnight })
+                    if (tab === activeTab) return
+                    requestNavigationGuard(() => {
+                      setActiveTab(tab)
+                      pushFilters({ tab, fortnight: activeFortnight })
+                    })
                   }}
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                   aria-label="Sheet view"
@@ -443,15 +516,12 @@ function WeaversPayrollContent() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
-                  disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  disabled={!isEditable}
+                  dirtyCount={dirtyCount}
+                />
+                <MonthLockButton month={selectedMonth} onStatusChange={reload} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -532,9 +602,6 @@ function WeaversPayrollContent() {
         </div>
       )}
 
-      {/* Month Lock & Finalization Status Banner */}
-      <MonthLockBanner month={selectedMonth} onStatusChange={reload} />
-
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
         <div className="flex items-center gap-2.5 p-3 rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 text-xs font-medium print:hidden">
@@ -544,6 +611,13 @@ function WeaversPayrollContent() {
           </span>
         </div>
       )}
+
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {modals}
 
@@ -708,7 +782,13 @@ function WeaversPayrollContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {weaversList.map((w, idx) => (
-                  <tr key={w.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
+                  <tr
+                    key={w.id}
+                    className={cn(
+                      'text-slate-800 hover:bg-slate-50/80 transition-colors',
+                      isRowDirty(w.id) && 'payroll-row-dirty'
+                    )}
+                  >
                     {/* S.# with Hover Row Insertion */}
                     <SerialCellWithInsert
                       serialNo={w.serialNo}
@@ -756,6 +836,7 @@ function WeaversPayrollContent() {
                       <NumericCellInput
                         value={w.attendanceDays || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(w.id, 'attendanceDays')}
                         navRow={idx}
                         navCol={1}
                         onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
@@ -787,6 +868,7 @@ function WeaversPayrollContent() {
                       <NumericCellInput
                         value={w.extraLooms || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(w.id, 'extraLooms')}
                         navRow={idx}
                         navCol={2}
                         onValueChange={(v) => handleCellChange(idx, 'extraLooms', v)}
@@ -810,6 +892,7 @@ function WeaversPayrollContent() {
                       <NumericCellInput
                         value={w.attendanceAllowance || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(w.id, 'attendanceAllowance')}
                         navRow={idx}
                         navCol={3}
                         onValueChange={(v) => handleCellChange(idx, 'attendanceAllowance', v)}
@@ -840,7 +923,11 @@ function WeaversPayrollContent() {
                             disabled={!canEditAccounts}
                             onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
                             placeholder="—"
-                            className="w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center"
+                            className={cn(
+                              'w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center transition-colors',
+                              isCellDirty(w.id, `cf_${col.id}`, w.customFields?.[col.id]) &&
+                                'payroll-cell-dirty'
+                            )}
                           />
                         </td>
                       )
@@ -1014,7 +1101,13 @@ function WeaversPayrollContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {weaversList.map((w, idx) => (
-                  <tr key={w.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
+                  <tr
+                    key={w.id}
+                    className={cn(
+                      'text-slate-800 hover:bg-slate-50/80 transition-colors',
+                      isRowDirty(w.id) && 'payroll-row-dirty'
+                    )}
+                  >
                     {/* S.# with Hover Row Insertion */}
                     <SerialCellWithInsert
                       serialNo={w.serialNo}
@@ -1047,6 +1140,7 @@ function WeaversPayrollContent() {
                       <NumericCellInput
                         value={w.holidayAttendance || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(w.id, 'holidayAttendance')}
                         navRow={idx}
                         navCol={0}
                         onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
@@ -1084,7 +1178,11 @@ function WeaversPayrollContent() {
                             disabled={!canEditAccounts}
                             onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
                             placeholder="—"
-                            className="w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center"
+                            className={cn(
+                              'w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center transition-colors',
+                              isCellDirty(w.id, `cf_${col.id}`, w.customFields?.[col.id]) &&
+                                'payroll-cell-dirty'
+                            )}
                           />
                         </td>
                       )
@@ -1317,7 +1415,13 @@ function WeaversPayrollContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {weaversList.map((w, idx) => (
-                  <tr key={w.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
+                  <tr
+                    key={w.id}
+                    className={cn(
+                      'text-slate-800 hover:bg-slate-50/80 transition-colors',
+                      isRowDirty(w.id) && 'payroll-row-dirty'
+                    )}
+                  >
                     {/* S.# with Hover Row Insertion */}
                     <SerialCellWithInsert
                       serialNo={w.serialNo}
@@ -1398,6 +1502,7 @@ function WeaversPayrollContent() {
                       <NumericCellInput
                         value={w.efficiencyAmount || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(w.id, 'efficiencyAmount')}
                         navRow={idx}
                         navCol={0}
                         onValueChange={(v) => handleCellChange(idx, 'efficiencyAmount', v)}
@@ -1427,7 +1532,11 @@ function WeaversPayrollContent() {
                             disabled={!canEditAccounts}
                             onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
                             placeholder="—"
-                            className="w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center"
+                            className={cn(
+                              'w-full bg-transparent px-1 py-0.5 font-medium font-sans text-xs focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded text-center transition-colors',
+                              isCellDirty(w.id, `cf_${col.id}`, w.customFields?.[col.id]) &&
+                                'payroll-cell-dirty'
+                            )}
                           />
                         </td>
                       )

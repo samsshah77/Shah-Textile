@@ -4,6 +4,7 @@ import { useRef, useEffect, Suspense, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
+import { usePayrollDirtyContextOptional } from '@/context/PayrollDirtyContext'
 
 export interface SheetTabInfo {
   sheetNumber: number
@@ -284,6 +285,9 @@ function ExcelSheetTabBarContent() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const activeTabRef = useRef<HTMLAnchorElement>(null)
   const { isQualityController, isAccountant } = useAuth()
+  const dirtyContext = usePayrollDirtyContextOptional()
+  const hasUnsavedChanges = dirtyContext?.hasUnsavedChanges ?? false
+  const dirtyCount = dirtyContext?.dirtyCount ?? 0
 
   const isProduction = pathname.startsWith('/floor') || pathname.startsWith('/production')
   const isAccounts = pathname.startsWith('/accounts')
@@ -350,9 +354,23 @@ function ExcelSheetTabBarContent() {
                   <Link
                     href={sheet.href}
                     ref={isActive ? activeTabRef : undefined}
+                    onClick={(e) => {
+                      if (!isActive && hasUnsavedChanges && dirtyContext) {
+                        e.preventDefault()
+                        dirtyContext.confirmDiscardAndNavigate(sheet.href)
+                      }
+                    }}
                     className={`nav-link sara-sheet-tabs__link ${isActive ? 'active' : ''}`}
                   >
-                    {sheet.name}
+                    <span>{sheet.name}</span>
+                    {isActive && hasUnsavedChanges && (
+                      <span
+                        className="badge rounded-pill bg-warning text-dark ms-1.5 px-1.5 py-0.5 text-[10px] font-bold"
+                        title={`${dirtyCount} unsaved changes`}
+                      >
+                        {dirtyCount}
+                      </span>
+                    )}
                   </Link>
                 </li>
               )

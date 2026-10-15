@@ -85,10 +85,11 @@ export function buildFortnightSynopsis(
   const contract = ctx.getContractSalaries(month)
   const totalContractBasic = contract.reduce((s, c) => s + (c.basicSalary || 0), 0)
   const totalContractAdv = contract.reduce((s, c) => s + (c.advanceDeduction || 0), 0)
-  const netContractBasic = Math.max(0, totalContractBasic - totalContractAdv)
   const totalContractOT = contract.reduce((s, c) => s + (c.otAmount || 0), 0)
   const totalContractEff = contract.reduce((s, c) => s + (c.efficiencyAmount || 0), 0)
   const totalTicket = contract.reduce((s, c) => s + (c.ticketCharges || 0), 0)
+  // Ticket amount contract salary se cut hoti hai (row 10 pe alag show hoti hai)
+  const netContractBasic = Math.max(0, totalContractBasic - totalContractAdv - totalTicket)
 
   const weavers2 = ctx.getWeaversWages(month, '16-31')
   const totalWeaverWages2 = weavers2.reduce((s, w) => s + (w.grossAmount || 0), 0)
@@ -224,7 +225,7 @@ export function buildMonthlyGrandSummary(
       {
         serialNo: 2,
         description: 'Contract Employees Salaries',
-        amount: Math.round(Math.max(0, totalContractBasic - totalContractAdv)),
+        amount: Math.round(Math.max(0, totalContractBasic - totalContractAdv - totalTicket)),
         chequeAmount: 0,
         advance: totalContractAdv,
         totalGrossHead: totalContractBasic,

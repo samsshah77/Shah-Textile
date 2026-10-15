@@ -12,7 +12,7 @@ import { AlertModal, type ModalType } from '@/components/ui/AlertModal'
 
 export interface AlertOptions {
   title?: string
-  message: string
+  message: React.ReactNode
   type?: ModalType
   confirmText?: string
   cancelText?: string

@@ -1122,6 +1122,51 @@ input[type='number'] {
   appearance: textfield;
 }
 
+/* ==========================================================================
+   Payroll Dirty / Unsaved Cell Highlight System
+   ========================================================================== */
+.payroll-cell-dirty {
+  background-color: #fef3c7 !important; /* amber-100 */
+  color: #78350f !important;            /* amber-900 */
+  box-shadow: inset 0 0 0 1.5px #f59e0b !important; /* amber-500 ring */
+  font-weight: 600 !important;
+  border-radius: 4px;
+}
+
+.payroll-cell-dirty:focus {
+  background-color: #fffbeb !important; /* amber-50 */
+  box-shadow: inset 0 0 0 2px #d97706 !important; /* amber-600 */
+}
+
+.dark .payroll-cell-dirty {
+  background-color: rgba(120, 53, 15, 0.45) !important; /* dark amber */
+  color: #fef3c7 !important;
+  box-shadow: inset 0 0 0 1.5px #d97706 !important;
+  font-weight: 600 !important;
+  border-radius: 4px;
+}
+
+.dark .payroll-cell-dirty:focus {
+  background-color: rgba(120, 53, 15, 0.7) !important;
+  box-shadow: inset 0 0 0 2px #f59e0b !important;
+}
+
+/* Row-level dirty indicator (subtle amber line on the left edge of edited row) */
+tr.payroll-row-dirty td:first-child {
+  position: relative;
+}
+tr.payroll-row-dirty td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3.5px;
+  background-color: #f59e0b; /* amber-500 */
+  border-top-left-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
 /* Prevent iOS Safari auto-zoom on input focus & eliminate mobile touch bounce */
 @media (max-width: 768px) {
   input, select, textarea {

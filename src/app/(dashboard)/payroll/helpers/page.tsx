@@ -10,7 +10,7 @@ import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/Inl
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Users,
   Printer,
@@ -28,6 +28,9 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 const DEFAULT_HELPER_WIDTHS = {
@@ -77,6 +80,25 @@ function HelpersPayrollContent() {
     resetAllWidths,
   } = useResizableColumns('helpers_payroll', DEFAULT_HELPER_WIDTHS)
 
+  // Unsaved changes tracker
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(
+    helpersList,
+    `${selectedMonth}-${activeFortnight}`,
+    {
+      sheetName: 'Helpers',
+      editableFields: ['attendanceDays', 'holidayAttendance'],
+    }
+  )
+
   useEffect(() => {
     const fn = searchParams.get('fortnight') as '1-15' | '16-31' | null
     const m = searchParams.get('month')
@@ -84,8 +106,11 @@ function HelpersPayrollContent() {
     if (m && /^\d{4}-\d{2}$/.test(m)) setSelectedMonth(m)
   }, [searchParams])
 
-  const reload = () => {
-    setHelpersList(payrollService.getHelpersWages(selectedMonth, activeFortnight))
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
+    const fresh = payrollService.getHelpersWages(selectedMonth, activeFortnight)
+    setHelpersList(fresh)
+    resetSnapshot(fresh)
   }
 
   useEffect(() => {
@@ -165,24 +190,44 @@ function HelpersPayrollContent() {
     setHelpersList(next)
   }
 
+  // Delete row with confirmation
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
     const row = helpersList.find((h) => h.id === id)
     if (!row) return
-    payrollService.deleteWageSheetPerson('helper', row)
-    const filtered = helpersList
-      .filter((h) => h.id !== id)
-      .filter(
-        (h) =>
-          !(
-            (row.employeeId && h.employeeId === row.employeeId) ||
-            (row.employeeName &&
-              h.employeeName &&
-              h.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
+    const empName = row.employeeName || 'Helper'
+    askConfirm({
+      title: 'Delete Helper Row?',
+      danger: true,
+      confirmText: 'Delete Row',
+      cancelText: 'Cancel',
+      message: (
+        <div className="space-y-2 text-xs text-slate-600 text-left">
+          <p>
+            Kya aap waqai <strong>{empName}</strong> ko is helper sheet se delete karna chahte hain?
+          </p>
+          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+          </div>
+        </div>
+      ),
+      onConfirm: () => {
+        payrollService.deleteWageSheetPerson('helper', row)
+        const filtered = helpersList
+          .filter((h) => h.id !== id)
+          .filter(
+            (h) =>
+              !(
+                (row.employeeId && h.employeeId === row.employeeId) ||
+                (row.employeeName &&
+                  h.employeeName &&
+                  h.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
+              )
           )
-      )
-      .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setHelpersList(filtered)
+          .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+        setHelpersList(filtered)
+      },
+    })
   }
 
 
@@ -194,7 +239,19 @@ function HelpersPayrollContent() {
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveHelpersWages(selectedMonth, activeFortnight, helpersList)
+        commitSaved(helpersList)
         showSuccess('Saved', 'Helpers wages successfully saved.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setHelpersList(discardChanges())
       },
     })
   }
@@ -238,8 +295,11 @@ function HelpersPayrollContent() {
                   value={selectedMonth}
                   months={payrollService.listHelpersMonths()}
                   onChange={(m) => {
-                    setSelectedMonth(m)
-                    pushFilters({ month: m, fortnight: activeFortnight })
+                    if (m === selectedMonth) return
+                    requestNavigationGuard(() => {
+                      setSelectedMonth(m)
+                      pushFilters({ month: m, fortnight: activeFortnight })
+                    })
                   }}
                 />
                 <FortnightSelect
@@ -247,23 +307,22 @@ function HelpersPayrollContent() {
                   value={activeFortnight}
                   onlyGenerated={false}
                   onChange={(fn) => {
-                    setActiveFortnight(fn)
-                    pushFilters({ fortnight: fn, month: selectedMonth })
+                    if (fn === activeFortnight) return
+                    requestNavigationGuard(() => {
+                      setActiveFortnight(fn)
+                      pushFilters({ fortnight: fn, month: selectedMonth })
+                    })
                   }}
                 />
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
                   disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  dirtyCount={dirtyCount}
+                />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -292,7 +351,12 @@ function HelpersPayrollContent() {
         </div>
       )}
 
-      {modals}
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
@@ -434,7 +498,13 @@ function HelpersPayrollContent() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {helpersList.map((h, idx) => (
-                <tr key={h.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                <tr
+                  key={h.id}
+                  className={cn(
+                    'text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors',
+                    isRowDirty(h.id) && 'payroll-row-dirty'
+                  )}
+                >
                   <SerialCellWithInsert
                     serialNo={h.serialNo}
                     index={idx}
@@ -481,6 +551,7 @@ function HelpersPayrollContent() {
                     <NumericCellInput
                       value={h.attendanceDays || 0}
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(h.id, 'attendanceDays')}
                       navRow={idx}
                       navCol={1}
                       onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
@@ -504,6 +575,7 @@ function HelpersPayrollContent() {
                     <NumericCellInput
                       value={h.holidayAttendance || 0}
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(h.id, 'holidayAttendance')}
                       navRow={idx}
                       navCol={2}
                       onValueChange={(v) => handleCellChange(idx, 'holidayAttendance', v)}
@@ -542,7 +614,11 @@ function HelpersPayrollContent() {
                           disabled={!canEditAccounts}
                           onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
                           placeholder="—"
-                          className="w-full bg-transparent px-1 py-1 font-medium font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-center"
+                          className={cn(
+                            'w-full bg-transparent px-1 py-1 font-medium font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-center transition-colors',
+                            isCellDirty(h.id, `cf_${col.id}`, h.customFields?.[col.id]) &&
+                              'payroll-cell-dirty'
+                          )}
                         />
                       </td>
                     )

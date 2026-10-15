@@ -13,7 +13,7 @@ import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/Inl
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Users,
   Printer,
@@ -31,9 +31,12 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
-import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
+import { MonthLockButton } from '@/components/payroll/MonthLockBanner'
 import { EmployeePaySlipModal } from '@/components/payroll/EmployeePaySlipModal'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 
 const DEFAULT_CONTRACT_SALARY_WIDTHS = {
   serialNo: 56,
@@ -102,6 +105,28 @@ function ContractPayrollContent() {
   const isLocked = payrollService.isMonthLocked(selectedMonth)
   const isEditable = canEditAccounts && !isLocked
 
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(contractList, selectedMonth, {
+    sheetName: 'Contract',
+    editableFields: [
+      'attendanceDays',
+      'lateHours',
+      'lateAmount',
+      'advanceDeduction',
+      'ticketCharges',
+      'otHours',
+      'efficiencyAmount',
+    ],
+  })
+
   // Resizable column width hooks for all 3 views
   const {
     widths: salaryWidths,
@@ -121,13 +146,14 @@ function ContractPayrollContent() {
     resetColumnWidth: resetNetColWidth,
   } = useResizableColumns('contract_net', DEFAULT_CONTRACT_NET_WIDTHS)
 
-  const reload = () => {
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
     const days = daysInMonth || 30
-    setContractList(
-      payrollService
-        .getContractSalaries(selectedMonth)
-        .map((row) => payrollService.calculateContractSalaryRow(row, days))
-    )
+    const fresh = payrollService
+      .getContractSalaries(selectedMonth)
+      .map((row) => payrollService.calculateContractSalaryRow(row, days))
+    setContractList(fresh)
+    resetSnapshot(fresh)
   }
 
   useEffect(() => {
@@ -138,7 +164,7 @@ function ContractPayrollContent() {
 
     // Wait for DB hydrate so we don't flash local/seed count (e.g. 15 → 12).
     void hydratePayrollFromDb().then(() => {
-      if (!cancelled) reload()
+      if (!cancelled) reload(true)
     })
 
     const handleSync = (e: Event) => {
@@ -160,7 +186,7 @@ function ContractPayrollContent() {
     }
   }, [selectedMonth, daysInMonth])
 
-  // Handle cell edit with live formula recalculation + persist (so refresh keeps values)
+  // Handle cell edit with live formula recalculation
   const handleCellChange = (
     index: number,
     field: keyof ContractSalaryRecord,
@@ -176,7 +202,6 @@ function ContractPayrollContent() {
       }
       const recalculated = payrollService.calculateContractSalaryRow(current, daysInMonth)
       updated[index] = recalculated
-      payrollService.saveContractSalaries(selectedMonth, updated)
       return updated
     })
   }
@@ -239,12 +264,33 @@ function ContractPayrollContent() {
     setContractList(next)
   }
 
+  // Delete row with confirmation
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
-    const filtered = contractList
-      .filter((c) => c.id !== id)
-      .map((item, i) => ({ ...item, serialNo: i + 1 }))
-    setContractList(filtered)
+    const row = contractList.find((c) => c.id === id)
+    const empName = row?.employeeName || 'Contract Employee'
+    askConfirm({
+      title: 'Delete Contract Row?',
+      danger: true,
+      confirmText: 'Delete Row',
+      cancelText: 'Cancel',
+      message: (
+        <div className="space-y-2 text-xs text-slate-600 text-left">
+          <p>
+            Kya aap waqai <strong>{empName}</strong> ko is contract sheet se delete karna chahte hain?
+          </p>
+          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+          </div>
+        </div>
+      ),
+      onConfirm: () => {
+        const filtered = contractList
+          .filter((c) => c.id !== id)
+          .map((item, i) => ({ ...item, serialNo: i + 1 }))
+        setContractList(filtered)
+      },
+    })
   }
 
 
@@ -256,7 +302,19 @@ function ContractPayrollContent() {
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveContractSalaries(selectedMonth, contractList)
+        commitSaved(contractList)
         showSuccess('Saved', 'Contract salaries successfully saved.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setContractList(discardChanges())
       },
     })
   }
@@ -337,9 +395,22 @@ function ContractPayrollContent() {
                   disabled={!canEditAccounts}
                   onChange={
                     canEditAccounts
-                      ? async (m) => {
-                          await payrollService.setActiveSalariedMonthAsync(m)
-                          setSelectedMonth(m)
+                      ? (m) => {
+                          if (m === selectedMonth) return
+                          if (hasUnsavedChanges) {
+                            askConfirm({
+                              title: 'Unsaved Changes',
+                              message:
+                                'Aap ke paas unsaved changes hain. Agar aap month change karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                              confirmText: 'Discard & Switch',
+                              onConfirm: async () => {
+                                await payrollService.setActiveSalariedMonthAsync(m)
+                                setSelectedMonth(m)
+                              },
+                            })
+                            return
+                          }
+                          payrollService.setActiveSalariedMonthAsync(m).then(() => setSelectedMonth(m))
                         }
                       : undefined
                   }
@@ -349,10 +420,13 @@ function ContractPayrollContent() {
                   disabled={!canEditAccounts}
                   onChange={(e) => {
                     const days = Number(e.target.value)
-                    setDaysInMonth(days)
-                    setContractList((prev) =>
-                      prev.map((row) => payrollService.calculateContractSalaryRow(row, days))
-                    )
+                    if (days === daysInMonth) return
+                    requestNavigationGuard(() => {
+                      setDaysInMonth(days)
+                      setContractList((prev) =>
+                        prev.map((row) => payrollService.calculateContractSalaryRow(row, days))
+                      )
+                    })
                   }}
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                   aria-label="Days in month"
@@ -365,15 +439,12 @@ function ContractPayrollContent() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
-                  disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  disabled={!isEditable}
+                  dirtyCount={dirtyCount}
+                />
+                <MonthLockButton month={selectedMonth} onStatusChange={reload} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -389,9 +460,6 @@ function ContractPayrollContent() {
         />
       </div>
 
-      {/* Month Lock & Finalization Status Banner */}
-      <MonthLockBanner month={selectedMonth} onStatusChange={reload} />
-
       {/* Safety Notice if Editing is Disabled */}
       {!canEditAccounts && (
         <div className="flex items-center gap-2.5 p-3 rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 text-xs font-medium print:hidden">
@@ -401,6 +469,13 @@ function ContractPayrollContent() {
           </span>
         </div>
       )}
+
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {modals}
 
@@ -584,7 +659,13 @@ function ContractPayrollContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {contractList.map((c, idx) => (
-                  <tr key={c.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
+                  <tr
+                    key={c.id}
+                    className={cn(
+                      'text-slate-800 hover:bg-slate-50/80 transition-colors',
+                      isRowDirty(c.id) && 'payroll-row-dirty'
+                    )}
+                  >
                     {/* S.# with Hover Row Insertion */}
                     <SerialCellWithInsert
                       serialNo={c.serialNo}
@@ -630,6 +711,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.attendanceDays || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'attendanceDays')}
                         navRow={idx}
                         navCol={0}
                         onValueChange={(v) => handleCellChange(idx, 'attendanceDays', v)}
@@ -672,6 +754,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.lateHours || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'lateHours')}
                         navRow={idx}
                         navCol={1}
                         onValueChange={(v) => handleCellChange(idx, 'lateHours', v)}
@@ -687,6 +770,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.lateAmount || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'lateAmount')}
                         navRow={idx}
                         navCol={2}
                         onValueChange={(v) => handleCellChange(idx, 'lateAmount', v)}
@@ -702,6 +786,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.advanceDeduction || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'advanceDeduction')}
                         navRow={idx}
                         navCol={3}
                         onValueChange={(v) => handleCellChange(idx, 'advanceDeduction', v)}
@@ -717,6 +802,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.ticketCharges ?? 5}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'ticketCharges')}
                         navRow={idx}
                         navCol={4}
                         onValueChange={(v) => handleCellChange(idx, 'ticketCharges', v)}
@@ -952,7 +1038,13 @@ function ContractPayrollContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {contractList.map((c, idx) => (
-                  <tr key={c.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
+                  <tr
+                    key={c.id}
+                    className={cn(
+                      'text-slate-800 hover:bg-slate-50/80 transition-colors',
+                      isRowDirty(c.id) && 'payroll-row-dirty'
+                    )}
+                  >
                     {/* S.# with Hover Row Insertion */}
                     <SerialCellWithInsert
                       serialNo={c.serialNo}
@@ -984,6 +1076,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.otHours || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'otHours')}
                         navRow={idx}
                         navCol={0}
                         onValueChange={(v) => handleCellChange(idx, 'otHours', v)}
@@ -1252,7 +1345,13 @@ function ContractPayrollContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {contractList.map((c, idx) => (
-                  <tr key={c.id} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
+                  <tr
+                    key={c.id}
+                    className={cn(
+                      'text-slate-800 hover:bg-slate-50/80 transition-colors',
+                      isRowDirty(c.id) && 'payroll-row-dirty'
+                    )}
+                  >
                     {/* S.# with Hover Row Insertion */}
                     <SerialCellWithInsert
                       serialNo={c.serialNo}
@@ -1319,6 +1418,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.efficiencyAmount || 0}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'efficiencyAmount')}
                         navRow={idx}
                         navCol={0}
                         onValueChange={(v) => handleCellChange(idx, 'efficiencyAmount', v)}
@@ -1347,6 +1447,7 @@ function ContractPayrollContent() {
                       <NumericCellInput
                         value={c.ticketCharges ?? 5}
                         disabled={!canEditAccounts}
+                        isDirty={isCellDirty(c.id, 'ticketCharges')}
                         navRow={idx}
                         navCol={1}
                         onValueChange={(v) => handleCellChange(idx, 'ticketCharges', v)}

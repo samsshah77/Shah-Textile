@@ -81,9 +81,23 @@ export function readLocalMirror(key: string): unknown | null {
   }
 }
 
+const lastPersistedValue = new Map<string, string>()
+
 export async function persistPayrollKey(key: string, value: unknown): Promise<boolean> {
   if (!isPayrollClient()) return false
   writeLocalMirror(key, value)
+  let serialized = ''
+  try {
+    serialized = JSON.stringify(value)
+  } catch {
+    serialized = ''
+  }
+
+  // Deduplicate identical saves: don't flood PUT /api/payroll/store if the database already has this exact value
+  if (serialized && lastPersistedValue.get(key) === serialized) {
+    return true
+  }
+
   try {
     const res = await fetch('/api/payroll/store', {
       method: 'PUT',
@@ -96,10 +110,40 @@ export async function persistPayrollKey(key: string, value: unknown): Promise<bo
       console.error('[payroll] persist rejected', key, res.status, body)
       return false
     }
+    if (serialized) {
+      lastPersistedValue.set(key, serialized)
+    }
     return true
   } catch (err) {
     console.error('[payroll] persist failed', key, err)
     return false
+  }
+}
+
+/**
+ * HR_META writes in many places build a fresh object (active month, fortnight,
+ * petty cash...) and used to DROP deletedEmployeeIds/Names + monthLocks.
+ * That wiped delete-tombstones → deleted weavers/helpers came back after refresh.
+ * Any field the caller did not send is kept from the current meta.
+ */
+function preserveHrMetaFields(key: string, value: unknown): unknown {
+  if (key !== STORAGE_KEYS.HR_META || !value || typeof value !== 'object') return value
+  const incoming = value as HrMetaShape
+  let current: HrMetaShape = {}
+  try {
+    const raw = memoryStore.get(STORAGE_KEYS.HR_META)
+    if (raw) current = JSON.parse(raw) as HrMetaShape
+    else if (isPayrollClient()) current = (readLocalMirror(STORAGE_KEYS.HR_META) as HrMetaShape) || {}
+  } catch {
+    current = {}
+  }
+  return {
+    ...current,
+    ...incoming,
+    monthLocks: incoming.monthLocks ?? current.monthLocks,
+    pettyCashInflowOverrides: incoming.pettyCashInflowOverrides ?? current.pettyCashInflowOverrides,
+    deletedEmployeeIds: incoming.deletedEmployeeIds ?? current.deletedEmployeeIds,
+    deletedEmployeeNames: incoming.deletedEmployeeNames ?? current.deletedEmployeeNames,
   }
 }
 
@@ -114,6 +158,7 @@ export function readStore<T>(key: string, fallback: T): T {
     try {
       const legacy = localStorage.getItem(key)
       if (legacy) {
+        localStorage.removeItem(key)
         memoryStore.set(key, legacy)
         const parsed = JSON.parse(legacy) as T
         void persistPayrollKey(key, parsed)
@@ -131,6 +176,7 @@ export function readStore<T>(key: string, fallback: T): T {
 }
 
 export function writeStore(key: string, value: unknown): void {
+  value = preserveHrMetaFields(key, value)
   try {
     memoryStore.set(key, JSON.stringify(value))
   } catch {
@@ -186,6 +232,7 @@ export function writeStore(key: string, value: unknown): void {
 }
 
 export async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> {
+  value = preserveHrMetaFields(key, value)
   try {
     memoryStore.set(key, JSON.stringify(value))
   } catch {
@@ -465,6 +512,7 @@ export function readHrMetaRaw(): HrMetaShape {
     try {
       const legacy = localStorage.getItem(STORAGE_KEYS.HR_META)
       if (legacy) {
+        localStorage.removeItem(STORAGE_KEYS.HR_META)
         memoryStore.set(STORAGE_KEYS.HR_META, legacy)
         const parsed = JSON.parse(legacy)
         void persistPayrollKey(STORAGE_KEYS.HR_META, parsed)
@@ -547,7 +595,9 @@ export async function hydratePayrollFromDb(): Promise<void> {
       const data = await res.json()
       if (data?.ok && data.store && typeof data.store === 'object') {
         Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
-          memoryStore.set(key, JSON.stringify(value))
+          const raw = JSON.stringify(value)
+          memoryStore.set(key, raw)
+          lastPersistedValue.set(key, raw)
         })
       }
 
@@ -667,6 +717,19 @@ export async function hydratePayrollFromDb(): Promise<void> {
               ...curOverrides,
               ...(incoming.pettyCashInflowOverrides || {}),
             },
+            // Never lose delete-tombstones while merging pending writes.
+            deletedEmployeeIds: [
+              ...new Set([
+                ...(((current as HrMetaShape).deletedEmployeeIds) || []),
+                ...(((incoming as HrMetaShape).deletedEmployeeIds) || []),
+              ]),
+            ],
+            deletedEmployeeNames: [
+              ...new Set([
+                ...(((current as HrMetaShape).deletedEmployeeNames) || []),
+                ...(((incoming as HrMetaShape).deletedEmployeeNames) || []),
+              ]),
+            ],
           }
           memoryStore.set(key, JSON.stringify(merged))
           pendingPersists.set(key, merged)

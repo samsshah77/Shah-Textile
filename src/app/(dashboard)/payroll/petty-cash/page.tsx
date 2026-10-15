@@ -28,6 +28,9 @@ import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 
 const DEFAULT_PETTY_CASH_WIDTHS = {
   serialNo: 56,
@@ -67,6 +70,20 @@ function PettyCashContent() {
   const [flashRowId, setFlashRowId] = useState<string | null>(null)
   const flashClearRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(entries, `${selectedMonth}-${activeFortnight}`, {
+    sheetName: 'Petty Cash',
+    editableFields: ['date', 'description', 'drAmount', 'crAmount'],
+  })
+
   // Resizable columns hook
   const {
     widths,
@@ -82,11 +99,17 @@ function PettyCashContent() {
     if (m && /^\d{4}-\d{2}$/.test(m)) setSelectedMonth(m)
   }, [searchParams])
 
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
+    const fresh = payrollService.getPettyCashEntries(selectedMonth, activeFortnight)
+    setEntries(fresh)
+    resetSnapshot(fresh)
+  }
+
   useEffect(() => {
-    setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
+    reload(true)
     const handleSync = () => {
-      // Petty Cash period is independent of Weaver fortnight — only refresh rows.
-      setEntries(payrollService.getPettyCashEntries(selectedMonth, activeFortnight))
+      reload()
     }
     window.addEventListener('payroll_synced', handleSync)
     return () => window.removeEventListener('payroll_synced', handleSync)
@@ -216,7 +239,19 @@ function PettyCashContent() {
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.savePettyCashEntries(selectedMonth, activeFortnight, entries)
+        commitSaved(entries)
         showSuccess('Saved', 'Petty cash successfully saved.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setEntries(recalculateBalances(discardChanges()))
       },
     })
   }
@@ -265,6 +300,20 @@ function PettyCashContent() {
                   value={selectedMonth}
                   months={payrollService.listPettyCashMonths()}
                   onChange={(m) => {
+                    if (m === selectedMonth) return
+                    if (hasUnsavedChanges) {
+                      askConfirm({
+                        title: 'Unsaved Changes',
+                        message:
+                          'Aap ke paas unsaved changes hain. Agar aap month switch karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                        confirmText: 'Discard & Switch',
+                        onConfirm: () => {
+                          setSelectedMonth(m)
+                          pushFilters({ month: m, fortnight: activeFortnight })
+                        },
+                      })
+                      return
+                    }
                     setSelectedMonth(m)
                     pushFilters({ month: m, fortnight: activeFortnight })
                   }}
@@ -274,6 +323,20 @@ function PettyCashContent() {
                   value={activeFortnight}
                   onlyGenerated={false}
                   onChange={(fn) => {
+                    if (fn === activeFortnight) return
+                    if (hasUnsavedChanges) {
+                      askConfirm({
+                        title: 'Unsaved Changes',
+                        message:
+                          'Aap ke paas unsaved changes hain. Agar aap cycle switch karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                        confirmText: 'Discard & Switch',
+                        onConfirm: () => {
+                          setActiveFortnight(fn)
+                          pushFilters({ fortnight: fn, month: selectedMonth })
+                        },
+                      })
+                      return
+                    }
                     setActiveFortnight(fn)
                     pushFilters({ fortnight: fn, month: selectedMonth })
                   }}
@@ -292,15 +355,11 @@ function PettyCashContent() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
                   disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  dirtyCount={dirtyCount}
+                />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -328,6 +387,13 @@ function PettyCashContent() {
           </span>
         </div>
       )}
+
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {modals}
 
@@ -445,7 +511,8 @@ function PettyCashContent() {
                     'text-slate-800 dark:text-slate-200 transition-colors',
                     flashRowId === entry.id
                       ? 'petty-flash-row'
-                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50'
+                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50',
+                    isRowDirty(entry.id) && 'payroll-row-dirty'
                   )}
                 >
                   <SerialCellWithInsert
@@ -466,7 +533,10 @@ function PettyCashContent() {
                       value={entry.date}
                       disabled={!canEditAccounts}
                       onChange={(e) => handleCellChange(idx, 'date', e.target.value)}
-                      className="w-full bg-transparent px-1 py-0.5 text-xs font-medium text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
+                      className={cn(
+                        'w-full bg-transparent px-1 py-0.5 text-xs font-medium text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded',
+                        isCellDirty(entry.id, 'date') && 'payroll-cell-dirty'
+                      )}
                     />
                   </td>
 
@@ -480,7 +550,10 @@ function PettyCashContent() {
                       value={entry.description}
                       disabled={!canEditAccounts}
                       onChange={(e) => handleCellChange(idx, 'description', e.target.value)}
-                      className="w-full bg-transparent px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
+                      className={cn(
+                        'w-full bg-transparent px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded',
+                        isCellDirty(entry.id, 'description') && 'payroll-cell-dirty'
+                      )}
                     />
                   </td>
 
@@ -492,6 +565,7 @@ function PettyCashContent() {
                       value={entry.drAmount ?? 0}
                       placeholder="-"
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(entry.id, 'drAmount')}
                       navRow={idx}
                       navCol={0}
                       onValueChange={(v) =>
@@ -509,6 +583,7 @@ function PettyCashContent() {
                       value={entry.crAmount ?? 0}
                       placeholder="-"
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(entry.id, 'crAmount')}
                       navRow={idx}
                       navCol={1}
                       onValueChange={(v) =>

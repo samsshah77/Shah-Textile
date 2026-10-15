@@ -1,6 +1,7 @@
 import PayrollHydrate from '@/components/payroll/PayrollHydrate'
 import { FinanceReadonly } from '@/components/shared/FinanceReadonly'
 import { requirePagePermission } from '@/server/page-access'
+import { PayrollDirtyProvider } from '@/context/PayrollDirtyContext'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,9 +9,11 @@ export const dynamic = 'force-dynamic'
 export default async function PayrollLayout({ children }: { children: React.ReactNode }) {
   await requirePagePermission('payroll', 'payroll_runs')
   return (
-    <div className="sara-module-content sara-payroll">
-      <PayrollHydrate />
-      <FinanceReadonly>{children}</FinanceReadonly>
-    </div>
+    <PayrollDirtyProvider>
+      <div className="sara-module-content sara-payroll">
+        <PayrollHydrate />
+        <FinanceReadonly>{children}</FinanceReadonly>
+      </div>
+    </PayrollDirtyProvider>
   )
 }

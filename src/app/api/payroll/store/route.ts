@@ -7,7 +7,7 @@ import {
 } from '@/server/payrollDb'
 import {
   getPayrollSeedStore,
-  payrollService,
+  integrateRosterRespectingTombstones,
   projectProfilesOntoSheets,
   dedupePayrollStore,
   STORAGE_KEYS,
@@ -41,14 +41,12 @@ export async function GET() {
       for (const [key, value] of missing) store[key] = value
     }
 
-    const repaired = payrollService.integrateEmployeeRoster(
-      store[STORAGE_KEYS.EMPLOYEES],
-      store[STORAGE_KEYS.WEAVERS],
-      store[STORAGE_KEYS.HELPERS]
-    )
-    if (repaired.changed) {
-      await dbPayrollSave(STORAGE_KEYS.EMPLOYEES, repaired.list)
-      store[STORAGE_KEYS.EMPLOYEES] = repaired.list
+    const repairedKeys = integrateRosterRespectingTombstones(store)
+    if (Object.keys(repairedKeys).length > 0) {
+      await Promise.all(
+        Object.entries(repairedKeys).map(([key, value]) => dbPayrollSave(key, value))
+      )
+      for (const [key, value] of Object.entries(repairedKeys)) store[key] = value
     }
 
     const projected = projectProfilesOntoSheets(store)

@@ -8,7 +8,7 @@ import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/Inl
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Zap,
   Printer,
@@ -25,6 +25,9 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 
 const DEFAULT_EFFICIENCY_WIDTHS = {
   serialNo: 56,
@@ -45,6 +48,20 @@ export default function TechnicalEfficiencyPage() {
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
 
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(incentiveList, selectedMonth, {
+    sheetName: 'Efficiency',
+    editableFields: ['loom', 'efficiencyPercent'],
+  })
+
   // Resizable columns hook
   const {
     widths,
@@ -53,12 +70,15 @@ export default function TechnicalEfficiencyPage() {
     resetAllWidths,
   } = useResizableColumns('technical_efficiency', DEFAULT_EFFICIENCY_WIDTHS)
 
-  const reload = () => {
-    setIncentiveList(payrollService.getEfficiencyIncentives(selectedMonth))
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
+    const fresh = payrollService.getEfficiencyIncentives(selectedMonth)
+    setIncentiveList(fresh)
+    resetSnapshot(fresh)
   }
 
   useEffect(() => {
-    reload()
+    reload(true)
     const handleSync = (e: Event) => {
       const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
       const next =
@@ -141,12 +161,34 @@ export default function TechnicalEfficiencyPage() {
     payrollService.saveEfficiencyIncentives(next)
   }
 
-  // Delete row and renumber
+  // Delete row and renumber with confirmation
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
-    const updated = incentiveList.filter((item) => item.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setIncentiveList(updated)
-    payrollService.saveEfficiencyIncentives(updated)
+    const row = incentiveList.find((item) => item.id === id)
+    const empName = row?.name || 'this entry'
+    askConfirm({
+      title: 'Delete Efficiency Row?',
+      danger: true,
+      confirmText: 'Delete Row',
+      cancelText: 'Cancel',
+      message: (
+        <div className="space-y-2 text-xs text-slate-600 text-left">
+          <p>
+            Kya aap waqai <strong>{empName}</strong> ko is efficiency sheet se delete karna chahte hain?
+          </p>
+          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+          </div>
+        </div>
+      ),
+      onConfirm: () => {
+        const updated = incentiveList
+          .filter((item) => item.id !== id)
+          .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+        setIncentiveList(updated)
+        payrollService.saveEfficiencyIncentives(updated)
+      },
+    })
   }
 
   const handleAddCustomColumn = (col: CustomColumn) => {
@@ -170,7 +212,19 @@ export default function TechnicalEfficiencyPage() {
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveEfficiencyIncentives(incentiveList)
+        commitSaved(incentiveList)
         showSuccess('Saved', 'Efficiency incentives successfully saved.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setIncentiveList(discardChanges())
       },
     })
   }
@@ -204,9 +258,22 @@ export default function TechnicalEfficiencyPage() {
                   disabled={!canEditAccounts}
                   onChange={
                     canEditAccounts
-                      ? async (m) => {
-                          await payrollService.setActiveSalariedMonthAsync(m)
-                          setSelectedMonth(m)
+                      ? (m) => {
+                          if (m === selectedMonth) return
+                          if (hasUnsavedChanges) {
+                            askConfirm({
+                              title: 'Unsaved Changes',
+                              message:
+                                'Aap ke paas unsaved changes hain. Agar aap month change karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                              confirmText: 'Discard & Switch',
+                              onConfirm: async () => {
+                                await payrollService.setActiveSalariedMonthAsync(m)
+                                setSelectedMonth(m)
+                              },
+                            })
+                            return
+                          }
+                          payrollService.setActiveSalariedMonthAsync(m).then(() => setSelectedMonth(m))
                         }
                       : undefined
                   }
@@ -215,15 +282,11 @@ export default function TechnicalEfficiencyPage() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
                   disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  dirtyCount={dirtyCount}
+                />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -248,6 +311,13 @@ export default function TechnicalEfficiencyPage() {
           </span>
         </div>
       )}
+
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {modals}
 
@@ -377,7 +447,13 @@ export default function TechnicalEfficiencyPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {incentiveList.map((e, idx) => (
-                <tr key={e.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                <tr
+                  key={e.id}
+                  className={cn(
+                    'text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors',
+                    isRowDirty(e.id) && 'payroll-row-dirty'
+                  )}
+                >
                   <SerialCellWithInsert
                     serialNo={e.serialNo}
                     index={idx}
@@ -396,7 +472,10 @@ export default function TechnicalEfficiencyPage() {
                       value={e.loom}
                       disabled={!canEditAccounts}
                       onChange={(ev) => handleCellChange(idx, 'loom', ev.target.value as LoomCategoryFilter)}
-                      className="w-full bg-transparent px-2 py-1 font-semibold font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded cursor-pointer disabled:opacity-50 text-slate-800 dark:text-slate-200"
+                      className={cn(
+                        'w-full bg-transparent px-2 py-1 font-semibold font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded cursor-pointer disabled:opacity-50 text-slate-800 dark:text-slate-200',
+                        isCellDirty(e.id, 'loom') && 'payroll-cell-dirty'
+                      )}
                     >
                       <option value="G6200">G6200</option>
                       <option value="G6300">G6300</option>
@@ -431,6 +510,7 @@ export default function TechnicalEfficiencyPage() {
                     <NumericCellInput
                       value={e.efficiencyPercent || 0}
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(e.id, 'efficiencyPercent')}
                       navRow={idx}
                       navCol={0}
                       onValueChange={(v) => handleCellChange(idx, 'efficiencyPercent', v)}

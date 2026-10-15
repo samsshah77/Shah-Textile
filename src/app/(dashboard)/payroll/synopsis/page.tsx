@@ -22,7 +22,7 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { FortnightSelect, fortnightDisplayLabel, secondHalfLabel } from '@/components/payroll/FortnightSelect'
-import { MonthLockBanner } from '@/components/payroll/MonthLockBanner'
+import { MonthLockButton } from '@/components/payroll/MonthLockBanner'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 function DisbursementSynopsisContent() {
@@ -192,6 +192,7 @@ function DisbursementSynopsisContent() {
                     <span>{savingInflow ? 'Saving…' : 'Save'}</span>
                   </button>
                 )}
+                <MonthLockButton month={selectedMonth} onStatusChange={reloadData} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -206,9 +207,6 @@ function DisbursementSynopsisContent() {
           }
         />
       </div>
-
-      {/* Month Lock & Finalization Status Banner */}
-      <MonthLockBanner month={selectedMonth} onStatusChange={reloadData} />
 
       {/* Tab 1: Grand Monthly Summary */}
       {activeTab === 'grand' && (

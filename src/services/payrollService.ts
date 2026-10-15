@@ -3007,7 +3007,14 @@ class PayrollService {
   deleteWageSheetPerson(
     kind: 'weaver' | 'helper',
     row: { id?: string; employeeId?: string; employeeName?: string; designation?: string }
-  ): void {
+  ): Promise<void> {
+    return this.deleteWageSheetPersonAsync(kind, row)
+  }
+
+  private async deleteWageSheetPersonAsync(
+    kind: 'weaver' | 'helper',
+    row: { id?: string; employeeId?: string; employeeName?: string; designation?: string }
+  ): Promise<void> {
     if (!this.canWrite()) return
     const roster = this.getEmployees()
     const linked =
@@ -3048,6 +3055,14 @@ class PayrollService {
     }
     this.removeLinkedPayrollRows(stub)
     this.notifyDataChanged()
+    // Tombstone + roster must reach Postgres before a refresh, warna GET dobara seed se daal deta hai.
+    await writeStoreAndWait(STORAGE_KEYS.HR_META, readHrMetaRaw())
+    if (linked) {
+      await writeStoreAndWait(
+        STORAGE_KEYS.EMPLOYEES,
+        this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
+      )
+    }
   }
 
   // Sheet 1 master → every sheet that already has the same person
@@ -4258,6 +4273,54 @@ class PayrollService {
 }
 
 export const payrollService = new PayrollService()
+
+/**
+ * Server GET: run roster repair with the DB snapshot loaded in memory so
+ * HR_META tombstones are visible (server memoryStore is otherwise empty →
+ * deleted seed weavers/helpers were pushed back into EMPLOYEES on every refresh).
+ * Also strips rows of permanently-deleted people from every sheet.
+ * Returns changed store keys.
+ */
+export function integrateRosterRespectingTombstones(
+  store: Record<string, unknown>
+): Record<string, unknown> {
+  const previous = new Map(memoryStore)
+  memoryStore.clear()
+  for (const [key, value] of Object.entries(store)) {
+    memoryStore.set(key, JSON.stringify(value ?? null))
+  }
+  const changed: Record<string, unknown> = {}
+  try {
+    const repaired = payrollService.integrateEmployeeRoster(
+      store[STORAGE_KEYS.EMPLOYEES],
+      store[STORAGE_KEYS.WEAVERS],
+      store[STORAGE_KEYS.HELPERS]
+    )
+    const roster = repaired.list.filter((e) => !isTombstonedEmployee(e.id, e.name))
+    if (repaired.changed || roster.length !== repaired.list.length) {
+      changed[STORAGE_KEYS.EMPLOYEES] = roster
+    }
+
+    const purge = (key: string, nameKey: 'employeeName' | 'name') => {
+      const rows = store[key]
+      if (!Array.isArray(rows)) return
+      const kept = (rows as Array<Record<string, unknown>>).filter(
+        (r) =>
+          !isTombstonedEmployee(
+            r.employeeId as string | undefined,
+            r[nameKey] as string | undefined
+          )
+      )
+      if (kept.length !== rows.length) changed[key] = kept
+    }
+    purge(STORAGE_KEYS.WEAVERS, 'employeeName')
+    purge(STORAGE_KEYS.HELPERS, 'employeeName')
+  } finally {
+    memoryStore.clear()
+    for (const [key, value] of previous) memoryStore.set(key, value)
+  }
+  return changed
+}
 
 /** Copy HR name, designation, and wage onto each person's own sheet. Returns changed store keys. */
 export function projectProfilesOntoSheets(store: Record<string, unknown>): Record<string, unknown> {

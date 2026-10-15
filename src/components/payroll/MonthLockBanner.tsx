@@ -3,17 +3,16 @@
 import { useState } from 'react'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { useAuth } from '@/context/AuthContext'
-import { MonthLockInfo } from '@/types/payroll'
-import { Lock, Unlock, CheckCircle2, ShieldAlert, Sparkles, FileText, ChevronRight } from 'lucide-react'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { Lock, Unlock, ShieldAlert } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
 
-interface MonthLockBannerProps {
+export interface MonthLockBannerProps {
   month: string
   onStatusChange?: () => void
   className?: string
 }
 
-export function MonthLockBanner({ month, onStatusChange, className = '' }: MonthLockBannerProps) {
+export function MonthLockButton({ month, onStatusChange, className = '' }: MonthLockBannerProps) {
   const { canEditAccounts, user } = useAuth()
   const [isProcessing, setIsProcessing] = useState(false)
   const [showConfirmLock, setShowConfirmLock] = useState(false)
@@ -58,77 +57,39 @@ export function MonthLockBanner({ month, onStatusChange, className = '' }: Month
 
   return (
     <>
-      <div
-        className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-lg border print:hidden transition-all ${
-          isLocked
-            ? 'bg-slate-900 border-slate-700 text-white shadow-sm'
-            : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-        } ${className}`}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={`flex items-center justify-center size-9 rounded-md shrink-0 font-mono text-xs ${
-              isLocked
-                ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                : 'bg-emerald-500/20 text-emerald-700 border border-emerald-400/30'
-            }`}
+      {canEditAccounts ? (
+        isLocked ? (
+          <button
+            type="button"
+            onClick={() => setShowConfirmUnlock(true)}
+            disabled={isProcessing}
+            title={`Locked by ${lockInfo?.lockedBy || 'Admin'}. Click to unlock for revisions.`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-700 cursor-pointer transition-colors shadow-xs !min-h-9 !h-9 whitespace-nowrap print:hidden ${className}`}
           >
-            {isLocked ? <Lock className="size-4" /> : <Sparkles className="size-4" />}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                  isLocked
-                    ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50'
-                    : 'bg-emerald-200/60 text-emerald-800 border border-emerald-300'
-                }`}
-              >
-                {isLocked ? 'FINALIZED & LOCKED' : 'WORKING DRAFT'}
-              </span>
-              <span className="text-xs font-semibold">
-                {formatPayrollMonthLabel(month)}
-              </span>
-            </div>
-            <p className={`text-[11px] mt-0.5 ${isLocked ? 'text-slate-300' : 'text-emerald-800/80'}`}>
-              {isLocked ? (
-                <>
-                  Audited & posted by <strong className="text-white">{lockInfo?.lockedBy || 'Admin'}</strong> on{' '}
-                  {lockInfo?.lockedAt ? new Date(lockInfo.lockedAt).toLocaleDateString('en-GB') : 'N/A'}. Edits are protected.
-                </>
-              ) : (
-                'Live draft mode: formulas calculate automatically. Changes will update totals immediately.'
-              )}
-            </p>
-          </div>
-        </div>
-
-        {canEditAccounts && (
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-            {isLocked ? (
-              <button
-                type="button"
-                onClick={() => setShowConfirmUnlock(true)}
-                disabled={isProcessing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 cursor-pointer transition-colors shadow-xs"
-              >
-                <Unlock className="size-3.5 text-amber-400" />
-                <span>Unlock for Revisions</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowConfirmLock(true)}
-                disabled={isProcessing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer transition-colors shadow-xs"
-              >
-                <Lock className="size-3.5" />
-                <span>Finalize & Lock Month</span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+            <Unlock className="size-3.5 text-amber-400" />
+            <span>Locked • Unlock</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowConfirmLock(true)}
+            disabled={isProcessing}
+            title="Finalize and lock this month to protect from accidental edits"
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white cursor-pointer transition-colors shadow-xs !min-h-9 !h-9 whitespace-nowrap print:hidden ${className}`}
+          >
+            <Lock className="size-3.5" />
+            <span>Finalize & Lock Month</span>
+          </button>
+        )
+      ) : isLocked ? (
+        <span
+          title={`Locked by ${lockInfo?.lockedBy || 'Admin'}`}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 !min-h-9 !h-9 whitespace-nowrap print:hidden ${className}`}
+        >
+          <Lock className="size-3.5 text-slate-500" />
+          <span>Locked</span>
+        </span>
+      ) : null}
 
       {/* Lock Confirmation Modal */}
       {showConfirmLock && (
@@ -253,3 +214,6 @@ export function MonthLockBanner({ month, onStatusChange, className = '' }: Month
     </>
   )
 }
+
+// Backward-compatibility export
+export const MonthLockBanner = MonthLockButton

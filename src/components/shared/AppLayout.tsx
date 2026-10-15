@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { AlertDialogProvider } from '@/context/AlertDialogContext'
+import { PayrollDirtyProvider } from '@/context/PayrollDirtyContext'
 import { FloorDateProvider } from '@/context/FloorDateContext'
 import { Sidebar } from '@/components/shared/Sidebar'
 import { Header } from '@/components/shared/Header'
@@ -131,9 +132,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <AlertDialogProvider>
-        <FloorDateProvider>
-          <AppShell>{children}</AppShell>
-        </FloorDateProvider>
+        <PayrollDirtyProvider>
+          <FloorDateProvider>
+            <AppShell>{children}</AppShell>
+          </FloorDateProvider>
+        </PayrollDirtyProvider>
       </AlertDialogProvider>
     </AuthProvider>
   )

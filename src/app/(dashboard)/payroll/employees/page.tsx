@@ -30,6 +30,9 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 
 const DEFAULT_GW_WIDTHS: Record<string, number> = {
   serial: 48,
@@ -101,7 +104,22 @@ export default function GeneralWagesPage() {
     DEFAULT_GW_WIDTHS
   )
 
-  const reload = () => {
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(employees, activeMonth, {
+    sheetName: 'General Wages',
+    editableFields: ['remarks'],
+  })
+
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
     payrollService.renumberGeneralWages()
     const month = payrollService.getActiveSalariedMonth()
     const all = payrollService.getEmployees()
@@ -113,16 +131,19 @@ export default function GeneralWagesPage() {
       .sort((a, b) => a.serialNo - b.serialNo)
       .map((e, i) => ({ ...e, serialNo: i + 1 }))
     setEmployees(activeGw)
+    resetSnapshot(activeGw)
     setActiveMonth(month)
   }
 
-  const handleActiveMonthChange = async (month: string) => {
-    if (!canEditAccounts) return
-    await payrollService.setActiveSalariedMonthAsync(month)
-    setActiveMonth(month)
-    reload()
-    setStatusNotice(`Active month: ${formatPayrollMonthLabel(month)}`)
-    setTimeout(() => setStatusNotice(null), 2500)
+  const handleActiveMonthChange = (month: string) => {
+    if (!canEditAccounts || month === activeMonth) return
+    requestNavigationGuard(async () => {
+      await payrollService.setActiveSalariedMonthAsync(month)
+      setActiveMonth(month)
+      reload(true)
+      setStatusNotice(`Active month: ${formatPayrollMonthLabel(month)}`)
+      setTimeout(() => setStatusNotice(null), 2500)
+    })
   }
 
   const openGenerateDialog = () => {
@@ -255,7 +276,19 @@ export default function GeneralWagesPage() {
           crossSheetSyncTimer.current = null
         }
         persistRoster(employees)
+        commitSaved(employees)
         showSuccess('Saved', 'General Wages successfully saved and synchronized.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setEmployees(discardChanges())
       },
     })
   }
@@ -317,15 +350,11 @@ export default function GeneralWagesPage() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 {canEditAccounts && <AddColumnButton onAddColumn={handleAddCustomColumn} />}
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
                   disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  dirtyCount={dirtyCount}
+                />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -356,6 +385,13 @@ export default function GeneralWagesPage() {
           <span>{statusNotice}</span>
         </div>
       )}
+
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {modals}
 
@@ -639,7 +675,8 @@ export default function GeneralWagesPage() {
                       key={emp.id}
                       className={cn(
                         'group hover:bg-slate-50 transition-colors text-xs',
-                        idx % 2 === 1 && 'bg-slate-50/40'
+                        idx % 2 === 1 && 'bg-slate-50/40',
+                        isRowDirty(emp.id) && 'payroll-row-dirty'
                       )}
                     >
                       {/* S.No with hover-only Up/Down arrows */}
@@ -771,7 +808,10 @@ export default function GeneralWagesPage() {
                             type="text"
                             value={emp.remarks || ''}
                             onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
-                            className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                            className={cn(
+                              'w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] transition-colors',
+                              isCellDirty(emp.id, 'remarks') && 'payroll-cell-dirty'
+                            )}
                           />
                         ) : (
                           emp.remarks || '—'
@@ -786,7 +826,11 @@ export default function GeneralWagesPage() {
                               type="text"
                               value={emp.customFields?.[col.id] || ''}
                               onChange={(e) => handleCustomCellChange(idx, col.id, e.target.value)}
-                              className="w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc]"
+                              className={cn(
+                                'w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] transition-colors',
+                                isCellDirty(emp.id, `cf_${col.id}`, emp.customFields?.[col.id]) &&
+                                  'payroll-cell-dirty'
+                              )}
                             />
                           ) : (
                             emp.customFields?.[col.id] || '—'

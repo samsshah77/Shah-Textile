@@ -9,7 +9,7 @@ import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/Inl
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
-import { formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
+import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
 import {
   Wrench,
   Printer,
@@ -28,6 +28,9 @@ import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
+import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 
 const DEFAULT_CONTRACTOR_WIDTHS = {
   serialNo: 56,
@@ -68,6 +71,20 @@ function ContractorsPayrollContent() {
   const [contractorsList, setContractorsList] = useState<ContractorPaymentRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
 
+  const {
+    isCellDirty,
+    isRowDirty,
+    dirtyCount,
+    hasUnsavedChanges,
+    commitSaved,
+    resetSnapshot,
+    discardChanges,
+    requestNavigationGuard,
+  } = usePayrollDirtyTracker(contractorsList, `${selectedMonth}-${activeFortnight}`, {
+    sheetName: 'Contractor',
+    editableFields: ['name', 'contractType', 'contractualAmount', 'extraIncentive', 'lessAdvance', 'remarks'],
+  })
+
   // Resizable columns hook
   const {
     widths,
@@ -83,14 +100,16 @@ function ContractorsPayrollContent() {
     if (m && /^\d{4}-\d{2}$/.test(m)) setSelectedMonth(m)
   }, [searchParams])
 
-  const reload = () => {
-    setContractorsList(payrollService.getContractorsPayments(selectedMonth, activeFortnight))
+  const reload = (force = false) => {
+    if (!force && hasUnsavedChanges) return
+    const fresh = payrollService.getContractorsPayments(selectedMonth, activeFortnight)
+    setContractorsList(fresh)
+    resetSnapshot(fresh)
   }
 
   useEffect(() => {
-    reload()
+    reload(true)
     const handleSync = () => {
-      // Contractors period is independent of Weaver fortnight — only refresh rows.
       reload()
     }
     window.addEventListener('payroll_synced', handleSync)
@@ -163,10 +182,33 @@ function ContractorsPayrollContent() {
     setContractorsList(next)
   }
 
+  // Delete row with confirmation
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
-    const filtered = contractorsList.filter((c) => c.id !== id).map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    setContractorsList(filtered)
+    const row = contractorsList.find((c) => c.id === id)
+    const empName = row?.name || 'Contractor'
+    askConfirm({
+      title: 'Delete Contractor Row?',
+      danger: true,
+      confirmText: 'Delete Row',
+      cancelText: 'Cancel',
+      message: (
+        <div className="space-y-2 text-xs text-slate-600 text-left">
+          <p>
+            Kya aap waqai <strong>{empName}</strong> ko is sheet se delete karna chahte hain?
+          </p>
+          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+          </div>
+        </div>
+      ),
+      onConfirm: () => {
+        const filtered = contractorsList
+          .filter((c) => c.id !== id)
+          .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
+        setContractorsList(filtered)
+      },
+    })
   }
 
 
@@ -178,7 +220,19 @@ function ContractorsPayrollContent() {
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveContractorsPayments(selectedMonth, activeFortnight, contractorsList)
+        commitSaved(contractorsList)
         showSuccess('Saved', 'Contractors payments successfully saved.')
+      },
+    })
+  }
+
+  const handleDiscard = () => {
+    askConfirm({
+      title: 'Discard unsaved changes?',
+      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      confirmText: 'Discard',
+      onConfirm: () => {
+        setContractorsList(discardChanges())
       },
     })
   }
@@ -224,6 +278,20 @@ function ContractorsPayrollContent() {
                   value={selectedMonth}
                   months={payrollService.listContractorsMonths()}
                   onChange={(m) => {
+                    if (m === selectedMonth) return
+                    if (hasUnsavedChanges) {
+                      askConfirm({
+                        title: 'Unsaved Changes',
+                        message:
+                          'Aap ke paas unsaved changes hain. Agar aap month switch karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                        confirmText: 'Discard & Switch',
+                        onConfirm: () => {
+                          setSelectedMonth(m)
+                          pushFilters({ month: m, fortnight: activeFortnight })
+                        },
+                      })
+                      return
+                    }
                     setSelectedMonth(m)
                     pushFilters({ month: m, fortnight: activeFortnight })
                   }}
@@ -233,6 +301,20 @@ function ContractorsPayrollContent() {
                   value={activeFortnight}
                   onlyGenerated={false}
                   onChange={(fn) => {
+                    if (fn === activeFortnight) return
+                    if (hasUnsavedChanges) {
+                      askConfirm({
+                        title: 'Unsaved Changes',
+                        message:
+                          'Aap ke paas unsaved changes hain. Agar aap cycle switch karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                        confirmText: 'Discard & Switch',
+                        onConfirm: () => {
+                          setActiveFortnight(fn)
+                          pushFilters({ fortnight: fn, month: selectedMonth })
+                        },
+                      })
+                      return
+                    }
                     setActiveFortnight(fn)
                     pushFilters({ fortnight: fn, month: selectedMonth })
                   }}
@@ -241,15 +323,11 @@ function ContractorsPayrollContent() {
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
 
-                <button
-                  type="button"
+                <PayrollSaveButton
                   onClick={handleSave}
                   disabled={!canEditAccounts}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
-                </button>
+                  dirtyCount={dirtyCount}
+                />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -277,6 +355,13 @@ function ContractorsPayrollContent() {
           </span>
         </div>
       )}
+
+      {/* Unsaved changes banner */}
+      <PayrollUnsavedBanner
+        dirtyCount={dirtyCount}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {modals}
 
@@ -420,7 +505,13 @@ function ContractorsPayrollContent() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {contractorsList.map((c, idx) => (
-                <tr key={c.id} className="text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                <tr
+                  key={c.id}
+                  className={cn(
+                    'text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors',
+                    isRowDirty(c.id) && 'payroll-row-dirty'
+                  )}
+                >
                   <SerialCellWithInsert
                     serialNo={c.serialNo}
                     index={idx}
@@ -440,7 +531,10 @@ function ContractorsPayrollContent() {
                       value={c.name}
                       disabled={!canEditAccounts}
                       onChange={(e) => handleCellChange(idx, 'name', e.target.value)}
-                      className="w-full bg-transparent px-2 py-1 font-semibold font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-900 dark:text-white"
+                      className={cn(
+                        'w-full bg-transparent px-2 py-1 font-semibold font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-900 dark:text-white',
+                        isCellDirty(c.id, 'name') && 'payroll-cell-dirty'
+                      )}
                     />
                   </td>
 
@@ -454,7 +548,10 @@ function ContractorsPayrollContent() {
                       value={c.contractType}
                       disabled={!canEditAccounts}
                       onChange={(e) => handleCellChange(idx, 'contractType', e.target.value)}
-                      className="w-full bg-transparent px-2 py-1 font-sans text-xs text-slate-700 dark:text-slate-300 font-medium focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
+                      className={cn(
+                        'w-full bg-transparent px-2 py-1 font-sans text-xs text-slate-700 dark:text-slate-300 font-medium focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded',
+                        isCellDirty(c.id, 'contractType') && 'payroll-cell-dirty'
+                      )}
                     />
                   </td>
 
@@ -466,6 +563,7 @@ function ContractorsPayrollContent() {
                     <NumericCellInput
                       value={c.contractualAmount || 0}
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(c.id, 'contractualAmount')}
                       navRow={idx}
                       navCol={0}
                       onValueChange={(v) => handleCellChange(idx, 'contractualAmount', v)}
@@ -481,6 +579,7 @@ function ContractorsPayrollContent() {
                     <NumericCellInput
                       value={c.extraIncentive || 0}
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(c.id, 'extraIncentive')}
                       navRow={idx}
                       navCol={1}
                       onValueChange={(v) => handleCellChange(idx, 'extraIncentive', v)}
@@ -504,6 +603,7 @@ function ContractorsPayrollContent() {
                     <NumericCellInput
                       value={c.lessAdvance || 0}
                       disabled={!canEditAccounts}
+                      isDirty={isCellDirty(c.id, 'lessAdvance')}
                       navRow={idx}
                       navCol={2}
                       onValueChange={(v) => handleCellChange(idx, 'lessAdvance', v)}
@@ -529,7 +629,10 @@ function ContractorsPayrollContent() {
                       value={c.remarks}
                       disabled={!canEditAccounts}
                       onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
-                      className="w-full bg-transparent px-2 py-1 font-sans text-xs text-slate-600 dark:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
+                      className={cn(
+                        'w-full bg-transparent px-2 py-1 font-sans text-xs text-slate-600 dark:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded',
+                        isCellDirty(c.id, 'remarks') && 'payroll-cell-dirty'
+                      )}
                     />
                   </td>
 
