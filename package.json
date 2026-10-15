@@ -8,9 +8,6 @@
     "start": "node server.js",
     "db:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
-    "db:wipe-floor": "sh scripts/run-wipe-floor.sh",
-    "seed:beam-track-local": "tsx scripts/seed-beam-track-local.ts",
-    "seed:production-local": "node scripts/seed-production-through-today-local.mjs",
     "postinstall": "prisma generate",
     "lint": "eslint"
   },
