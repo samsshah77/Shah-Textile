@@ -22,6 +22,7 @@ import {
   Info,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { AddTraderBillModal } from '@/components/accounts/AddTraderBillModal'
 
 interface GroupedBill {
   billKey: string
@@ -43,6 +44,7 @@ export default function TraderSpecificLedgerPage() {
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
 
   // New Inward Item form state
   const [billNo, setBillNo] = useState('')
@@ -99,6 +101,7 @@ export default function TraderSpecificLedgerPage() {
 
   const handleSave = () => {
     accountsWrite(storageKey, entries)
+    expenseService.notifyDataChanged()
     setIsSaved(true)
     setTimeout(() => setIsSaved(false), 2500)
   }
@@ -111,6 +114,7 @@ export default function TraderSpecificLedgerPage() {
       if (data) {
         setEntries(data.entries)
       }
+      expenseService.notifyDataChanged()
       setIsSaved(true)
       setTimeout(() => setIsSaved(false), 2000)
     }
@@ -145,6 +149,7 @@ export default function TraderSpecificLedgerPage() {
     const updated = [...entries, newRecord]
     setEntries(updated)
     accountsWrite(storageKey, updated)
+    expenseService.notifyDataChanged()
 
     setBillNo('')
     setInwardNo('')
@@ -250,6 +255,14 @@ export default function TraderSpecificLedgerPage() {
                   <ArrowLeft className="size-3.5" />
                   <span>All Traders</span>
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5 shadow-xs"
+                >
+                  <PlusCircle className="size-3.5" />
+                  <span className="fw-semibold">Record Bill</span>
+                </button>
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <button
@@ -440,27 +453,29 @@ export default function TraderSpecificLedgerPage() {
         </div>
 
         {/* Ledger Table with Merged Cells */}
-        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 shadow-xs">
-          <table className="w-full min-w-[920px] text-left border-collapse text-xs font-mono">
+        <div className="overflow-x-auto rounded-lg border border-slate-400 dark:border-slate-600 shadow-xs">
+          <table className="w-full min-w-[920px] text-left border-collapse text-xs font-mono border border-slate-400 dark:border-slate-600">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold uppercase text-[11px] text-slate-600 dark:text-slate-300">
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-2 text-center w-12 min-w-[50px]">S.No</th>
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-3 text-center w-24 min-w-[95px]">Date</th>
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-2.5 text-center w-20 min-w-[85px]">Bill No</th>
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-2.5 text-center w-20 min-w-[85px]">Inw #</th>
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-4 text-left font-sans min-w-[260px]">Description</th>
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-2 text-center w-16 min-w-[65px]">Qty</th>
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-3 text-right w-24 min-w-[90px]">Rate</th>
-                <th className="border-r border-slate-200 dark:border-slate-700 py-2.5 px-3 text-right w-28 min-w-[110px]">Total Amount</th>
-                <th className="py-2.5 px-3 text-right w-28 min-w-[110px] font-bold">Balance</th>
+              <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold uppercase text-[11px] border-b-2 border-slate-800 dark:border-slate-300">
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2 text-center w-12 min-w-[50px]">S.No</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-center w-24 min-w-[95px]">Date</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2.5 text-center w-20 min-w-[85px]">Bill No</th>
+                <th className="border border-slate-400 dark:border-slate-600 border-r-2 border-r-slate-800 dark:border-r-slate-300 py-2.5 px-2.5 text-center w-20 min-w-[85px]">Inw #</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-4 text-left font-sans min-w-[260px]">Description</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2 text-center w-16 min-w-[65px]">Qty</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-24 min-w-[90px]">Rate</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-28 min-w-[110px]">Total Amount</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-28 min-w-[110px] font-bold">Balance</th>
                 {isEditing && (
-                  <th className="border-l border-slate-200 dark:border-slate-700 py-2.5 px-2 text-center w-12 print:hidden">Del</th>
+                  <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2 text-center w-12 print:hidden">Del</th>
                 )}
               </tr>
             </thead>
             <tbody>
-              {groupedBills.map((group) => {
+              {groupedBills.map((group, groupIdx) => {
                 const rowSpan = group.items.length
+                const isEvenGroup = groupIdx % 2 === 0
+
                 return group.items.map((item, itemIdx) => {
                   const isFirstRowOfBill = itemIdx === 0
                   const isLastRowOfBill = itemIdx === rowSpan - 1
@@ -469,12 +484,22 @@ export default function TraderSpecificLedgerPage() {
                     <tr
                       key={item.id}
                       className={cn(
-                        'text-slate-800 dark:text-slate-200 hover:bg-slate-50/60 dark:hover:bg-slate-800/40',
-                        isLastRowOfBill ? 'border-b border-slate-300 dark:border-slate-600' : 'border-b border-slate-200 dark:border-slate-700'
+                        'text-slate-800 dark:text-slate-200 transition-colors',
+                        isEvenGroup
+                          ? 'bg-white dark:bg-slate-900'
+                          : 'bg-slate-50/70 dark:bg-slate-800/40',
+                        'hover:bg-blue-50/50 dark:hover:bg-slate-700/50'
                       )}
                     >
                       {/* S.No */}
-                      <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-semibold text-slate-500 min-w-[50px]">
+                      <td
+                        className={cn(
+                          'py-2.5 px-2 text-center font-semibold text-slate-600 dark:text-slate-400 min-w-[50px] border-r-2 border-r-slate-400 dark:border-r-slate-500 border-l border-slate-400 dark:border-slate-600',
+                          isLastRowOfBill
+                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                        )}
+                      >
                         {item.serialNo}
                       </td>
 
@@ -482,7 +507,12 @@ export default function TraderSpecificLedgerPage() {
                       {isFirstRowOfBill && (
                         <td
                           rowSpan={rowSpan}
-                          className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center align-middle font-semibold text-slate-700 dark:text-slate-300 bg-slate-50/60 dark:bg-slate-800/40 min-w-[95px]"
+                          className={cn(
+                            'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-3 text-center align-middle font-semibold text-slate-800 dark:text-slate-200 min-w-[95px] whitespace-nowrap',
+                            isEvenGroup
+                              ? 'bg-white dark:bg-slate-900'
+                              : 'bg-slate-50/90 dark:bg-slate-800/70'
+                          )}
                         >
                           {group.date}
                         </td>
@@ -492,9 +522,21 @@ export default function TraderSpecificLedgerPage() {
                       {isFirstRowOfBill && (
                         <td
                           rowSpan={rowSpan}
-                          className="border-r border-slate-200 dark:border-slate-700 py-2 px-2.5 text-center align-middle font-bold text-slate-900 dark:text-slate-100 bg-slate-50/60 dark:bg-slate-800/40 min-w-[85px]"
+                          className={cn(
+                            'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle min-w-[85px]',
+                            isEvenGroup
+                              ? 'bg-white dark:bg-slate-900'
+                              : 'bg-slate-50/90 dark:bg-slate-800/70'
+                          )}
                         >
-                          {group.billNo}
+                          <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 shadow-2xs">
+                            #{group.billNo}
+                          </span>
+                          {rowSpan > 1 && (
+                            <span className="block mt-1 text-[10px] font-mono text-slate-500 font-semibold">
+                              ({rowSpan} items)
+                            </span>
+                          )}
                         </td>
                       )}
 
@@ -502,14 +544,26 @@ export default function TraderSpecificLedgerPage() {
                       {isFirstRowOfBill && (
                         <td
                           rowSpan={rowSpan}
-                          className="border-r border-slate-200 dark:border-slate-700 py-2 px-2.5 text-center align-middle text-[#0066cc] dark:text-sky-400 bg-slate-50/60 dark:bg-slate-800/40 font-semibold min-w-[85px]"
+                          className={cn(
+                            'border-r-2 border-r-slate-800 dark:border-r-slate-300 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle text-[#0066cc] dark:text-sky-400 font-bold min-w-[85px]',
+                            isEvenGroup
+                              ? 'bg-white dark:bg-slate-900'
+                              : 'bg-slate-50/90 dark:bg-slate-800/70'
+                          )}
                         >
-                          {group.inwardNo}
+                          #{group.inwardNo}
                         </td>
                       )}
 
                       {/* Item Description */}
-                      <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-4 font-sans font-medium text-slate-800 dark:text-slate-200 min-w-[260px]">
+                      <td
+                        className={cn(
+                          'border-r border-slate-300 dark:border-slate-600 py-2 px-4 font-sans font-medium text-slate-800 dark:text-slate-200 min-w-[260px]',
+                          isLastRowOfBill
+                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                        )}
+                      >
                         {isEditing ? (
                           <input
                             type="text"
@@ -523,7 +577,14 @@ export default function TraderSpecificLedgerPage() {
                       </td>
 
                       {/* Quantity */}
-                      <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold min-w-[65px]">
+                      <td
+                        className={cn(
+                          'border-r border-slate-300 dark:border-slate-600 py-2 px-2 text-center font-bold min-w-[65px]',
+                          isLastRowOfBill
+                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                        )}
+                      >
                         {isEditing ? (
                           <input
                             type="number"
@@ -538,7 +599,14 @@ export default function TraderSpecificLedgerPage() {
                       </td>
 
                       {/* Rate */}
-                      <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-right min-w-[90px]">
+                      <td
+                        className={cn(
+                          'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono min-w-[90px]',
+                          isLastRowOfBill
+                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                        )}
+                      >
                         {isEditing ? (
                           <input
                             type="number"
@@ -553,18 +621,39 @@ export default function TraderSpecificLedgerPage() {
                       </td>
 
                       {/* Total Amount for this item (Calculated: Qty * Rate) */}
-                      <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-right font-bold min-w-[110px]">
+                      <td
+                        className={cn(
+                          'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
+                          isLastRowOfBill
+                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                        )}
+                      >
                         {formatNumber(item.totalPrice, 0)}
                       </td>
 
                       {/* Running Balance (Calculated: Prev + Amount) */}
-                      <td className="py-2 px-3 text-right font-bold min-w-[110px]">
+                      <td
+                        className={cn(
+                          'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
+                          isLastRowOfBill
+                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                        )}
+                      >
                         {formatNumber(item.runningBalance, 0)}
                       </td>
 
                       {/* Action (Delete row in Edit mode) */}
                       {isEditing && (
-                        <td className="border-l border-slate-200 dark:border-slate-700 py-2 px-2 text-center print:hidden">
+                        <td
+                          className={cn(
+                            'border-r border-slate-400 dark:border-slate-600 py-2 px-2 text-center print:hidden',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
                           <button
                             onClick={() => handleDeleteRow(item.id)}
                             className="rounded p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
@@ -580,21 +669,21 @@ export default function TraderSpecificLedgerPage() {
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-slate-100 text-xs">
-                <td colSpan={5} className="border-r border-slate-200 dark:border-slate-700 py-3 px-4 font-sans uppercase min-w-[575px]">
+              <tr className="border-t-2 border-slate-800 dark:border-slate-200 bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-slate-100 text-xs">
+                <td colSpan={5} className="border border-slate-400 dark:border-slate-600 py-3 px-4 font-sans uppercase min-w-[575px]">
                   Total Cumulative Purchases for {trader.partyName}:
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-3 px-2 text-center min-w-[65px]">
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-2 text-center min-w-[65px]">
                   {totalItems}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-3 px-3 text-right min-w-[90px]">-</td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-3 px-3 text-right text-sm min-w-[110px] text-emerald-700 dark:text-emerald-400 font-bold">
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-3 text-right min-w-[90px]">-</td>
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-3 text-right text-sm min-w-[110px] text-emerald-700 dark:text-emerald-400 font-bold">
                   {formatNumber(totalPurchases, 0)}
                 </td>
-                <td className="py-3 px-3 text-right text-sm font-bold min-w-[110px] text-slate-900 dark:text-slate-100">
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-3 text-right text-sm font-bold min-w-[110px] text-slate-900 dark:text-slate-100">
                   {formatNumber(totalPurchases, 0)}
                 </td>
-                {isEditing && <td className="border-l border-slate-200 dark:border-slate-700 print:hidden" />}
+                {isEditing && <td className="border border-slate-400 dark:border-slate-600 print:hidden" />}
               </tr>
             </tfoot>
           </table>
@@ -618,6 +707,14 @@ export default function TraderSpecificLedgerPage() {
           </div>
         </div>
       </div>
+
+      {/* Record Trader Bill Modal */}
+      <AddTraderBillModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={reloadTrader}
+        defaultTraderSlug={slug}
+      />
     </div>
   )
 }

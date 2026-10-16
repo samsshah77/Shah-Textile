@@ -342,32 +342,11 @@ class PayrollService {
       const byId = next.findIndex((e) => e.id === src.id)
       if (byId >= 0) {
         const cur = next[byId]
-        if (seedResigned && (cur.status || 'Active') !== 'Resigned') {
-          next[byId] = {
-            ...cur,
-            status: 'Resigned',
-            remarks: src.remarks || cur.remarks,
-            resignedAt:
-              src.resignedAt ||
-              parseResignationDateFromRemarks(src.remarks || cur.remarks) ||
-              cur.resignedAt ||
-              '',
-            salary: src.salary ?? cur.salary,
-            designation: src.designation || cur.designation,
-            dutyHrs: src.dutyHrs ?? cur.dutyHrs,
-            shiftFromTo: src.shiftFromTo || cur.shiftFromTo,
-            doj: src.doj || cur.doj,
-          }
-          changed = true
-        } else if (!seedResigned && (!cur.salary || cur.salary === 0) && src.salary) {
+        // Live DB record takes precedence: never overwrite user-managed status, DOJ, or profile with static seed.
+        if ((!cur.salary || cur.salary === 0) && src.salary) {
           next[byId] = {
             ...cur,
             salary: src.salary,
-            designation: cur.designation || src.designation,
-            dutyHrs: cur.dutyHrs ?? src.dutyHrs,
-            shiftFromTo: cur.shiftFromTo || src.shiftFromTo,
-            doj: cur.doj || src.doj,
-            remarks: cur.remarks || src.remarks,
           }
           changed = true
         }

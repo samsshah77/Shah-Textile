@@ -241,39 +241,45 @@ export const PRODUCTION_EXCEL_SHEETS: SheetTabInfo[] = [
 export const ACCOUNTS_EXCEL_SHEETS: SheetTabInfo[] = [
   {
     sheetNumber: 1,
-    name: 'Cost Statement',
-    href: '/accounts/cost-statement',
-    activeCheck: (p) => p === '/accounts/cost-statement',
+    name: 'Store Inventory Control',
+    href: '/accounts/inventory-inward',
+    activeCheck: (p) => p === '/accounts/inventory-inward',
   },
   {
     sheetNumber: 2,
-    name: 'Traders Synopsis',
-    href: '/accounts/traders',
-    activeCheck: (p) => p.startsWith('/accounts/traders') || p.startsWith('/accounts/trader-ledger'),
-  },
-  {
-    sheetNumber: 3,
     name: 'Daily Inward Exp',
     href: '/accounts/daily-expense',
     activeCheck: (p) => p === '/accounts/daily-expense',
   },
   {
+    sheetNumber: 3,
+    name: 'Traders',
+    href: '/accounts/traders',
+    activeCheck: (p) => p.startsWith('/accounts/traders') || p.startsWith('/accounts/trader-ledger'),
+  },
+  {
     sheetNumber: 4,
-    name: 'Petty Cash',
-    href: '/accounts/petty-cash',
-    activeCheck: (p) => p.startsWith('/accounts/petty-cash'),
+    name: 'Workshops',
+    href: '/accounts/workshops',
+    activeCheck: (p) => p.startsWith('/accounts/workshops'),
   },
   {
     sheetNumber: 5,
-    name: 'Store Inventory Control',
-    href: '/accounts/inventory-inward',
-    activeCheck: (p) => p === '/accounts/inventory-inward',
+    name: 'Petty Cash',
+    href: '/accounts/petty-cash',
+    activeCheck: (p) => p.startsWith('/accounts/petty-cash'),
   },
   {
     sheetNumber: 6,
     name: 'Monthly Purchases',
     href: '/accounts/reports/monthly-purchases',
     activeCheck: (p) => p.startsWith('/accounts/reports/monthly-purchases'),
+  },
+  {
+    sheetNumber: 7,
+    name: 'Final Cost Statement',
+    href: '/accounts/cost-statement',
+    activeCheck: (p) => p === '/accounts/cost-statement',
   },
 ]
 

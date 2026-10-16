@@ -5,6 +5,9 @@ import {
 } from '@/types/expense'
 import {
   accountsData,
+  TraderSynopsisItem,
+  WorkshopSynopsisItem,
+  DailyInwardItem,
 } from '@/data/accountsData'
 import { payrollService } from '@/services/payrollService'
 import { accountsRead, accountsRemove, accountsWrite } from '@/services/accountsStore'
@@ -81,7 +84,52 @@ export interface TraderSummary {
   paidAmount: number
   currentBalance: number
   lastDate: string
+  remarks?: string
   entries: InventoryPurchaseEntry[]
+}
+
+export interface WorkshopSummary {
+  workshopName: string
+  slug: string
+  type: 'Workshop / Engineering' | 'Lathe / Turning' | 'Welding' | 'Motor Rewinding' | 'General Repair'
+  totalBills: number
+  totalItems: number
+  totalPurchases: number
+  paidAmount: number
+  currentBalance: number
+  lastDate: string
+  remarks?: string
+  entries: InventoryPurchaseEntry[]
+}
+
+export interface RecordTraderBillInput {
+  date: string
+  partyName: string
+  billNo: string
+  inwardNo?: string
+  itemName: string
+  machineCategory?: MachineExpenseCategory
+  quantity: number
+  rate: number
+  totalAmount?: number
+  saraPayable?: number
+  foiPaid?: number
+  remarks?: string
+}
+
+export interface RecordWorkshopJobInput {
+  date: string
+  workshopName: string
+  billNo: string
+  inwardNo?: string
+  machineName?: string
+  jobDescription: string
+  quantity: number
+  rate: number
+  totalAmount?: number
+  saraPayable?: number
+  foiPaid?: number
+  remarks?: string
 }
 
 export interface MonthlyCostStatement {
@@ -347,92 +395,131 @@ class ExpenseService {
   }
 
   getTradersList(): TraderSummary[] {
-    const traders: TraderSummary[] = accountsData.traders.ledgers.map((t) => {
-      const syn = accountsData.traders.synopsis.find(
-        (s) =>
-          s.traderName.toLowerCase() === t.partyName.toLowerCase() ||
-          t.partyName.toLowerCase().startsWith(s.traderName.toLowerCase().slice(0, 5))
-      )
-      const totalPurchases = syn ? syn.saraPayable : t.totalPayable
-      const totalItems = t.items.reduce((sum, item) => sum + (item.quantity || 1), 0)
-      const uniqueBills = syn
-        ? syn.noOfBills
-        : t.billsCount || new Set(t.items.map((i) => i.billNo).filter(Boolean)).size
+    const synList = accountsRead<TraderSynopsisItem[]>(
+      ACCOUNTS_KEYS.TRADERS_STORE,
+      accountsData.traders.synopsis
+    )
+
+    const map = new Map<string, TraderSummary>()
+
+    // 1. Process from synopsis list
+    synList.forEach((syn) => {
+      const slug = slugifyPartyName(syn.traderName)
+      const storageKey = `${ACCOUNTS_KEYS.TRADER_PREFIX}${slug}`
+      const customEntries = accountsRead<InventoryPurchaseEntry[] | null>(storageKey, null)
 
       let type: TraderSummary['type'] = 'Trader'
-      const name = t.partyName.toLowerCase()
-      if (name.includes('engineering')) type = 'Workshop / Engineering'
-      else if (name.includes('petroleum') || name.includes('oil')) type = 'Petroleum & Oil'
-      else if (name.includes('smd') || name.includes('electronic')) type = 'Electronics'
+      const name = syn.traderName.toLowerCase()
+      if (name.includes('petroleum') || name.includes('oil')) type = 'Petroleum & Oil'
+      else if (name.includes('smd') || name.includes('electronic') || name.includes('textile engineering')) type = 'Electronics'
       else if (name.includes('fire')) type = 'Safety / Fire'
 
-      const entries: InventoryPurchaseEntry[] = t.items.map((it, idx) => ({
-        id: `tr-${t.slug}-${idx + 1}`,
-        date: it.date || '2026-08-01',
-        billNo: it.billNo,
-        inwardNo: it.inwardNo,
-        partyName: t.partyName,
-        itemDescription: it.itemName,
-        machineCategory: 'All',
-        quantity: it.quantity,
-        costPerItem: it.rate,
-        totalPrice: it.amount,
-      }))
+      if (customEntries && customEntries.length > 0) {
+        const totalPurchases = customEntries.reduce((s, e) => s + (Number(e.totalPrice) || 0), 0)
+        const totalItems = customEntries.reduce((s, e) => s + (Number(e.quantity) || 1), 0)
+        const billSet = new Set(customEntries.map((e) => e.billNo).filter(Boolean))
+        const paidAmount = syn.foiPayable || 0
+        const lastDate = customEntries[customEntries.length - 1].date || '2026-08-31'
 
-      const lastDate = entries.length > 0 ? entries[entries.length - 1].date : '2026-08-31'
+        map.set(slug, {
+          partyName: syn.traderName,
+          slug,
+          type,
+          totalBills: billSet.size || syn.noOfBills,
+          totalItems,
+          totalPurchases,
+          paidAmount,
+          currentBalance: totalPurchases - paidAmount,
+          lastDate,
+          remarks: syn.remarks,
+          entries: customEntries,
+        })
+      } else {
+        // Fall back to seed ledger
+        const seed = accountsData.traders.ledgers.find(
+          (l) =>
+            l.slug === slug ||
+            slugifyPartyName(l.partyName) === slug ||
+            l.partyName.toLowerCase() === syn.traderName.toLowerCase()
+        )
 
-      return {
-        partyName: t.partyName,
-        slug: t.slug,
-        type,
-        totalBills: uniqueBills,
-        totalItems,
-        totalPurchases,
-        paidAmount: 0,
-        currentBalance: totalPurchases,
-        lastDate,
-        entries,
+        const entries: InventoryPurchaseEntry[] = seed
+          ? seed.items.map((it, idx) => ({
+              id: `tr-${seed.slug}-${idx + 1}`,
+              date: it.date || '2026-08-01',
+              billNo: it.billNo,
+              inwardNo: it.inwardNo,
+              partyName: seed.partyName,
+              itemDescription: it.itemName,
+              machineCategory: 'All',
+              quantity: it.quantity,
+              costPerItem: it.rate,
+              totalPrice: it.amount,
+            }))
+          : []
+
+        const totalPurchases = syn.saraPayable || (seed ? seed.totalPayable : 0)
+        const totalItems = seed ? seed.items.reduce((s, i) => s + (Number(i.quantity) || 1), 0) : 0
+        const paidAmount = syn.foiPayable || 0
+        const lastDate = entries.length > 0 ? entries[entries.length - 1].date : '2026-08-31'
+
+        map.set(slug, {
+          partyName: syn.traderName,
+          slug,
+          type,
+          totalBills: syn.noOfBills || (seed ? seed.billsCount : 0),
+          totalItems,
+          totalPurchases,
+          paidAmount,
+          currentBalance: totalPurchases - paidAmount,
+          lastDate,
+          remarks: syn.remarks,
+          entries,
+        })
       }
     })
 
-    accountsData.workshops.ledgers.forEach((w) => {
-      const syn = accountsData.workshops.synopsis.find(
-        (s) => s.workshopName.toLowerCase() === w.workshopName.toLowerCase()
-      )
-      const totalPurchases = syn ? syn.saraPayable : w.totalPayable
-      const totalItems = w.items.reduce((sum, item) => sum + (item.quantity || 1), 0)
-      const uniqueBills = syn
-        ? syn.noOfBills
-        : w.billsCount || new Set(w.items.map((i) => i.billNo).filter(Boolean)).size
+    // 2. Check any seed ledgers not in synopsis
+    accountsData.traders.ledgers.forEach((seed) => {
+      const slug = seed.slug || slugifyPartyName(seed.partyName)
+      if (!map.has(slug)) {
+        const storageKey = `${ACCOUNTS_KEYS.TRADER_PREFIX}${slug}`
+        const customEntries = accountsRead<InventoryPurchaseEntry[] | null>(storageKey, null)
+        const entries = customEntries || seed.items.map((it, idx) => ({
+          id: `tr-${seed.slug}-${idx + 1}`,
+          date: it.date || '2026-08-01',
+          billNo: it.billNo,
+          inwardNo: it.inwardNo,
+          partyName: seed.partyName,
+          itemDescription: it.itemName,
+          machineCategory: 'All' as MachineExpenseCategory,
+          quantity: it.quantity,
+          costPerItem: it.rate,
+          totalPrice: it.amount,
+        }))
 
-      const entries: InventoryPurchaseEntry[] = w.items.map((it, idx) => ({
-        id: `ws-${w.slug}-${idx + 1}`,
-        date: it.date || '2026-08-01',
-        billNo: it.billNo,
-        inwardNo: it.inwardNo,
-        partyName: w.workshopName,
-        itemDescription: it.itemName,
-        machineCategory: 'PU',
-        quantity: it.quantity,
-        costPerItem: it.rate,
-        totalPrice: it.amount,
-      }))
+        const totalPurchases = customEntries
+          ? customEntries.reduce((s, e) => s + (Number(e.totalPrice) || 0), 0)
+          : seed.totalPayable
+        const totalItems = entries.reduce((s, e) => s + (Number(e.quantity) || 1), 0)
+        const lastDate = entries.length > 0 ? entries[entries.length - 1].date : '2026-08-31'
 
-      traders.push({
-        partyName: w.workshopName,
-        slug: w.slug,
-        type: 'Workshop / Engineering',
-        totalBills: uniqueBills,
-        totalItems,
-        totalPurchases,
-        paidAmount: 0,
-        currentBalance: totalPurchases,
-        lastDate: entries.length > 0 ? entries[entries.length - 1].date : '2026-08-31',
-        entries,
-      })
+        map.set(slug, {
+          partyName: seed.partyName,
+          slug,
+          type: 'Trader',
+          totalBills: seed.billsCount || new Set(entries.map((e) => e.billNo).filter(Boolean)).size,
+          totalItems,
+          totalPurchases,
+          paidAmount: 0,
+          currentBalance: totalPurchases,
+          lastDate,
+          entries,
+        })
+      }
     })
 
-    return traders.sort((a, b) => b.totalPurchases - a.totalPurchases)
+    return Array.from(map.values()).sort((a, b) => b.totalPurchases - a.totalPurchases)
   }
 
   getTraderBySlug(slug: string): TraderSummary | null {
@@ -441,15 +528,370 @@ class ExpenseService {
     return (
       traders.find(
         (t) =>
-      t.slug === slug || 
-      t.slug.replace(/[^a-z0-9]/g, '') === cleanSlug || 
-      slugifyPartyName(t.partyName) === slug ||
+          t.slug === slug ||
+          t.slug.replace(/[^a-z0-9]/g, '') === cleanSlug ||
+          slugifyPartyName(t.partyName) === slug ||
           t.partyName
             .toLowerCase()
             .replace(/[^a-z0-9]/g, '')
             .includes(cleanSlug)
-    ) || null
+      ) || null
     )
+  }
+
+  recordTraderBill(params: RecordTraderBillInput): { entry: InventoryPurchaseEntry; trader: TraderSummary } {
+    const partyName = params.partyName.trim()
+    const slug = slugifyPartyName(partyName)
+    const total = params.totalAmount ?? Math.round(params.quantity * params.rate)
+    const saraAp = params.saraPayable ?? total
+    const foiPaid = params.foiPaid || 0
+
+    // 1. Update party ledger
+    const storageKey = `${ACCOUNTS_KEYS.TRADER_PREFIX}${slug}`
+    const existingTrader = this.getTraderBySlug(slug)
+    const currentEntries: InventoryPurchaseEntry[] = existingTrader ? [...existingTrader.entries] : []
+
+    const newEntry: InventoryPurchaseEntry = {
+      id: `tr-${slug}-${Date.now()}`,
+      date: params.date,
+      billNo: params.billNo || '',
+      inwardNo: params.inwardNo || '',
+      partyName,
+      itemDescription: params.itemName,
+      machineCategory: params.machineCategory || 'All',
+      quantity: params.quantity,
+      costPerItem: params.rate,
+      totalPrice: total,
+    }
+    currentEntries.push(newEntry)
+    if (this.isClient()) {
+      accountsWrite(storageKey, currentEntries)
+    }
+
+    // 2. Update Traders Synopsis Store
+    const currentSynopsis = accountsRead<TraderSynopsisItem[]>(
+      ACCOUNTS_KEYS.TRADERS_STORE,
+      accountsData.traders.synopsis
+    )
+    const synIndex = currentSynopsis.findIndex(
+      (s) => slugifyPartyName(s.traderName) === slug || s.traderName.toLowerCase() === partyName.toLowerCase()
+    )
+
+    if (synIndex >= 0) {
+      const syn = currentSynopsis[synIndex]
+      currentSynopsis[synIndex] = {
+        ...syn,
+        saraPayable: (syn.saraPayable || 0) + saraAp,
+        foiPayable: (syn.foiPayable || 0) + foiPaid,
+        noOfBills: (syn.noOfBills || 0) + (params.billNo ? 1 : 0),
+        remarks: params.remarks || syn.remarks || '',
+      }
+    } else {
+      currentSynopsis.push({
+        sNo: currentSynopsis.length + 1,
+        noOfBills: 1,
+        traderName: partyName,
+        saraPayable: saraAp,
+        foiPayable: foiPaid,
+        remarks: params.remarks || '',
+      })
+    }
+    if (this.isClient()) {
+      accountsWrite(ACCOUNTS_KEYS.TRADERS_STORE, currentSynopsis)
+    }
+
+    // 3. Mirror into Daily Inward Expenses
+    const dailyInward = accountsRead<DailyInwardItem[]>(
+      ACCOUNTS_KEYS.DAILY_INWARD,
+      accountsData.dailyExpense.inward
+    )
+    const newDailyItem: DailyInwardItem = {
+      sNo: dailyInward.length + 1,
+      date: params.date,
+      billNo: params.billNo || '',
+      inwardNo: params.inwardNo || '',
+      partyName,
+      itemDescription: params.itemName,
+      quantity: params.quantity,
+      rate: params.rate,
+      totalAmount: total,
+      saraAp,
+      foiCashCheque: foiPaid,
+      balance: 0,
+    }
+    dailyInward.push(newDailyItem)
+    if (this.isClient()) {
+      accountsWrite(ACCOUNTS_KEYS.DAILY_INWARD, dailyInward)
+      this.notifyDataChanged(params.date.slice(0, 7))
+    }
+
+    const updatedTrader = this.getTraderBySlug(slug) || {
+      partyName,
+      slug,
+      type: 'Trader',
+      totalBills: 1,
+      totalItems: params.quantity,
+      totalPurchases: saraAp,
+      paidAmount: foiPaid,
+      currentBalance: saraAp - foiPaid,
+      lastDate: params.date,
+      remarks: params.remarks,
+      entries: currentEntries,
+    }
+
+    return { entry: newEntry, trader: updatedTrader }
+  }
+
+  // --- Workshops & Engineering ---
+  getWorkshopsList(): WorkshopSummary[] {
+    const synList = accountsRead<WorkshopSynopsisItem[]>(
+      ACCOUNTS_KEYS.WORKSHOPS_STORE,
+      accountsData.workshops.synopsis
+    )
+
+    const map = new Map<string, WorkshopSummary>()
+
+    synList.forEach((syn) => {
+      const slug = slugifyPartyName(syn.workshopName)
+      const storageKey = `${ACCOUNTS_KEYS.WORKSHOP_PREFIX}${slug}`
+      const customEntries = accountsRead<InventoryPurchaseEntry[] | null>(storageKey, null)
+
+      let type: WorkshopSummary['type'] = 'Workshop / Engineering'
+      const name = syn.workshopName.toLowerCase()
+      if (name.includes('lathe') || name.includes('turning')) type = 'Lathe / Turning'
+      else if (name.includes('weld')) type = 'Welding'
+      else if (name.includes('motor') || name.includes('rewind')) type = 'Motor Rewinding'
+      else if (name.includes('repair')) type = 'General Repair'
+
+      if (customEntries && customEntries.length > 0) {
+        const totalPurchases = customEntries.reduce((s, e) => s + (Number(e.totalPrice) || 0), 0)
+        const totalItems = customEntries.reduce((s, e) => s + (Number(e.quantity) || 1), 0)
+        const billSet = new Set(customEntries.map((e) => e.billNo).filter(Boolean))
+        const paidAmount = syn.foiPayable || 0
+        const lastDate = customEntries[customEntries.length - 1].date || '2026-08-31'
+
+        map.set(slug, {
+          workshopName: syn.workshopName,
+          slug,
+          type,
+          totalBills: billSet.size || syn.noOfBills,
+          totalItems,
+          totalPurchases,
+          paidAmount,
+          currentBalance: totalPurchases - paidAmount,
+          lastDate,
+          remarks: syn.remarks,
+          entries: customEntries,
+        })
+      } else {
+        const seed = accountsData.workshops.ledgers.find(
+          (l) =>
+            l.slug === slug ||
+            slugifyPartyName(l.workshopName) === slug ||
+            l.workshopName.toLowerCase() === syn.workshopName.toLowerCase()
+        )
+
+        const entries: InventoryPurchaseEntry[] = seed
+          ? seed.items.map((it, idx) => ({
+              id: `ws-${seed.slug}-${idx + 1}`,
+              date: it.date || '2026-08-01',
+              billNo: it.billNo,
+              inwardNo: it.inwardNo,
+              partyName: seed.workshopName,
+              itemDescription: it.itemName,
+              machineCategory: 'PU',
+              quantity: it.quantity,
+              costPerItem: it.rate,
+              totalPrice: it.amount,
+            }))
+          : []
+
+        const totalPurchases = syn.saraPayable || (seed ? seed.totalPayable : 0)
+        const totalItems = seed ? seed.items.reduce((s, i) => s + (Number(i.quantity) || 1), 0) : 0
+        const paidAmount = syn.foiPayable || 0
+        const lastDate = entries.length > 0 ? entries[entries.length - 1].date : '2026-08-31'
+
+        map.set(slug, {
+          workshopName: syn.workshopName,
+          slug,
+          type,
+          totalBills: syn.noOfBills || (seed ? seed.billsCount : 0),
+          totalItems,
+          totalPurchases,
+          paidAmount,
+          currentBalance: totalPurchases - paidAmount,
+          lastDate,
+          remarks: syn.remarks,
+          entries,
+        })
+      }
+    })
+
+    // Seed ledgers not in synopsis
+    accountsData.workshops.ledgers.forEach((seed) => {
+      const slug = seed.slug || slugifyPartyName(seed.workshopName)
+      if (!map.has(slug)) {
+        const storageKey = `${ACCOUNTS_KEYS.WORKSHOP_PREFIX}${slug}`
+        const customEntries = accountsRead<InventoryPurchaseEntry[] | null>(storageKey, null)
+        const entries = customEntries || seed.items.map((it, idx) => ({
+          id: `ws-${seed.slug}-${idx + 1}`,
+          date: it.date || '2026-08-01',
+          billNo: it.billNo,
+          inwardNo: it.inwardNo,
+          partyName: seed.workshopName,
+          itemDescription: it.itemName,
+          machineCategory: 'PU' as MachineExpenseCategory,
+          quantity: it.quantity,
+          costPerItem: it.rate,
+          totalPrice: it.amount,
+        }))
+
+        const totalPurchases = customEntries
+          ? customEntries.reduce((s, e) => s + (Number(e.totalPrice) || 0), 0)
+          : seed.totalPayable
+        const totalItems = entries.reduce((s, e) => s + (Number(e.quantity) || 1), 0)
+        const lastDate = entries.length > 0 ? entries[entries.length - 1].date : '2026-08-31'
+
+        map.set(slug, {
+          workshopName: seed.workshopName,
+          slug,
+          type: 'Workshop / Engineering',
+          totalBills: seed.billsCount || new Set(entries.map((e) => e.billNo).filter(Boolean)).size,
+          totalItems,
+          totalPurchases,
+          paidAmount: 0,
+          currentBalance: totalPurchases,
+          lastDate,
+          entries,
+        })
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => b.totalPurchases - a.totalPurchases)
+  }
+
+  getWorkshopBySlug(slug: string): WorkshopSummary | null {
+    const workshops = this.getWorkshopsList()
+    const cleanSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '')
+    return (
+      workshops.find(
+        (w) =>
+          w.slug === slug ||
+          w.slug.replace(/[^a-z0-9]/g, '') === cleanSlug ||
+          slugifyPartyName(w.workshopName) === slug ||
+          w.workshopName
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+            .includes(cleanSlug)
+      ) || null
+    )
+  }
+
+  recordWorkshopBill(params: RecordWorkshopJobInput): { entry: InventoryPurchaseEntry; workshop: WorkshopSummary } {
+    const workshopName = params.workshopName.trim()
+    const slug = slugifyPartyName(workshopName)
+    const total = params.totalAmount ?? Math.round(params.quantity * params.rate)
+    const saraAp = params.saraPayable ?? total
+    const foiPaid = params.foiPaid || 0
+
+    // 1. Update workshop ledger
+    const storageKey = `${ACCOUNTS_KEYS.WORKSHOP_PREFIX}${slug}`
+    const existingWs = this.getWorkshopBySlug(slug)
+    const currentEntries: InventoryPurchaseEntry[] = existingWs ? [...existingWs.entries] : []
+
+    const itemDesc = params.machineName
+      ? `${params.jobDescription} (${params.machineName})`
+      : params.jobDescription
+
+    const newEntry: InventoryPurchaseEntry = {
+      id: `ws-${slug}-${Date.now()}`,
+      date: params.date,
+      billNo: params.billNo || '',
+      inwardNo: params.inwardNo || '',
+      partyName: workshopName,
+      itemDescription: itemDesc,
+      machineCategory: 'PU',
+      quantity: params.quantity,
+      costPerItem: params.rate,
+      totalPrice: total,
+    }
+    currentEntries.push(newEntry)
+    if (this.isClient()) {
+      accountsWrite(storageKey, currentEntries)
+    }
+
+    // 2. Update Workshops Synopsis Store
+    const currentSynopsis = accountsRead<WorkshopSynopsisItem[]>(
+      ACCOUNTS_KEYS.WORKSHOPS_STORE,
+      accountsData.workshops.synopsis
+    )
+    const synIndex = currentSynopsis.findIndex(
+      (s) => slugifyPartyName(s.workshopName) === slug || s.workshopName.toLowerCase() === workshopName.toLowerCase()
+    )
+
+    if (synIndex >= 0) {
+      const syn = currentSynopsis[synIndex]
+      currentSynopsis[synIndex] = {
+        ...syn,
+        saraPayable: (syn.saraPayable || 0) + saraAp,
+        foiPayable: (syn.foiPayable || 0) + foiPaid,
+        noOfBills: (syn.noOfBills || 0) + (params.billNo ? 1 : 0),
+        remarks: params.remarks || syn.remarks || '',
+      }
+    } else {
+      currentSynopsis.push({
+        sNo: currentSynopsis.length + 1,
+        noOfBills: 1,
+        workshopName,
+        saraPayable: saraAp,
+        foiPayable: foiPaid,
+        remarks: params.remarks || '',
+      })
+    }
+    if (this.isClient()) {
+      accountsWrite(ACCOUNTS_KEYS.WORKSHOPS_STORE, currentSynopsis)
+    }
+
+    // 3. Mirror into Daily Inward Expenses
+    const dailyInward = accountsRead<DailyInwardItem[]>(
+      ACCOUNTS_KEYS.DAILY_INWARD,
+      accountsData.dailyExpense.inward
+    )
+    const newDailyItem: DailyInwardItem = {
+      sNo: dailyInward.length + 1,
+      date: params.date,
+      billNo: params.billNo || '',
+      inwardNo: params.inwardNo || '',
+      partyName: workshopName,
+      itemDescription: itemDesc,
+      quantity: params.quantity,
+      rate: params.rate,
+      totalAmount: total,
+      saraAp,
+      foiCashCheque: foiPaid,
+      balance: 0,
+    }
+    dailyInward.push(newDailyItem)
+    if (this.isClient()) {
+      accountsWrite(ACCOUNTS_KEYS.DAILY_INWARD, dailyInward)
+      this.notifyDataChanged(params.date.slice(0, 7))
+    }
+
+    const updatedWorkshop = this.getWorkshopBySlug(slug) || {
+      workshopName,
+      slug,
+      type: 'Workshop / Engineering',
+      totalBills: 1,
+      totalItems: params.quantity,
+      totalPurchases: saraAp,
+      paidAmount: foiPaid,
+      currentBalance: saraAp - foiPaid,
+      lastDate: params.date,
+      remarks: params.remarks,
+      entries: currentEntries,
+    }
+
+    return { entry: newEntry, workshop: updatedWorkshop }
   }
 
   getMonthlyPurchasesSummary(): {
@@ -612,6 +1054,11 @@ class ExpenseService {
       if (bucket === 'electric') electricMaintenance.push(row)
       else if (bucket === 'repair') repairDetails.push(row)
       else machineryParts.push(row)
+    })
+    this.getWorkshopsList().forEach((w) => {
+      if (w.totalPurchases > 0 || w.totalBills > 0) {
+        repairDetails.push({ name: w.workshopName, amount: Math.round(w.totalPurchases || 0) })
+      }
     })
 
     // Prefer live inventory control (localStorage) → August sheet → Excel defaults

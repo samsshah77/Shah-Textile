@@ -548,7 +548,7 @@ export function formatPayrollMonthLabel(month: string): string {
 export function calculateStaffSalaryRow(
   row: Partial<StaffSalaryRecord>,
   daysInMonth = 30,
-  activeSalariedMonth = '2026-08',
+  activeSalariedMonth?: string,
   matchedEmp?: EmployeeProfile
 ): StaffSalaryRecord {
   const salary = Number(row.salary) || 0
@@ -558,7 +558,8 @@ export function calculateStaffSalaryRow(
   const chequeAmount = Math.max(0, Number(row.chequeAmount) || 0)
 
   const month = row.month || '2026-08'
-  const isHistorical = month !== activeSalariedMonth
+  const effectiveActive = activeSalariedMonth || month
+  const isHistorical = month !== effectiveActive
   const calDays = daysInCalendarMonth(month)
 
   let actualDays = calDays
@@ -655,7 +656,7 @@ export function calculateStaffSalaryRow(
 export function calculateContractSalaryRow(
   row: Partial<ContractSalaryRecord>,
   daysInMonth = 30,
-  activeSalariedMonth = '2026-08',
+  activeSalariedMonth?: string,
   matchedEmp?: EmployeeProfile
 ): ContractSalaryRecord {
   const salary = Number(row.salary) || 0
@@ -667,7 +668,8 @@ export function calculateContractSalaryRow(
   const ticketCharges = Number(row.ticketCharges) || 0
 
   const month = row.month || '2026-08'
-  const isHistorical = month !== activeSalariedMonth
+  const effectiveActive = activeSalariedMonth || month
+  const isHistorical = month !== effectiveActive
   const calDays = daysInCalendarMonth(month)
 
   // Contract Excel Sheet 4 uses 30-day rate base (same as General Wages), not calendar 31.

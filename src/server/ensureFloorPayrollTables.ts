@@ -135,6 +135,7 @@ const STATEMENTS = [
   `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "qualityId" TEXT`,
   `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "swLot" TEXT`,
   `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "beamRepeat" TEXT`,
+  `DELETE FROM "floor_daily_sheets" WHERE "date" >= '2026-10-01' AND ("payload"->>'qualityName' ILIKE '%SILVER-SHINE%' OR "payload"->>'qualityName' ILIKE '%EIFFEL TOWER%' OR "payload"->>'qualityName' = 'PARCOPV' OR "payload"->>'qualityName' = 'DESIGN-2x1')`,
 ]
 
 export async function ensureFloorPayrollTables(): Promise<{ ok: true; statements: number }> {

@@ -45,17 +45,40 @@ export default function InventoryInwardPage() {
   const [search, setSearch] = useState('')
   const [filterMachine, setFilterMachine] = useState<string>('ALL')
 
-  const [monthsData, setMonthsData] = useState<Record<string, MonthlyInventorySheet>>(() =>
-    accountsRead(STORAGE_KEY_INVENTORY, accountsData.inventoryControl.months)
-  )
+  const [monthsData, setMonthsData] = useState<Record<string, MonthlyInventorySheet>>(() => {
+    const raw = accountsRead(STORAGE_KEY_INVENTORY, accountsData.inventoryControl.months)
+    if (raw && typeof raw === 'object' && raw['September']) {
+      if (raw['September'].items && raw['September'].items.length > 0) {
+        const next = {
+          ...raw,
+          September: {
+            ...raw['September'],
+            items: [],
+            itemsCount: 0,
+            totalAmount: 0,
+          },
+        }
+        accountsWrite(STORAGE_KEY_INVENTORY, next)
+        return next
+      }
+    }
+    return raw
+  })
 
   const [isSaved, setIsSaved] = useState(false)
+
+  const availableMonths = useMemo(() => {
+    return Object.keys(monthsData)
+  }, [monthsData])
+
+  // Table Edit Mode Toggle
+  const [isEditMode, setIsEditMode] = useState(false)
 
   // Editing state
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<Partial<InventoryItem>>({})
 
-  // Add Item Modal
+  // Add Item Modal (Formal Dialog Box)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newDate, setNewDate] = useState('2026-08-31')
   const [newBillNo, setNewBillNo] = useState('')
@@ -65,6 +88,112 @@ export default function InventoryInwardPage() {
   const [newMachine, setNewMachine] = useState('PU')
   const [newQuantity, setNewQuantity] = useState<number | string>(1)
   const [newCost, setNewCost] = useState<number | string>('')
+
+  // Edit Item Modal (Formal Dialog Box for correcting mistakes)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null)
+  const [editDate, setEditDate] = useState('')
+  const [editBillNo, setEditBillNo] = useState('')
+  const [editInwardNo, setEditInwardNo] = useState('')
+  const [editCompany, setEditCompany] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editMachine, setEditMachine] = useState('PU')
+  const [editQuantity, setEditQuantity] = useState<number | string>(1)
+  const [editCost, setEditCost] = useState<number | string>('')
+
+  // Generate New Month Confirmation Modal (Centralized Primary Generator)
+  const [showGenerateMonthModal, setShowGenerateMonthModal] = useState(false)
+  const [monthToGenerate, setMonthToGenerate] = useState('September')
+  const [yearToGenerate, setYearToGenerate] = useState('2026')
+
+  // =========================================================================
+  // INTERACTIVE COLUMN RESIZING (EXCEL DRAGGABLE COLUMNS) & COLOR HELPERS
+  // =========================================================================
+  const DEFAULT_INVENTORY_COL_WIDTHS: Record<string, number> = {
+    sNo: 50,
+    date: 95,
+    billNo: 85,
+    inwardNo: 85,
+    description: 280,
+    companyName: 190,
+    machineName: 90,
+    quantity: 75,
+    costPerItem: 105,
+    totalPrice: 125,
+    actions: 75,
+  }
+
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('sara_inventory_col_widths')
+        if (saved) return { ...DEFAULT_INVENTORY_COL_WIDTHS, ...JSON.parse(saved) }
+      } catch {}
+    }
+    return DEFAULT_INVENTORY_COL_WIDTHS
+  })
+
+  const startColResize = (colKey: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = colWidths[colKey] || DEFAULT_INVENTORY_COL_WIDTHS[colKey] || 80
+
+    const onMouseMove = (moveEvt: MouseEvent) => {
+      const delta = moveEvt.clientX - startX
+      const minW = colKey === 'sNo' ? 40 : 55
+      const newW = Math.max(minW, startW + delta)
+      setColWidths((prev) => ({ ...prev, [colKey]: newW }))
+    }
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      setColWidths((latest) => {
+        try {
+          localStorage.setItem('sara_inventory_col_widths', JSON.stringify(latest))
+        } catch {}
+        return latest
+      })
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
+  const resetColWidths = () => {
+    setColWidths(DEFAULT_INVENTORY_COL_WIDTHS)
+    try {
+      localStorage.removeItem('sara_inventory_col_widths')
+    } catch {}
+  }
+
+  const totalTableWidth = useMemo(() => {
+    return Object.values(colWidths).reduce((sum, w) => sum + w, 0)
+  }, [colWidths])
+
+  const getCompanyTintStyle = (company: string) => {
+    const c = (company || '').toLowerCase()
+    if (c.includes('gq fire')) return 'bg-[#e8dac8] text-amber-950 font-bold'
+    if (c.includes('textile engineering')) return 'bg-[#dcfce7] text-emerald-950 font-bold'
+    if (c.includes('muhammad ali')) return 'bg-[#ede9fe] text-purple-950 font-bold'
+    if (c.includes('vip petroleum')) return 'bg-[#e0f2fe] text-sky-950 font-bold'
+    if (c.includes('janjoha')) return 'bg-[#ffedd5] text-orange-950 font-bold'
+    if (c.includes('f.t') || c.includes('ft traders')) return 'bg-[#fed7aa] text-amber-950 font-bold'
+    if (c.includes('blue reed')) return 'bg-[#bfdbfe] text-blue-950 font-bold'
+    return 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold'
+  }
+
+  const getMachineBadgeStyle = (machine: string) => {
+    const m = (machine || '').trim().toUpperCase()
+    if (m === 'ALL') return 'bg-red-600 text-white font-bold'
+    if (m === 'PU') return 'bg-emerald-600 text-white font-bold'
+    if (m.includes('6300')) return 'bg-blue-600 text-white font-bold'
+    if (m.includes('6200')) return 'bg-teal-600 text-white font-bold'
+    if (m === 'FOI') return 'bg-slate-500 text-white font-bold'
+    if (m.toLowerCase().includes('electron')) return 'bg-purple-600 text-white font-bold'
+    return 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold'
+  }
 
   // =========================================================================
   // REACTIVE FORMULAS COMPUTATION
@@ -140,6 +269,87 @@ export default function InventoryInwardPage() {
   const filteredTotal = useMemo(() => {
     return filteredItems.reduce((s, it) => s + (it.totalPrice || 0), 0)
   }, [filteredItems])
+
+  // Group consecutive items by same Invoice / Bill No & Company
+  const billGroups = useMemo(() => {
+    if (editingIndex !== null) {
+      return filteredItems.map((_, idx) => ({
+        invoiceIndex: idx,
+        isFirstInBill: true,
+        isLastInBill: true,
+        rowSpan: 1,
+        billTotal: filteredItems[idx]?.totalPrice || 0,
+      }))
+    }
+
+    const result: {
+      invoiceIndex: number
+      isFirstInBill: boolean
+      isLastInBill: boolean
+      rowSpan: number
+      billTotal: number
+    }[] = []
+
+    let i = 0
+    let currentInvoiceIndex = 0
+
+    while (i < filteredItems.length) {
+      const current = filteredItems[i]
+      const hasBillNo = current.billNo && current.billNo.trim() !== '' && current.billNo.trim() !== '-'
+
+      if (!hasBillNo) {
+        result.push({
+          invoiceIndex: currentInvoiceIndex,
+          isFirstInBill: true,
+          isLastInBill: true,
+          rowSpan: 1,
+          billTotal: current.totalPrice,
+        })
+        currentInvoiceIndex++
+        i++
+        continue
+      }
+
+      let j = i + 1
+      while (
+        j < filteredItems.length &&
+        filteredItems[j].billNo &&
+        filteredItems[j].billNo.trim().toLowerCase() === current.billNo.trim().toLowerCase() &&
+        filteredItems[j].companyName.trim().toLowerCase() === current.companyName.trim().toLowerCase()
+      ) {
+        j++
+      }
+
+      const count = j - i
+      let sumBill = 0
+      for (let k = i; k < j; k++) {
+        sumBill += filteredItems[k].totalPrice
+      }
+
+      result.push({
+        invoiceIndex: currentInvoiceIndex,
+        isFirstInBill: true,
+        isLastInBill: count === 1,
+        rowSpan: count,
+        billTotal: sumBill,
+      })
+
+      for (let k = i + 1; k < j; k++) {
+        result.push({
+          invoiceIndex: currentInvoiceIndex,
+          isFirstInBill: false,
+          isLastInBill: k === j - 1,
+          rowSpan: 0,
+          billTotal: sumBill,
+        })
+      }
+
+      currentInvoiceIndex++
+      i = j
+    }
+
+    return result
+  }, [filteredItems, editingIndex])
 
   // Persistence helpers
   const saveMonthsData = (updated: Record<string, MonthlyInventorySheet>) => {
@@ -221,6 +431,7 @@ export default function InventoryInwardPage() {
   }
 
   // Add new purchase
+  // Add new purchase (Formal Dialog Box)
   const handleAddNewPurchase = (e: React.FormEvent) => {
     e.preventDefault()
     const qty = Number(newQuantity) || 1
@@ -254,11 +465,133 @@ export default function InventoryInwardPage() {
 
     saveMonthsData(updatedMonths)
 
+    // Automatic ERP routing: Post into Daily Inward Expenses register
+    try {
+      const expenseKey = ACCOUNTS_KEYS.DAILY_INWARD_MONTHS
+      const existingExpense = accountsRead<Record<string, any[]>>(expenseKey, {}) || {}
+      const monthKey = `${selectedMonth} 2026`
+      const currentList = existingExpense[monthKey] || []
+      const prevBal = currentList.length > 0 ? (Number(currentList[currentList.length - 1].balance) || 0) : 0
+      const newDailyItem = {
+        sNo: currentList.length + 1,
+        date: newDate,
+        billNo: newBillNo,
+        inwardNo: newInwardNo,
+        partyName: newCompany,
+        itemDescription: newDescription,
+        quantity: qty,
+        rate: cost,
+        totalAmount: totalPrice,
+        saraAp: totalPrice,
+        foiCashCheque: 0,
+        balance: prevBal + totalPrice,
+      }
+      existingExpense[monthKey] = [...currentList, newDailyItem]
+      accountsWrite(expenseKey, existingExpense)
+    } catch (err) {
+      console.error('Error auto-syncing to daily expense:', err)
+    }
+
     // Reset modal
     setNewDescription('')
     setNewCost('')
     setNewQuantity(1)
     setShowAddModal(false)
+  }
+
+  // Open Formal Edit Dialog Box (for cleanly fixing any mistake)
+  const openFormalEditDialog = (idx: number, item: InventoryItem) => {
+    setEditingRowIndex(idx)
+    setEditDate(item.date || '')
+    setEditBillNo(item.billNo || '')
+    setEditInwardNo(item.inwardNo || '')
+    setEditCompany(item.companyName || '')
+    setEditDescription(item.itemDescription || '')
+    setEditMachine(item.machineName || 'PU')
+    setEditQuantity(item.quantity)
+    setEditCost(item.costPerItem)
+    setShowEditModal(true)
+  }
+
+  // Save Formal Edit Dialog Box
+  const handleSaveFormalEdit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingRowIndex === null) return
+
+    const sheet = { ...activeMonthSheet }
+    const updatedItems = [...sheet.items]
+    const qty = Number(editQuantity) || 0
+    const cost = Number(editCost) || 0
+    const totalPrice = qty * cost
+
+    updatedItems[editingRowIndex] = {
+      ...updatedItems[editingRowIndex],
+      date: editDate,
+      billNo: editBillNo,
+      inwardNo: editInwardNo,
+      companyName: editCompany,
+      itemDescription: editDescription,
+      machineName: editMachine,
+      quantity: qty,
+      costPerItem: cost,
+      totalPrice,
+    }
+
+    const updatedSheet: MonthlyInventorySheet = {
+      ...sheet,
+      items: updatedItems,
+      itemsCount: updatedItems.length,
+      totalAmount: updatedItems.reduce((s, it) => s + it.totalPrice, 0),
+    }
+
+    saveMonthsData({
+      ...monthsData,
+      [selectedMonth]: updatedSheet,
+    })
+
+    setShowEditModal(false)
+    setEditingRowIndex(null)
+  }
+
+  // Centralized Primary Month Generator with Confirmation
+  const handleConfirmGenerateMonth = (e: React.FormEvent) => {
+    e.preventDefault()
+    const targetMonth = monthToGenerate.trim()
+    if (!targetMonth) return
+
+    if (monthsData[targetMonth]) {
+      alert(`${targetMonth} 2026 register already exists! Switched to it.`)
+      setSelectedMonth(targetMonth)
+      setShowGenerateMonthModal(false)
+      return
+    }
+
+    const updated = {
+      ...monthsData,
+      [targetMonth]: {
+        month: targetMonth,
+        totalAmount: 0,
+        itemsCount: 0,
+        items: [],
+      },
+    }
+
+    saveMonthsData(updated)
+    setSelectedMonth(targetMonth)
+    setShowGenerateMonthModal(false)
+
+    // Auto-sync to Daily Inward Expenses
+    try {
+      const expenseKey = ACCOUNTS_KEYS.DAILY_INWARD_MONTHS
+      const existingExpense = accountsRead<Record<string, any>>(expenseKey, {}) || {}
+      const monthKey = `${targetMonth} ${yearToGenerate}`
+      if (!existingExpense[monthKey]) {
+        existingExpense[monthKey] = []
+        accountsWrite(expenseKey, existingExpense)
+      }
+    } catch (err) {
+      console.error('Error auto-syncing month to daily expense:', err)
+    }
   }
 
   const handlePrint = () => {
@@ -355,55 +688,42 @@ export default function InventoryInwardPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 2. MONTH TABS                                                             */}
+      {/* 2. COMPACT TOOLBAR: MONTH DROPDOWN, MACHINE FILTER, SEARCH & GENERATE     */}
       {/* ========================================================================= */}
-      <div className="flex items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-xs scrollbar-none print:hidden">
-        {MONTH_KEYS.map((month) => {
-          const sheet = computedMonths[month]
-          const isSelected = selectedMonth === month
-          return (
-            <button
-              key={month}
-              onClick={() => {
-                setSelectedMonth(month)
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b border-border pb-3 print:hidden">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Month Dropdown Selector */}
+          <div className="flex items-center gap-1.5">
+            <Calendar className="size-4 text-[#0066cc]" />
+            <span className="text-xs font-bold text-foreground">Month:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value)
                 setFilterMachine('ALL')
                 setEditingIndex(null)
               }}
-              className={cn(
-                'erp-filter-tab shrink-0 rounded-xl',
-                isSelected
-                  ? 'bg-[#0066cc] text-white shadow-xs'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-              )}
+              className="rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground focus:border-[#0066cc] focus:outline-hidden cursor-pointer shadow-2xs"
             >
-              <span>{month}</span>
-              <span
-                className={cn(
-                  'erp-count-chip font-mono rounded-md',
-                  isSelected
-                    ? 'bg-white/20 text-white'
-                    : 'bg-muted text-muted-foreground'
-                )}
-              >
-                {sheet ? `${sheet.itemsCount}` : '0'}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+              {availableMonths.map((m) => {
+                const sheet = computedMonths[m]
+                const count = sheet ? sheet.itemsCount : 0
+                return (
+                  <option key={m} value={m}>
+                    {m} 2026 ({count} items)
+                  </option>
+                )
+              })}
+            </select>
+          </div>
 
-      {/* ========================================================================= */}
-      {/* 4. SEARCH & MACHINE FILTER                                                */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-3 print:hidden">
-        <div className="flex flex-wrap items-center gap-2">
           {/* Machine Filter */}
           <div className="flex items-center gap-1.5">
             <Cpu className="size-4 text-muted-foreground" />
             <select
               value={filterMachine}
               onChange={(e) => setFilterMachine(e.target.value)}
-              className="rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground focus:border-blue-500 focus:outline-hidden"
+              className="rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground focus:border-blue-500 focus:outline-hidden cursor-pointer shadow-2xs"
             >
               <option value="ALL">All Machines ({uniqueMachines.length})</option>
               {uniqueMachines.map((m) => (
@@ -419,26 +739,37 @@ export default function InventoryInwardPage() {
               onClick={() => setFilterMachine('ALL')}
               className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
             >
-              Reset Machine Filter
+              Reset
             </button>
           )}
+
+          {/* Centralized Primary Month Generator with Confirmation */}
+          <button
+            type="button"
+            onClick={() => setShowGenerateMonthModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-dashed border-[#0066cc]/60 bg-blue-50/50 dark:bg-blue-950/20 text-[#0066cc] hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer transition-colors shadow-2xs"
+            title="Generate new month with confirmation"
+          >
+            <PlusCircle className="size-3.5" />
+            <span>+ Generate New Month</span>
+          </button>
         </div>
 
         {/* Search */}
-        <div className="relative w-full sm:w-80">
+        <div className="relative w-full md:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search item, company, bill, inward..."
-            className="w-full rounded-xl border border-border bg-card pl-9 pr-4 py-2 text-xs font-medium placeholder:text-muted-foreground focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+            placeholder="Search item, company, bill..."
+            className="w-full rounded-xl border border-border bg-card pl-9 pr-4 py-1.5 text-xs font-medium placeholder:text-muted-foreground focus:border-[#0066cc] focus:outline-hidden"
           />
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 5. PRINTABLE COMPANY HEADER                                               */}
+      {/* 3. PRINTABLE COMPANY HEADER                                               */}
       {/* ========================================================================= */}
       <div className="hidden print:block text-center border-b pb-4 mb-4">
         <h1 className="text-2xl font-black uppercase tracking-wider text-slate-900">SARA TEXTILE</h1>
@@ -449,7 +780,7 @@ export default function InventoryInwardPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* 6. DATA TABLE WITH INLINE FORMULAS & EDITING                              */}
+      {/* 4. DATA TABLE WITH INLINE FORMULAS & EDITING                              */}
       {/* ========================================================================= */}
       <div className="rounded-2xl border border-border bg-card shadow-xs overflow-hidden">
         <div className="flex items-center justify-between border-b border-border bg-muted/20 px-5 py-3.5">
@@ -459,37 +790,189 @@ export default function InventoryInwardPage() {
               {selectedMonth} Store Purchases ({filteredItems.length} records)
             </span>
           </div>
-          <div className="text-right">
-            <span className="text-xs font-bold text-muted-foreground">{selectedMonth} Total: </span>
-            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
-              {formatCurrency(activeMonthSheet.totalAmount)}
-            </span>
+          <div className="flex items-center gap-3">
+            {/* Table Edit Mode Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsEditMode((prev) => !prev)}
+              title="Toggle Edit Mode to highlight rows for modification"
+              className={cn(
+                'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded-lg border shadow-2xs transition-all cursor-pointer',
+                isEditMode
+                  ? 'bg-amber-500 text-white border-amber-600 font-bold shadow-xs'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-amber-400'
+              )}
+            >
+              <Edit2 className="size-3" />
+              <span>{isEditMode ? 'Editing Active' : 'Edit Table'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={resetColWidths}
+              title="Reset column widths to default (Double-click any column border to reset individual)"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 hover:border-purple-300 shadow-2xs transition-all cursor-pointer"
+            >
+              <RotateCcw className="size-3" />
+              <span>Reset Columns</span>
+            </button>
+            <div className="text-right">
+              <span className="text-xs font-bold text-muted-foreground">{selectedMonth} Total: </span>
+              <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                {formatCurrency(activeMonthSheet.totalAmount)}
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table
+            style={{ minWidth: `${totalTableWidth}px`, tableLayout: 'fixed' }}
+            className="w-full text-left border-collapse text-xs border border-slate-400 dark:border-slate-600 select-text"
+          >
             <thead>
-              <tr className="border-b border-border bg-muted/40 font-black uppercase text-[10px] text-muted-foreground tracking-wider">
-                <th className="py-3 px-3 text-center w-12">S.No</th>
-                <th className="py-3 px-3 w-24">Date</th>
-                <th className="py-3 px-3 w-20">Bill No</th>
-                <th className="py-3 px-3 w-20">In No</th>
-                <th className="py-3 px-3">Item Description</th>
-                <th className="py-3 px-3">Company / Trader</th>
-                <th className="py-3 px-3 text-center w-20">Machine</th>
-                <th className="py-3 px-3 text-center w-14">Qty</th>
-                <th className="py-3 px-3 text-right w-24">Cost / Item</th>
-                <th className="py-3 px-3 text-right w-28">
-                  Total Price (PKR)
-                  <span className="block text-[8px] font-mono text-purple-600 lowercase font-normal">fx: =Qty*Cost</span>
+              <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold uppercase text-[11px] border-b-2 border-slate-800 dark:border-slate-300">
+                <th
+                  style={{ width: `${colWidths.sNo}px` }}
+                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  S.No
+                  <div
+                    onMouseDown={(e) => startColResize('sNo', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, sNo: DEFAULT_INVENTORY_COL_WIDTHS.sNo }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
                 </th>
-                <th className="py-3 px-3 text-center w-20 print:hidden">Actions</th>
+                <th
+                  style={{ width: `${colWidths.date}px` }}
+                  className="relative py-2.5 px-3 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Date
+                  <div
+                    onMouseDown={(e) => startColResize('date', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, date: DEFAULT_INVENTORY_COL_WIDTHS.date }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.billNo}px` }}
+                  className="relative py-2.5 px-3 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Bill No
+                  <div
+                    onMouseDown={(e) => startColResize('billNo', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, billNo: DEFAULT_INVENTORY_COL_WIDTHS.billNo }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.inwardNo}px` }}
+                  className="relative py-2.5 px-3 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  In No
+                  <div
+                    onMouseDown={(e) => startColResize('inwardNo', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, inwardNo: DEFAULT_INVENTORY_COL_WIDTHS.inwardNo }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.description}px` }}
+                  className="relative py-2.5 px-3 border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Item Description
+                  <div
+                    onMouseDown={(e) => startColResize('description', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, description: DEFAULT_INVENTORY_COL_WIDTHS.description }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.companyName}px` }}
+                  className="relative py-2.5 px-3 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Company / Traders Name
+                  <div
+                    onMouseDown={(e) => startColResize('companyName', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, companyName: DEFAULT_INVENTORY_COL_WIDTHS.companyName }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.machineName}px` }}
+                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Machine
+                  <div
+                    onMouseDown={(e) => startColResize('machineName', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, machineName: DEFAULT_INVENTORY_COL_WIDTHS.machineName }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.quantity}px` }}
+                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Qty
+                  <div
+                    onMouseDown={(e) => startColResize('quantity', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, quantity: DEFAULT_INVENTORY_COL_WIDTHS.quantity }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.costPerItem}px` }}
+                  className="relative py-2.5 px-3 text-right border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Cost / Item
+                  <div
+                    onMouseDown={(e) => startColResize('costPerItem', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, costPerItem: DEFAULT_INVENTORY_COL_WIDTHS.costPerItem }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.totalPrice}px` }}
+                  className="relative py-2.5 px-3 text-right border border-slate-400 dark:border-slate-600 select-none group/th"
+                >
+                  Total Price (PKR)
+                  <span className="block text-[8px] font-mono text-purple-700 dark:text-purple-300 lowercase font-normal">fx: =Qty*Cost</span>
+                  <div
+                    onMouseDown={(e) => startColResize('totalPrice', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, totalPrice: DEFAULT_INVENTORY_COL_WIDTHS.totalPrice }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
+                <th
+                  style={{ width: `${colWidths.actions}px` }}
+                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 print:hidden select-none group/th"
+                >
+                  Actions
+                  <div
+                    onMouseDown={(e) => startColResize('actions', e)}
+                    onDoubleClick={() => setColWidths((p) => ({ ...p, actions: DEFAULT_INVENTORY_COL_WIDTHS.actions }))}
+                    title="Drag to resize column (Double-click to reset)"
+                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-purple-600 active:bg-purple-600 z-20"
+                  />
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {filteredItems.map((item, idx) => {
                 const isEditingThis = editingIndex === item.sNo - 1
+                const groupInfo = billGroups[idx] || { invoiceIndex: idx, isFirstInBill: true, isLastInBill: true, rowSpan: 1 }
+                const isEvenInvoice = (groupInfo.invoiceIndex ?? 0) % 2 === 0
+                const isLastInBill = groupInfo.isLastInBill
 
                 if (isEditingThis) {
                   const editQty = Number(editForm.quantity) || 0
@@ -497,33 +980,33 @@ export default function InventoryInwardPage() {
                   const liveItemTotal = editQty * editCost
 
                   return (
-                    <tr key={item.sNo} className="bg-purple-500/10">
-                      <td className="py-2.5 px-3 text-center font-mono font-bold">{item.sNo}</td>
-                      <td className="py-2.5 px-3">
+                    <tr key={item.sNo} className="bg-purple-500/10 border-b-2 border-purple-500">
+                      <td className="py-2.5 px-2 text-center font-mono font-bold border border-slate-400 dark:border-slate-600">{item.sNo}</td>
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="text"
                           value={editForm.date || ''}
                           onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
-                          className="w-24 rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-mono"
+                          className="w-full rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-mono"
                         />
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="text"
                           value={editForm.billNo || ''}
                           onChange={(e) => setEditForm({ ...editForm, billNo: e.target.value })}
-                          className="w-18 rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-mono"
+                          className="w-full rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-mono"
                         />
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="text"
                           value={editForm.inwardNo || ''}
                           onChange={(e) => setEditForm({ ...editForm, inwardNo: e.target.value })}
-                          className="w-18 rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-mono text-purple-600"
+                          className="w-full rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-mono text-purple-600"
                         />
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="text"
                           value={editForm.itemDescription || ''}
@@ -531,42 +1014,42 @@ export default function InventoryInwardPage() {
                           className="w-full rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-medium"
                         />
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="text"
                           value={editForm.companyName || ''}
                           onChange={(e) => setEditForm({ ...editForm, companyName: e.target.value })}
-                          className="w-32 rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-medium"
+                          className="w-full rounded border border-purple-500 bg-background px-1.5 py-1 text-xs font-medium"
                         />
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="text"
                           value={editForm.machineName || ''}
                           onChange={(e) => setEditForm({ ...editForm, machineName: e.target.value })}
-                          className="w-16 rounded border border-purple-500 bg-background px-1 py-1 text-xs text-center"
+                          className="w-full rounded border border-purple-500 bg-background px-1 py-1 text-xs text-center font-bold"
                         />
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="number"
                           value={editForm.quantity}
                           onChange={(e) => setEditForm({ ...editForm, quantity: Number(e.target.value) })}
-                          className="w-14 rounded border border-purple-500 bg-background px-1 py-1 text-center font-mono text-xs font-bold"
+                          className="w-full rounded border border-purple-500 bg-background px-1 py-1 text-center font-mono text-xs font-bold"
                         />
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-2 border border-slate-400 dark:border-slate-600">
                         <input
                           type="number"
                           value={editForm.costPerItem}
                           onChange={(e) => setEditForm({ ...editForm, costPerItem: Number(e.target.value) })}
-                          className="w-20 rounded border border-purple-500 bg-background px-1.5 py-1 text-right font-mono text-xs font-bold"
+                          className="w-full rounded border border-purple-500 bg-background px-1.5 py-1 text-right font-mono text-xs font-bold"
                         />
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300 border border-slate-400 dark:border-slate-600">
                         {formatNumber(liveItemTotal)}
                       </td>
-                      <td className="py-2.5 px-3 text-center print:hidden">
+                      <td className="py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 print:hidden">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => saveEdit(item.sNo - 1)}
@@ -589,55 +1072,180 @@ export default function InventoryInwardPage() {
                 }
 
                 return (
-                  <tr key={item.sNo} className="hover:bg-muted/30 transition-colors">
-                    <td className="py-2.5 px-3 text-center font-mono font-bold text-muted-foreground">
+                  <tr
+                    key={item.sNo}
+                    className={cn(
+                      'transition-colors',
+                      isEvenInvoice
+                        ? 'bg-white dark:bg-slate-900'
+                        : 'bg-slate-50/70 dark:bg-slate-800/40',
+                      'hover:bg-purple-50/40 dark:hover:bg-slate-700/50'
+                    )}
+                  >
+                    <td
+                      className={cn(
+                        'py-2.5 px-2 text-center font-mono font-medium text-slate-600 dark:text-slate-400 border-r border-r-slate-400 dark:border-r-slate-500 border-l border-slate-400 dark:border-slate-600',
+                        isLastInBill
+                          ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                          : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                      )}
+                    >
                       {item.sNo}
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-muted-foreground whitespace-nowrap">
-                      {item.date || '-'}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-foreground whitespace-nowrap">
-                      {item.billNo ? `#${item.billNo}` : '-'}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-semibold text-purple-600 dark:text-purple-400 whitespace-nowrap">
-                      {item.inwardNo ? `#${item.inwardNo}` : '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-foreground font-semibold max-w-xs truncate" title={item.itemDescription}>
+
+                    {/* Merged Master Columns: Date, Bill No, Inward No */}
+                    {groupInfo.isFirstInBill && (
+                      <>
+                        <td
+                          rowSpan={groupInfo.rowSpan}
+                          className={cn(
+                            'py-3 px-2 font-mono text-center align-middle font-medium text-slate-800 dark:text-slate-200 border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
+                            isEvenInvoice ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
+                          )}
+                        >
+                          {item.date || '-'}
+                        </td>
+
+                        <td
+                          rowSpan={groupInfo.rowSpan}
+                          className={cn(
+                            'py-3 px-2 font-mono text-center align-middle border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
+                            isEvenInvoice ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
+                          )}
+                        >
+                          <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 shadow-2xs">
+                            {item.billNo ? `#${item.billNo}` : '-'}
+                          </span>
+                        </td>
+
+                        <td
+                          rowSpan={groupInfo.rowSpan}
+                          className={cn(
+                            'py-3 px-2 font-mono text-center align-middle font-bold text-[#0066cc] dark:text-sky-400 border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
+                            isEvenInvoice ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
+                          )}
+                        >
+                          {item.inwardNo ? `#${item.inwardNo}` : '-'}
+                        </td>
+                      </>
+                    )}
+
+                    {/* Item Description (Unique for each line item) */}
+                    <td
+                      className={cn(
+                        'py-2 px-3 text-slate-800 dark:text-slate-200 font-medium truncate border-r border-slate-300 dark:border-slate-600',
+                        isLastInBill
+                          ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                          : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                      )}
+                      title={item.itemDescription}
+                    >
                       {item.itemDescription}
                     </td>
-                    <td className="py-2.5 px-3 text-foreground font-medium whitespace-nowrap">
-                      {item.companyName || '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
+
+                    {/* Merged Company / Traders Name with Authentic Pastel Tint from Excel */}
+                    {groupInfo.isFirstInBill && (
+                      <td
+                        rowSpan={groupInfo.rowSpan}
+                        className={cn(
+                          'py-3 px-3 text-center align-middle whitespace-normal border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 transition-colors',
+                          getCompanyTintStyle(item.companyName)
+                        )}
+                      >
+                        <div className="font-bold text-xs">{item.companyName || '-'}</div>
+                        {groupInfo.rowSpan > 1 && (
+                          <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold font-mono bg-black/10 dark:bg-white/20 text-foreground border border-black/10">
+                            {groupInfo.rowSpan} items in bill
+                          </span>
+                        )}
+                      </td>
+                    )}
+
+                    {/* Machine Name with colorful badge */}
+                    <td
+                      className={cn(
+                        'py-2 px-2 text-center border-r border-slate-300 dark:border-slate-600',
+                        isLastInBill
+                          ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                          : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                      )}
+                    >
                       {item.machineName ? (
-                        <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-foreground">
+                        <span
+                          className={cn(
+                            'inline-block rounded-md px-2 py-0.5 text-[10px] tracking-wide uppercase shadow-2xs',
+                            getMachineBadgeStyle(item.machineName)
+                          )}
+                        >
                           {item.machineName}
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-center font-mono font-bold">
+
+                    {/* Quantity */}
+                    <td
+                      className={cn(
+                        'py-2 px-2 text-center font-mono font-semibold text-slate-800 dark:text-slate-200 border-r border-slate-300 dark:border-slate-600',
+                        isLastInBill
+                          ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                          : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                      )}
+                    >
                       {item.quantity}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-muted-foreground">
+
+                    {/* Cost Per Item */}
+                    <td
+                      className={cn(
+                        'py-2 px-3 text-right font-mono text-slate-700 dark:text-slate-300 border-r border-slate-300 dark:border-slate-600',
+                        isLastInBill
+                          ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                          : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                      )}
+                    >
                       {formatNumber(item.costPerItem)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-black text-foreground">
+
+                    {/* Total Price */}
+                    <td
+                      className={cn(
+                        'py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100 border-r border-slate-300 dark:border-slate-600',
+                        isLastInBill
+                          ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                          : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                      )}
+                    >
                       {formatNumber(item.totalPrice)}
                     </td>
-                    <td className="py-2.5 px-3 text-center print:hidden">
+
+                    {/* Actions */}
+                    <td
+                      className={cn(
+                        'py-2 px-2 text-center print:hidden border-r border-slate-400 dark:border-slate-600',
+                        isLastInBill
+                          ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                          : 'border-b border-b-slate-300 dark:border-b-slate-600',
+                        isEditMode && 'bg-amber-500/10'
+                      )}
+                    >
                       <div className="flex items-center justify-center gap-1">
                         <button
-                          onClick={() => startEdit(item.sNo - 1, item)}
-                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-purple-600 cursor-pointer transition-colors"
-                          title="Edit Row"
+                          onClick={() => openFormalEditDialog(item.sNo - 1, item)}
+                          className={cn(
+                            'rounded p-1 cursor-pointer transition-colors',
+                            isEditMode
+                              ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-2xs'
+                              : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-purple-600'
+                          )}
+                          title="Edit Row (Formal Dialog Box)"
                         >
                           <Edit2 className="size-3.5" />
                         </button>
                         <button
                           onClick={() => deleteRow(item.sNo - 1)}
-                          className="rounded p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
+                          className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
                           title="Delete Row"
                         >
                           <Trash2 className="size-3.5" />
@@ -649,21 +1257,21 @@ export default function InventoryInwardPage() {
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-border bg-muted/50 font-black text-xs">
-                <td colSpan={7} className="py-3 px-3 uppercase text-foreground">
+              <tr className="border-t-2 border-slate-800 dark:border-slate-200 bg-slate-100 dark:bg-slate-800 font-bold text-xs">
+                <td colSpan={7} className="py-3 px-3 uppercase text-slate-800 dark:text-slate-100 border border-slate-400 dark:border-slate-600">
                   {selectedMonth} Total Purchases
-                  <span className="ml-2 text-[10px] font-mono text-purple-700 font-normal">
+                  <span className="ml-2 text-[10px] font-mono text-purple-700 dark:text-purple-300 font-normal">
                     fx: =SUM(J6:J{activeMonthSheet.items.length + 5})
                   </span>
                 </td>
-                <td className="py-3 px-3 text-center font-mono font-bold text-foreground">
+                <td className="py-3 px-2 text-center font-mono font-bold text-slate-900 dark:text-slate-100 border border-slate-400 dark:border-slate-600">
                   {filteredItems.reduce((s, it) => s + (it.quantity || 1), 0)}
                 </td>
-                <td className="py-3 px-3"></td>
-                <td className="py-3 px-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm font-black">
+                <td className="py-3 px-3 border border-slate-400 dark:border-slate-600"></td>
+                <td className="py-3 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400 text-sm font-bold border border-slate-400 dark:border-slate-600">
                   {formatCurrency(filteredTotal)}
                 </td>
-                <td className="print:hidden"></td>
+                <td className="border border-slate-400 dark:border-slate-600 print:hidden"></td>
               </tr>
             </tfoot>
           </table>
@@ -816,6 +1424,250 @@ export default function InventoryInwardPage() {
                   className="rounded-xl bg-purple-600 px-5 py-2 text-xs font-black text-white hover:bg-purple-700 cursor-pointer shadow-xs"
                 >
                   Add to {selectedMonth}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 8. MODAL: FORMAL EDIT PURCHASE ITEM (MISTAKE CORRECTION)                  */}
+      {/* ========================================================================= */}
+      {showEditModal && editingRowIndex !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 print:hidden">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <h3 className="text-base font-black text-foreground">
+                  Edit Purchase Item (Row #{editingRowIndex + 1})
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Correct mistakes in {selectedMonth} 2026. Formulas and totals will automatically recalculate.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEditModal(false)
+                  setEditingRowIndex(null)
+                }}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFormalEdit} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Date</label>
+                  <input
+                    type="text"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">In No</label>
+                  <input
+                    type="text"
+                    value={editInwardNo}
+                    onChange={(e) => setEditInwardNo(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono font-bold text-purple-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Bill No</label>
+                  <input
+                    type="text"
+                    value={editBillNo}
+                    onChange={(e) => setEditBillNo(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Company / Trader</label>
+                  <input
+                    type="text"
+                    value={editCompany}
+                    onChange={(e) => setEditCompany(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Item Description</label>
+                  <input
+                    type="text"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-semibold"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Machine Name</label>
+                  <select
+                    value={editMachine}
+                    onChange={(e) => setEditMachine(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-bold"
+                  >
+                    <option value="PU">PU</option>
+                    <option value="G-6200">G-6200</option>
+                    <option value="G-6300">G-6300</option>
+                    <option value="Electronic">Electronic</option>
+                    <option value="All">All</option>
+                    <option value="Sizing">Sizing</option>
+                    <option value="FOI">FOI</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editQuantity}
+                    onChange={(e) => setEditQuantity(Number(e.target.value))}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono font-bold"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Cost Per Item (PKR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editCost}
+                    onChange={(e) => setEditCost(Number(e.target.value))}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono font-bold"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Live Formula Preview */}
+              <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3 flex justify-between items-center">
+                <span className="font-bold text-muted-foreground">
+                  Formula Total (<code className="font-mono text-purple-600">Qty * Cost</code>):
+                </span>
+                <span className="font-mono text-base font-black text-purple-700 dark:text-purple-300">
+                  {formatCurrency((Number(editQuantity) || 0) * (Number(editCost) || 0))}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setEditingRowIndex(null)
+                  }}
+                  className="rounded-xl border border-border px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-black text-white hover:bg-emerald-700 cursor-pointer shadow-xs"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 9. MODAL: GENERATE NEW MONTH CONFIRMATION                                 */}
+      {/* ========================================================================= */}
+      {showGenerateMonthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 print:hidden">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="size-5 text-[#0066cc]" />
+                <h3 className="text-base font-black text-foreground">Generate New Month Register</h3>
+              </div>
+              <button
+                onClick={() => setShowGenerateMonthModal(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmGenerateMonth} className="space-y-4 text-xs">
+              <p className="text-muted-foreground">
+                This will initialize a new blank monthly register ready for manual store inward entry. The new month will also be automatically synchronized with Daily Inward Expenses.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Select Month</label>
+                  <select
+                    value={monthToGenerate}
+                    onChange={(e) => setMonthToGenerate(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-bold"
+                  >
+                    {[
+                      'September',
+                      'October',
+                      'November',
+                      'December',
+                      'January',
+                      'Febraury',
+                      'March',
+                      'April',
+                      'May',
+                      'June',
+                      'July',
+                      'August',
+                    ].map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-muted-foreground mb-1">Year</label>
+                  <input
+                    type="text"
+                    value={yearToGenerate}
+                    onChange={(e) => setYearToGenerate(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] text-amber-900 dark:text-amber-300">
+                ⚠️ <strong>Confirmation Required:</strong> A clean, empty sheet will be created. You can begin adding bills immediately through the formal dialog box.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowGenerateMonthModal(false)}
+                  className="rounded-xl border border-border px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-[#0066cc] px-5 py-2 text-xs font-black text-white hover:bg-blue-700 cursor-pointer shadow-xs"
+                >
+                  Confirm & Generate
                 </button>
               </div>
             </form>

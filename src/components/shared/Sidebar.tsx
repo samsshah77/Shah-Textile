@@ -88,16 +88,10 @@ const FLOOR_ITEMS: NavLeaf[] = [
 
 const ACCOUNTS_ITEMS: NavLeaf[] = [
   {
-    title: 'Cost Statement',
-    href: '/accounts/cost-statement',
-    icon: 'bi-file-earmark-bar-graph',
-    activeCheck: (p) => p === '/accounts/cost-statement',
-  },
-  {
-    title: 'Traders Synopsis',
-    href: '/accounts/traders',
-    icon: 'bi-shop',
-    activeCheck: (p) => p.startsWith('/accounts/traders') || p.startsWith('/accounts/trader-ledger'),
+    title: 'Store Inventory Control',
+    href: '/accounts/inventory-inward',
+    icon: 'bi-box-seam',
+    activeCheck: (p) => p === '/accounts/inventory-inward',
   },
   {
     title: 'Daily Inward Expenses',
@@ -106,22 +100,34 @@ const ACCOUNTS_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p === '/accounts/daily-expense',
   },
   {
+    title: 'Traders Synopsis',
+    href: '/accounts/traders',
+    icon: 'bi-shop',
+    activeCheck: (p) => p.startsWith('/accounts/traders') || p.startsWith('/accounts/trader-ledger'),
+  },
+  {
+    title: 'Workshops Ledger',
+    href: '/accounts/workshops',
+    icon: 'bi-tools',
+    activeCheck: (p) => p.startsWith('/accounts/workshops'),
+  },
+  {
     title: 'Petty Cash Journal',
     href: '/accounts/petty-cash',
     icon: 'bi-wallet2',
     activeCheck: (p) => p.startsWith('/accounts/petty-cash'),
   },
   {
-    title: 'Store Inventory Control',
-    href: '/accounts/inventory-inward',
-    icon: 'bi-box-seam',
-    activeCheck: (p) => p === '/accounts/inventory-inward',
-  },
-  {
     title: 'Monthly Purchases',
     href: '/accounts/reports/monthly-purchases',
     icon: 'bi-graph-up-arrow',
     activeCheck: (p) => p.startsWith('/accounts/reports'),
+  },
+  {
+    title: 'Final Cost Statement',
+    href: '/accounts/cost-statement',
+    icon: 'bi-file-earmark-bar-graph',
+    activeCheck: (p) => p === '/accounts/cost-statement',
   },
 ]
 

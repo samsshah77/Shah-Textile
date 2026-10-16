@@ -5,7 +5,7 @@ import {
   type MonthlyMatrixDay,
 } from '@/types/production'
 import { INITIAL_34_LOOMS_CONFIG } from '@/constants/looms-init'
-import { getExcelBeamStock, getExcelWeftStock, getExcelDailyLoomsForDate } from '@/data/productionData'
+import { getExcelBeamStock, getExcelWeftStock } from '@/data/productionData'
 import {
   PRODUCTION_START,
   PRODUCTION_TODAY,
@@ -4240,13 +4240,19 @@ class ProductionMastersService {
     return this.peekSheetDay(dateStr) != null
   }
 
+  private isCorruptedDummySheet(entries: DailyLoomProductionEntry[]): boolean {
+    if (!Array.isArray(entries) || entries.length === 0) return false
+    const dummyNames = new Set(['silver-shine', 'eiffel tower', 'parcopv', 'design-2x1'])
+    return entries.some((e) => dummyNames.has(String(e.qualityName || '').trim().toLowerCase()))
+  }
+
   private peekSheetDay(dateStr: string): DailyLoomProductionEntry[] | null {
     const key = this.sheetKey(dateStr)
     try {
       const raw = memoryStore.get(key)
       if (raw) {
         const parsed = JSON.parse(raw) as DailyLoomProductionEntry[]
-        if (!Array.isArray(parsed)) return null
+        if (!Array.isArray(parsed) || this.isCorruptedDummySheet(parsed)) return null
         return sortSheetEntries(parsed.map(normalizeSheetEntry))
       }
     } catch {
@@ -4256,15 +4262,12 @@ class ProductionMastersService {
   }
 
   /**
-   * Load saved meters for a day. Prefer persisted sheet; for past dates without a DB sheet,
-   * fall back to Excel history. Never invent a blank "today" file just by opening the date.
+   * Load saved meters for a day from DB. Never fall back to Excel dummy history.
+   * If a sheet has not been saved in DB, return empty array.
    */
   private loadSheetDay(dateStr: string): DailyLoomProductionEntry[] {
     const peeked = this.peekSheetDay(dateStr)
     if (peeked) return peeked
-    if (dateStr < PRODUCTION_TODAY) {
-      return getExcelDailyLoomsForDate(dateStr)
-    }
     return []
   }
 
@@ -4272,9 +4275,7 @@ class ProductionMastersService {
   private priorSheetRow(dateStr: string, loomNumber: number): DailyLoomProductionEntry | null {
     const priorDates = listPersistedSheetDates().filter((d) => d < dateStr)
     const priorDate = priorDates.length ? priorDates[priorDates.length - 1] : shiftProductionDate(dateStr, -1)
-    const rows =
-      this.peekSheetDay(priorDate) ??
-      (priorDate < getProductionToday() ? getExcelDailyLoomsForDate(priorDate) : null)
+    const rows = this.peekSheetDay(priorDate)
     if (!rows) return null
     const forLoom = rows.filter((e) => e.loomNumber === loomNumber)
     return (
@@ -4407,6 +4408,13 @@ class ProductionMastersService {
       const reviveFromLive =
         Boolean(loomHasLivePose && namedQualityOnRow(live.qualityName)) &&
         isQualityEndedSheetRow(prev)
+      const priorQ = prior?.qualityName
+        ? matchQualityByNameAndPick(catalog, prior.qualityName, prior.pick)
+        : null
+      const priorQStatus = priorQ ? normalizeQualityStatus(priorQ.status) : null
+      const priorQualityIsLive = Boolean(
+        priorQ && (priorQStatus === 'ACTIVE' || priorQStatus === 'HOLD')
+      )
       const identity = poseEnded
         ? null
         : cleared
@@ -4417,7 +4425,7 @@ class ProductionMastersService {
               ? prev
               : prior &&
                   namedQualityOnRow(prior.qualityName) &&
-                  loomHasLivePose
+                  (loomHasLivePose || priorQualityIsLive)
                 ? prior
                 : !isPastDay && loomHasLivePose && namedQualityOnRow(live.qualityName)
                   ? live
@@ -4967,20 +4975,6 @@ class ProductionMastersService {
       let targetSum = 0
       let entries = peeked
       let hasSheet = peeked != null && peeked.length > 0
-
-      // Seeded yesterday sheet: allow Excel dailyHistory if DB sheet not hydrated yet
-      if (!hasSheet && dateStr === PRODUCTION_YESTERDAY) {
-        const excel = getExcelDailyLoomsForDate(dateStr)
-        const anyMeters = excel.some(
-          (e) =>
-            (Number(e.totalMeters) || 0) > 0 ||
-            (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0) > 0
-        )
-        if (anyMeters) {
-          entries = excel
-          hasSheet = true
-        }
-      }
 
       if (hasSheet && entries) {
         for (const e of entries) {

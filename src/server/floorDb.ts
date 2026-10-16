@@ -678,14 +678,25 @@ function sheetEntryFromDbRow(row: {
   }
 }
 
+const DUMMY_QUALITIES_SET = new Set(['silver-shine', 'eiffel tower', 'parcopv', 'design-2x1'])
+
+export function isDummyQualityName(name?: string | null): boolean {
+  if (!name) return false
+  return DUMMY_QUALITIES_SET.has(name.trim().toLowerCase())
+}
+
 export async function dbListAllSheets(): Promise<{ date: string; entries: DailyLoomProductionEntry[] }[]> {
   const rows = await prisma.floorDailySheet.findMany({
     orderBy: [{ date: 'asc' }, { loomNumber: 'asc' }, { segmentIndex: 'asc' }],
   })
   const byDate = new Map<string, DailyLoomProductionEntry[]>()
   for (const row of rows) {
+    const entry = sheetEntryFromDbRow(row)
+    if (row.date >= '2026-10-01' && isDummyQualityName(entry.qualityName)) {
+      continue
+    }
     const list = byDate.get(row.date) || []
-    list.push(sheetEntryFromDbRow(row))
+    list.push(entry)
     byDate.set(row.date, list)
   }
   return [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
@@ -697,7 +708,11 @@ export async function dbGetSheet(dateStr: string): Promise<DailyLoomProductionEn
     orderBy: [{ loomNumber: 'asc' }, { segmentIndex: 'asc' }],
   })
   if (rows.length === 0) return null
-  return rows.map((r) => sheetEntryFromDbRow(r))
+  const entries = rows.map((r) => sheetEntryFromDbRow(r))
+  if (dateStr >= '2026-10-01' && entries.some((e) => isDummyQualityName(e.qualityName))) {
+    return null
+  }
+  return entries
 }
 
 export async function dbUpdateLoomEntry(
