@@ -99,6 +99,19 @@ export interface YarnMaster {
   balanceLbs: number
 }
 
+/** Date-bound specification history (pick, reed, width, gsm, yarn) from this date onward. Earlier days keep previous specs. */
+export interface QualitySpecChange {
+  from: string // YYYY-MM-DD
+  pick: number
+  reed: number
+  widthInch: number
+  gsm: number
+  warpYarn?: string
+  weftYarn?: string
+  weavePlan?: string
+  note?: string
+}
+
 /** Warp/weft recipe from this date onward. Earlier days keep the previous recipe. */
 export interface QualityYarnChange {
   from: string
@@ -135,10 +148,12 @@ export interface QualityMaster {
   createdOn?: string | null
   /** YYYY-MM-DD when quality was ended or put on hold (latest stamp) */
   endedOn?: string | null
-  /** Per-loom end history (which loom ended on which date). */
+  /** Per-loom end history (which loom ended on which date). Persisted with the quality. */
   loomEnds?: QualityLoomEnd[]
-  /** Mid-run warp/weft changes. Each row applies from `from` until the next one. */
+  /** Mid-run warp/weft changes. Kept for legacy rows; new changes are also recorded in specHistory. */
   yarnHistory?: QualityYarnChange[]
+  /** Mid-run specification changes (pick, reed, width, gsm, yarn). Each row applies from `from` until the next. */
+  specHistory?: QualitySpecChange[]
 }
 
 export type MountBeamResult =

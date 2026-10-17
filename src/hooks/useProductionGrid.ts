@@ -6,7 +6,7 @@ import {
   productionMastersService,
   hydrateFloorFromDb,
   preloadFloorSheet,
-  preloadAllFloorSheets,
+  preloadMonthSheets,
   refreshFloorMastersFromDb,
   LoomMaster,
   BeamMaster,
@@ -28,8 +28,8 @@ export function useProductionGrid() {
   const [looms, setLooms] = useState<LoomMaster[]>([])
   const [beams, setBeams] = useState<BeamMaster[]>([])
   const [yarn, setYarn] = useState<YarnMaster[]>([])
-  const [yarnIssuances, setYarnIssuances] = useState<any[]>([])
-  const [yarnMovements, setYarnMovements] = useState<any[]>([])
+  const [yarnIssuances, setYarnIssuances] = useState<import('@/services/productionMastersService').YarnLoomIssuance[]>([])
+  const [yarnMovements, setYarnMovements] = useState<import('@/services/productionMastersService').YarnMovementRecord[]>([])
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -76,7 +76,11 @@ export function useProductionGrid() {
       try {
         await hydrateFloorFromDb()
         await refreshFloorMastersFromDb()
-        await preloadAllFloorSheets()
+        const targetMonth = selectedDate.slice(0, 7) || getProductionTodayMonth()
+        await preloadMonthSheets(targetMonth)
+        if (today.slice(0, 7) !== targetMonth) {
+          await preloadMonthSheets(today.slice(0, 7))
+        }
         // Force DB refresh for the selected day so dual-quality seed / edits win over stale memory.
         await preloadFloorSheet(selectedDate, { force: true })
         await preloadFloorSheet(today)

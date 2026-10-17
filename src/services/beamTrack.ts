@@ -128,7 +128,7 @@ export function buildBeamTrackFromEntries(
 
   const lotHits = entries.filter((e) => {
     if (!matchKeys.size) return false
-    const lotKey = normalizeBeamLotKey(e.lot || '')
+    const lotKey = normalizeBeamLotKey(e.lot || e.swLot || '')
     if (!lotKey || !matchKeys.has(lotKey)) return false
     // If we know the beam's loom, require it (avoids charging 5 beams the full Sw# total).
     if (loomNums.size > 0 && e.loomNumber != null && !loomNums.has(Number(e.loomNumber))) {

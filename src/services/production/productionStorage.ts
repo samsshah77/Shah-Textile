@@ -579,6 +579,7 @@ export async function persistLoomEntry(
   entry: DailyLoomProductionEntry
 ): Promise<void> {
   if (!isClient()) return
+  invalidateMonthCache(dateStr)
   const stamped = normalizeSheetEntry({ ...entry, date: dateStr, loomNumber })
   try {
     await fetch('/api/floor/store', {
@@ -605,6 +606,7 @@ export async function persistDeleteLoomSegment(
   if (!isClient()) return
   const seg = sheetSegmentIndex({ segmentIndex })
   if (seg <= 1) return
+  invalidateMonthCache(dateStr)
   try {
     await fetch('/api/floor/store', {
       method: 'POST',
@@ -760,8 +762,29 @@ export async function loadSheetFromDb(dateStr: string): Promise<DailyLoomProduct
   return null
 }
 
-export async function preloadAllFloorSheets(): Promise<void> {
+const loadedMonthsSet = new Set<string>()
+const monthPreloadPromises = new Map<string, Promise<void>>()
+let lastAllSheetsPreloadedAt = 0
+
+export function invalidateMonthCache(dateOrMonth?: string): void {
+  if (!dateOrMonth) {
+    loadedMonthsSet.clear()
+    monthPreloadPromises.clear()
+    lastAllSheetsPreloadedAt = 0
+    return
+  }
+  const month = dateOrMonth.slice(0, 7)
+  loadedMonthsSet.delete(month)
+  lastAllSheetsPreloadedAt = 0
+}
+
+export async function preloadAllFloorSheets(opts?: { force?: boolean }): Promise<void> {
   if (!isClient()) return
+  // Debounce/cache: skip redundant full table downloads within 60s unless forced
+  const now = Date.now()
+  if (!opts?.force && lastAllSheetsPreloadedAt > 0 && now - lastAllSheetsPreloadedAt < 60000) {
+    return
+  }
   try {
     const res = await fetch('/api/floor/store', {
       method: 'POST',
@@ -774,8 +797,10 @@ export async function preloadAllFloorSheets(): Promise<void> {
     for (const sheet of data.sheets as { date?: string; entries?: DailyLoomProductionEntry[] }[]) {
       if (!sheet?.date || !Array.isArray(sheet.entries) || sheet.entries.length === 0) continue
       const key = `${KEY_SHEET}_${sheet.date}`
-      memoryStore.set(key, JSON.stringify(sheet.entries))
+      memoryStore.set(key, JSON.stringify(sheet.entries.map(normalizeSheetEntry)))
+      loadedMonthsSet.add(sheet.date.slice(0, 7))
     }
+    lastAllSheetsPreloadedAt = now
   } catch (err) {
     console.error('[floor] preload all sheets failed', err)
   }
@@ -792,17 +817,149 @@ export async function preloadFloorSheet(
   if (entries) memoryStore.set(key, JSON.stringify(entries.map(normalizeSheetEntry)))
 }
 
-export async function preloadMonthSheets(monthStr: string = PRODUCTION_TODAY_MONTH): Promise<void> {
-  if (!isClient()) return
-  const [y, m] = monthStr.split('-').map(Number)
+/**
+ * Optimized single-request batch month preload.
+ * Instead of firing 31 HTTP requests, this sends 1 single call to fetch the month
+ * and caches it in loadedMonthsSet.
+ */
+export function preloadMonthSheets(
+  monthStr: string = PRODUCTION_TODAY_MONTH,
+  opts?: { force?: boolean }
+): Promise<void> {
+  if (!isClient()) return Promise.resolve()
+  const cleanMonth = String(monthStr || '').trim().slice(0, 7)
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(cleanMonth)) return Promise.resolve()
+  if (!opts?.force && loadedMonthsSet.has(cleanMonth)) return Promise.resolve()
+  const inFlight = monthPreloadPromises.get(cleanMonth)
+  if (inFlight) return inFlight
+
+  const task = preloadMonthSheetsRequest(cleanMonth, opts)
+  monthPreloadPromises.set(cleanMonth, task)
+  void task.finally(() => monthPreloadPromises.delete(cleanMonth))
+  return task
+}
+
+async function preloadMonthSheetsRequest(
+  cleanMonth: string,
+  opts?: { force?: boolean }
+): Promise<void> {
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getMonthSheets', month: cleanMonth }),
+    })
+    const data = await res.json()
+    if (data?.ok && Array.isArray(data.sheets)) {
+      for (const sheet of data.sheets as { date?: string; entries?: DailyLoomProductionEntry[] }[]) {
+        if (!sheet?.date || !Array.isArray(sheet.entries) || sheet.entries.length === 0) continue
+        const key = `${KEY_SHEET}_${sheet.date}`
+        memoryStore.set(key, JSON.stringify(sheet.entries.map(normalizeSheetEntry)))
+      }
+      loadedMonthsSet.add(cleanMonth)
+      return
+    }
+  } catch (err) {
+    console.warn('[floor] getMonthSheets failed, falling back to per-day preload', err)
+  }
+
+  // Graceful fallback to per-day if getMonthSheets fails
+  const [y, m] = cleanMonth.split('-').map(Number)
   if (!y || !m) return
-  const lastDay = monthLastEnteredDay(monthStr)
+  const lastDay = monthLastEnteredDay(cleanMonth)
   await Promise.all(
     Array.from({ length: lastDay }, (_, i) => {
       const day = String(i + 1).padStart(2, '0')
-      return preloadFloorSheet(`${monthStr}-${day}`)
+      return preloadFloorSheet(`${cleanMonth}-${day}`, opts)
     })
   )
+  loadedMonthsSet.add(cleanMonth)
+}
+
+/** Preload all entries for a single beam lot across any date in 1 query. */
+export async function preloadBeamSheets(beamNo: string): Promise<void> {
+  if (!isClient()) return
+  const trimmed = String(beamNo || '').trim()
+  if (!trimmed) return
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getBeamSheets', beamNo: trimmed }),
+    })
+    const data = await res.json()
+    if (data?.ok && Array.isArray(data.entries)) {
+      const byDate = new Map<string, DailyLoomProductionEntry[]>()
+      for (const entry of data.entries as DailyLoomProductionEntry[]) {
+        if (!entry.date) continue
+        const list = byDate.get(entry.date) || []
+        list.push(entry)
+        byDate.set(entry.date, list)
+      }
+      for (const [date, entries] of byDate.entries()) {
+        const key = `${KEY_SHEET}_${date}`
+        const existingRaw = memoryStore.get(key)
+        if (existingRaw) {
+          try {
+            const existing = JSON.parse(existingRaw) as DailyLoomProductionEntry[]
+            const mergedMap = new Map<string, DailyLoomProductionEntry>()
+            existing.forEach((e) => mergedMap.set(`${e.loomNumber}_${sheetSegmentIndex(e)}`, e))
+            entries.forEach((e) => mergedMap.set(`${e.loomNumber}_${sheetSegmentIndex(e)}`, normalizeSheetEntry(e)))
+            memoryStore.set(key, JSON.stringify([...mergedMap.values()]))
+          } catch {
+            memoryStore.set(key, JSON.stringify(entries.map(normalizeSheetEntry)))
+          }
+        } else {
+          memoryStore.set(key, JSON.stringify(entries.map(normalizeSheetEntry)))
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[floor] preload beam sheets failed', err)
+  }
+}
+
+export interface FloorMonthSummary {
+  month: string
+  grandTotalMeters: number
+  shiftATotalMeters: number
+  shiftBTotalMeters: number
+  avgPerDay: number
+  daysWithProduction: number
+  totalDaysRecorded: number
+  loomTotals: Record<number, number>
+  qualityTotals: Record<string, number>
+  dayTotals: Array<{
+    date: string
+    day: number
+    totalMeters: number
+    shiftAMeters: number
+    shiftBMeters: number
+    activeLooms: number
+  }>
+}
+
+/** Fetch pre-aggregated monthly summary directly from DB. */
+export async function fetchMonthSummary(
+  monthStr: string,
+  qualityId?: string
+): Promise<FloorMonthSummary | null> {
+  if (!isClient()) return null
+  try {
+    const res = await fetch('/api/floor/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getMonthSummary', month: monthStr, qualityId }),
+    })
+    const data = await res.json()
+    if (data?.ok && data.summary) return data.summary as FloorMonthSummary
+  } catch (err) {
+    console.error('[floor] fetchMonthSummary failed', err)
+  }
+  return null
 }
 
 // ==========================================
@@ -839,9 +996,17 @@ export function mergeSheetEntriesForDate(
   dateStr: string,
   live: DailyLoomProductionEntry[] = []
 ): DailyLoomProductionEntry[] {
-  const saved = listPersistedSheetEntries()
-    .filter((e) => e.date === dateStr)
-    .map(normalizeSheetEntry)
+  let saved: DailyLoomProductionEntry[] = []
+  const key = `${KEY_SHEET}_${dateStr}`
+  const raw = memoryStore.get(key)
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as DailyLoomProductionEntry[]
+      if (Array.isArray(parsed)) saved = parsed.map(normalizeSheetEntry)
+    } catch {
+      // ignore
+    }
+  }
   const liveForDate = live
     .filter((e) => !e.date || e.date === dateStr)
     .map((e) => normalizeSheetEntry({ ...e, date: dateStr }))

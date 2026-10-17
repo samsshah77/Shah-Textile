@@ -10,6 +10,7 @@ import {
   QualityFabricType,
   QualityLifecycleStatus,
   QualityLoomEnd,
+  QualitySpecChange,
 } from './productionTypes'
 import { SHEET_MODEL_RANK } from './productionConstants'
 
@@ -39,9 +40,25 @@ export function normalizeQuality(q: QualityMaster): QualityMaster {
     ? q.yarnHistory
         .filter((h) => h && h.from)
         .map((h) => ({
-          from: h.from,
+          from: String(h.from).slice(0, 10),
           warpYarn: h.warpYarn || '',
           weftYarn: h.weftYarn || '',
+        }))
+        .sort((a, b) => a.from.localeCompare(b.from))
+    : undefined
+  const specHistory: QualitySpecChange[] | undefined = Array.isArray(q.specHistory)
+    ? q.specHistory
+        .filter((h) => h && h.from && Number(h.pick) > 0)
+        .map((h) => ({
+          from: String(h.from).slice(0, 10),
+          pick: Number(h.pick) || 60,
+          reed: Number(h.reed) || 60,
+          widthInch: Number(h.widthInch) || 66,
+          gsm: Number(h.gsm) || 0,
+          warpYarn: h.warpYarn || '',
+          weftYarn: h.weftYarn || '',
+          weavePlan: h.weavePlan || '',
+          note: h.note || '',
         }))
         .sort((a, b) => a.from.localeCompare(b.from))
     : undefined
@@ -55,6 +72,7 @@ export function normalizeQuality(q: QualityMaster): QualityMaster {
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
     loomEnds: normalizeLoomEnds(q.loomEnds),
     yarnHistory,
+    specHistory,
   }
 }
 
@@ -242,7 +260,11 @@ export function matchQualityByNameAndPick(
   }
   const byPick =
     pick != null && named.length > 1
-      ? named.filter((item) => Number(item.pick) === Number(pick))
+      ? named.filter(
+          (item) =>
+            Number(item.pick) === Number(pick) ||
+            Boolean(item.specHistory?.some((h) => Number(h.pick) === Number(pick)))
+        )
       : named
   const pool = byPick.length > 0 ? byPick : named
   return [...pool].sort((a, b) => {
@@ -437,8 +459,10 @@ export function qualityRunThatOwnsSheetEntry(
   const candidates = catalog.filter((q) => {
     const qClean = qualityNameKey(q.name)
     // Exact cleaned name only — "PARCO" must not steal "PARCO PU" meters (substring false friends).
-    if (eClean !== qClean) return false
-    if ((nameCounts.get(qClean) || 0) > 1 && Number(entry.pick) !== Number(q.pick)) return false
+    const matchesPick =
+      Number(entry.pick) === Number(q.pick) ||
+      Boolean(q.specHistory?.some((h) => Number(h.pick) === Number(entry.pick)))
+    if ((nameCounts.get(qClean) || 0) > 1 && !matchesPick) return false
 
     const status = normalizeQualityStatus(q.status)
     // Undated Active must not steal full history after reuse (zero-start).
@@ -584,7 +608,12 @@ export function sheetRowShowsQuality(
   // Exact cleaned name only — "PARCO" ≠ "PARCO PU".
   if (eClean !== qClean) return false
   const shared = catalog.filter((item) => qualityNameKey(item.name) === qClean).length > 1
-  if (shared) return Number(row.pick) === Number(quality.pick)
+  if (shared) {
+    return (
+      Number(row.pick) === Number(quality.pick) ||
+      Boolean(quality.specHistory?.some((h) => Number(h.pick) === Number(row.pick)))
+    )
+  }
   return true
 }
 

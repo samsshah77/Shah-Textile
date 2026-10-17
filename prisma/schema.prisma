@@ -306,6 +306,9 @@ model FloorQuality {
   status     String   @default("ACTIVE")
   createdOn  String?
   endedOn    String?
+  specHistory Json    @default("[]")
+  yarnHistory Json    @default("[]")
+  loomEnds    Json    @default("[]")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

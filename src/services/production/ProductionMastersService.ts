@@ -65,6 +65,8 @@ import {
   lbsToKg,
   yarnRecipeForDate,
   applyMidRunYarnChange,
+  qualitySpecForDate,
+  applyMidRunSpecChange,
 } from './yarnBeamHelpers'
 import {
   normalizeFabricType,
@@ -1251,7 +1253,7 @@ class ProductionMastersService {
 
     const qualities = this.getQualities().map((q) => {
       if (q.id !== id) return q
-      const merged = applyMidRunYarnChange(q, nextPatch, fromDate)
+      const merged = applyMidRunSpecChange(q, nextPatch, fromDate)
       if (reviving) {
         // Drop the close stamp so L# / Track treat this as the same open run.
         const kept = (q.loomEnds || []).filter((e) => e.date !== reviveEndDay)
@@ -1845,7 +1847,7 @@ class ProductionMastersService {
     return row.lot || ''
   }
 
-  /** Quality recipe as it is right now on the loom. Used only for the day being edited or a brand-new day. */
+  /** Quality recipe as it was on that specific production date. Mid-run spec changes are date-bound. */
   private recipeForLoom(loom: LoomMaster, dateStr: string): Partial<DailyLoomProductionEntry> {
     const quality = this.getQualities().find((q) => q.id === loom.qualityId) || null
     const beam = this.getBeams().find((b) => beamOnLoom(b, loom.loomNumber))
@@ -1855,17 +1857,19 @@ class ProductionMastersService {
     const weft =
       (loomIss ? yarns.find((y) => y.id === loomIss.yarnId) : null) ||
       yarns.find((y) => y.id === loom.weftYarnId)
-    const yarnRecipe = yarnRecipeForDate(quality, dateStr)
+    const effectiveSpec = qualitySpecForDate(quality, dateStr)
     return {
+      // Stable run identity for new rows; legacy sheets continue to resolve by name/pick.
+      qualityId: quality?.id,
       qualityName: quality?.name || '—',
       fabricType: quality?.fabricType || '',
-      warpYarn: yarnRecipe?.warpYarn || beam?.warp || '',
-      weftYarn: yarnRecipe?.weftYarn || weft?.yarnType || '',
+      warpYarn: effectiveSpec?.warpYarn || beam?.warp || '',
+      weftYarn: effectiveSpec?.weftYarn || weft?.yarnType || '',
       rpm: loom.defaultRpm,
-      reed: quality?.reed || beam?.reed || 60,
-      pick: quality?.pick || loomIss?.pick || 60,
-      widthInch: quality?.widthInch || beam?.width || 66,
-      gsm: quality?.gsm ?? 0,
+      reed: effectiveSpec?.reed || beam?.reed || 60,
+      pick: effectiveSpec?.pick || loomIss?.pick || 60,
+      widthInch: effectiveSpec?.widthInch || beam?.width || 66,
+      gsm: effectiveSpec?.gsm ?? 0,
     }
   }
 

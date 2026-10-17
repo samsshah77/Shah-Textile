@@ -37,6 +37,7 @@ import {
   clearQualityAssignFlashIds,
 } from '@/lib/qualityAssignFlash'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
+import { QualitySpecHistoryModal } from './QualitySpecHistoryModal'
 
 /** Today only: looms from Hold that already carry another live quality. */
 function loomsBusyOnResumeToday(
@@ -239,6 +240,7 @@ export function QualityMasterTable({
   const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const [addForm, setAddForm] = useState(emptyAddForm)
   const [endsFabricFilter, setEndsFabricFilter] = useState<'ALL' | 'Suiting' | 'Shirting'>('ALL')
+  const [specHistoryQuality, setSpecHistoryQuality] = useState<QualityMaster | null>(null)
 
   const mode = viewModeProp ?? modeLocal
   const setMode = (next: TableGridMode) => {
@@ -803,6 +805,11 @@ export function QualityMasterTable({
         </button>
         <ul className="dropdown-menu dropdown-menu-end">
           <li>
+            <button type="button" className="dropdown-item" onClick={() => setSpecHistoryQuality(q)}>
+              <i className="bi bi-clock-history me-2 text-primary" /> Specs History
+            </button>
+          </li>
+          <li>
             <button type="button" className="dropdown-item" onClick={() => handleHold(q)}>
               <i className="bi bi-pause-circle me-2" /> Hold
             </button>
@@ -833,6 +840,11 @@ export function QualityMasterTable({
           <i className="bi bi-three-dots-vertical" />
         </button>
         <ul className="dropdown-menu dropdown-menu-end">
+          <li>
+            <button type="button" className="dropdown-item" onClick={() => setSpecHistoryQuality(q)}>
+              <i className="bi bi-clock-history me-2 text-primary" /> Specs History
+            </button>
+          </li>
           {isHoldView && (
             <li>
               <button type="button" className="dropdown-item" onClick={() => handleResume(q)}>
@@ -1366,7 +1378,20 @@ export function QualityMasterTable({
                     )}
                   </div>
                   <div className="flex-fill">
-                    <label className="small mb-0">Pick</label>
+                    <div className="d-flex align-items-center justify-content-between">
+                      <label className="small mb-0">Pick</label>
+                      {q.specHistory && q.specHistory.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-link p-0 text-decoration-none text-primary"
+                          style={{ fontSize: '0.68rem', lineHeight: 1 }}
+                          onClick={() => setSpecHistoryQuality(q)}
+                          title="View Specs History"
+                        >
+                          <i className="bi bi-clock-history me-0.5" />v{q.specHistory.length}
+                        </button>
+                      )}
+                    </div>
                     {rowMasterEdit ? (
                       <NumericCellInput
                         className="form-control form-control-sm text-end"
@@ -1724,7 +1749,19 @@ export function QualityMasterTable({
                           onValueChange={(v) => onUpdate(q.id, { pick: v })}
                         />
                       ) : (
-                        <div className="text-end px-1">{q.pick}</div>
+                        <div className="d-flex align-items-center justify-content-end px-1 gap-1">
+                          <span className="font-monospace">{q.pick}</span>
+                          {q.specHistory && q.specHistory.length > 1 && (
+                            <button
+                              type="button"
+                              className="btn btn-link p-0 text-decoration-none text-primary"
+                              onClick={() => setSpecHistoryQuality(q)}
+                              title={`Pick history: ${q.specHistory.length} versions. Click to view timeline.`}
+                            >
+                              <i className="bi bi-clock-history" style={{ fontSize: '0.72rem' }} />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="px-1">
@@ -2031,6 +2068,10 @@ export function QualityMasterTable({
           <option key={name} value={name} />
         ))}
       </datalist>
+      <QualitySpecHistoryModal
+        quality={specHistoryQuality}
+        onClose={() => setSpecHistoryQuality(null)}
+      />
     </div>
   )
 }

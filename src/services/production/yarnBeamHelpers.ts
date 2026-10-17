@@ -5,6 +5,7 @@ import {
   YarnMaster,
   QualityMaster,
   QualityYarnChange,
+  QualitySpecChange,
 } from './productionTypes'
 import {
   LBS_PER_KG,
@@ -172,17 +173,98 @@ export function getLoomPictures(loom: LoomMaster): string[] {
 }
 
 /** Recipe in force on a production day. History wins; otherwise the current quality yarn. */
+function isoDay(value: unknown): string {
+  const day = String(value || '').slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''
+}
+
+function sortedSpecHistory(quality: QualityMaster): QualitySpecChange[] {
+  return (quality.specHistory || [])
+    .filter((item) => Boolean(item) && Boolean(isoDay(item.from)) && Number(item.pick) > 0)
+    .map((item) => ({ ...item, from: isoDay(item.from) }))
+    .sort((a, b) => a.from.localeCompare(b.from))
+}
+
+function sortedYarnHistory(quality: QualityMaster): QualityYarnChange[] {
+  return (quality.yarnHistory || [])
+    .filter((item) => Boolean(item) && Boolean(isoDay(item.from)))
+    .map((item) => ({
+      from: isoDay(item.from),
+      warpYarn: String(item.warpYarn || ''),
+      weftYarn: String(item.weftYarn || ''),
+    }))
+    .sort((a, b) => a.from.localeCompare(b.from))
+}
+
 export function yarnRecipeForDate(
   quality: QualityMaster | null | undefined,
   dateStr: string
 ): { warpYarn: string; weftYarn: string } | null {
   if (!quality) return null
+  const day = isoDay(dateStr)
   let hit: QualityYarnChange | null = null
-  for (const h of quality.yarnHistory || []) {
-    if (h.from <= dateStr && (!hit || h.from >= hit.from)) hit = h
+  for (const h of sortedYarnHistory(quality)) {
+    if (h.from <= day && (!hit || h.from >= hit.from)) hit = h
   }
   if (hit) return { warpYarn: hit.warpYarn, weftYarn: hit.weftYarn }
   return { warpYarn: quality.warpYarn || '', weftYarn: quality.weftYarn || '' }
+}
+
+export interface EffectiveQualitySpec {
+  pick: number
+  reed: number
+  widthInch: number
+  gsm: number
+  warpYarn: string
+  weftYarn: string
+  weavePlan: string
+  from: string
+}
+
+/**
+ * Returns the exact fabric specification effective on a specific production date.
+ * If mid-run changes (pick, width, reed, yarn) were made on or before `dateStr`,
+ * the version active on that date is returned, protecting past dates from overwrite.
+ */
+export function qualitySpecForDate(
+  quality: QualityMaster | null | undefined,
+  dateStr: string
+): EffectiveQualitySpec | null {
+  if (!quality) return null
+  const day = isoDay(dateStr)
+
+  let hit: QualitySpecChange | null = null
+  for (const h of sortedSpecHistory(quality)) {
+    if (h.from <= day && (!hit || h.from >= hit.from)) {
+      hit = h
+    }
+  }
+
+  const yarnRec = yarnRecipeForDate(quality, day)
+
+  if (hit) {
+    return {
+      pick: Number(hit.pick) || Number(quality.pick) || 60,
+      reed: Number(hit.reed) || Number(quality.reed) || 60,
+      widthInch: Number(hit.widthInch) || Number(quality.widthInch) || 66,
+      gsm: Number(hit.gsm) || Number(quality.gsm) || 0,
+      warpYarn: hit.warpYarn || yarnRec?.warpYarn || quality.warpYarn || '',
+      weftYarn: hit.weftYarn || yarnRec?.weftYarn || quality.weftYarn || '',
+      weavePlan: hit.weavePlan || quality.weavePlan || '',
+      from: hit.from,
+    }
+  }
+
+  return {
+    pick: Number(quality.pick) || 60,
+    reed: Number(quality.reed) || 60,
+    widthInch: Number(quality.widthInch) || 66,
+    gsm: Number(quality.gsm) || 0,
+    warpYarn: yarnRec?.warpYarn || quality.warpYarn || '',
+    weftYarn: yarnRec?.weftYarn || quality.weftYarn || '',
+    weavePlan: quality.weavePlan || '',
+    from: quality.createdOn ? String(quality.createdOn).slice(0, 10) : PRODUCTION_START,
+  }
 }
 
 /** Keep the old warp/weft for days before `fromDate`, and the new pair from that day on. */
@@ -191,32 +273,125 @@ export function applyMidRunYarnChange(
   patch: Partial<QualityMaster>,
   fromDate: string
 ): QualityMaster {
-  const nextWarp = patch.warpYarn !== undefined ? patch.warpYarn : q.warpYarn
-  const nextWeft = patch.weftYarn !== undefined ? patch.weftYarn : q.weftYarn
+  return applyMidRunSpecChange(q, patch, fromDate)
+}
+
+/**
+ * Versioned Quality Specification:
+ * When pick, reed, width, gsm, or yarn changes midway through a run,
+ * days before `fromDate` keep their original specifications, and the new
+ * specs apply from `fromDate` onward. This guarantees that past production
+ * calculations (theoretical meters, efficiency) are never overwritten.
+ */
+export function applyMidRunSpecChange(
+  q: QualityMaster,
+  patch: Partial<QualityMaster>,
+  fromDate: string
+): QualityMaster {
+  const day = isoDay(fromDate) || isoDay(q.createdOn) || PRODUCTION_START
+  const effective = qualitySpecForDate(q, day)
+  const basePick = effective?.pick || Number(q.pick) || 60
+  const baseReed = effective?.reed || Number(q.reed) || 60
+  const baseWidth = effective?.widthInch || Number(q.widthInch) || 66
+  const baseGsm = (effective?.gsm ?? Number(q.gsm)) || 0
+  const baseWarp = effective?.warpYarn || q.warpYarn || ''
+  const baseWeft = effective?.weftYarn || q.weftYarn || ''
+  const baseWeavePlan = effective?.weavePlan || q.weavePlan || ''
+  const nextPick = patch.pick !== undefined ? Number(patch.pick) : basePick
+  const nextReed = patch.reed !== undefined ? Number(patch.reed) : baseReed
+  const nextWidth = patch.widthInch !== undefined ? Number(patch.widthInch) : baseWidth
+  const nextGsm = patch.gsm !== undefined ? Number(Number(patch.gsm).toFixed(2)) : baseGsm
+  const nextWarp = patch.warpYarn !== undefined ? patch.warpYarn : baseWarp
+  const nextWeft = patch.weftYarn !== undefined ? patch.weftYarn : baseWeft
+  const nextWeavePlan = patch.weavePlan !== undefined ? patch.weavePlan : baseWeavePlan
+
+  const specTouched =
+    patch.pick !== undefined ||
+    patch.reed !== undefined ||
+    patch.widthInch !== undefined ||
+    patch.gsm !== undefined ||
+    patch.warpYarn !== undefined ||
+    patch.weftYarn !== undefined ||
+    patch.weavePlan !== undefined
+
+  const specChanged =
+    specTouched &&
+    (nextPick !== basePick ||
+      nextReed !== baseReed ||
+      nextWidth !== baseWidth ||
+      nextGsm !== baseGsm ||
+      nextWarp !== baseWarp ||
+      nextWeft !== baseWeft ||
+      nextWeavePlan !== baseWeavePlan)
+
+  let specHistory = sortedSpecHistory(q)
+  let yarnHistory = sortedYarnHistory(q)
+
+  if (specChanged) {
+    if (specHistory.length === 0) {
+      specHistory.push({
+        from: q.createdOn ? String(q.createdOn).slice(0, 10) : PRODUCTION_START,
+        pick: Number(q.pick) || 60,
+        reed: Number(q.reed) || 60,
+        widthInch: Number(q.widthInch) || 66,
+        gsm: Number(q.gsm) || 0,
+        warpYarn: q.warpYarn || '',
+        weftYarn: q.weftYarn || '',
+        weavePlan: q.weavePlan || '',
+      })
+    }
+
+    const kept = specHistory.filter((h) => h.from !== day)
+    kept.push({
+      from: day,
+      pick: nextPick,
+      reed: nextReed,
+      widthInch: nextWidth,
+      gsm: nextGsm,
+      warpYarn: nextWarp,
+      weftYarn: nextWeft,
+      weavePlan: nextWeavePlan,
+    })
+    kept.sort((a, b) => a.from.localeCompare(b.from))
+    specHistory = kept
+  }
+
+  // Also maintain backward-compatible yarnHistory
   const yarnTouched = patch.warpYarn !== undefined || patch.weftYarn !== undefined
+  const currentYarn = yarnRecipeForDate(q, day)
   const yarnChanged =
-    yarnTouched && ((nextWarp || '') !== (q.warpYarn || '') || (nextWeft || '') !== (q.weftYarn || ''))
-  let yarnHistory = q.yarnHistory
+    yarnTouched &&
+    (nextWarp !== (currentYarn?.warpYarn || q.warpYarn || '') ||
+      nextWeft !== (currentYarn?.weftYarn || q.weftYarn || ''))
   if (yarnChanged) {
-    const prior = [...(q.yarnHistory || [])]
-    if (prior.length === 0) {
-      prior.push({
-        from: PRODUCTION_START,
+    if (yarnHistory.length === 0) {
+      yarnHistory.push({
+        from: q.createdOn ? String(q.createdOn).slice(0, 10) : PRODUCTION_START,
         warpYarn: q.warpYarn || '',
         weftYarn: q.weftYarn || '',
       })
     }
-    const kept = prior.filter((h) => h.from < fromDate)
-    kept.push({ from: fromDate, warpYarn: nextWarp || '', weftYarn: nextWeft || '' })
-    kept.sort((a, b) => a.from.localeCompare(b.from))
-    yarnHistory = kept
+    const keptYarn = yarnHistory.filter((h) => h.from !== day)
+    keptYarn.push({ from: day, warpYarn: nextWarp, weftYarn: nextWeft })
+    keptYarn.sort((a, b) => a.from.localeCompare(b.from))
+    yarnHistory = keptYarn
   }
+
+  // The master row always mirrors the latest version; inserting a correction in the
+  // past must not roll current production back or delete later scheduled versions.
+  const latest = qualitySpecForDate({ ...q, specHistory, yarnHistory }, '9999-12-31')
+
   return {
     ...q,
     ...patch,
-    warpYarn: nextWarp,
-    weftYarn: nextWeft,
+    pick: latest?.pick ?? nextPick,
+    reed: latest?.reed ?? nextReed,
+    widthInch: latest?.widthInch ?? nextWidth,
+    gsm: latest?.gsm ?? nextGsm,
+    warpYarn: latest?.warpYarn ?? nextWarp,
+    weftYarn: latest?.weftYarn ?? nextWeft,
+    weavePlan: latest?.weavePlan ?? nextWeavePlan,
+    specHistory,
     yarnHistory,
-    gsm: patch.gsm !== undefined ? Number(Number(patch.gsm).toFixed(2)) : q.gsm,
   }
 }

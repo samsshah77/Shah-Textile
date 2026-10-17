@@ -1,9 +1,12 @@
 import { prisma } from '@/lib/prisma'
-import type { Prisma } from '@prisma/client'
+import { Prisma, type Prisma as PrismaTypes } from '@prisma/client'
 import type {
   BeamMaster,
   LoomMaster,
   QualityMaster,
+  QualitySpecChange,
+  QualityYarnChange,
+  QualityLoomEnd,
   YarnLoomIssuance,
   YarnMaster,
   YarnMovementRecord,
@@ -15,6 +18,18 @@ function asUrls(value: unknown): string[] {
   return []
 }
 
+/** JSONB is returned as an array by Prisma; accept legacy text defensively as well. */
+function jsonArray<T = unknown>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[]
+  if (typeof value !== 'string') return []
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return Array.isArray(parsed) ? (parsed as T[]) : []
+  } catch {
+    return []
+  }
+}
+
 export function loomRowToMaster(row: {
   loomNumber: number
   name: string
@@ -22,7 +37,7 @@ export function loomRowToMaster(row: {
   category: string
   year: number | null
   pictureDataUrl: string | null
-  pictureDataUrls: Prisma.JsonValue
+  pictureDataUrls: PrismaTypes.JsonValue
   defaultRpm: number
   shed: string | null
   isActive: boolean
@@ -456,6 +471,9 @@ export async function dbGetQualities(): Promise<QualityMaster[]> {
       status,
       createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
       endedOn: status === 'ACTIVE' ? null : q.endedOn,
+      specHistory: jsonArray<QualitySpecChange>((q as { specHistory?: unknown }).specHistory),
+      yarnHistory: jsonArray<QualityYarnChange>((q as { yarnHistory?: unknown }).yarnHistory),
+      loomEnds: jsonArray<QualityLoomEnd>((q as { loomEnds?: unknown }).loomEnds),
     }
   })
 }
@@ -494,6 +512,9 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
         createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
         endedOn:
           q.status === 'ENDED' || q.status === 'HOLD' ? q.endedOn ?? null : null,
+        specHistory: jsonArray<QualitySpecChange>(q.specHistory) as unknown as Prisma.InputJsonValue,
+        yarnHistory: jsonArray<QualityYarnChange>(q.yarnHistory) as unknown as Prisma.InputJsonValue,
+        loomEnds: jsonArray<QualityLoomEnd>(q.loomEnds) as unknown as Prisma.InputJsonValue,
       })),
     })
     return
@@ -547,6 +568,9 @@ export async function dbPatchQualityStatus(
 export async function dbUpsertQuality(q: QualityMaster): Promise<void> {
   const status =
     q.status === 'ENDED' ? 'ENDED' : q.status === 'HOLD' ? 'HOLD' : 'ACTIVE'
+  const specHistory = jsonArray<QualitySpecChange>(q.specHistory)
+  const yarnHistory = jsonArray<QualityYarnChange>(q.yarnHistory)
+  const loomEnds = jsonArray<QualityLoomEnd>(q.loomEnds)
   const data = {
     name: q.name,
     fabricType: q.fabricType || 'Suiting',
@@ -561,12 +585,28 @@ export async function dbUpsertQuality(q: QualityMaster): Promise<void> {
     status,
     createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
+    specHistory: specHistory as unknown as Prisma.InputJsonValue,
+    yarnHistory: yarnHistory as unknown as Prisma.InputJsonValue,
+    loomEnds: loomEnds as unknown as Prisma.InputJsonValue,
   }
-  await prisma.floorQuality.upsert({
-    where: { id: q.id },
-    create: { id: q.id, ...data },
-    update: data,
-  })
+  try {
+    await prisma.floorQuality.upsert({
+      where: { id: q.id },
+      create: { id: q.id, ...data },
+      update: data,
+    })
+  } catch (err) {
+    console.warn('[floorDb] upsertQuality retry without history columns', err)
+    const { specHistory: _dropSpec, yarnHistory: _dropYarn, loomEnds: _dropEnds, ...rest } = data
+    void _dropSpec
+    void _dropYarn
+    void _dropEnds
+    await prisma.floorQuality.upsert({
+      where: { id: q.id },
+      create: { id: q.id, ...rest },
+      update: rest,
+    })
+  }
 }
 
 /**
@@ -628,6 +668,21 @@ export async function dbReuseQuality(params: {
     status: 'ACTIVE',
     createdOn,
     endedOn: null,
+    specHistory: [
+      {
+        from: createdOn,
+        pick: Number(incoming?.pick ?? row.pick) || 0,
+        reed: Number(incoming?.reed ?? row.reed) || 0,
+        widthInch: Number(incoming?.widthInch ?? row.widthInch) || 0,
+        gsm: Number(incoming?.gsm ?? row.gsm) || 0,
+        warpYarn: incoming?.warpYarn ?? row.warpYarn ?? '',
+        weftYarn: incoming?.weftYarn ?? row.weftYarn ?? '',
+        weavePlan:
+          incoming?.weavePlan != null
+            ? String(incoming.weavePlan)
+            : ((row as { weavePlan?: string | null }).weavePlan ?? ''),
+      },
+    ],
   }
 
   await dbUpsertQuality(activePayload)
@@ -647,6 +702,9 @@ export async function dbReuseQuality(params: {
     status: 'ENDED',
     createdOn: row.createdOn ? String(row.createdOn).slice(0, 10) : null,
     endedOn,
+    specHistory: jsonArray<QualitySpecChange>((row as { specHistory?: unknown }).specHistory),
+    yarnHistory: jsonArray<QualityYarnChange>((row as { yarnHistory?: unknown }).yarnHistory),
+    loomEnds: jsonArray<QualityLoomEnd>((row as { loomEnds?: unknown }).loomEnds),
   }
 
   return { ended, active: activePayload }
@@ -704,17 +762,211 @@ export async function dbListAllSheets(): Promise<{ date: string; entries: DailyL
   return [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
 }
 
+/** Targeted single-month query: loads only sheets belonging to the given month (e.g. '2026-10'). */
+export async function dbGetMonthSheets(
+  monthStr: string
+): Promise<{ date: string; entries: DailyLoomProductionEntry[] }[]> {
+  const cleanMonth = String(monthStr || '').trim()
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(cleanMonth)) return []
+  const rows = await prisma.floorDailySheet.findMany({
+    where: {
+      date: {
+        startsWith: cleanMonth,
+      },
+    },
+    orderBy: [{ date: 'asc' }, { loomNumber: 'asc' }, { segmentIndex: 'asc' }],
+  })
+  const byDate = new Map<string, DailyLoomProductionEntry[]>()
+  for (const row of rows) {
+    const entry = sheetEntryFromDbRow(row)
+    if (row.date >= '2026-10-01' && isDummyQualityName(entry.qualityName)) {
+      continue
+    }
+    const list = byDate.get(row.date) || []
+    list.push(entry)
+    byDate.set(row.date, list)
+  }
+  return [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
+}
+
+/** Targeted beam query: returns only entries associated with a specific beam lot across all dates. */
+export async function dbGetBeamSheets(beamNo: string): Promise<DailyLoomProductionEntry[]> {
+  const trimmed = String(beamNo || '').trim()
+  if (!trimmed) return []
+  const beam = await prisma.floorBeam.findUnique({
+    where: { beamNo: trimmed },
+    select: { swLot: true },
+  })
+  const sourceLot = String(beam?.swLot || trimmed).trim()
+  const compactLot = sourceLot.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const digits = sourceLot.replace(/\D/g, '')
+  const lotKeys = [...new Set([compactLot, digits].filter(Boolean))]
+  if (lotKeys.length === 0) return []
+  try {
+    const rows = await prisma.$queryRaw<
+      Array<{ date: string; loomNumber: number; segmentIndex: number; payload: unknown }>
+    >`
+      SELECT date, "loomNumber", "segmentIndex", payload
+      FROM floor_daily_sheets
+      WHERE regexp_replace(lower(COALESCE(payload->>'lot', '')), '[^a-z0-9]', '', 'g') IN (${Prisma.join(lotKeys)})
+         OR regexp_replace(lower(COALESCE(payload->>'swLot', '')), '[^a-z0-9]', '', 'g') IN (${Prisma.join(lotKeys)})
+      ORDER BY date ASC, "loomNumber" ASC, "segmentIndex" ASC
+    `
+    return rows.map((r) => sheetEntryFromDbRow(r))
+  } catch (err) {
+    console.warn('[floorDb] dbGetBeamSheets raw query fallback to findMany', err)
+    const all = await prisma.floorDailySheet.findMany({
+      orderBy: [{ date: 'asc' }, { loomNumber: 'asc' }, { segmentIndex: 'asc' }],
+    })
+    return all
+      .map((r) => sheetEntryFromDbRow(r))
+      .filter((e) => {
+        const lot = String(e.lot || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const swLot = String(e.swLot || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        return lotKeys.includes(lot) || lotKeys.includes(swLot)
+      })
+  }
+}
+
+export interface MonthSummaryResult {
+  month: string
+  grandTotalMeters: number
+  shiftATotalMeters: number
+  shiftBTotalMeters: number
+  avgPerDay: number
+  daysWithProduction: number
+  totalDaysRecorded: number
+  loomTotals: Record<number, number>
+  dayTotals: Array<{
+    date: string
+    day: number
+    totalMeters: number
+    shiftAMeters: number
+    shiftBMeters: number
+    activeLooms: number
+  }>
+  qualityTotals: Record<string, number>
+}
+
+/** Server-side monthly aggregation without loading full row payloads to client. */
+export async function dbGetMonthSummary(
+  monthStr: string,
+  qualityId?: string
+): Promise<MonthSummaryResult> {
+  const cleanMonth = String(monthStr || '').trim()
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(cleanMonth)) {
+    throw new Error('month must be YYYY-MM')
+  }
+  const [year, month] = cleanMonth.split('-').map(Number)
+  const from = `${cleanMonth}-01`
+  const to = `${year + (month === 12 ? 1 : 0)}-${String(month === 12 ? 1 : month + 1).padStart(2, '0')}-01`
+  const qualityFilter = qualityId
+    ? Prisma.sql`AND payload->>'qualityId' = ${qualityId}`
+    : Prisma.empty
+
+  // Aggregate in PostgreSQL: only compact totals cross the DB boundary, not each JSON payload.
+  // The numeric guards keep imported/legacy text payloads from breaking a report query.
+  const rows = await prisma.$queryRaw<
+    Array<{
+      date: string
+      loomNumber: number
+      qualityName: string
+      totalMeters: number
+      shiftAMeters: number
+      shiftBMeters: number
+      activeRows: number
+    }>
+  >`
+    SELECT
+      date,
+      "loomNumber" AS "loomNumber",
+      COALESCE(NULLIF(payload->>'qualityName', ''), 'Unknown') AS "qualityName",
+      SUM(CASE WHEN payload->>'totalMeters' ~ '^-?[0-9]+(\.[0-9]+)?$'
+        THEN (payload->>'totalMeters')::double precision
+        ELSE COALESCE(CASE WHEN payload->>'shiftAMeters' ~ '^-?[0-9]+(\.[0-9]+)?$'
+          THEN (payload->>'shiftAMeters')::double precision ELSE 0 END, 0)
+          + COALESCE(CASE WHEN payload->>'shiftBMeters' ~ '^-?[0-9]+(\.[0-9]+)?$'
+            THEN (payload->>'shiftBMeters')::double precision ELSE 0 END, 0)
+        END) AS "totalMeters",
+      SUM(CASE WHEN payload->>'shiftAMeters' ~ '^-?[0-9]+(\.[0-9]+)?$'
+        THEN (payload->>'shiftAMeters')::double precision ELSE 0 END) AS "shiftAMeters",
+      SUM(CASE WHEN payload->>'shiftBMeters' ~ '^-?[0-9]+(\.[0-9]+)?$'
+        THEN (payload->>'shiftBMeters')::double precision ELSE 0 END) AS "shiftBMeters",
+      COUNT(*) FILTER (WHERE COALESCE(payload->>'status', '') IN ('', 'RUNNING'))::integer AS "activeRows"
+    FROM floor_daily_sheets
+    WHERE date >= ${from} AND date < ${to}
+      AND NOT (date >= '2026-10-01' AND lower(COALESCE(payload->>'qualityName', '')) IN ('silver-shine', 'eiffel tower', 'parcopv', 'design-2x1'))
+      ${qualityFilter}
+    GROUP BY date, "loomNumber", COALESCE(NULLIF(payload->>'qualityName', ''), 'Unknown')
+    ORDER BY date ASC, "loomNumber" ASC
+  `
+
+  let grandTotal = 0
+  let shiftATotal = 0
+  let shiftBTotal = 0
+  const loomTotals: Record<number, number> = {}
+  const qualityTotals: Record<string, number> = {}
+  const byDate = new Map<string, MonthSummaryResult['dayTotals'][number]>()
+
+  for (const row of rows) {
+    const meters = Number(row.totalMeters) || 0
+    const shiftA = Number(row.shiftAMeters) || 0
+    const shiftB = Number(row.shiftBMeters) || 0
+    grandTotal += meters
+    shiftATotal += shiftA
+    shiftBTotal += shiftB
+    loomTotals[row.loomNumber] = (loomTotals[row.loomNumber] || 0) + meters
+    qualityTotals[row.qualityName] = (qualityTotals[row.qualityName] || 0) + meters
+
+    const day = byDate.get(row.date) || {
+      date: row.date,
+      day: Number(row.date.slice(8, 10)) || 0,
+      totalMeters: 0,
+      shiftAMeters: 0,
+      shiftBMeters: 0,
+      activeLooms: 0,
+    }
+    day.totalMeters += meters
+    day.shiftAMeters += shiftA
+    day.shiftBMeters += shiftB
+    day.activeLooms += Number(row.activeRows) || 0
+    byDate.set(row.date, day)
+  }
+
+  const dayTotals = [...byDate.values()].map((day) => ({
+    ...day,
+    totalMeters: Math.round(day.totalMeters),
+    shiftAMeters: Math.round(day.shiftAMeters),
+    shiftBMeters: Math.round(day.shiftBMeters),
+  }))
+  const daysWithProd = dayTotals.filter((day) => day.totalMeters > 0).length
+
+  const avgPerDay = daysWithProd > 0 ? Math.round(grandTotal / daysWithProd) : 0
+
+  return {
+    month: cleanMonth,
+    grandTotalMeters: Math.round(grandTotal),
+    shiftATotalMeters: Math.round(shiftATotal),
+    shiftBTotalMeters: Math.round(shiftBTotal),
+    avgPerDay,
+    daysWithProduction: daysWithProd,
+    totalDaysRecorded: dayTotals.length,
+    loomTotals,
+    dayTotals,
+    qualityTotals,
+  }
+}
+
 export async function dbGetSheet(dateStr: string): Promise<DailyLoomProductionEntry[] | null> {
   const rows = await prisma.floorDailySheet.findMany({
     where: { date: dateStr },
     orderBy: [{ loomNumber: 'asc' }, { segmentIndex: 'asc' }],
   })
   if (rows.length === 0) return null
-  const entries = rows.map((r) => sheetEntryFromDbRow(r))
-  if (dateStr >= '2026-10-01' && entries.some((e) => isDummyQualityName(e.qualityName))) {
-    return null
-  }
-  return entries
+  const entries = rows
+    .map((r) => sheetEntryFromDbRow(r))
+    .filter((entry) => dateStr < '2026-10-01' || !isDummyQualityName(entry.qualityName))
+  return entries.length > 0 ? entries : null
 }
 
 export async function dbUpdateLoomEntry(
