@@ -56,18 +56,33 @@ interface ItemDraftRow {
 }
 
 const DEFAULT_INVENTORY_COL_WIDTHS: Record<string, number> = {
-  sNo: 50,
-  date: 95,
-  billNo: 85,
-  inwardNo: 85,
-  partyName: 200,
-  description: 300,
-  machineName: 120,
-  quantity: 70,
-  costPerItem: 105,
-  totalPrice: 130,
-  balance: 140,
-  actions: 95,
+  sNo: 38,
+  date: 85,
+  billNo: 58,
+  inwardNo: 58,
+  partyName: 190,
+  description: 280,
+  machineName: 78,
+  quantity: 45,
+  costPerItem: 90,
+  totalPrice: 115,
+  balance: 120,
+  actions: 70,
+}
+
+const MIN_INVENTORY_COL_WIDTHS: Record<string, number> = {
+  sNo: 26,
+  date: 65,
+  billNo: 35,
+  inwardNo: 38,
+  partyName: 100,
+  description: 140,
+  machineName: 55,
+  quantity: 30,
+  costPerItem: 60,
+  totalPrice: 70,
+  balance: 75,
+  actions: 45,
 }
 
 export default function DailyInwardExpenseUnifiedPage() {
@@ -319,7 +334,7 @@ export default function DailyInwardExpenseUnifiedPage() {
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('sara_daily_inward_col_widths_v3')
+        const saved = localStorage.getItem('sara_daily_inward_col_widths_v4')
         if (saved) return { ...DEFAULT_INVENTORY_COL_WIDTHS, ...JSON.parse(saved) }
       } catch {}
     }
@@ -330,11 +345,11 @@ export default function DailyInwardExpenseUnifiedPage() {
     e.preventDefault()
     e.stopPropagation()
     const startX = e.clientX
-    const startW = colWidths[colKey] || DEFAULT_INVENTORY_COL_WIDTHS[colKey] || 80
+    const startW = colWidths[colKey] || DEFAULT_INVENTORY_COL_WIDTHS[colKey] || 60
 
     const onMouseMove = (moveEvt: MouseEvent) => {
       const delta = moveEvt.clientX - startX
-      const minW = colKey === 'sNo' ? 40 : 55
+      const minW = MIN_INVENTORY_COL_WIDTHS[colKey] || 30
       const newW = Math.max(minW, startW + delta)
       setColWidths((prev) => ({ ...prev, [colKey]: newW }))
     }
@@ -344,7 +359,7 @@ export default function DailyInwardExpenseUnifiedPage() {
       window.removeEventListener('mouseup', onMouseUp)
       setColWidths((latest) => {
         try {
-          localStorage.setItem('sara_daily_inward_col_widths_v3', JSON.stringify(latest))
+          localStorage.setItem('sara_daily_inward_col_widths_v4', JSON.stringify(latest))
         } catch {}
         return latest
       })
@@ -357,6 +372,7 @@ export default function DailyInwardExpenseUnifiedPage() {
   const resetColWidths = () => {
     setColWidths(DEFAULT_INVENTORY_COL_WIDTHS)
     try {
+      localStorage.removeItem('sara_daily_inward_col_widths_v4')
       localStorage.removeItem('sara_daily_inward_col_widths_v3')
     } catch {}
   }
@@ -1189,10 +1205,10 @@ export default function DailyInwardExpenseUnifiedPage() {
                   Daily Inward & Purchase Expenses • Month of {formattedMonthTitle}
                 </th>
               </tr>
-              <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold uppercase text-[11px] border-b-2 border-slate-800 dark:border-slate-300">
+              <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold uppercase text-[10px] border-b-2 border-slate-800 dark:border-slate-300">
                 <th
                   style={{ width: `${colWidths.sNo}px` }}
-                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   S.No
                   <div
@@ -1202,7 +1218,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.date}px` }}
-                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   Date
                   <div
@@ -1212,7 +1228,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.billNo}px` }}
-                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   Bill No
                   <div
@@ -1222,9 +1238,9 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.inwardNo}px` }}
-                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
-                  Inw. No
+                  Inw #
                   <div
                     onMouseDown={(e) => startColResize('inwardNo', e)}
                     className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-[#0066cc] z-20"
@@ -1232,7 +1248,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.partyName}px` }}
-                  className="relative py-2.5 px-3 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   Party Name
                   <div
@@ -1242,7 +1258,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.description}px` }}
-                  className="relative py-2.5 px-3 border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-2 border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   Description
                   <div
@@ -1252,9 +1268,9 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.machineName}px` }}
-                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
-                  Machine Type
+                  Machine
                   <div
                     onMouseDown={(e) => startColResize('machineName', e)}
                     className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-[#0066cc] z-20"
@@ -1262,7 +1278,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.quantity}px` }}
-                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   Qty
                   <div
@@ -1272,7 +1288,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.costPerItem}px` }}
-                  className="relative py-2.5 px-2 text-right border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-right border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   Rate
                   <div
@@ -1282,9 +1298,9 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.totalPrice}px` }}
-                  className="relative py-2.5 px-2 text-right border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-right border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
-                  Total Amount
+                  Total
                   <div
                     onMouseDown={(e) => startColResize('totalPrice', e)}
                     className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-[#0066cc] z-20"
@@ -1292,7 +1308,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.balance}px` }}
-                  className="relative py-2.5 px-2 text-right border border-slate-400 dark:border-slate-600 select-none group/th"
+                  className="relative py-2 px-1 text-right border border-slate-400 dark:border-slate-600 select-none group/th text-[10px]"
                 >
                   Balance
                   <div
@@ -1302,7 +1318,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                 </th>
                 <th
                   style={{ width: `${colWidths.actions}px` }}
-                  className="relative py-2.5 px-2 text-center border border-slate-400 dark:border-slate-600 select-none group/th print:hidden"
+                  className="relative py-2 px-1 text-center border border-slate-400 dark:border-slate-600 select-none group/th text-[10px] print:hidden"
                 >
                   Actions
                   <div
@@ -1362,7 +1378,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                       {/* S.No */}
                       <td
                         className={cn(
-                          'py-2 px-2 text-center font-mono font-medium text-slate-600 dark:text-slate-400 border border-slate-400 dark:border-slate-600',
+                          'py-1.5 px-1 text-center font-mono font-medium text-slate-600 dark:text-slate-400 border border-slate-400 dark:border-slate-600 text-[11px]',
                           isLastInBill && 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                         )}
                       >
@@ -1374,7 +1390,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                         <td
                           rowSpan={groupInfo.rowSpan}
                           className={cn(
-                            'py-2 px-2 font-mono text-center align-middle font-medium text-slate-800 dark:text-slate-200 border border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
+                            'py-1.5 px-1 font-mono text-center align-middle font-medium text-slate-800 dark:text-slate-200 border border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap text-xs',
                             isEvenInvoice ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
                           )}
                         >
@@ -1387,7 +1403,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                         <td
                           rowSpan={groupInfo.rowSpan}
                           className={cn(
-                            'py-2 px-2 font-mono text-center align-middle border border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
+                            'py-1.5 px-1 font-mono text-center align-middle border border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
                             isEvenInvoice ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
                           )}
                         >
@@ -1402,7 +1418,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                         <td
                           rowSpan={groupInfo.rowSpan}
                           className={cn(
-                            'py-2 px-2 font-mono text-center align-middle font-bold text-[#0066cc] dark:text-sky-400 border border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
+                            'py-1.5 px-1 font-mono text-center align-middle font-bold text-[#0066cc] dark:text-sky-400 border border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap text-xs',
                             isEvenInvoice ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
                           )}
                         >
@@ -1469,10 +1485,10 @@ export default function DailyInwardExpenseUnifiedPage() {
                         )}
                       </td>
 
-                      {/* Machine Type (Fast interactive dropdown right in table!) */}
+                      {/* Machine Type (Fast interactive compact dropdown) */}
                       <td
                         className={cn(
-                          'py-1 px-1 text-center border border-slate-400 dark:border-slate-600',
+                          'py-1 px-0.5 text-center border border-slate-400 dark:border-slate-600',
                           isLastInBill && 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                         )}
                       >
@@ -1480,12 +1496,12 @@ export default function DailyInwardExpenseUnifiedPage() {
                           value={item.machineName || 'G-6200'}
                           onChange={(e) => handleInlineMachineChange(item.sNo - 1, e.target.value)}
                           className={cn(
-                            'w-full px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer border-0 shadow-2xs focus:ring-1 focus:ring-[#0066cc] uppercase tracking-wide text-center',
+                            'w-full max-w-[70px] mx-auto px-1 py-0.5 rounded text-[9px] leading-tight font-bold cursor-pointer border-0 shadow-2xs focus:ring-1 focus:ring-[#0066cc] uppercase tracking-tight text-center',
                             getMachineBadgeStyle(item.machineName)
                           )}
                         >
                           {MACHINE_OPTIONS.map((m) => (
-                            <option key={m} value={m} className="bg-white text-slate-900 font-semibold">
+                            <option key={m} value={m} className="bg-white text-slate-900 font-semibold text-xs">
                               {m}
                             </option>
                           ))}
@@ -1495,7 +1511,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                       {/* Quantity */}
                       <td
                         className={cn(
-                          'py-2 px-2 text-center font-mono font-semibold text-slate-800 dark:text-slate-200 border border-slate-400 dark:border-slate-600',
+                          'py-1.5 px-1 text-center font-mono font-semibold text-slate-800 dark:text-slate-200 border border-slate-400 dark:border-slate-600 text-xs',
                           isLastInBill && 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                         )}
                       >
@@ -1511,7 +1527,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                                 showFeedback('Row updated successfully!')
                               }
                             }}
-                            className="w-16 px-1.5 py-1 text-xs text-center font-mono font-bold bg-white dark:bg-slate-900 border-2 border-[#0066cc] rounded focus:outline-hidden"
+                            className="w-12 px-1 py-0.5 text-xs text-center font-mono font-bold bg-white dark:bg-slate-900 border-2 border-[#0066cc] rounded focus:outline-hidden"
                           />
                         ) : (
                           <span>{item.quantity}</span>
@@ -1521,7 +1537,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                       {/* Rate */}
                       <td
                         className={cn(
-                          'py-2 px-2 text-right font-mono text-slate-700 dark:text-slate-300 border border-slate-400 dark:border-slate-600',
+                          'py-1.5 px-1 text-right font-mono text-slate-700 dark:text-slate-300 border border-slate-400 dark:border-slate-600 text-xs',
                           isLastInBill && 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                         )}
                       >
@@ -1538,7 +1554,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                                 showFeedback('Row updated successfully!')
                               }
                             }}
-                            className="w-20 px-1.5 py-1 text-xs text-right font-mono font-bold bg-white dark:bg-slate-900 border-2 border-[#0066cc] rounded focus:outline-hidden"
+                            className="w-16 px-1 py-0.5 text-xs text-right font-mono font-bold bg-white dark:bg-slate-900 border-2 border-[#0066cc] rounded focus:outline-hidden"
                           />
                         ) : (
                           <span>{formatNumber(item.costPerItem)}</span>
@@ -1548,7 +1564,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                       {/* Total Amount */}
                       <td
                         className={cn(
-                          'py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 border border-slate-400 dark:border-slate-600',
+                          'py-1.5 px-1 text-right font-mono font-bold text-slate-900 dark:text-slate-100 border border-slate-400 dark:border-slate-600 text-xs',
                           isLastInBill && 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                         )}
                       >
@@ -1558,7 +1574,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                       {/* Running Balance */}
                       <td
                         className={cn(
-                          'py-2 px-2 text-right font-mono font-bold text-slate-950 dark:text-white border border-slate-400 dark:border-slate-600',
+                          'py-1.5 px-1 text-right font-mono font-bold text-slate-950 dark:text-white border border-slate-400 dark:border-slate-600 text-xs',
                           isLastInBill && 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                         )}
                       >
@@ -1568,7 +1584,7 @@ export default function DailyInwardExpenseUnifiedPage() {
                       {/* Actions */}
                       <td
                         className={cn(
-                          'py-2 px-2 text-center print:hidden border border-slate-400 dark:border-slate-600',
+                          'py-1.5 px-1 text-center print:hidden border border-slate-400 dark:border-slate-600',
                           isLastInBill && 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                         )}
                       >
@@ -1928,11 +1944,11 @@ export default function DailyInwardExpenseUnifiedPage() {
                     <thead>
                       <tr className="bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold border-b border-border">
                         <th className="py-2.5 px-2.5 w-10 text-center">#</th>
-                        <th className="py-2.5 px-3 min-w-[220px]">Item Description *</th>
-                        <th className="py-2.5 px-2 w-32">Machine Type</th>
-                        <th className="py-2.5 px-2 w-20 text-center">Qty *</th>
+                        <th className="py-2.5 px-3 min-w-[200px]">Item Description *</th>
+                        <th className="py-2 px-1 w-24 text-center">Machine</th>
+                        <th className="py-2.5 px-2 w-16 text-center">Qty *</th>
                         <th className="py-2.5 px-2 w-28 text-right">Rate (PKR) *</th>
-                        <th className="py-2.5 px-3 w-40 text-right">Total Price (PKR)</th>
+                        <th className="py-2.5 px-3 w-36 text-right">Total Price (PKR)</th>
                         <th className="py-2.5 px-2 w-12 text-center">Action</th>
                       </tr>
                     </thead>
@@ -1952,11 +1968,11 @@ export default function DailyInwardExpenseUnifiedPage() {
                               className="w-full px-2.5 py-1.5 text-xs bg-background border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-[#0066cc] font-medium"
                             />
                           </td>
-                          <td className="py-2 px-2">
+                          <td className="py-2 px-1 text-center">
                             <select
                               value={row.machineName}
                               onChange={(e) => updateItemDraftRow(idx, 'machineName', e.target.value)}
-                              className="w-full px-2 py-1.5 text-xs font-bold bg-background border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-[#0066cc] cursor-pointer"
+                              className="w-full max-w-[85px] mx-auto px-1 py-1 text-[11px] font-bold bg-background border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-[#0066cc] cursor-pointer"
                             >
                               {MACHINE_OPTIONS.map((m) => (
                                 <option key={m} value={m}>
