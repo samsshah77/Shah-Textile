@@ -2,8 +2,9 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { expenseService, WorkshopSummary } from '@/services/expenseService'
+import { expenseService, WorkshopSummary, getAccountsAvailableMonths } from '@/services/expenseService'
 import { formatCurrency, formatNumber } from '@/lib/utils'
+import { closeSidebar } from '@/lib/sidebarToggle'
 import {
   Wrench,
   Printer,
@@ -28,9 +29,17 @@ export default function WorkshopsDirectoryPage() {
     }
     return 'September'
   })
+  const [availableMonths, setAvailableMonths] = useState<string[]>(() => getAccountsAvailableMonths())
   const [workshops, setWorkshops] = useState<WorkshopSummary[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddWorkshopModal, setShowAddWorkshopModal] = useState(false)
+
+  // Auto-close sidebar whenever modal opens
+  useEffect(() => {
+    if (showAddWorkshopModal) {
+      closeSidebar()
+    }
+  }, [showAddWorkshopModal])
 
   // Add Workshop form state (Custom string supported!)
   const [newWorkshopName, setNewWorkshopName] = useState('')
@@ -45,12 +54,16 @@ export default function WorkshopsDirectoryPage() {
 
   useEffect(() => {
     loadWorkshops()
-    const handleSync = () => loadWorkshops()
+    const handleSync = () => {
+      loadWorkshops()
+      setAvailableMonths(getAccountsAvailableMonths())
+    }
     const handleMonthChange = (e: Event) => {
       const customEvt = e as CustomEvent<string>
       if (customEvt.detail && customEvt.detail !== selectedMonth) {
         setSelectedMonth(customEvt.detail)
       }
+      setAvailableMonths(getAccountsAvailableMonths())
     }
     window.addEventListener('accounts_synced', handleSync)
     window.addEventListener('accounts_month_changed', handleMonthChange)
@@ -178,9 +191,16 @@ export default function WorkshopsDirectoryPage() {
                     onChange={(e) => handleSelectMonth(e.target.value)}
                     className="bg-transparent text-xs font-bold text-foreground focus:outline-hidden cursor-pointer"
                   >
-                    <option value="September" className="bg-background text-foreground">September 2026</option>
-                    <option value="August" className="bg-background text-foreground">August 2026</option>
-                    <option value="ALL" className="bg-background text-foreground">All Months</option>
+                    {availableMonths.map((m) => (
+                      <option key={m} value={m} className="bg-background text-foreground">
+                        {m === 'ALL' ? 'All Months' : (m.includes('202') ? m : `${m} 2026`)}
+                      </option>
+                    ))}
+                    {!availableMonths.includes('ALL') && (
+                      <option value="ALL" className="bg-background text-foreground">
+                        All Months
+                      </option>
+                    )}
                   </select>
                 </div>
 

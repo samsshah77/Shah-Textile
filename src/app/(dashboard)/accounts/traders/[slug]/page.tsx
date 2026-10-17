@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { expenseService, TraderSummary } from '@/services/expenseService'
+import { expenseService, TraderSummary, getAccountsAvailableMonths } from '@/services/expenseService'
 import { InventoryPurchaseEntry } from '@/types/expense'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import { Printer, ArrowLeft, Download, Calendar } from 'lucide-react'
@@ -32,6 +32,7 @@ export default function TraderSpecificLedgerPage() {
     }
     return 'September'
   })
+  const [availableMonths, setAvailableMonths] = useState<string[]>(() => getAccountsAvailableMonths())
   const [trader, setTrader] = useState<TraderSummary | null>(null)
   const [entries, setEntries] = useState<InventoryPurchaseEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,12 +49,16 @@ export default function TraderSpecificLedgerPage() {
 
   useEffect(() => {
     reloadTrader()
-    const handleSync = () => reloadTrader()
+    const handleSync = () => {
+      reloadTrader()
+      setAvailableMonths(getAccountsAvailableMonths())
+    }
     const handleMonthChange = (e: Event) => {
       const customEvt = e as CustomEvent<string>
       if (customEvt.detail && customEvt.detail !== selectedMonth) {
         setSelectedMonth(customEvt.detail)
       }
+      setAvailableMonths(getAccountsAvailableMonths())
     }
     window.addEventListener('accounts_synced', handleSync)
     window.addEventListener('accounts_month_changed', handleMonthChange)
@@ -222,9 +227,16 @@ export default function TraderSpecificLedgerPage() {
                     onChange={(e) => handleSelectMonth(e.target.value)}
                     className="bg-transparent text-xs font-bold text-foreground focus:outline-hidden cursor-pointer"
                   >
-                    <option value="September" className="bg-background text-foreground">September 2026</option>
-                    <option value="August" className="bg-background text-foreground">August 2026</option>
-                    <option value="ALL" className="bg-background text-foreground">All Months</option>
+                    {availableMonths.map((m) => (
+                      <option key={m} value={m} className="bg-background text-foreground">
+                        {m === 'ALL' ? 'All Months' : (m.includes('202') ? m : `${m} 2026`)}
+                      </option>
+                    ))}
+                    {!availableMonths.includes('ALL') && (
+                      <option value="ALL" className="bg-background text-foreground">
+                        All Months
+                      </option>
+                    )}
                   </select>
                 </div>
 

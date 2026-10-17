@@ -2,8 +2,9 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { accountsData, InventoryItem, MonthlyInventorySheet } from '@/data/accountsData'
-import { expenseService } from '@/services/expenseService'
+import { expenseService, getDefaultDateForMonth } from '@/services/expenseService'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
+import { closeSidebar } from '@/lib/sidebarToggle'
 import {
   Search,
   CheckCircle2,
@@ -159,17 +160,41 @@ export default function DailyInwardExpenseUnifiedPage() {
   }, [selectedMonth])
 
   const availableMonths = useMemo(() => {
-    return Object.keys(monthsData)
+    const keys = Object.keys(monthsData)
+    const monthOrder: Record<string, number> = {
+      january: 1,
+      february: 2,
+      febraury: 2,
+      march: 3,
+      april: 4,
+      may: 5,
+      june: 6,
+      july: 7,
+      august: 8,
+      september: 9,
+      october: 10,
+      november: 11,
+      december: 12,
+    }
+    return keys.sort((a, b) => {
+      const aClean = a.replace(/20\d{2}/, '').trim().toLowerCase()
+      const bClean = b.replace(/20\d{2}/, '').trim().toLowerCase()
+      const aOrder = monthOrder[aClean] || 99
+      const bOrder = monthOrder[bClean] || 99
+      return bOrder - aOrder
+    })
   }, [monthsData])
 
   // =========================================================================
   // MULTI-ITEM "ADD ENTRY" MODAL STATE (New Bill)
   // =========================================================================
   const [showAddModal, setShowAddModal] = useState(false)
-  const [entryDate, setEntryDate] = useState(() => {
-    const now = new Date()
-    return `2026-09-${String(now.getDate()).padStart(2, '0')}`
-  })
+  const [entryDate, setEntryDate] = useState(() => getDefaultDateForMonth(selectedMonth))
+
+  // Synchronize entryDate whenever selectedMonth changes
+  useEffect(() => {
+    setEntryDate(getDefaultDateForMonth(selectedMonth))
+  }, [selectedMonth])
   const [entryBillNo, setEntryBillNo] = useState('')
   const [entryInwardNo, setEntryInwardNo] = useState('')
   const [entryPartyName, setEntryPartyName] = useState('')
@@ -280,6 +305,13 @@ export default function DailyInwardExpenseUnifiedPage() {
   const [showGenerateMonthModal, setShowGenerateMonthModal] = useState(false)
   const [genMonthName, setGenMonthName] = useState('September')
   const [genYear, setGenYear] = useState('2026')
+
+  // Auto-close any sidebar / sliding drawer whenever a modal dialog is opened
+  useEffect(() => {
+    if (showAddModal || showGenerateMonthModal || deleteTarget) {
+      closeSidebar()
+    }
+  }, [showAddModal, showGenerateMonthModal, deleteTarget])
 
   // =========================================================================
   // COLUMN RESIZING STATE (DRAGGABLE RESIZE WITH LOCALSTORAGE MEMORY)
@@ -896,7 +928,7 @@ export default function DailyInwardExpenseUnifiedPage() {
       if (!confirm(`Month "${fullKey}" already exists with ${monthsData[fullKey].items.length} records. Switch to it?`)) {
         return
       }
-      setSelectedMonth(fullKey)
+      handleSelectMonth(fullKey)
       setShowGenerateMonthModal(false)
       return
     }
@@ -912,7 +944,7 @@ export default function DailyInwardExpenseUnifiedPage() {
     }
 
     persistMonths(updatedMonths)
-    setSelectedMonth(fullKey)
+    handleSelectMonth(fullKey)
     setShowGenerateMonthModal(false)
   }
 
@@ -991,8 +1023,8 @@ export default function DailyInwardExpenseUnifiedPage() {
               <button
                 type="button"
                 onClick={() => {
-                  const now = new Date()
-                  setEntryDate(`2026-09-${String(now.getDate()).padStart(2, '0')}`)
+                  closeSidebar()
+                  setEntryDate(getDefaultDateForMonth(selectedMonth))
                   setEntryInwardNo(getNextInwardNo())
                   setEntryPartyName('')
                   setEntryPartyType('Trader')
@@ -1007,7 +1039,10 @@ export default function DailyInwardExpenseUnifiedPage() {
 
               <button
                 type="button"
-                onClick={() => setShowGenerateMonthModal(true)}
+                onClick={() => {
+                  closeSidebar()
+                  setShowGenerateMonthModal(true)
+                }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer !min-h-9 !h-9"
               >
                 <Calendar className="size-3.5" />

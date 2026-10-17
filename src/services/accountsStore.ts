@@ -61,11 +61,48 @@ export async function hydrateAccountsFromDb(): Promise<void> {
       const data = await res.json()
       const present = new Set<string>()
       if (data?.ok && data.store && typeof data.store === 'object') {
-        Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
-          remember(key, value)
+        Object.entries(data.store as Record<string, unknown>).forEach(([key, remoteVal]) => {
+          let mergedVal = remoteVal
+
+          // Non-destructive merge for inventory control store
+          if (key === 'sara_textile_inventory_control_v2' && isClient()) {
+            try {
+              const localRaw = localStorage.getItem(key)
+              if (localRaw) {
+                const localObj = JSON.parse(localRaw)
+                if (localObj && typeof localObj === 'object') {
+                  const combined = { ...(remoteVal as Record<string, any>) }
+                  let hasLocalAdditions = false
+
+                  for (const [mKey, mVal] of Object.entries(localObj as Record<string, any>)) {
+                    if (!combined[mKey]) {
+                      combined[mKey] = mVal
+                      hasLocalAdditions = true
+                    } else if (
+                      Array.isArray(mVal?.items) &&
+                      Array.isArray(combined[mKey]?.items) &&
+                      mVal.items.length > combined[mKey].items.length
+                    ) {
+                      combined[mKey] = mVal
+                      hasLocalAdditions = true
+                    }
+                  }
+
+                  mergedVal = combined
+                  if (hasLocalAdditions) {
+                    void persistAccountsKey(key, combined)
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('[accounts] merge error for inventory control', err)
+            }
+          }
+
+          remember(key, mergedVal)
           if (isClient()) {
             try {
-              localStorage.setItem(key, JSON.stringify(value))
+              localStorage.setItem(key, JSON.stringify(mergedVal))
             } catch {}
           }
           present.add(key)

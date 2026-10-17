@@ -2,8 +2,9 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { expenseService, TraderSummary } from '@/services/expenseService'
+import { expenseService, TraderSummary, getAccountsAvailableMonths } from '@/services/expenseService'
 import { formatCurrency, formatNumber } from '@/lib/utils'
+import { closeSidebar } from '@/lib/sidebarToggle'
 import {
   Printer,
   Search,
@@ -28,9 +29,17 @@ export default function TradersDirectoryPage() {
     }
     return 'September'
   })
+  const [availableMonths, setAvailableMonths] = useState<string[]>(() => getAccountsAvailableMonths())
   const [traders, setTraders] = useState<TraderSummary[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddTraderModal, setShowAddTraderModal] = useState(false)
+
+  // Auto-close sidebar whenever modal opens
+  useEffect(() => {
+    if (showAddTraderModal) {
+      closeSidebar()
+    }
+  }, [showAddTraderModal])
 
   // Add Trader form state (Custom string supported!)
   const [newTraderName, setNewTraderName] = useState('')
@@ -44,12 +53,16 @@ export default function TradersDirectoryPage() {
 
   useEffect(() => {
     loadTraders()
-    const handleSync = () => loadTraders()
+    const handleSync = () => {
+      loadTraders()
+      setAvailableMonths(getAccountsAvailableMonths())
+    }
     const handleMonthChange = (e: Event) => {
       const customEvt = e as CustomEvent<string>
       if (customEvt.detail && customEvt.detail !== selectedMonth) {
         setSelectedMonth(customEvt.detail)
       }
+      setAvailableMonths(getAccountsAvailableMonths())
     }
     window.addEventListener('accounts_synced', handleSync)
     window.addEventListener('accounts_month_changed', handleMonthChange)
@@ -177,9 +190,16 @@ export default function TradersDirectoryPage() {
                     onChange={(e) => handleSelectMonth(e.target.value)}
                     className="bg-transparent text-xs font-bold text-foreground focus:outline-hidden cursor-pointer"
                   >
-                    <option value="September" className="bg-background text-foreground">September 2026</option>
-                    <option value="August" className="bg-background text-foreground">August 2026</option>
-                    <option value="ALL" className="bg-background text-foreground">All Months</option>
+                    {availableMonths.map((m) => (
+                      <option key={m} value={m} className="bg-background text-foreground">
+                        {m === 'ALL' ? 'All Months' : (m.includes('202') ? m : `${m} 2026`)}
+                      </option>
+                    ))}
+                    {!availableMonths.includes('ALL') && (
+                      <option value="ALL" className="bg-background text-foreground">
+                        All Months
+                      </option>
+                    )}
                   </select>
                 </div>
 
