@@ -98,16 +98,24 @@ export interface PettyCashTransaction {
 }
 
 export interface InventoryItem {
+  id?: string
   sNo: number
   date: string
   billNo: string
   inwardNo: string
   itemDescription: string
   companyName: string
+  partyName?: string
   machineName: string
   quantity: number
   costPerItem: number
+  rate?: number
   totalPrice: number
+  totalAmount?: number
+  saraAp?: number
+  foiCashCheque?: number
+  balance?: number
+  remarks?: string
 }
 
 export interface MonthlyInventorySheet {

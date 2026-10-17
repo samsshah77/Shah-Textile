@@ -88,16 +88,10 @@ const FLOOR_ITEMS: NavLeaf[] = [
 
 const ACCOUNTS_ITEMS: NavLeaf[] = [
   {
-    title: 'Store Inventory Control',
+    title: 'Daily Inward & Expenses',
     href: '/accounts/inventory-inward',
-    icon: 'bi-box-seam',
-    activeCheck: (p) => p === '/accounts/inventory-inward',
-  },
-  {
-    title: 'Daily Inward Expenses',
-    href: '/accounts/daily-expense',
-    icon: 'bi-receipt',
-    activeCheck: (p) => p === '/accounts/daily-expense',
+    icon: 'bi-journal-arrow-down',
+    activeCheck: (p) => p === '/accounts/inventory-inward' || p === '/accounts/daily-expense',
   },
   {
     title: 'Traders Synopsis',

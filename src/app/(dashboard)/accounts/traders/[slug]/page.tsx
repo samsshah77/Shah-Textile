@@ -1,28 +1,13 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { expenseService, TraderSummary } from '@/services/expenseService'
-import { accountsRead, accountsRemove, accountsWrite } from '@/services/accountsStore'
 import { InventoryPurchaseEntry } from '@/types/expense'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
-import {
-  Printer,
-  ArrowLeft,
-  PlusCircle,
-  CheckCircle2,
-  Calculator,
-  Edit3,
-  Eye,
-  RotateCcw,
-  Save,
-  Trash2,
-  Sparkles,
-  Info,
-} from 'lucide-react'
+import { Printer, ArrowLeft, Download, Calendar } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { AddTraderBillModal } from '@/components/accounts/AddTraderBillModal'
 
 interface GroupedBill {
   billKey: string
@@ -37,86 +22,54 @@ interface GroupedBill {
 export default function TraderSpecificLedgerPage() {
   const params = useParams()
   const slug = Array.isArray(params?.slug) ? params.slug[0] : (params?.slug as string) || ''
-  const storageKey = `sara_textile_trader_custom_v1_${slug}`
 
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('sara_accounts_selected_month')
+        if (saved) return saved
+      } catch {}
+    }
+    return 'September'
+  })
   const [trader, setTrader] = useState<TraderSummary | null>(null)
   const [entries, setEntries] = useState<InventoryPurchaseEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSaved, setIsSaved] = useState(false)
-  const [showAddModal, setShowAddModal] = useState(false)
 
-  // New Inward Item form state
-  const [billNo, setBillNo] = useState('')
-  const [inwardNo, setInwardNo] = useState('')
-  const [itemDescription, setItemDescription] = useState('')
-  const [quantity, setQuantity] = useState<number | string>('')
-  const [costPerItem, setCostPerItem] = useState<number | string>('')
-  const [machineCategory, setMachineCategory] = useState<any>('All')
-  const [isSuccess, setIsSuccess] = useState(false)
-
-  const reloadTrader = () => {
+  const reloadTrader = useCallback(() => {
     if (!slug) return
-    const data = expenseService.getTraderBySlug(slug)
+    const data = expenseService.getTraderBySlug(slug, selectedMonth)
     if (data) {
       setTrader(data)
-      const stored = accountsRead<InventoryPurchaseEntry[] | null>(storageKey, null)
-      if (stored) {
-        setEntries(stored)
-        setLoading(false)
-        return
-      }
-      setEntries(data.entries)
+      setEntries(data.entries || [])
     }
     setLoading(false)
-  }
+  }, [slug, selectedMonth])
 
   useEffect(() => {
     reloadTrader()
-  }, [slug])
-
-  // Handle cell edit with live reactive calculation: Amount = Qty * Rate
-  const handleCellChange = (
-    id: string,
-    field: 'itemDescription' | 'quantity' | 'costPerItem',
-    val: string | number
-  ) => {
-    setEntries((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item
-        const updated = { ...item, [field]: val }
-        const q = Number(field === 'quantity' ? val : item.quantity) || 0
-        const r = Number(field === 'costPerItem' ? val : item.costPerItem) || 0
-        // Live Excel formula: =Qty * Rate
-        updated.totalPrice = Math.round(q * r)
-        return updated
-      })
-    )
-  }
-
-  // Delete row
-  const handleDeleteRow = (id: string) => {
-    setEntries((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  const handleSave = () => {
-    accountsWrite(storageKey, entries)
-    expenseService.notifyDataChanged()
-    setIsSaved(true)
-    setTimeout(() => setIsSaved(false), 2500)
-  }
-
-  // Reset to Excel Defaults
-  const handleReset = () => {
-    if (confirm('Reset ledger to the authentic Excel original records?')) {
-      accountsRemove(storageKey)
-      const data = expenseService.getTraderBySlug(slug)
-      if (data) {
-        setEntries(data.entries)
+    const handleSync = () => reloadTrader()
+    const handleMonthChange = (e: Event) => {
+      const customEvt = e as CustomEvent<string>
+      if (customEvt.detail && customEvt.detail !== selectedMonth) {
+        setSelectedMonth(customEvt.detail)
       }
-      expenseService.notifyDataChanged()
-      setIsSaved(true)
-      setTimeout(() => setIsSaved(false), 2000)
+    }
+    window.addEventListener('accounts_synced', handleSync)
+    window.addEventListener('accounts_month_changed', handleMonthChange)
+    return () => {
+      window.removeEventListener('accounts_synced', handleSync)
+      window.removeEventListener('accounts_month_changed', handleMonthChange)
+    }
+  }, [reloadTrader, selectedMonth])
+
+  const handleSelectMonth = (month: string) => {
+    setSelectedMonth(month)
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('sara_accounts_selected_month', month)
+        window.dispatchEvent(new CustomEvent('accounts_month_changed', { detail: month }))
+      } catch {}
     }
   }
 
@@ -126,45 +79,7 @@ export default function TraderSpecificLedgerPage() {
     }
   }
 
-  const handleAddItem = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!trader) return
-    const numQty = parseFloat(quantity as string)
-    const numCost = parseFloat(costPerItem as string)
-    if (!numQty || !numCost || !itemDescription) return
-
-    const newRecord: InventoryPurchaseEntry = {
-      id: `tr-custom-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      billNo: billNo || `BILL-${Math.floor(1000 + Math.random() * 9000)}`,
-      inwardNo: inwardNo || `INW-${Math.floor(7000 + Math.random() * 900)}`,
-      partyName: trader.partyName,
-      itemDescription,
-      machineCategory,
-      quantity: numQty,
-      costPerItem: numCost,
-      totalPrice: Math.round(numQty * numCost),
-    }
-
-    const updated = [...entries, newRecord]
-    setEntries(updated)
-    accountsWrite(storageKey, updated)
-    expenseService.notifyDataChanged()
-
-    setBillNo('')
-    setInwardNo('')
-    setItemDescription('')
-    setQuantity('')
-    setCostPerItem('')
-    setIsSuccess(true)
-    setTimeout(() => setIsSuccess(false), 2500)
-  }
-
-  // =========================================================================
-  // LIVE EXCEL FORMULAS COMPUTATION
-  // =========================================================================
-  // 1. Running Balance Formula: =Prev + Amount
-  // 2. Group contiguous entries sharing (date, billNo, inwardNo) into single merged boxes
+  // Live calculation: Running balance = previous balance + current item amount
   const { groupedBills, totalPurchases, totalItems, uniqueBillsCount } = useMemo(() => {
     let currentBalance = 0
     let totalPurchasesSum = 0
@@ -172,7 +87,6 @@ export default function TraderSpecificLedgerPage() {
     const billSet = new Set<string>()
 
     const flatWithBalances = entries.map((entry, index) => {
-      // Excel Formula: Running Balance = Previous Running Balance + Total Amount
       currentBalance += entry.totalPrice
       totalPurchasesSum += entry.totalPrice
       totalItemsSum += Number(entry.quantity) || 0
@@ -216,18 +130,58 @@ export default function TraderSpecificLedgerPage() {
     }
   }, [entries])
 
+  const exportCSV = () => {
+    if (!trader) return
+    const headers = [
+      'S.No',
+      'Date',
+      'Bill No',
+      'Inward No',
+      'Item Description',
+      'Quantity',
+      'Rate',
+      'Total Amount (PKR)',
+      'Running Balance',
+    ]
+    let runBal = 0
+    const rows = entries.map((it, idx) => {
+      runBal += it.totalPrice
+      return [
+        idx + 1,
+        `"${it.date}"`,
+        `"${it.billNo}"`,
+        `"${it.inwardNo}"`,
+        `"${it.itemDescription}"`,
+        it.quantity,
+        it.costPerItem,
+        it.totalPrice,
+        runBal,
+      ]
+    })
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `Sara_Textile_${trader.partyName}_Ledger.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   if (loading) {
-    return <div className="p-12 text-center text-xs text-muted-foreground">Loading specific trader ledger...</div>
+    return <div className="p-12 text-center text-xs text-muted-foreground">Loading vendor sub-ledger...</div>
   }
 
   if (!trader) {
     return (
       <div className="rounded-2xl border border-border bg-card p-12 text-center space-y-4">
-        <h2 className="text-lg font-bold text-foreground">Trader / Workshop Not Found</h2>
+        <h2 className="text-lg font-bold text-foreground">Trader Not Found</h2>
         <p className="text-xs text-muted-foreground">The requested vendor sub-ledger could not be located in Sara Textile ERP.</p>
         <Link
           href="/accounts/traders"
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-[#0066cc] px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
         >
           <ArrowLeft className="size-4" />
           <span>Return to Traders Directory</span>
@@ -238,6 +192,7 @@ export default function TraderSpecificLedgerPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
+      {/* 1. Header & Actions (Screen Only) */}
       <div className="print:hidden">
         <PageHeader
           title={trader.partyName}
@@ -249,210 +204,76 @@ export default function TraderSpecificLedgerPage() {
             { label: trader.partyName },
           ]}
           actions={
-            <>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
-                <Link href="/accounts/traders" className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+              {/* Left Action: Back Button */}
+              <div className="flex items-center gap-2">
+                <Link href="/accounts/traders" className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800 dark:!text-slate-200">
                   <ArrowLeft className="size-3.5" />
                   <span>All Traders</span>
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(true)}
-                  className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5 shadow-xs"
-                >
-                  <PlusCircle className="size-3.5" />
-                  <span className="fw-semibold">Record Bill</span>
-                </button>
               </div>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
+
+              {/* Right Tools: Month Switcher, Export, Print */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-background border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 shadow-2xs h-9">
+                  <Calendar className="size-3.5 text-muted-foreground" />
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => handleSelectMonth(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-foreground focus:outline-hidden cursor-pointer"
+                  >
+                    <option value="September" className="bg-background text-foreground">September 2026</option>
+                    <option value="August" className="bg-background text-foreground">August 2026</option>
+                    <option value="ALL" className="bg-background text-foreground">All Months</option>
+                  </select>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className={cn(
-                    'erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800',
-                    isEditing && '!border-amber-400 !bg-amber-50 !text-amber-900'
-                  )}
+                  onClick={exportCSV}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800 dark:!text-slate-200 cursor-pointer"
                 >
-                  {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
-                  <span>{isEditing ? 'View' : 'Edit'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                  title="Reset to official Excel default records"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="erp-btn-success text-xs !min-h-9 !h-9"
-                >
-                  <Save className="size-3.5" />
-                  <span>Save</span>
+                  <Download className="size-3.5" />
+                  <span>Export CSV</span>
                 </button>
                 <button
                   type="button"
                   onClick={handlePrint}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0066cc] hover:bg-[#0052a3] text-white shadow-xs transition-all cursor-pointer !min-h-9 !h-9"
                 >
                   <Printer className="size-3.5" />
-                  <span>Print</span>
+                  <span>Print Ledger</span>
                 </button>
               </div>
-            </>
+            </div>
           }
         />
       </div>
 
-      {/* Save Notification Toast */}
-      {isSaved && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-700 dark:text-emerald-400 print:hidden animate-in fade-in">
-          <CheckCircle2 className="size-4" />
-          <span>Vendor ledger changes saved to local storage! Dynamic formulas active.</span>
-        </div>
-      )}
-
-      {/* Formula & Live Calculation Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-xs print:hidden">
-        <div className="flex flex-wrap items-center gap-2 font-mono">
-          <div className="flex items-center gap-1.5 rounded-md bg-white dark:bg-slate-800 px-2.5 py-1 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200">
-            <Calculator className="size-3.5 text-[#0066cc]" />
-            <span>fx: Total Amount = Quantity × Rate</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-md bg-white dark:bg-slate-800 px-2.5 py-1 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200">
-            <span>fx: Running Balance = Prev Balance + Amount</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-md bg-white dark:bg-slate-800 px-2.5 py-1 border border-slate-200 dark:border-slate-700 font-bold text-emerald-700 dark:text-emerald-400">
-            <span>fx: Total Purchases = SUM(Bill Amounts)</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
-          <Sparkles className="size-3 text-amber-500" />
-          <span>Any edit instantly updates all subsequent running balances & totals</span>
-        </div>
-      </div>
-
-      {/* Quick Add Purchase Bill for this specific trader */}
-      <form
-        onSubmit={handleAddItem}
-        className="erp-card p-5 space-y-4 shadow-xs print:hidden"
-      >
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2.5">
-          <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-            Quick Log Inward Bill For {trader.partyName}
-          </h3>
-          <span className="text-[11px] font-mono text-slate-500">{trader.type}</span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6 text-xs">
-          <div>
-            <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Bill / Invoice # *</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. 1019"
-              value={billNo}
-              onChange={(e) => setBillNo(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-background px-3 py-1.5 font-mono text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Inward Pass #</label>
-            <input
-              type="text"
-              placeholder="e.g. 7650"
-              value={inwardNo}
-              onChange={(e) => setInwardNo(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-background px-3 py-1.5 font-mono text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-            />
-          </div>
-
-          <div className="lg:col-span-2">
-            <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Item / Job Description *</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Jackguard Arm New / Machine Worked"
-              value={itemDescription}
-              onChange={(e) => setItemDescription(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-background px-3 py-1.5 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Qty *</label>
-            <input
-              type="number"
-              required
-              min="1"
-              placeholder="Qty"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-background px-3 py-1.5 font-mono font-bold text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Rate (PKR) *</label>
-            <input
-              type="number"
-              required
-              min="0"
-              placeholder="Rate"
-              value={costPerItem}
-              onChange={(e) => setCostPerItem(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-background px-3 py-1.5 font-mono font-bold text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between pt-1">
-          {isSuccess && (
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-              <CheckCircle2 className="size-4" />
-              Bill item logged to {trader.partyName} ledger!
-            </span>
-          )}
-          <button
-            type="submit"
-            className="ml-auto flex items-center gap-1.5 erp-btn-primary"
-          >
-            <PlusCircle className="size-3.5" />
-            <span>Add Bill Item</span>
-          </button>
-        </div>
-      </form>
-
-      {/* Formal Printable Vendor Sub-Ledger Document with Merged Date/Bill/Inward Cells */}
+      {/* 2. Official Vendor Sub-Ledger Document */}
       <div className="erp-card bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 sm:p-8 shadow-xs print:border-none print:p-0 print:shadow-none font-sans">
-        {/* Header */}
-        <div className="border-b border-slate-200 dark:border-slate-700 pb-4 mb-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold uppercase text-slate-900 dark:text-slate-100">
-                SARA TEXTILE (PVT) LIMITED
-              </h1>
-              <h2 className="text-sm sm:text-base font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
-                Vendor Sub-Ledger Statement: <span className="underline">{trader.partyName}</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                Category: {trader.type} • Faisalabad Weaving Mill Unit #1
-              </p>
-            </div>
+        {/* Clean Standard Statement Header (No gigantic text or redundant top totals) */}
+        <div className="border-b border-slate-200 dark:border-slate-700 pb-3 mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              {trader.partyName}
+            </span>
+            <span className="text-xs text-muted-foreground">• Vendor Sub-Ledger</span>
+            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              {selectedMonth === 'ALL' ? 'All Months' : `${selectedMonth} 2026`}
+            </span>
+            <span className="text-xs text-slate-400">({trader.type})</span>
+          </div>
 
-            <div className="text-right font-mono text-xs">
-              <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">TOTAL PURCHASE: {formatCurrency(totalPurchases)}</div>
-              <div className="text-slate-600 dark:text-slate-400">Bills Logged: {uniqueBillsCount} Bills ({totalItems} Units)</div>
-              <div className="text-slate-400 mt-1">Generated: {new Date().toLocaleDateString('en-GB')}</div>
-            </div>
+          <div className="text-xs text-muted-foreground font-mono">
+            <span>Bills Logged: </span>
+            <span className="font-bold text-foreground">{uniqueBillsCount}</span>
+            <span className="mx-2">•</span>
+            <span>Date: {new Date().toLocaleDateString('en-GB')}</span>
           </div>
         </div>
 
-        {/* Ledger Table with Merged Cells */}
+        {/* Clean Date-wise Table with Merged Consecutive Bill Groupings */}
         <div className="overflow-x-auto rounded-lg border border-slate-400 dark:border-slate-600 shadow-xs">
           <table className="w-full min-w-[920px] text-left border-collapse text-xs font-mono border border-slate-400 dark:border-slate-600">
             <thead>
@@ -463,210 +284,166 @@ export default function TraderSpecificLedgerPage() {
                 <th className="border border-slate-400 dark:border-slate-600 border-r-2 border-r-slate-800 dark:border-r-slate-300 py-2.5 px-2.5 text-center w-20 min-w-[85px]">Inw #</th>
                 <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-4 text-left font-sans min-w-[260px]">Description</th>
                 <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2 text-center w-16 min-w-[65px]">Qty</th>
-                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-24 min-w-[90px]">Rate</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-24 min-w-[90px]">Rate (PKR)</th>
                 <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-28 min-w-[110px]">Total Amount</th>
                 <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-28 min-w-[110px] font-bold">Balance</th>
-                {isEditing && (
-                  <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2 text-center w-12 print:hidden">Del</th>
-                )}
               </tr>
             </thead>
             <tbody>
-              {groupedBills.map((group, groupIdx) => {
-                const rowSpan = group.items.length
-                const isEvenGroup = groupIdx % 2 === 0
+              {groupedBills.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400 font-sans">
+                    No inward purchases recorded yet for {trader.partyName}. All purchases recorded on Daily Inward Register will automatically sync here.
+                  </td>
+                </tr>
+              ) : (
+                groupedBills.map((group, groupIdx) => {
+                  const rowSpan = group.items.length
+                  const isEvenGroup = groupIdx % 2 === 0
 
-                return group.items.map((item, itemIdx) => {
-                  const isFirstRowOfBill = itemIdx === 0
-                  const isLastRowOfBill = itemIdx === rowSpan - 1
+                  return group.items.map((item, itemIdx) => {
+                    const isFirstRowOfBill = itemIdx === 0
+                    const isLastRowOfBill = itemIdx === rowSpan - 1
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className={cn(
-                        'text-slate-800 dark:text-slate-200 transition-colors',
-                        isEvenGroup
-                          ? 'bg-white dark:bg-slate-900'
-                          : 'bg-slate-50/70 dark:bg-slate-800/40',
-                        'hover:bg-blue-50/50 dark:hover:bg-slate-700/50'
-                      )}
-                    >
-                      {/* S.No */}
-                      <td
+                    return (
+                      <tr
+                        key={item.id}
                         className={cn(
-                          'py-2.5 px-2 text-center font-semibold text-slate-600 dark:text-slate-400 min-w-[50px] border-r-2 border-r-slate-400 dark:border-r-slate-500 border-l border-slate-400 dark:border-slate-600',
-                          isLastRowOfBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          'text-slate-800 dark:text-slate-200 transition-colors',
+                          isEvenGroup
+                            ? 'bg-white dark:bg-slate-900'
+                            : 'bg-slate-50/70 dark:bg-slate-800/40',
+                          'hover:bg-blue-50/50 dark:hover:bg-slate-700/50'
                         )}
                       >
-                        {item.serialNo}
-                      </td>
-
-                      {/* Date (MERGED BOX for entire bill) */}
-                      {isFirstRowOfBill && (
-                        <td
-                          rowSpan={rowSpan}
-                          className={cn(
-                            'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-3 text-center align-middle font-semibold text-slate-800 dark:text-slate-200 min-w-[95px] whitespace-nowrap',
-                            isEvenGroup
-                              ? 'bg-white dark:bg-slate-900'
-                              : 'bg-slate-50/90 dark:bg-slate-800/70'
-                          )}
-                        >
-                          {group.date}
-                        </td>
-                      )}
-
-                      {/* Bill No (MERGED BOX for entire bill) */}
-                      {isFirstRowOfBill && (
-                        <td
-                          rowSpan={rowSpan}
-                          className={cn(
-                            'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle min-w-[85px]',
-                            isEvenGroup
-                              ? 'bg-white dark:bg-slate-900'
-                              : 'bg-slate-50/90 dark:bg-slate-800/70'
-                          )}
-                        >
-                          <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 shadow-2xs">
-                            #{group.billNo}
-                          </span>
-                          {rowSpan > 1 && (
-                            <span className="block mt-1 text-[10px] font-mono text-slate-500 font-semibold">
-                              ({rowSpan} items)
-                            </span>
-                          )}
-                        </td>
-                      )}
-
-                      {/* Inward No (MERGED BOX for entire bill) */}
-                      {isFirstRowOfBill && (
-                        <td
-                          rowSpan={rowSpan}
-                          className={cn(
-                            'border-r-2 border-r-slate-800 dark:border-r-slate-300 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle text-[#0066cc] dark:text-sky-400 font-bold min-w-[85px]',
-                            isEvenGroup
-                              ? 'bg-white dark:bg-slate-900'
-                              : 'bg-slate-50/90 dark:bg-slate-800/70'
-                          )}
-                        >
-                          #{group.inwardNo}
-                        </td>
-                      )}
-
-                      {/* Item Description */}
-                      <td
-                        className={cn(
-                          'border-r border-slate-300 dark:border-slate-600 py-2 px-4 font-sans font-medium text-slate-800 dark:text-slate-200 min-w-[260px]',
-                          isLastRowOfBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={item.itemDescription}
-                            onChange={(e) => handleCellChange(item.id, 'itemDescription', e.target.value)}
-                            className="w-full rounded border border-slate-300 dark:border-slate-600 bg-background px-2 py-0.5 text-xs text-foreground focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                          />
-                        ) : (
-                          item.itemDescription
-                        )}
-                      </td>
-
-                      {/* Quantity */}
-                      <td
-                        className={cn(
-                          'border-r border-slate-300 dark:border-slate-600 py-2 px-2 text-center font-bold min-w-[65px]',
-                          isLastRowOfBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.quantity}
-                            onChange={(e) => handleCellChange(item.id, 'quantity', e.target.value)}
-                            className="w-full rounded border border-slate-300 dark:border-slate-600 bg-background px-1 py-0.5 text-center font-bold text-xs text-foreground focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                          />
-                        ) : (
-                          item.quantity
-                        )}
-                      </td>
-
-                      {/* Rate */}
-                      <td
-                        className={cn(
-                          'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono min-w-[90px]',
-                          isLastRowOfBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.costPerItem}
-                            onChange={(e) => handleCellChange(item.id, 'costPerItem', e.target.value)}
-                            className="w-full rounded border border-slate-300 dark:border-slate-600 bg-background px-1 py-0.5 text-right font-bold text-xs text-foreground focus:ring-1 focus:ring-[#0066cc] focus:outline-none"
-                          />
-                        ) : (
-                          formatNumber(item.costPerItem, 0)
-                        )}
-                      </td>
-
-                      {/* Total Amount for this item (Calculated: Qty * Rate) */}
-                      <td
-                        className={cn(
-                          'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
-                          isLastRowOfBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {formatNumber(item.totalPrice, 0)}
-                      </td>
-
-                      {/* Running Balance (Calculated: Prev + Amount) */}
-                      <td
-                        className={cn(
-                          'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
-                          isLastRowOfBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {formatNumber(item.runningBalance, 0)}
-                      </td>
-
-                      {/* Action (Delete row in Edit mode) */}
-                      {isEditing && (
+                        {/* S.No */}
                         <td
                           className={cn(
-                            'border-r border-slate-400 dark:border-slate-600 py-2 px-2 text-center print:hidden',
+                            'py-2.5 px-2 text-center font-semibold text-slate-600 dark:text-slate-400 min-w-[50px] border-r-2 border-r-slate-400 dark:border-r-slate-500 border-l border-slate-400 dark:border-slate-600',
                             isLastRowOfBill
                               ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                               : 'border-b border-b-slate-300 dark:border-b-slate-600'
                           )}
                         >
-                          <button
-                            onClick={() => handleDeleteRow(item.id)}
-                            className="rounded p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                            title="Delete row"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
+                          {item.serialNo}
                         </td>
-                      )}
-                    </tr>
-                  )
+
+                        {/* Date (MERGED BOX for entire bill) */}
+                        {isFirstRowOfBill && (
+                          <td
+                            rowSpan={rowSpan}
+                            className={cn(
+                              'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-3 text-center align-middle font-semibold text-slate-800 dark:text-slate-200 min-w-[95px] whitespace-nowrap',
+                              isEvenGroup
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/90 dark:bg-slate-800/70'
+                            )}
+                          >
+                            {group.date}
+                          </td>
+                        )}
+
+                        {/* Bill No (MERGED BOX for entire bill) */}
+                        {isFirstRowOfBill && (
+                          <td
+                            rowSpan={rowSpan}
+                            className={cn(
+                              'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle min-w-[85px]',
+                              isEvenGroup
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/90 dark:bg-slate-800/70'
+                            )}
+                          >
+                            <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 shadow-2xs">
+                              #{group.billNo}
+                            </span>
+                            {rowSpan > 1 && (
+                              <span className="block mt-1 text-[10px] font-mono text-slate-500 font-semibold">
+                                ({rowSpan} items)
+                              </span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Inward No (MERGED BOX for entire bill) */}
+                        {isFirstRowOfBill && (
+                          <td
+                            rowSpan={rowSpan}
+                            className={cn(
+                              'border-r-2 border-r-slate-800 dark:border-r-slate-300 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle text-[#0066cc] dark:text-sky-400 font-bold min-w-[85px]',
+                              isEvenGroup
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/90 dark:bg-slate-800/70'
+                            )}
+                          >
+                            #{group.inwardNo}
+                          </td>
+                        )}
+
+                        {/* Item Description */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-4 font-sans font-medium text-slate-800 dark:text-slate-200 min-w-[260px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {item.itemDescription}
+                        </td>
+
+                        {/* Quantity */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-2 text-center font-bold min-w-[65px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {item.quantity}
+                        </td>
+
+                        {/* Rate */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono min-w-[90px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {formatNumber(item.costPerItem, 0)}
+                        </td>
+
+                        {/* Total Amount for this item (Calculated: Qty * Rate) */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {formatNumber(item.totalPrice, 0)}
+                        </td>
+
+                        {/* Running Balance */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {formatNumber(item.runningBalance, 0)}
+                        </td>
+                      </tr>
+                    )
+                  })
                 })
-              })}
+              )}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-slate-800 dark:border-slate-200 bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-slate-100 text-xs">
@@ -683,38 +460,38 @@ export default function TraderSpecificLedgerPage() {
                 <td className="border border-slate-400 dark:border-slate-600 py-3 px-3 text-right text-sm font-bold min-w-[110px] text-slate-900 dark:text-slate-100">
                   {formatNumber(totalPurchases, 0)}
                 </td>
-                {isEditing && <td className="border border-slate-400 dark:border-slate-600 print:hidden" />}
               </tr>
             </tfoot>
           </table>
         </div>
 
-        {/* Verification Signatures */}
-        <div className="mt-12 pt-4 border-t border-slate-200 dark:border-slate-700">
-          <div className="grid grid-cols-3 gap-6 text-center text-xs font-mono text-slate-600 dark:text-slate-400">
-            <div>
-              <div className="border-t border-slate-300 dark:border-slate-600 pt-1.5 font-bold text-slate-800 dark:text-slate-200">Store Incharge</div>
-              <div className="text-[10px] text-slate-500">Goods Receipt Verification</div>
+        {/* Verification Signatures for Official Print with Generous Signing Gap */}
+        <div className="mt-16 pt-6 border-t border-slate-200 dark:border-slate-700 print:mt-12 pb-4">
+          <div className="grid grid-cols-3 gap-8 text-center text-xs font-sans text-slate-600 dark:text-slate-400">
+            <div className="flex flex-col items-center">
+              <div className="h-14 w-full"></div>
+              <div className="w-full border-t border-slate-400 dark:border-slate-500 pt-2 font-bold text-slate-900 dark:text-slate-100">
+                Store Incharge
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Goods Receipt Verification</div>
             </div>
-            <div>
-              <div className="border-t border-slate-300 dark:border-slate-600 pt-1.5 font-bold text-slate-800 dark:text-slate-200">Mill Accountant</div>
-              <div className="text-[10px] text-slate-500">Ledger Audited</div>
+            <div className="flex flex-col items-center">
+              <div className="h-14 w-full"></div>
+              <div className="w-full border-t border-slate-400 dark:border-slate-500 pt-2 font-bold text-slate-900 dark:text-slate-100">
+                Mill Accountant
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Ledger Audited</div>
             </div>
-            <div>
-              <div className="border-t border-slate-300 dark:border-slate-600 pt-1.5 font-bold text-slate-800 dark:text-slate-200">Supplier Confirmation</div>
-              <div className="text-[10px] text-slate-500">Party Stamp / Signature</div>
+            <div className="flex flex-col items-center">
+              <div className="h-14 w-full"></div>
+              <div className="w-full border-t border-slate-400 dark:border-slate-500 pt-2 font-bold text-slate-900 dark:text-slate-100">
+                Supplier Confirmation
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Party Stamp / Signature</div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Record Trader Bill Modal */}
-      <AddTraderBillModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSuccess={reloadTrader}
-        defaultTraderSlug={slug}
-      />
     </div>
   )
 }

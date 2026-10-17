@@ -61,10 +61,8 @@ function resolveAccountsPage(pathname: string): string {
     return 'Trader Ledger'
   }
   if (pathname.startsWith('/accounts/traders')) return 'Traders Synopsis'
-  if (pathname === '/accounts/cost-statement') return 'Cost Statement'
-  if (pathname === '/accounts/daily-expense') return 'Daily Inward Expenses'
+  if (pathname === '/accounts/daily-expense' || pathname === '/accounts/inventory-inward') return 'Daily Inward & Expenses'
   if (pathname.startsWith('/accounts/petty-cash')) return 'Petty Cash Journal'
-  if (pathname === '/accounts/inventory-inward') return 'Store Inventory Control'
   if (pathname.startsWith('/accounts/reports')) return 'Monthly Purchases'
   return 'Accounts'
 }

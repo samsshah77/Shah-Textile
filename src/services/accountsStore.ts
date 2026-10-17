@@ -1,6 +1,7 @@
 import { isAccountsStoreKey } from '@/lib/accountsKeys'
 
 const memory = new Map<string, string>()
+const pendingPersists = new Map<string, unknown>()
 let hydrated = false
 let hydratePromise: Promise<void> | null = null
 
@@ -9,7 +10,11 @@ function isClient(): boolean {
 }
 
 async function persistAccountsKey(key: string, value: unknown): Promise<void> {
-  if (!isClient() || !hydrated) return
+  if (!isClient()) return
+  if (!hydrated) {
+    pendingPersists.set(key, value)
+    return
+  }
   try {
     const res = await fetch('/api/accounts/store', {
       method: 'PUT',
@@ -58,11 +63,25 @@ export async function hydrateAccountsFromDb(): Promise<void> {
       if (data?.ok && data.store && typeof data.store === 'object') {
         Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
           remember(key, value)
+          if (isClient()) {
+            try {
+              localStorage.setItem(key, JSON.stringify(value))
+            } catch {}
+          }
           present.add(key)
         })
       }
       hydrated = true
       migrateLegacy(present)
+
+      // Flush any pending persists that were queued prior to hydration
+      if (pendingPersists.size > 0) {
+        const queue = Array.from(pendingPersists.entries())
+        pendingPersists.clear()
+        for (const [qKey, qVal] of queue) {
+          void persistAccountsKey(qKey, qVal)
+        }
+      }
     } catch (err) {
       console.error('[accounts] hydrate failed — using browser copy', err)
       hydrated = true
@@ -87,9 +106,7 @@ export function accountsRead<T>(key: string, fallback: T): T {
       const legacy = localStorage.getItem(key)
       if (legacy) {
         memory.set(key, legacy)
-        const parsed = JSON.parse(legacy) as T
-        if (hydrated) void persistAccountsKey(key, parsed)
-        return parsed
+        return JSON.parse(legacy) as T
       }
     } catch (err) {
       console.error(err)

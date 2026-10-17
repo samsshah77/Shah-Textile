@@ -4,27 +4,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { expenseService, WorkshopSummary } from '@/services/expenseService'
-import { accountsRead, accountsRemove, accountsWrite } from '@/services/accountsStore'
-import { ACCOUNTS_KEYS } from '@/lib/accountsKeys'
 import { InventoryPurchaseEntry } from '@/types/expense'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
-import {
-  Printer,
-  ArrowLeft,
-  PlusCircle,
-  CheckCircle2,
-  Calculator,
-  Edit3,
-  Eye,
-  RotateCcw,
-  Save,
-  Trash2,
-  Info,
-  Wrench,
-  Download,
-} from 'lucide-react'
+import { Printer, ArrowLeft, Download, Calendar } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { AddWorkshopBillModal } from '@/components/accounts/AddWorkshopBillModal'
 
 interface GroupedBill {
   billKey: string
@@ -39,83 +22,54 @@ interface GroupedBill {
 export default function WorkshopSpecificLedgerPage() {
   const params = useParams()
   const slug = Array.isArray(params?.slug) ? params.slug[0] : (params?.slug as string) || ''
-  const storageKey = `${ACCOUNTS_KEYS.WORKSHOP_PREFIX}${slug}`
 
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('sara_accounts_selected_month')
+        if (saved) return saved
+      } catch {}
+    }
+    return 'September'
+  })
   const [workshop, setWorkshop] = useState<WorkshopSummary | null>(null)
   const [entries, setEntries] = useState<InventoryPurchaseEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSaved, setIsSaved] = useState(false)
-  const [showAddModal, setShowAddModal] = useState(false)
-
-  // Direct quick line item form state
-  const [billNo, setBillNo] = useState('')
-  const [inwardNo, setInwardNo] = useState('')
-  const [machineName, setMachineName] = useState('PU')
-  const [itemDescription, setItemDescription] = useState('')
-  const [quantity, setQuantity] = useState<number | string>('1')
-  const [costPerItem, setCostPerItem] = useState<number | string>('')
-  const [isSuccess, setIsSuccess] = useState(false)
 
   const reloadWorkshop = useCallback(() => {
     if (!slug) return
-    const data = expenseService.getWorkshopBySlug(slug)
+    const data = expenseService.getWorkshopBySlug(slug, selectedMonth)
     if (data) {
       setWorkshop(data)
-      const stored = accountsRead<InventoryPurchaseEntry[] | null>(storageKey, null)
-      if (stored) {
-        setEntries(stored)
-        setLoading(false)
-        return
-      }
-      setEntries(data.entries)
+      setEntries(data.entries || [])
     }
     setLoading(false)
-  }, [slug, storageKey])
+  }, [slug, selectedMonth])
 
   useEffect(() => {
     reloadWorkshop()
-  }, [reloadWorkshop])
-
-  // Handle cell edit with live reactive calculation: Amount = Qty * Rate
-  const handleCellChange = (
-    id: string,
-    field: 'itemDescription' | 'quantity' | 'costPerItem',
-    val: string | number
-  ) => {
-    setEntries((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item
-        const updated = { ...item, [field]: val }
-        const q = Number(field === 'quantity' ? val : item.quantity) || 0
-        const r = Number(field === 'costPerItem' ? val : item.costPerItem) || 0
-        updated.totalPrice = Math.round(q * r)
-        return updated
-      })
-    )
-  }
-
-  const handleDeleteRow = (id: string) => {
-    setEntries((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  const handleSave = () => {
-    accountsWrite(storageKey, entries)
-    expenseService.notifyDataChanged()
-    setIsSaved(true)
-    setTimeout(() => setIsSaved(false), 2500)
-  }
-
-  const handleReset = () => {
-    if (confirm('Reset workshop ledger to authentic original records?')) {
-      accountsRemove(storageKey)
-      const data = expenseService.getWorkshopBySlug(slug)
-      if (data) {
-        setEntries(data.entries)
+    const handleSync = () => reloadWorkshop()
+    const handleMonthChange = (e: Event) => {
+      const customEvt = e as CustomEvent<string>
+      if (customEvt.detail && customEvt.detail !== selectedMonth) {
+        setSelectedMonth(customEvt.detail)
       }
-      expenseService.notifyDataChanged()
-      setIsSaved(true)
-      setTimeout(() => setIsSaved(false), 2000)
+    }
+    window.addEventListener('accounts_synced', handleSync)
+    window.addEventListener('accounts_month_changed', handleMonthChange)
+    return () => {
+      window.removeEventListener('accounts_synced', handleSync)
+      window.removeEventListener('accounts_month_changed', handleMonthChange)
+    }
+  }, [reloadWorkshop, selectedMonth])
+
+  const handleSelectMonth = (month: string) => {
+    setSelectedMonth(month)
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('sara_accounts_selected_month', month)
+        window.dispatchEvent(new CustomEvent('accounts_month_changed', { detail: month }))
+      } catch {}
     }
   }
 
@@ -123,42 +77,7 @@ export default function WorkshopSpecificLedgerPage() {
     if (typeof window !== 'undefined') window.print()
   }
 
-  const handleAddDirectItem = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!workshop) return
-    const numQty = parseFloat(quantity as string)
-    const numCost = parseFloat(costPerItem as string)
-    if (!numQty || !numCost || !itemDescription) return
-
-    const fullDesc = machineName ? `${itemDescription} (${machineName})` : itemDescription
-    const newRecord: InventoryPurchaseEntry = {
-      id: `ws-${slug}-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      billNo: billNo || `JOB-${Math.floor(100 + Math.random() * 900)}`,
-      inwardNo: inwardNo || `GP-${Math.floor(7000 + Math.random() * 900)}`,
-      partyName: workshop.workshopName,
-      itemDescription: fullDesc,
-      machineCategory: 'PU',
-      quantity: numQty,
-      costPerItem: numCost,
-      totalPrice: Math.round(numQty * numCost),
-    }
-
-    const updated = [...entries, newRecord]
-    setEntries(updated)
-    accountsWrite(storageKey, updated)
-    expenseService.notifyDataChanged()
-
-    setBillNo('')
-    setInwardNo('')
-    setItemDescription('')
-    setQuantity('1')
-    setCostPerItem('')
-    setIsSuccess(true)
-    setTimeout(() => setIsSuccess(false), 2500)
-  }
-
-  // Reactive formulas & grouping
+  // Reactive calculation: Running balance = previous balance + current item amount
   const { groupedBills, totalPurchases, totalItems, uniqueBillsCount } = useMemo(() => {
     let currentBalance = 0
     let totalPurchasesSum = 0
@@ -271,7 +190,7 @@ export default function WorkshopSpecificLedgerPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
-      {/* 1. Header & Actions */}
+      {/* 1. Header & Actions (Screen Only) */}
       <div className="print:hidden">
         <PageHeader
           title={workshop.workshopName}
@@ -283,495 +202,294 @@ export default function WorkshopSpecificLedgerPage() {
             { label: workshop.workshopName },
           ]}
           actions={
-            <div className="inline-flex shrink-0 items-center gap-2">
-              <Link href="/accounts/workshops" className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800">
-                <ArrowLeft className="size-3.5" />
-                <span>Back to Workshops</span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="btn btn-sm btn-warning d-inline-flex align-items-center gap-1.5 shadow-xs text-dark fw-semibold"
-              >
-                <PlusCircle className="size-4" />
-                <span>Record Job</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsEditing(!isEditing)}
-                className={cn(
-                  'erp-btn-secondary text-xs !min-h-9 !h-9',
-                  isEditing ? 'bg-amber-100 text-amber-900 border-amber-300' : '!text-slate-800'
-                )}
-              >
-                {isEditing ? <Eye className="size-3.5" /> : <Edit3 className="size-3.5" />}
-                <span>{isEditing ? 'View Mode' : 'Edit Cells'}</span>
-              </button>
-              {isEditing && (
+            <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+              {/* Left Action: Back Button */}
+              <div className="flex items-center gap-2">
+                <Link href="/accounts/workshops" className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800 dark:!text-slate-200">
+                  <ArrowLeft className="size-3.5" />
+                  <span>Back to Workshops</span>
+                </Link>
+              </div>
+
+              {/* Right Tools: Month Switcher, Export, Print */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-background border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 shadow-2xs h-9">
+                  <Calendar className="size-3.5 text-muted-foreground" />
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => handleSelectMonth(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-foreground focus:outline-hidden cursor-pointer"
+                  >
+                    <option value="September" className="bg-background text-foreground">September 2026</option>
+                    <option value="August" className="bg-background text-foreground">August 2026</option>
+                    <option value="ALL" className="bg-background text-foreground">All Months</option>
+                  </select>
+                </div>
+
                 <button
                   type="button"
-                  onClick={handleSave}
-                  className="btn btn-sm btn-success d-inline-flex align-items-center gap-1.5 shadow-xs"
+                  onClick={exportCSV}
+                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800 dark:!text-slate-200 cursor-pointer"
                 >
-                  <Save className="size-4" />
-                  <span>Save</span>
+                  <Download className="size-3.5" />
+                  <span>Export CSV</span>
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={exportCSV}
-                className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-              >
-                <Download className="size-3.5" />
-                <span>Export CSV</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-              >
-                <Printer className="size-3.5" />
-                <span>Print</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                title="Reset to Excel Defaults"
-                className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-500 hover:!text-rose-600"
-              >
-                <RotateCcw className="size-3.5" />
-              </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0066cc] hover:bg-[#0052a3] text-white shadow-xs transition-all cursor-pointer !min-h-9 !h-9"
+                >
+                  <Printer className="size-3.5" />
+                  <span>Print Ledger</span>
+                </button>
+              </div>
             </div>
           }
         />
       </div>
 
-      {/* Save Toast Notification */}
-      {isSaved && (
-        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 flex items-center justify-between text-emerald-800 text-xs">
+      {/* 2. Official Printable Workshop Job Ledger Document */}
+      <div className="erp-card bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 sm:p-8 shadow-xs print:border-none print:p-0 print:shadow-none font-sans">
+        {/* Clean Standard Statement Header (No gigantic text or redundant top totals) */}
+        <div className="border-b border-slate-200 dark:border-slate-700 pb-3 mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="size-4 text-emerald-600" />
-            <span className="font-semibold">Workshop ledger changes saved to PostgreSQL database!</span>
-          </div>
-          <span className="text-[11px] text-emerald-600 font-mono">Cost Statement auto-updated</span>
-        </div>
-      )}
-
-      {/* 2. Top Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:hidden">
-        <div className="erp-card p-3 border-l-4 border-l-amber-500">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-            Total Jobs Amount
-          </span>
-          <p className="mt-1 text-lg font-black text-amber-700 font-mono">
-            {formatCurrency(totalPurchases)}
-          </p>
-          <span className="text-[10px] text-slate-400">Total payable (repair)</span>
-        </div>
-
-        <div className="erp-card p-3 border-l-4 border-l-indigo-500">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-            Jobs / Invoices
-          </span>
-          <p className="mt-1 text-lg font-black text-slate-900 font-mono">
-            {formatNumber(uniqueBillsCount)}
-          </p>
-          <span className="text-[10px] text-slate-400">{totalItems} line items</span>
-        </div>
-
-        <div className="erp-card p-3 border-l-4 border-l-blue-500">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-            Specialization
-          </span>
-          <p className="mt-1 text-sm font-bold text-slate-900 truncate">
-            {workshop.type}
-          </p>
-          <span className="text-[10px] text-slate-400">Mechanical & Lathe</span>
-        </div>
-
-        <div className="erp-card p-3 border-l-4 border-l-emerald-500">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-            Current Balance
-          </span>
-          <p className="mt-1 text-lg font-black text-emerald-600 font-mono">
-            {formatCurrency(totalPurchases - (workshop.paidAmount || 0))}
-          </p>
-          <span className="text-[10px] text-slate-400">Net payable balance</span>
-        </div>
-      </div>
-
-      {/* 3. Printable Header */}
-      <div className="hidden print:block text-center border-b pb-4 mb-4">
-        <h1 className="text-2xl font-bold uppercase tracking-wider text-slate-900">SARA TEXTILE</h1>
-        <h2 className="text-base font-bold text-slate-800">{workshop.workshopName} — Workshop Job Ledger</h2>
-        <p className="text-xs font-medium text-slate-500">Specialization: {workshop.type} · Repair & Maintenance</p>
-      </div>
-
-      {/* 4. Quick Add Line Item Form (Print Hidden) */}
-      <div className="erp-card p-4 border border-dashed border-amber-300 bg-amber-50/40 rounded-xl space-y-3 print:hidden">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wrench className="size-4 text-amber-700" />
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Quick Add Repair Job / Part
-            </h3>
-          </div>
-          {isSuccess && (
-            <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-              <CheckCircle2 className="size-3.5" /> Added to ledger & daily inward!
+            <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              {workshop.workshopName}
             </span>
-          )}
-        </div>
-
-        <form onSubmit={handleAddDirectItem} className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
-          <div className="sm:col-span-2">
-            <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">Job / Bill #</label>
-            <input
-              type="text"
-              placeholder="e.g. 242"
-              value={billNo}
-              onChange={(e) => setBillNo(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-mono"
-            />
+            <span className="text-xs text-muted-foreground">• Workshop Job Ledger</span>
+            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              {selectedMonth === 'ALL' ? 'All Months' : `${selectedMonth} 2026`}
+            </span>
+            <span className="text-xs text-slate-400">({workshop.type})</span>
           </div>
 
-          <div className="sm:col-span-2">
-            <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">Gate Pass #</label>
-            <input
-              type="text"
-              placeholder="e.g. 7633"
-              value={inwardNo}
-              onChange={(e) => setInwardNo(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-mono"
-            />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">Machine / Loom</label>
-            <input
-              type="text"
-              placeholder="e.g. PU, Loom 14"
-              value={machineName}
-              onChange={(e) => setMachineName(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
-            />
-          </div>
-
-          <div className="sm:col-span-3">
-            <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">Job Description *</label>
-            <input
-              type="text"
-              placeholder="e.g. Scissor Repaired 9pcs"
-              value={itemDescription}
-              onChange={(e) => setItemDescription(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
-              required
-            />
-          </div>
-
-          <div className="sm:col-span-1">
-            <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">Qty *</label>
-            <input
-              type="number"
-              min="1"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-right font-mono"
-              required
-            />
-          </div>
-
-          <div className="sm:col-span-1">
-            <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">Rate (PKR) *</label>
-            <input
-              type="number"
-              min="0"
-              value={costPerItem}
-              onChange={(e) => setCostPerItem(e.target.value)}
-              placeholder="1000"
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-right font-mono"
-              required
-            />
-          </div>
-
-          <div className="sm:col-span-1 flex items-end">
-            <button
-              type="submit"
-              className="w-full rounded-md bg-amber-600 hover:bg-amber-700 text-white font-semibold py-1 px-2 text-xs flex items-center justify-center gap-1 shadow-xs"
-            >
-              <PlusCircle className="size-3.5" />
-              <span>Add</span>
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* 5. Main Job Ledger Table (Grouped by Bill/Job) */}
-      <div className="erp-card shadow-xs overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/70 px-5 py-3">
-          <div>
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Itemized Workshop Repair Ledger
-            </h2>
-            <p className="text-[11px] text-slate-500">
-              Live Excel Formula: <span className="font-semibold text-slate-700">Amount = Qty × Rate</span> ·{' '}
-              <span className="font-semibold text-slate-700">Running Balance = Previous + Amount</span>
-            </p>
-          </div>
-          <div className="text-right">
-            <span className="text-xs font-medium text-slate-500">Total Workshop Payable:</span>
-            <p className="text-sm font-bold text-amber-700 font-mono">
-              {formatCurrency(totalPurchases)}
-            </p>
+          <div className="text-xs text-muted-foreground font-mono">
+            <span>Jobs Recorded: </span>
+            <span className="font-bold text-foreground">{uniqueBillsCount}</span>
+            <span className="mx-2">•</span>
+            <span>Date: {new Date().toLocaleDateString('en-GB')}</span>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs border border-slate-400 dark:border-slate-600">
+        {/* Clean Date-wise Table with Merged Consecutive Job / Bill Groupings */}
+        <div className="overflow-x-auto rounded-lg border border-slate-400 dark:border-slate-600 shadow-xs">
+          <table className="w-full min-w-[920px] text-left border-collapse text-xs font-mono border border-slate-400 dark:border-slate-600">
             <thead>
               <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold uppercase text-[11px] border-b-2 border-slate-800 dark:border-slate-300">
-                <th className="py-2.5 px-3 text-center w-10 border border-slate-400 dark:border-slate-600">S.No</th>
-                <th className="py-2.5 px-3 w-24 border border-slate-400 dark:border-slate-600">Date</th>
-                <th className="py-2.5 px-3 text-center w-20 border border-slate-400 dark:border-slate-600">Job / Bill #</th>
-                <th className="py-2.5 px-3 text-center w-20 border border-slate-400 dark:border-slate-600 border-r-2 border-r-slate-800 dark:border-r-slate-300">Gate Pass #</th>
-                <th className="py-2.5 px-3 border border-slate-400 dark:border-slate-600">Job / Part Description</th>
-                <th className="py-2.5 px-3 text-right w-16 border border-slate-400 dark:border-slate-600">Qty</th>
-                <th className="py-2.5 px-3 text-right w-24 border border-slate-400 dark:border-slate-600">Rate (PKR)</th>
-                <th className="py-2.5 px-3 text-right w-28 border border-slate-400 dark:border-slate-600">Amount</th>
-                <th className="py-2.5 px-3 text-right w-32 border border-slate-400 dark:border-slate-600 bg-amber-50/30">Running Balance</th>
-                {isEditing && <th className="py-2.5 px-2 text-center w-10 border border-slate-400 dark:border-slate-600 print:hidden">Del</th>}
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2 text-center w-12 min-w-[50px]">S.No</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-center w-24 min-w-[95px]">Date</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2.5 text-center w-20 min-w-[85px]">Job / Bill #</th>
+                <th className="border border-slate-400 dark:border-slate-600 border-r-2 border-r-slate-800 dark:border-r-slate-300 py-2.5 px-2.5 text-center w-20 min-w-[85px]">Gate Pass #</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-4 text-left font-sans min-w-[260px]">Item / Job Description</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-2 text-center w-16 min-w-[65px]">Qty</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-24 min-w-[90px]">Rate (PKR)</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-28 min-w-[110px]">Total Amount</th>
+                <th className="border border-slate-400 dark:border-slate-600 py-2.5 px-3 text-right w-28 min-w-[110px] font-bold">Balance</th>
               </tr>
             </thead>
             <tbody>
               {groupedBills.length === 0 ? (
                 <tr>
-                  <td colSpan={isEditing ? 10 : 9} className="py-8 text-center text-slate-400 border border-slate-400 dark:border-slate-600">
-                    No repair jobs recorded yet for {workshop.workshopName}. Use &quot;Record Job&quot; above to add entry.
+                  <td colSpan={9} className="py-8 text-center text-slate-400 font-sans">
+                    No workshop jobs recorded yet for {workshop.workshopName}. All jobs recorded on Daily Inward Register will automatically sync here.
                   </td>
                 </tr>
               ) : (
                 groupedBills.map((group, groupIdx) => {
-                const rowSpan = group.items.length
-                const isEvenGroup = groupIdx % 2 === 0
+                  const rowSpan = group.items.length
+                  const isEvenGroup = groupIdx % 2 === 0
 
-                return group.items.map((item, itemIdx) => {
-                  const isFirstInBill = itemIdx === 0
-                  const isLastInBill = itemIdx === rowSpan - 1
+                  return group.items.map((item, itemIdx) => {
+                    const isFirstRowOfBill = itemIdx === 0
+                    const isLastRowOfBill = itemIdx === rowSpan - 1
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className={cn(
-                        'transition-colors',
-                        isEvenGroup
-                          ? 'bg-white dark:bg-slate-900'
-                          : 'bg-slate-50/70 dark:bg-slate-800/40',
-                        'hover:bg-amber-50/40 dark:hover:bg-slate-700/50'
-                      )}
-                    >
-                      <td
+                    return (
+                      <tr
+                        key={item.id}
                         className={cn(
-                          'py-2.5 px-3 text-center font-mono font-medium text-slate-600 dark:text-slate-400 border-r-2 border-r-slate-400 dark:border-r-slate-500 border-l border-slate-400 dark:border-slate-600',
-                          isLastInBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          'text-slate-800 dark:text-slate-200 transition-colors',
+                          isEvenGroup
+                            ? 'bg-white dark:bg-slate-900'
+                            : 'bg-slate-50/70 dark:bg-slate-800/40',
+                          'hover:bg-amber-50/40 dark:hover:bg-slate-700/50'
                         )}
                       >
-                        {item.serialNo}
-                      </td>
-
-                      {/* Date */}
-                      {isFirstInBill && (
-                        <td
-                          rowSpan={rowSpan}
-                          className={cn(
-                            'py-3 px-3 font-mono text-center align-middle font-semibold text-slate-800 dark:text-slate-200 border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 whitespace-nowrap',
-                            isEvenGroup ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
-                          )}
-                        >
-                          {group.date}
-                        </td>
-                      )}
-
-                      {/* Bill / Job # */}
-                      {isFirstInBill && (
-                        <td
-                          rowSpan={rowSpan}
-                          className={cn(
-                            'py-3 px-3 text-center font-mono font-semibold align-middle border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200',
-                            isEvenGroup ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
-                          )}
-                        >
-                          <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 shadow-2xs">
-                            {group.billNo ? `#${group.billNo}` : '—'}
-                          </span>
-                          {rowSpan > 1 && (
-                            <span className="block mt-1 text-[10px] font-mono text-slate-500 font-semibold">
-                              ({rowSpan} jobs)
-                            </span>
-                          )}
-                        </td>
-                      )}
-
-                      {/* Gate Pass / Inward # */}
-                      {isFirstInBill && (
-                        <td
-                          rowSpan={rowSpan}
-                          className={cn(
-                            'py-3 px-3 text-center font-mono align-middle font-bold text-[#0066cc] dark:text-sky-400 border-r-2 border-r-slate-800 dark:border-r-slate-300 border-b-2 border-b-slate-800 dark:border-b-slate-200',
-                            isEvenGroup ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/90 dark:bg-slate-800/70'
-                          )}
-                        >
-                          {group.inwardNo ? `#${group.inwardNo}` : '—'}
-                        </td>
-                      )}
-
-                      {/* Job Description (Editable or View) */}
-                      <td
-                        className={cn(
-                          'py-2.5 px-3 font-medium text-slate-900 dark:text-slate-100 border-r border-slate-300 dark:border-slate-600',
-                          isLastInBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={item.itemDescription}
-                            onChange={(e) => handleCellChange(item.id, 'itemDescription', e.target.value)}
-                            className="w-full rounded border border-slate-300 bg-white px-2 py-0.5 text-xs focus:border-amber-500"
-                          />
-                        ) : (
-                          <span>{item.itemDescription}</span>
-                        )}
-                      </td>
-
-                      {/* Quantity */}
-                      <td
-                        className={cn(
-                          'py-2.5 px-3 text-right font-mono border-r border-slate-300 dark:border-slate-600',
-                          isLastInBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => handleCellChange(item.id, 'quantity', e.target.value)}
-                            className="w-16 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs text-right font-mono focus:border-amber-500"
-                          />
-                        ) : (
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">{item.quantity}</span>
-                        )}
-                      </td>
-
-                      {/* Rate */}
-                      <td
-                        className={cn(
-                          'py-2.5 px-3 text-right font-mono border-r border-slate-300 dark:border-slate-600',
-                          isLastInBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.costPerItem}
-                            onChange={(e) => handleCellChange(item.id, 'costPerItem', e.target.value)}
-                            className="w-20 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs text-right font-mono focus:border-amber-500"
-                          />
-                        ) : (
-                          <span className="text-slate-700 dark:text-slate-300">{formatNumber(item.costPerItem)}</span>
-                        )}
-                      </td>
-
-                      {/* Total Amount = Qty * Rate */}
-                      <td
-                        className={cn(
-                          'py-2.5 px-3 text-right font-mono font-bold text-amber-700 dark:text-amber-400 border-r border-slate-300 dark:border-slate-600',
-                          isLastInBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {formatCurrency(item.totalPrice)}
-                      </td>
-
-                      {/* Running Balance = Prev + Amount */}
-                      <td
-                        className={cn(
-                          'py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100 bg-amber-50/20 dark:bg-amber-950/20 border-r border-slate-300 dark:border-slate-600',
-                          isLastInBill
-                            ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
-                            : 'border-b border-b-slate-300 dark:border-b-slate-600'
-                        )}
-                      >
-                        {formatCurrency(item.runningBalance)}
-                      </td>
-
-                      {/* Delete Row button */}
-                      {isEditing && (
+                        {/* S.No */}
                         <td
                           className={cn(
-                            'py-2.5 px-2 text-center print:hidden border-r border-slate-400 dark:border-slate-600',
-                            isLastInBill
+                            'py-2.5 px-2 text-center font-semibold text-slate-600 dark:text-slate-400 min-w-[50px] border-r-2 border-r-slate-400 dark:border-r-slate-500 border-l border-slate-400 dark:border-slate-600',
+                            isLastRowOfBill
                               ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
                               : 'border-b border-b-slate-300 dark:border-b-slate-600'
                           )}
                         >
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteRow(item.id)}
-                            className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                            title="Delete row"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
+                          {item.serialNo}
                         </td>
-                      )}
-                    </tr>
-                  )
+
+                        {/* Date (MERGED BOX for entire bill) */}
+                        {isFirstRowOfBill && (
+                          <td
+                            rowSpan={rowSpan}
+                            className={cn(
+                              'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-3 text-center align-middle font-semibold text-slate-800 dark:text-slate-200 min-w-[95px] whitespace-nowrap',
+                              isEvenGroup
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/90 dark:bg-slate-800/70'
+                            )}
+                          >
+                            {group.date}
+                          </td>
+                        )}
+
+                        {/* Bill / Job No (MERGED BOX for entire bill) */}
+                        {isFirstRowOfBill && (
+                          <td
+                            rowSpan={rowSpan}
+                            className={cn(
+                              'border-r border-slate-400 dark:border-slate-600 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle min-w-[85px]',
+                              isEvenGroup
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/90 dark:bg-slate-800/70'
+                            )}
+                          >
+                            <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shadow-2xs">
+                              #{group.billNo}
+                            </span>
+                            {rowSpan > 1 && (
+                              <span className="block mt-1 text-[10px] font-mono text-slate-500 font-semibold">
+                                ({rowSpan} items)
+                              </span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Inward / Gate Pass No (MERGED BOX for entire bill) */}
+                        {isFirstRowOfBill && (
+                          <td
+                            rowSpan={rowSpan}
+                            className={cn(
+                              'border-r-2 border-r-slate-800 dark:border-r-slate-300 border-b-2 border-b-slate-800 dark:border-b-slate-200 py-3 px-2.5 text-center align-middle text-[#0066cc] dark:text-sky-400 font-bold min-w-[85px]',
+                              isEvenGroup
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/90 dark:bg-slate-800/70'
+                            )}
+                          >
+                            #{group.inwardNo}
+                          </td>
+                        )}
+
+                        {/* Item / Job Description */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-4 font-sans font-medium text-slate-800 dark:text-slate-200 min-w-[260px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {item.itemDescription}
+                        </td>
+
+                        {/* Quantity */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-2 text-center font-bold min-w-[65px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {item.quantity}
+                        </td>
+
+                        {/* Rate */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono min-w-[90px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {formatNumber(item.costPerItem, 0)}
+                        </td>
+
+                        {/* Total Amount for this item */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {formatNumber(item.totalPrice, 0)}
+                        </td>
+
+                        {/* Running Balance */}
+                        <td
+                          className={cn(
+                            'border-r border-slate-300 dark:border-slate-600 py-2 px-3 text-right font-mono font-bold min-w-[110px]',
+                            isLastRowOfBill
+                              ? 'border-b-2 border-b-slate-800 dark:border-b-slate-200'
+                              : 'border-b border-b-slate-300 dark:border-b-slate-600'
+                          )}
+                        >
+                          {formatNumber(item.runningBalance, 0)}
+                        </td>
+                      </tr>
+                    )
+                  })
                 })
-              })
               )}
             </tbody>
-            {entries.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-slate-800 dark:border-slate-200 bg-slate-100 dark:bg-slate-800 font-bold text-xs text-slate-900 dark:text-slate-100">
-                  <td colSpan={5} className="py-3 px-4 text-center uppercase tracking-wide border border-slate-400 dark:border-slate-600">
-                    Grand Total ({entries.length} Job Items · {uniqueBillsCount} Invoices)
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono border border-slate-400 dark:border-slate-600">
-                    {formatNumber(totalItems)}
-                  </td>
-                  <td className="py-3 px-3 text-right text-slate-500 text-[11px] border border-slate-400 dark:border-slate-600">—</td>
-                  <td className="py-3 px-3 text-right font-mono text-amber-800 dark:text-amber-400 font-black border border-slate-400 dark:border-slate-600">
-                    {formatCurrency(totalPurchases)}
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono text-slate-900 dark:text-slate-100 font-black bg-amber-100/50 dark:bg-amber-950/40 border border-slate-400 dark:border-slate-600">
-                    {formatCurrency(totalPurchases)}
-                  </td>
-                  {isEditing && <td className="border border-slate-400 dark:border-slate-600 print:hidden" />}
-                </tr>
-              </tfoot>
-            )}
+            <tfoot>
+              <tr className="border-t-2 border-slate-800 dark:border-slate-200 bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-slate-100 text-xs">
+                <td colSpan={5} className="border border-slate-400 dark:border-slate-600 py-3 px-4 font-sans uppercase min-w-[575px]">
+                  Total Cumulative Repairs for {workshop.workshopName}:
+                </td>
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-2 text-center min-w-[65px]">
+                  {totalItems}
+                </td>
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-3 text-right min-w-[90px]">-</td>
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-3 text-right text-sm min-w-[110px] text-amber-700 dark:text-amber-400 font-bold">
+                  {formatNumber(totalPurchases, 0)}
+                </td>
+                <td className="border border-slate-400 dark:border-slate-600 py-3 px-3 text-right text-sm font-bold min-w-[110px] text-slate-900 dark:text-slate-100">
+                  {formatNumber(totalPurchases, 0)}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
-      </div>
 
-      {/* Record Workshop Job Modal */}
-      <AddWorkshopBillModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSuccess={reloadWorkshop}
-        defaultWorkshopSlug={workshop.slug}
-      />
+        {/* Verification Signatures for Official Print with Generous Signing Gap */}
+        <div className="mt-16 pt-6 border-t border-slate-200 dark:border-slate-700 print:mt-12 pb-4">
+          <div className="grid grid-cols-3 gap-8 text-center text-xs font-sans text-slate-600 dark:text-slate-400">
+            <div className="flex flex-col items-center">
+              <div className="h-14 w-full"></div>
+              <div className="w-full border-t border-slate-400 dark:border-slate-500 pt-2 font-bold text-slate-900 dark:text-slate-100">
+                Mechanical Incharge
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Repair & Fitting Verified</div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="h-14 w-full"></div>
+              <div className="w-full border-t border-slate-400 dark:border-slate-500 pt-2 font-bold text-slate-900 dark:text-slate-100">
+                Mill Accountant
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Ledger Audited</div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="h-14 w-full"></div>
+              <div className="w-full border-t border-slate-400 dark:border-slate-500 pt-2 font-bold text-slate-900 dark:text-slate-100">
+                Workshop Confirmation
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Vendor Stamp / Signature</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

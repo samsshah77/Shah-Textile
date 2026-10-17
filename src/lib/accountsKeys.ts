@@ -12,6 +12,8 @@ export const ACCOUNTS_KEYS = {
   COST_OVERRIDES_PREFIX: 'sara_textile_cost_statement_overrides_v1_',
   TRADER_PREFIX: 'sara_textile_trader_custom_v1_',
   WORKSHOP_PREFIX: 'sara_textile_workshop_custom_v1_',
+  DELETED_TRADERS: 'sara_textile_deleted_traders_v1',
+  DELETED_WORKSHOPS: 'sara_textile_deleted_workshops_v1',
 } as const
 
 const EXACT = new Set<string>([
@@ -22,6 +24,8 @@ const EXACT = new Set<string>([
   ACCOUNTS_KEYS.DAILY_INWARD_MONTHS,
   ACCOUNTS_KEYS.TRADERS_STORE,
   ACCOUNTS_KEYS.WORKSHOPS_STORE,
+  ACCOUNTS_KEYS.DELETED_TRADERS,
+  ACCOUNTS_KEYS.DELETED_WORKSHOPS,
   'sara_textile_cost_statement_editable_v1',
 ])
 

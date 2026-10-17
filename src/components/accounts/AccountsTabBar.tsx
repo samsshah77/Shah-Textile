@@ -15,17 +15,10 @@ export interface AccountsTabItem {
 export const ACCOUNTS_TABS: AccountsTabItem[] = [
   {
     id: 'inventory-inward',
-    label: 'Store Inventory Control',
+    label: 'Daily Inward & Expenses',
     href: '/accounts/inventory-inward',
-    icon: 'bi-boxes',
-    activeCheck: (p) => p === '/accounts/inventory-inward',
-  },
-  {
-    id: 'daily-expense',
-    label: 'Daily Inward Expenses',
-    href: '/accounts/daily-expense',
     icon: 'bi-journal-arrow-down',
-    activeCheck: (p) => p === '/accounts/daily-expense',
+    activeCheck: (p) => p === '/accounts/inventory-inward' || p === '/accounts/daily-expense',
   },
   {
     id: 'traders',
