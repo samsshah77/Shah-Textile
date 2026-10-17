@@ -163,6 +163,8 @@ export function LoomMasterTable({
 
   /** Select value: Active only — ENDED allotment shows as empty so it is not in the list. */
   const dayQualitySelectValue = (loom: LoomMaster) => {
+    const parts = dayQualityParts(loom)
+    if (parts.some((p) => p.isEnded)) return ''
     const id = dayQualityId(loom)
     if (!id) return ''
     const q = qualities.find((item) => item.id === id)
@@ -452,24 +454,44 @@ export function LoomMasterTable({
   }
 
   /** Same-day quality parts for loom (Part 1, Part 2, …) for display. */
-  const dayQualityParts = (loom: LoomMaster): { seg: number; name: string }[] => {
+  const dayQualityParts = (
+    loom: LoomMaster
+  ): { seg: number; name: string; isEnded?: boolean }[] => {
     const day = String(sheetDate || '').slice(0, 10)
     const rows = dayRows
       .filter((e) => e.loomNumber === loom.loomNumber)
       .sort((a, b) => sheetSegmentIndex(a) - sheetSegmentIndex(b))
-    const parts: { seg: number; name: string }[] = []
+    const parts: { seg: number; name: string; isEnded?: boolean }[] = []
     for (const row of rows) {
       if (!namedPose(row.qualityName)) continue
-      // Post-end day (e.g. End 13 → view 14): show "—" not the ended quality name.
-      if (isQualityEndedSheetRow(row)) continue
+      if (isQualityEndedSheetRow(row)) {
+        parts.push({
+          seg: sheetSegmentIndex(row),
+          name: (row.qualityName || '').trim(),
+          isEnded: true,
+        })
+        continue
+      }
       const owner = qualityRunThatOwnsSheetEntry(
         { ...row, date: day || row.date },
         qualities,
         day || row.date
       )
-      if (owner && normalizeQualityStatus(owner.status) === 'ENDED') {
-        const stamp = owner.endedOn ? String(owner.endedOn).slice(0, 10) : ''
-        if (stamp && day && stamp < day) continue
+      if (owner) {
+        const hasLoomEnd = (owner.loomEnds || []).some(
+          (e) => e.loomNumber === loom.loomNumber && String(e.date).slice(0, 10) <= day
+        )
+        const generalEnd = normalizeQualityStatus(owner.status) === 'ENDED' && (!owner.loomEnds || owner.loomEnds.length === 0)
+          ? Boolean(owner.endedOn && String(owner.endedOn).slice(0, 10) <= day)
+          : false
+        if (hasLoomEnd || generalEnd) {
+          parts.push({
+            seg: sheetSegmentIndex(row),
+            name: (row.qualityName || '').trim(),
+            isEnded: true,
+          })
+          continue
+        }
       }
       parts.push({
         seg: sheetSegmentIndex(row),
@@ -477,10 +499,17 @@ export function LoomMasterTable({
       })
     }
     if (parts.length > 0) return parts
+    // Fallback: only if quality was assigned on or before this day:
+    if (loom.qualityAssignedOn && day && day < loom.qualityAssignedOn) {
+      return []
+    }
     const id = dayQualityId(loom)
     if (id) {
       const q = qualities.find((item) => item.id === id)
       if (q && normalizeQualityStatus(q.status) === 'ACTIVE') {
+        if (q.createdOn && day && day < String(q.createdOn).slice(0, 10)) {
+          return []
+        }
         return [{ seg: 1, name: qualityDisplayName(q, qualities) }]
       }
     }
@@ -490,8 +519,8 @@ export function LoomMasterTable({
   const qualityLabel = (loom: LoomMaster) => {
     const parts = dayQualityParts(loom)
     if (parts.length === 0) return '—'
-    if (parts.length === 1) return parts[0].name
-    return parts.map((p) => `P${p.seg}: ${p.name}`).join(' · ')
+    if (parts.length === 1) return parts[0].isEnded ? `${parts[0].name} (Ended)` : parts[0].name
+    return parts.map((p) => `P${p.seg}: ${p.name}${p.isEnded ? ' (Ended)' : ''}`).join(' · ')
   }
 
   const qualityCellClass = (loom: LoomMaster) => {
@@ -514,9 +543,21 @@ export function LoomMasterTable({
       return <span className="fw-semibold text-muted">—</span>
     }
     if (parts.length === 1) {
+      const p = parts[0]
       return (
-        <span className="text-truncate d-block fw-semibold" title={parts[0].name}>
-          {parts[0].name}
+        <span
+          className="text-truncate d-inline-flex align-items-center gap-1 fw-semibold"
+          title={p.isEnded ? `${p.name} (Quality Ended)` : p.name}
+        >
+          <span className={p.isEnded ? 'text-secondary' : ''}>{p.name}</span>
+          {p.isEnded && (
+            <span
+              className="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-1 py-0"
+              style={{ fontSize: '0.62rem' }}
+            >
+              Ended
+            </span>
+          )}
         </span>
       )
     }
@@ -531,7 +572,17 @@ export function LoomMasterTable({
             <span className={`badge ${partBadgeClass(p.seg)}`} style={{ fontSize: '0.58rem' }}>
               P{p.seg}
             </span>
-            <span className="text-truncate fw-semibold flex-grow-1">{p.name}</span>
+            <span className={`text-truncate fw-semibold flex-grow-1 ${p.isEnded ? 'text-secondary' : ''}`}>
+              {p.name}
+            </span>
+            {p.isEnded && (
+              <span
+                className="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-1 py-0"
+                style={{ fontSize: '0.58rem' }}
+              >
+                Ended
+              </span>
+            )}
             {canRemovePart && p.seg > 1 && (
               <button
                 type="button"

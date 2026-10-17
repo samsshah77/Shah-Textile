@@ -17,8 +17,6 @@ import {
   EmployeeSalaryHistoryItem,
 } from '@/types/payroll'
 
-import allEmployeesData from '@/data/all_employees.json'
-
 import {
   INITIAL_STAFF_SALARIES,
   INITIAL_ADVANCES,
@@ -125,11 +123,6 @@ class PayrollService {
   constructor() {
     registerPostHydrateHook(() => {
       try {
-        this.repairHistoricalPayClobberedByProfile()
-      } catch (e) {
-        console.error('[payroll] historical pay repair skipped', e)
-      }
-      try {
         this.repairCorruptedStaffChequeAmounts()
       } catch (e) {
         console.error('[payroll] staff cheque repair skipped', e)
@@ -138,11 +131,6 @@ class PayrollService {
         this.repairCorruptedContractRates()
       } catch (e) {
         console.error('[payroll] contract rate repair skipped', e)
-      }
-      try {
-        this.repairContractAttendanceFromSeed()
-      } catch (e) {
-        console.error('[payroll] contract attendance seed repair skipped', e)
       }
       try {
         this.repairDuplicatePayrollRows()
@@ -332,39 +320,7 @@ class PayrollService {
       changed = true
     }
 
-    // Apply Sep Excel roster: resign/update existing by id, add missing General Wages hires.
-    for (const src of allEmployeesData as unknown as EmployeeProfile[]) {
-      const d = (src.designation || '').toLowerCase()
-      const isFloor = d.includes('weaver') || d.includes('helper')
-      const seedResigned =
-        (src.status || '').toLowerCase() === 'resigned' || /resign/i.test(src.remarks || '')
 
-      const byId = next.findIndex((e) => e.id === src.id)
-      if (byId >= 0) {
-        const cur = next[byId]
-        // Live DB record takes precedence: never overwrite user-managed status, DOJ, or profile with static seed.
-        if ((!cur.salary || cur.salary === 0) && src.salary) {
-          next[byId] = {
-            ...cur,
-            salary: src.salary,
-          }
-          changed = true
-        }
-        continue
-      }
-
-      // New Sep hires (Ubaid / Israr / Dawood) or historical resigned missing from live DB.
-      if (src.id?.startsWith('emp-sep-') || isFloor || seedResigned) {
-        pushMissing(src)
-      } else if (!known.has(normalizeName(src.name))) {
-        // Active General Wages person present in seed but not live roster.
-        const cat = (src.employeeCategory || '').toLowerCase()
-        if (cat === 'weaver' || cat === 'helper' || cat === 'contractor') continue
-        pushMissing(src)
-      }
-    }
-
-    known = names()
 
     const skipName = (name?: string) => {
       const n = (name || '').trim().toLowerCase()
@@ -1634,7 +1590,7 @@ class PayrollService {
 
   /**
    * Fix Staff rows where CHEQUE was corrupted to -LESS ADV (Net Cash became = Gross).
-   * Restores cheque / OT / net from Excel seed for that person+month (Liaquat cheque stays 0).
+   * Clears negative cheque and recalcs without resetting from seeds.
    */
   repairCorruptedStaffChequeAmounts(): number {
     if (this.isClient() && !hydrated) return 0
@@ -1647,33 +1603,7 @@ class PayrollService {
       if (!corrupted) return st
 
       const m = sheetMonthKey(st.month)
-      const seed = INITIAL_STAFF_SALARIES.find(
-        (s) =>
-          sheetMonthKey(s.month) === m &&
-          (namesMatch(s.employeeName, st.employeeName) ||
-            (s.employeeId && st.employeeId && s.employeeId === st.employeeId))
-      )
-
       fixed += 1
-      if (seed) {
-        return this.calculateStaffSalaryRow(
-          {
-            ...st,
-            attendanceDays: seed.attendanceDays,
-            otHours: seed.otHours,
-            otAmount: seed.otAmount,
-            lessAdvance: Math.max(0, Number(seed.lessAdvance) || 0),
-            chequeAmount: Math.max(0, Number(seed.chequeAmount) || 0),
-            basicSalary: seed.basicSalary,
-            ratePerDay: seed.ratePerDay,
-            grossAmount: seed.grossAmount,
-            synopsisAmount: seed.synopsisAmount,
-            netCashAmount: seed.netCashAmount,
-          },
-          daysInCalendarMonth(m)
-        )
-      }
-      // No seed match — at least clear negative cheque and recalc.
       return this.calculateStaffSalaryRow(
         { ...st, chequeAmount: 0, lessAdvance: Math.max(0, adv) },
         daysInCalendarMonth(m)
@@ -1721,63 +1651,14 @@ class PayrollService {
   }
 
   /**
-   * Restore Contract Excel Sheet 4 rows from seed when live attendance was wiped to 0,
-   * or efficiency/net drifted from the Excel snapshot (e.g. Sep Sheet 4).
+   * No-op: do not clobber live contract attendance with static seeds.
    */
   repairContractAttendanceFromSeed(): number {
-    if (this.isClient() && !hydrated) return 0
-    const contracts = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
-    let fixed = 0
-    const next = contracts.map((ct) => {
-      const m = sheetMonthKey(ct.month)
-      const seed = INITIAL_CONTRACT_SALARIES.find(
-        (s) =>
-          sheetMonthKey(s.month) === m &&
-          (namesMatch(s.employeeName, ct.employeeName) ||
-            (s.employeeId && ct.employeeId && s.employeeId === ct.employeeId))
-      )
-      if (!seed || (Number(seed.attendanceDays) || 0) <= 0) return ct
-      const liveAttn = Number(ct.attendanceDays) || 0
-      const seedAttn = Number(seed.attendanceDays) || 0
-      // Restore only wiped attendance — never reset live efficiency/advance edits to seed zeros.
-      const needsRestore =
-        liveAttn <= 0 || (m === '2026-09' && liveAttn !== seedAttn)
-      if (!needsRestore) return ct
-      fixed += 1
-      const dayBase = daysInCalendarMonth(m) === 28 ? 28 : 30
-      const liveEff = Number(ct.efficiencyAmount)
-      const seedEff = Number(seed.efficiencyAmount) || 0
-      return this.calculateContractSalaryRow(
-        {
-          ...ct,
-          salary: seed.salary ?? ct.salary,
-          attendanceDays: seed.attendanceDays,
-          ratePerDay: seed.ratePerDay,
-          ratePerHr: seed.ratePerHr,
-          basicSalary: seed.basicSalary,
-          lateHours: seed.lateHours ?? 0,
-          lateAmount: seed.lateAmount ?? 0,
-          otHours: seed.otHours ?? ct.otHours ?? 0,
-          otAmount: seed.otAmount ?? ct.otAmount ?? 0,
-          // Keep whatever user typed on Contract net sheet (incl. 0 if they cleared it).
-          efficiencyAmount: Number.isFinite(liveEff) ? liveEff : seedEff,
-          advanceDeduction:
-            Number(ct.advanceDeduction) > 0
-              ? ct.advanceDeduction
-              : (seed.advanceDeduction ?? 0),
-          ticketCharges: seed.ticketCharges ?? ct.ticketCharges,
-          grossSalary: seed.grossSalary,
-        },
-        dayBase
-      )
-    })
-    if (fixed > 0) this.saveContractSalaries(next, false)
-    return fixed
+    return 0
   }
 
   /**
-   * Re-add Contract salary rows wiped by the old mid-month (day>15) purge bug,
-   * and ensure every active Contract roster person has a monthly row (no 1-15 rule).
+   * Ensure every active Contract roster person has a monthly row (no 1-15 rule).
    */
   repairMissingContractSheetRows(): number {
     if (this.isClient() && !hydrated) return 0
@@ -1799,7 +1680,6 @@ class PayrollService {
     const months = new Set<string>([
       ...all.map((r) => sheetMonthKey(r.month)),
       this.getActiveSalariedMonth(),
-      ...INITIAL_CONTRACT_SALARIES.map((r) => sheetMonthKey(r.month)),
     ])
 
     let added = 0
@@ -1818,55 +1698,23 @@ class PayrollService {
       for (const emp of roster) {
         if (!employeeBelongsInMonth(emp, m)) continue
         if (hasRow(m, emp)) continue
-        const seed = INITIAL_CONTRACT_SALARIES.find(
-          (s) =>
-            sheetMonthKey(s.month) === m &&
-            (namesMatch(s.employeeName, emp.name) ||
-              (s.employeeId && emp.id && s.employeeId === emp.id))
-        )
         const peers = next.filter((c) => sheetMonthKey(c.month) === m)
         next.push(
           this.calculateContractSalaryRow(
             {
-              ...(seed || {}),
-              id: seed?.id || `ct-${m}-${emp.id}`,
+              id: `ct-${m}-${emp.id}`,
               serialNo: peers.length + 1,
               employeeId: emp.id,
               employeeName: emp.name,
               designation: emp.designation,
-              salary: seed?.salary ?? emp.salary,
-              attendanceDays: seed?.attendanceDays ?? 0,
-              otHours: seed?.otHours ?? 0,
-              lateHours: seed?.lateHours ?? 0,
-              efficiencyAmount: seed?.efficiencyAmount ?? 0,
-              advanceDeduction: seed?.advanceDeduction ?? 0,
-              ticketCharges: seed?.ticketCharges ?? 5,
+              salary: emp.salary,
+              attendanceDays: 0,
+              otHours: 0,
+              lateHours: 0,
+              efficiencyAmount: 0,
+              advanceDeduction: 0,
+              ticketCharges: 5,
               month: m,
-            },
-            days
-          )
-        )
-        added += 1
-        changed = true
-      }
-
-      // Historical seed people still on roster name-match for that month
-      for (const seed of INITIAL_CONTRACT_SALARIES.filter((s) => sheetMonthKey(s.month) === m)) {
-        const emp =
-          findLinkedEmployee(roster, seed.employeeName, seed.designation, seed.employeeId) ||
-          roster.find((e) => namesMatch(e.name, seed.employeeName))
-        if (!emp) continue
-        if (!employeeBelongsInMonth(emp, m)) continue
-        if (hasRow(m, emp)) continue
-        const peers = next.filter((c) => sheetMonthKey(c.month) === m)
-        next.push(
-          this.calculateContractSalaryRow(
-            {
-              ...seed,
-              serialNo: peers.length + 1,
-              employeeId: emp.id,
-              employeeName: emp.name,
-              designation: emp.designation || seed.designation,
             },
             days
           )
@@ -1884,54 +1732,10 @@ class PayrollService {
   }
 
   /**
-   * Restore seed pay on older months when row salary was clobbered to match profile.salary
-   * (e.g. Aug 36000 → 40000 after Sep profile edit + General Wages save).
+   * No-op: do not clobber historical pay with seed.
    */
   repairHistoricalPayClobberedByProfile(): void {
-    if (this.isClient() && !hydrated) return
-    const employees = this.getEmployees()
-    const months = this.listPayrollMonths()
-    const latest = months[months.length - 1] || this.getActiveSalariedMonth()
-
-    const staff = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
-    let staffChanged = false
-    const nextStaff = staff.map((st) => {
-      const m = sheetMonthKey(st.month)
-      if (m >= latest) return st
-      const seed = INITIAL_STAFF_SALARIES.find(
-        (s) =>
-          sheetMonthKey(s.month) === m &&
-          (namesMatch(s.employeeName, st.employeeName) ||
-            (s.employeeId && st.employeeId && s.employeeId === st.employeeId))
-      )
-      if (!seed || Number(seed.salary) === Number(st.salary)) return st
-      const emp = findLinkedEmployee(employees, st.employeeName, st.designation, st.employeeId)
-      if (!emp || Number(st.salary) !== Number(emp.salary)) return st
-      if (Number(seed.salary) === Number(emp.salary)) return st
-      staffChanged = true
-      return this.calculateStaffSalaryRow({ ...st, salary: seed.salary }, daysInCalendarMonth(m))
-    })
-    if (staffChanged) this.saveStaffSalaries(nextStaff, false)
-
-    const contract = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
-    let contractChanged = false
-    const nextContract = contract.map((ct) => {
-      const m = sheetMonthKey(ct.month)
-      if (m >= latest) return ct
-      const seed = INITIAL_CONTRACT_SALARIES.find(
-        (s) =>
-          sheetMonthKey(s.month) === m &&
-          (namesMatch(s.employeeName, ct.employeeName) ||
-            (s.employeeId && ct.employeeId && s.employeeId === ct.employeeId))
-      )
-      if (!seed || Number(seed.salary) === Number(ct.salary)) return ct
-      const emp = findLinkedEmployee(employees, ct.employeeName, ct.designation, ct.employeeId)
-      if (!emp || Number(ct.salary) !== Number(emp.salary)) return ct
-      if (Number(seed.salary) === Number(emp.salary)) return ct
-      contractChanged = true
-      return this.calculateContractSalaryRow({ ...ct, salary: seed.salary }, daysInCalendarMonth(m))
-    })
-    if (contractChanged) this.saveContractSalaries(nextContract, false)
+    return
   }
 
   /**
@@ -4342,7 +4146,6 @@ export function dedupePayrollStore(store: Record<string, unknown>): Record<strin
   try {
     payrollService.repairCorruptedStaffChequeAmounts()
     payrollService.repairCorruptedContractRates()
-    payrollService.repairContractAttendanceFromSeed()
     payrollService.repairDuplicatePayrollRows()
     payrollService.purgeAllJoinersFromPastMonths()
     payrollService.purgeAllResignedFortnightCuts()

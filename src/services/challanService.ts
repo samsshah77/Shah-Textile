@@ -1,69 +1,21 @@
 import { DeliveryChallan, FabricPiece, ChalanFoiItem } from '@/types/challan'
-import { getExcelChallan } from '@/data/productionData'
 import { DailyLoomProductionEntry } from '@/types/production'
 
 const STORAGE_KEY_CHALLANS = 'sara_textile_challans_v3'
 const STORAGE_KEY_CHALAN_FOI = 'sara_textile_chalan_foi_items_v2'
 
 function getDefaultChalanFoiItems(): ChalanFoiItem[] {
-  const excelChallan = getExcelChallan()
-  if (!excelChallan || !excelChallan.items) return []
-
-  return excelChallan.items.map((it: any, index: number) => {
-    const thaan = it.pieces && it.pieces.length > 0 ? it.pieces.length : it.totalMeters > 0 ? 1 : 0
-    const pieceWeight = (it.pieces || []).reduce((s: number, p: any) => s + (p.weightKg || 0), 0)
-    const totalKg = pieceWeight > 0 ? pieceWeight : Number(((it.totalMeters || 0) * 0.25).toFixed(1))
-
-    return {
-      id: `FOI-${index + 1}`,
-      sNo: index + 1,
-      name: it.qualityName || 'Plain Weave',
-      type: it.fabricType || 'Suiting',
-      beam: it.beamNo || `G-${100 + (it.loomNumber || index + 1)}`,
-      swlNo: it.lot && it.lot !== '0' ? `${it.lot} (L#${it.loomNumber || index + 1})` : `Loom #${it.loomNumber || index + 1}`,
-      loomNumber: it.loomNumber || index + 1,
-      thaan,
-      totalMeters: it.totalMeters || 0,
-      totalKg: Number(totalKg.toFixed(1)),
-      gsm: it.gsm || 1.77,
-      remarks: it.totalMeters === 0 ? 'Nil Production' : '',
-    }
-  })
+  return []
 }
 
-function getDefaultChallanFromExcel(): DeliveryChallan {
-  const excelChallan = getExcelChallan()
-  const foiItems = getDefaultChalanFoiItems()
-
-  // Transform items
-  const items = excelChallan.items.map((it: any) => {
-    const pieces: FabricPiece[] = (it.pieces || []).map((p: any) => ({
-      pieceNumber: p.pieceNo,
-      meters: p.meters,
-      weightKg: p.weightKg,
-    }))
-
-    const totalWeightKg = pieces.reduce((s, p) => s + p.weightKg, 0)
-
-    return {
-      loomNumbers: it.loomNumber ? [it.loomNumber] : [],
-      qualityName: it.qualityName,
-      fabricType: it.fabricType,
-      beamNumber: it.beamNo,
-      lotNumber: it.lot || '0',
-      pieces,
-      totalMeters: it.totalMeters,
-      totalWeightKg: Number(totalWeightKg.toFixed(1)),
-    }
-  })
-
+function getDefaultChallan(): DeliveryChallan {
   return {
-    challanNumber: '001414',
-    date: excelChallan.date || '2026-09-09',
+    challanNumber: '000001',
+    date: new Date().toISOString().split('T')[0],
     buyerName: 'Direct Processing Dispatch (Gate Pass)',
     destination: 'CLIENT',
-    foiItems,
-    items,
+    foiItems: [],
+    items: [],
   }
 }
 
@@ -72,8 +24,8 @@ class ChallanService {
   private inMemoryFoiItems: ChalanFoiItem[] = []
 
   constructor() {
-    this.inMemoryChallans = [getDefaultChallanFromExcel()]
-    this.inMemoryFoiItems = getDefaultChalanFoiItems()
+    this.inMemoryChallans = []
+    this.inMemoryFoiItems = []
   }
 
   private isClient(): boolean {

@@ -18,11 +18,7 @@ import {
   employeeBelongsInMonth,
 } from './payrollCalculations'
 import {
-  INITIAL_STAFF_SALARIES,
-  INITIAL_CONTRACT_SALARIES,
-  INITIAL_EFFICIENCY_INCENTIVES,
   INITIAL_EMPLOYEES,
-  getPayrollSeedStore,
 } from '@/data/payrollSeeds'
 import type {
   EmployeeProfile,
@@ -51,28 +47,27 @@ export function applySalariedMonthGenerateToStore(
   const prevAllow = allowServerSheetWrite
 
   memoryStore.clear()
-  const seed = getPayrollSeedStore()
-  for (const [key, value] of Object.entries({ ...seed, ...store })) {
+  for (const [key, value] of Object.entries(store)) {
     memoryStore.set(key, JSON.stringify(value ?? null))
   }
   setHydrated(true)
   setAllowServerSheetWrite(true)
 
   try {
-    let allStaff: StaffSalaryRecord[] = INITIAL_STAFF_SALARIES
+    let allStaff: StaffSalaryRecord[] = []
     try {
-      allStaff = JSON.parse(memoryStore.get(STORAGE_KEYS.STAFF) || '[]')
-      if (!Array.isArray(allStaff) || allStaff.length === 0) allStaff = INITIAL_STAFF_SALARIES
+      const parsed = JSON.parse(memoryStore.get(STORAGE_KEYS.STAFF) || '[]')
+      if (Array.isArray(parsed)) allStaff = parsed
     } catch {
-      allStaff = INITIAL_STAFF_SALARIES
+      allStaff = []
     }
 
-    let allContract: ContractSalaryRecord[] = INITIAL_CONTRACT_SALARIES
+    let allContract: ContractSalaryRecord[] = []
     try {
-      allContract = JSON.parse(memoryStore.get(STORAGE_KEYS.CONTRACT) || '[]')
-      if (!Array.isArray(allContract) || allContract.length === 0) allContract = INITIAL_CONTRACT_SALARIES
+      const parsed = JSON.parse(memoryStore.get(STORAGE_KEYS.CONTRACT) || '[]')
+      if (Array.isArray(parsed)) allContract = parsed
     } catch {
-      allContract = INITIAL_CONTRACT_SALARIES
+      allContract = []
     }
 
     const staffExists = allStaff.some((r) => (r.month || '') === m)
@@ -188,10 +183,10 @@ export function applySalariedMonthGenerateToStore(
 
     let allEff: EfficiencyIncentiveRecord[] = []
     try {
-      allEff = JSON.parse(memoryStore.get(STORAGE_KEYS.EFFICIENCY) || '[]')
-      if (!Array.isArray(allEff) || allEff.length === 0) allEff = INITIAL_EFFICIENCY_INCENTIVES
+      const parsed = JSON.parse(memoryStore.get(STORAGE_KEYS.EFFICIENCY) || '[]')
+      if (Array.isArray(parsed)) allEff = parsed
     } catch {
-      allEff = INITIAL_EFFICIENCY_INCENTIVES
+      allEff = []
     }
 
     let nextEff = allEff
@@ -200,23 +195,25 @@ export function applySalariedMonthGenerateToStore(
       const priorMonths = [
         ...new Set(allEff.map((r) => r.month).filter(Boolean) as string[]),
       ].sort()
-      const sourceMonth = priorMonths[priorMonths.length - 1] || '2026-08'
-      const template = allEff.filter((r) => r.month === sourceMonth)
-      const seeded = template.map((r, i) =>
-        calculateEfficiencyRow({
-          id: `eff-${m}-${i + 1}`,
-          serialNo: i + 1,
-          employeeId: r.employeeId,
-          loom: r.loom,
-          name: r.name,
-          designation: r.designation,
-          efficiencyPercent: 0,
-          salaryEarned: r.salaryEarned || 0,
-          month: m,
-        })
-      )
-      nextEff = [...allEff, ...seeded]
-      newEffCount = seeded.length
+      const sourceMonth = priorMonths[priorMonths.length - 1]
+      const template = sourceMonth ? allEff.filter((r) => r.month === sourceMonth) : []
+      if (template.length > 0) {
+        const seeded = template.map((r, i) =>
+          calculateEfficiencyRow({
+            id: `eff-${m}-${i + 1}`,
+            serialNo: i + 1,
+            employeeId: r.employeeId,
+            loom: r.loom,
+            name: r.name,
+            designation: r.designation,
+            efficiencyPercent: 0,
+            salaryEarned: r.salaryEarned || 0,
+            month: m,
+          })
+        )
+        nextEff = [...allEff, ...seeded]
+        newEffCount = seeded.length
+      }
     }
 
     const meta = {

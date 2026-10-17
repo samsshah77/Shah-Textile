@@ -203,6 +203,7 @@ model FloorLoom {
   isActive        Boolean  @default(true)
   status          String   @default("RUNNING")
   statusSince     String?
+  qualityAssignedOn String?
   qualityId       String?
   weftYarnId      String?
   isTwinBeam      Boolean  @default(false)

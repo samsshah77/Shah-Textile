@@ -131,6 +131,7 @@ const STATEMENTS = [
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "weavePlan" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "weftPlan" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "floor_looms" ADD COLUMN IF NOT EXISTS "statusSince" TEXT`,
+  `ALTER TABLE "floor_looms" ADD COLUMN IF NOT EXISTS "qualityAssignedOn" TEXT`,
   `ALTER TABLE "floor_looms" ADD COLUMN IF NOT EXISTS "isTwinBeam" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "qualityId" TEXT`,
   `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "swLot" TEXT`,
