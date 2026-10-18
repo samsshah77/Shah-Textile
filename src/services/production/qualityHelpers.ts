@@ -459,6 +459,7 @@ export function qualityRunThatOwnsSheetEntry(
   const candidates = catalog.filter((q) => {
     const qClean = qualityNameKey(q.name)
     // Exact cleaned name only — "PARCO" must not steal "PARCO PU" meters (substring false friends).
+    if (eClean !== qClean) return false
     const matchesPick =
       Number(entry.pick) === Number(q.pick) ||
       Boolean(q.specHistory?.some((h) => Number(h.pick) === Number(entry.pick)))
