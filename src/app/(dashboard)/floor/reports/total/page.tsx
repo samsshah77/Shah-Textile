@@ -453,7 +453,7 @@ function ProductionTotalTrackingContent() {
 
   /** Mill calendar fortnights:
    * 1st Fortnight = Days 2 to 16 (15 days: 2nd through 16th).
-   * 2nd Fortnight = Days 17 to end of month, plus Day 1 of the month (16 se 1 cycle: 15/16 days).
+   * 2nd Fortnight = Days 17 to end of month, plus Day 1 of the month (17 se 1 cycle).
    * Sum of 1st FN + 2nd FN perfectly equals Monthly Total without overlap or omission.
    */
   const dayNum = (d: { day?: number | string }, fallbackIndex: number) => {
@@ -679,7 +679,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title="2nd Fortnight"
             value={formatTotal(fortnight2)}
-            subValue={view === 'shifts' ? 'Days 16–1 · Shift A + B' : 'Days 16–1'}
+            subValue={view === 'shifts' ? 'Days 17–1 · Shift A + B' : 'Days 17–1'}
             biIcon="bi-2-circle"
             colorVariant="warning"
           />
@@ -833,7 +833,7 @@ function ProductionTotalTrackingContent() {
                   </th>
                 ))}
                 <th className="px-2 text-end" title="1st Fortnight (Days 2–16)">1st FN (2–16)</th>
-                <th className="px-2 text-end" title="2nd Fortnight (Days 16–1)">2nd FN (16–1)</th>
+                <th className="px-2 text-end" title="2nd Fortnight (Days 17–1)">2nd FN (17–1)</th>
                 <th className="px-2 text-end">Monthly</th>
                 <th className="px-2 text-end">Avg/Day</th>
               </tr>
@@ -959,7 +959,7 @@ function ProductionTotalTrackingContent() {
                     </th>
                   ))}
                   <th className="px-2 text-end" title="1st Fortnight (Days 2–16)">1st FN (2–16)</th>
-                  <th className="px-2 text-end" title="2nd Fortnight (Days 16–1)">2nd FN (16–1)</th>
+                  <th className="px-2 text-end" title="2nd Fortnight (Days 17–1)">2nd FN (17–1)</th>
                   <th className="px-2 text-end">Monthly</th>
                   <th className="px-2 text-end">Avg/Day</th>
                 </tr>

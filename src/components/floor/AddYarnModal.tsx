@@ -36,8 +36,9 @@ export function AddYarnModal({
   existingYarns = [],
 }: AddYarnModalProps) {
   const [yarnType, setYarnType] = useState('')
-  const [lotOrSupplier, setLotOrSupplier] = useState('')
   const [bagCount, setBagCount] = useState<number>(5)
+  /** What is typed in the Bags box — may be empty while typing (e.g. delete "5", type "12"). */
+  const [bagCountText, setBagCountText] = useState('5')
   const [bagKg, setBagKg] = useState<string[]>(Array(5).fill(''))
   const [error, setError] = useState<string | null>(null)
 
@@ -46,8 +47,8 @@ export function AddYarnModal({
   useEffect(() => {
     if (!isOpen) return
     setYarnType('')
-    setLotOrSupplier('')
     setBagCount(5)
+    setBagCountText('5')
     setBagKg(Array(5).fill(''))
     setError(null)
   }, [isOpen])
@@ -115,7 +116,6 @@ export function AddYarnModal({
         date: activeDate || getCalendarToday(),
         bags: bagCount,
         weightKg: totalKg,
-        lotOrSupplier: lotOrSupplier.trim() || undefined,
       }
     )
     onClose()
@@ -188,33 +188,41 @@ export function AddYarnModal({
                   )}
                 </div>
 
-                {/* Lot / Supplier */}
-                <div className="col-12 col-sm-6">
-                  <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                    Lot / Supplier
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="optional"
-                    value={lotOrSupplier}
-                    onChange={(e) => setLotOrSupplier(e.target.value)}
-                  />
-                </div>
-
                 {/* Bags Count */}
                 <div className="col-12 col-sm-6">
                   <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Bags
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     className="form-control"
-                    min={1}
-                    max={MAX_BAGS}
-                    step={1}
-                    value={bagCount}
-                    onChange={(e) => setBags(Number(e.target.value))}
+                    value={bagCountText}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => {
+                      // Allow an empty box while typing; only digits.
+                      const digits = e.target.value.replace(/[^0-9]/g, '').slice(0, 3)
+                      setBagCountText(digits)
+                      if (digits !== '') setBags(Number(digits))
+                    }}
+                    onBlur={() => {
+                      const n = Math.min(MAX_BAGS, Math.max(1, Number(bagCountText) || 1))
+                      setBags(n)
+                      setBagCountText(String(n))
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' && bagCountText !== '') {
+                        // Esc clears the box instead of closing the form.
+                        e.preventDefault()
+                        e.stopPropagation()
+                        e.nativeEvent.stopImmediatePropagation()
+                        setBagCountText('')
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault()
+                        e.currentTarget.blur()
+                        bagInputRefs.current[0]?.focus()
+                      }
+                    }}
                   />
                 </div>
 
@@ -271,6 +279,7 @@ export function AddYarnModal({
                             className="form-control text-end"
                             placeholder="0.00"
                             value={bagKg[i] ?? ''}
+                            onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) => {
                               const v = sanitizeKg(e.target.value)
                               setBagKg((prev) => {
