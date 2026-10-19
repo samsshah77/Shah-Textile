@@ -3,9 +3,6 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import {
   QualityMaster,
-  LoomMaster,
-  BeamMaster,
-  YarnMaster,
   qualityDisplayName,
   mergeSheetEntriesForDate,
   mergedSheetEntriesForTotals,
@@ -38,198 +35,27 @@ import {
   clearQualityAssignFlashIds,
 } from '@/lib/qualityAssignFlash'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
-
-/** Today only: looms from Hold that already carry another live quality. */
-function loomsBusyOnResumeToday(
-  q: QualityMaster,
-  looms: LoomMaster[],
-  qualities: QualityMaster[]
-): { loomNumber: number; qualityName: string }[] {
-  const holdDay = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
-  const loomNums = [
-    ...new Set([...qualityLoomEndsOnDate(q, holdDay), ...qualityLoomEndsOnDate(q)]),
-  ]
-  const out: { loomNumber: number; qualityName: string }[] = []
-  for (const n of loomNums) {
-    const loom = looms.find((l) => l.loomNumber === n)
-    if (!loom?.qualityId || loom.qualityId === q.id) continue
-    const other = qualities.find((x) => x.id === loom.qualityId)
-    out.push({ loomNumber: n, qualityName: other?.name || String(loom.qualityId) })
-  }
-  return out
-}
-
-const DEFAULT_WIDTHS: Record<string, number> = {
-  sr: 46,
-  loom: 168,
-  name: 150,
-  type: 100,
-  warp: 110,
-  weft: 110,
-  weavePlan: 110,
-  reed: 65,
-  pick: 65,
-  width: 65,
-  gsm: 80,
-  start: 118,
-  production: 105,
-  actions: 140,
-  endedOn: 95,
-}
-
-export type QualityStatusFilter = 'ACTIVE' | 'HOLD' | 'ENDED'
-
-export function qualityStatusCounts(qualities: QualityMaster[], sheetDate?: string) {
-  const active = qualities.filter((q) => (q.status ?? 'ACTIVE') === 'ACTIVE').length
-  const day = String(sheetDate || '').slice(0, 10)
-  const hold = qualities.filter((q) => (q.status ?? 'ACTIVE') === 'HOLD').length
-  const ended = qualities.filter((q) => {
-    if (!day) return (q.status ?? 'ACTIVE') === 'ENDED'
-    return qualityEndedVisibleOnDate(q, day)
-  }).length
-  return { active, hold, ended }
-}
-
-export function QualityStatusFilterBar({
-  filter,
-  onChange,
-  counts,
-}: {
-  filter: QualityStatusFilter
-  onChange: (f: QualityStatusFilter) => void
-  counts: ReturnType<typeof qualityStatusCounts>
-}) {
-  return (
-    <div className="btn-group btn-group-sm" role="group" aria-label="Quality status filter">
-      <button
-        type="button"
-        className={`btn ${filter === 'ACTIVE' ? 'btn-success' : 'btn-outline-success'}`}
-        onClick={() => onChange('ACTIVE')}
-      >
-        Active ({counts.active})
-      </button>
-      <button
-        type="button"
-        className={`btn ${filter === 'HOLD' ? 'sara-btn-hold' : 'sara-btn-hold-outline'}`}
-        onClick={() => onChange('HOLD')}
-      >
-        Hold ({counts.hold})
-      </button>
-      <button
-        type="button"
-        className={`btn ${filter === 'ENDED' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-        onClick={() => onChange('ENDED')}
-      >
-        Quality Ends ({counts.ended})
-      </button>
-    </div>
-  )
-}
-
-function formatLoomList(nums: number[]) {
-  if (!nums.length) return 'not assigned'
-  return nums.map((n) => `L#${n}`).join(', ')
-}
-
-function LoomListCell({ nums }: { nums: number[] }) {
-  const label = formatLoomList(nums)
-  const empty = nums.length === 0
-  return (
-    <span
-      className={`small text-truncate d-inline-block ${empty ? 'text-muted fst-italic' : 'fw-semibold'}`}
-      style={{ maxWidth: '100%' }}
-      title={label}
-    >
-      {label}
-    </span>
-  )
-}
-
-function formatShortDate(dateStr?: string | null) {
-  if (!dateStr) return '—'
-  try {
-    const d = new Date(`${dateStr}T12:00:00`)
-    return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
-  } catch {
-    return dateStr
-  }
-}
-
-interface QualityMasterTableProps {
-  qualities: QualityMaster[]
-  onUpdate: (id: string, patch: Partial<QualityMaster>) => boolean | void
-  onAdd: (newQuality?: Partial<QualityMaster>) => string | null | void
-  onDelete: (id: string) => void
-  /** Keep ENDED row for month PDF; fork a new Active run from zero. Returns new Active id. */
-  onReassignEnded: (id: string, createdOn: string) => string | null | void
-  readOnly?: boolean
-  entries?: DailyLoomProductionEntry[]
-  looms?: LoomMaster[]
-  beams?: BeamMaster[]
-  yarn?: YarnMaster[]
-  statusFilter?: QualityStatusFilter
-  /** Switch Active / Hold / Ends tab after End / Hold / Resume / etc. */
-  onStatusFilterChange?: (filter: QualityStatusFilter) => void
-  /** Production day whose looms and meters this table is showing. */
-  sheetDate?: string
-  /** Put Edit / View / Add in the page sticky chrome (not the scrolling card header). */
-  toolbarInChrome?: boolean
-  tableEdit?: boolean
-  onTableEditChange?: (next: boolean) => void
-  viewMode?: TableGridMode
-  onViewModeChange?: (mode: TableGridMode) => void
-  addModalOpen?: boolean
-  onAddModalOpenChange?: (open: boolean) => void
-}
-
-type FlashTone = 'ended' | 'hold' | 'active' | 'reuse'
-
-/** Row stays highlighted this long after assign / End / Hold / etc. */
-const QUALITY_FLASH_MS = 8500
-
-const FLASH_CLASS: Record<FlashTone, string> = {
-  ended: 'sara-quality-flash-ended',
-  hold: 'sara-quality-flash-hold',
-  active: 'sara-quality-flash-active',
-  reuse: 'sara-quality-flash-reuse',
-}
-
-/**
- * Spec (pick, reed, width …) as it was on `sheetDate`.
- * The master row holds only the latest spec; every saved sheet row keeps the spec of its
- * own day. On a past day, show what that day's rows recorded, so a change made on the 19th
- * does not appear on the 15th.
- */
-function qualitiesAsOfDay(
-  qualities: QualityMaster[],
-  dayRows: DailyLoomProductionEntry[],
-  sheetDate: string
-): QualityMaster[] {
-  const day = String(sheetDate || '').slice(0, 10)
-  if (!day || day >= getProductionToday() || dayRows.length === 0) return qualities
-  return qualities.map((q) => {
-    const key = qualityNameKey(q.name)
-    if (!key) return q
-    const sameName = qualities.filter((x) => qualityNameKey(x.name) === key).length
-    const row = dayRows.find(
-      (r) =>
-        qualityNameKey(r.qualityName || '') === key &&
-        Number(r.pick) > 0 &&
-        (sameName === 1 || qualityRunThatOwnsSheetEntry({ ...r, date: day }, qualities, day)?.id === q.id)
-    )
-    if (!row) return q
-    return {
-      ...q,
-      pick: Number(row.pick) || q.pick,
-      reed: Number(row.reed) || q.reed,
-      widthInch: Number(row.widthInch) || q.widthInch,
-      gsm: row.gsm != null && Number(row.gsm) > 0 ? Number(row.gsm) : q.gsm,
-      fabricType: row.fabricType || q.fabricType,
-      warpYarn: row.warpYarn || q.warpYarn,
-      weftYarn: row.weftYarn || q.weftYarn,
-    }
-  })
-}
+import { QUALITY_MASTER_CSS } from '@/components/floor/quality/qualityMasterStyles'
+import {
+  AddQualityModal,
+  ADD_QUALITY_FIELD_ORDER,
+} from '@/components/floor/quality/AddQualityModal'
+// Named (not `export *`): Next.js does not allow `export *` in a 'use client' file.
+export { qualityStatusCounts, QualityStatusFilterBar, type QualityStatusFilter } from '@/components/floor/quality/qualityMasterParts'
+import type {
+  QualityMasterTableProps,
+  FlashTone,
+} from '@/components/floor/quality/qualityMasterParts'
+import {
+  qualitiesAsOfDay,
+  DEFAULT_WIDTHS,
+  qualityStatusCounts,
+  QUALITY_FLASH_MS,
+  FLASH_CLASS,
+  formatShortDate,
+  loomsBusyOnResumeToday,
+  LoomListCell,
+} from '@/components/floor/quality/qualityMasterParts'
 
 export function QualityMasterTable({
   qualities: qualitiesLatest,
@@ -950,17 +776,7 @@ export function QualityMasterTable({
     window.location.assign(`/floor/reports/total?${qs.toString()}`)
   }
 
-  const addFormFieldOrder = [
-    'name',
-    'fabricType',
-    'widthInch',
-    'warpYarn',
-    'weftYarn',
-    'weavePlan',
-    'reed',
-    'pick',
-    'gsm',
-  ] as const
+  const addFormFieldOrder = ADD_QUALITY_FIELD_ORDER
 
   const focusAddFormField = useCallback((name: string) => {
     const el = document.querySelector<HTMLElement>(`[data-add-q-field="${name}"]`)
@@ -1068,75 +884,7 @@ export function QualityMasterTable({
 
   return (
     <div className="card">
-      <style>{`
-        /* Flat soft row tint — one solid color, no per-cell accent stripes */
-        .sara-quality-flash-ended,
-        .sara-quality-flash-ended.master-grid-card,
-        li.sara-quality-flash-ended {
-          background-color: var(--bs-danger-bg-subtle, #f8d7da) !important;
-          box-shadow: none !important;
-        }
-        tr.sara-quality-flash-ended > td {
-          background-color: var(--bs-danger-bg-subtle, #f8d7da) !important;
-          border-color: var(--bs-danger-bg-subtle, #f8d7da) !important;
-          box-shadow: none !important;
-        }
-        .sara-quality-flash-hold,
-        .sara-quality-flash-hold.master-grid-card,
-        li.sara-quality-flash-hold {
-          background-color: var(--bs-warning-bg-subtle, #fff3cd) !important;
-          box-shadow: none !important;
-        }
-        tr.sara-quality-flash-hold > td {
-          background-color: var(--bs-warning-bg-subtle, #fff3cd) !important;
-          border-color: var(--bs-warning-bg-subtle, #fff3cd) !important;
-          box-shadow: none !important;
-        }
-        .sara-quality-flash-active,
-        .sara-quality-flash-active.master-grid-card,
-        li.sara-quality-flash-active {
-          background-color: var(--bs-success-bg-subtle, #d1e7dd) !important;
-          box-shadow: none !important;
-        }
-        tr.sara-quality-flash-active > td {
-          background-color: var(--bs-success-bg-subtle, #d1e7dd) !important;
-          border-color: var(--bs-success-bg-subtle, #d1e7dd) !important;
-          box-shadow: none !important;
-        }
-        .sara-quality-flash-reuse,
-        .sara-quality-flash-reuse.master-grid-card,
-        li.sara-quality-flash-reuse {
-          background-color: var(--bs-info-bg-subtle, #cff4fc) !important;
-          box-shadow: none !important;
-        }
-        tr.sara-quality-flash-reuse > td {
-          background-color: var(--bs-info-bg-subtle, #cff4fc) !important;
-          border-color: var(--bs-info-bg-subtle, #cff4fc) !important;
-          box-shadow: none !important;
-        }
-        /* HOLD on past Active days (was running then) — history only, not Resume. */
-        .sara-quality-held-history,
-        .sara-quality-held-history.master-grid-card,
-        li.sara-quality-held-history {
-          background-color: rgba(253, 126, 20, 0.22) !important;
-          box-shadow: inset 4px 0 0 #fd7e14 !important;
-          opacity: 0.92;
-        }
-        tr.sara-quality-held-history > td {
-          background-color: rgba(253, 126, 20, 0.2) !important;
-        }
-        /* ENDED on past Active days — muted slate history bg. */
-        .sara-quality-ended-history,
-        .sara-quality-ended-history.master-grid-card,
-        li.sara-quality-ended-history {
-          background-color: rgba(108, 117, 125, 0.18) !important;
-          box-shadow: inset 4px 0 0 #6c757d !important;
-          opacity: 0.92;
-        }
-        tr.sara-quality-ended-history > td {
-          background-color: rgba(108, 117, 125, 0.16) !important;
-        }
-      `}</style>
+      <style>{QUALITY_MASTER_CSS}</style>
       <div className="card-header d-flex flex-row flex-wrap gap-2 justify-content-between align-items-center">
         <div className="min-w-0">
           <h3 className="card-title mb-0">{cardTitle}</h3>
@@ -1870,224 +1618,13 @@ export function QualityMasterTable({
 
       {/* Add Quality Modal Dialog */}
       {isAddModalOpen && (
-        <div
-          className="modal fade show d-block"
-          tabIndex={-1}
-          role="dialog"
-          aria-modal="true"
-          style={{
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(3px)',
-            zIndex: 1055,
-          }}
-        >
-          <div
-            className="modal-dialog modal-dialog-centered modal-dialog-scrollable mx-2 mx-sm-auto my-2"
-            style={{
-              maxWidth: 560,
-              width: '100%',
-              maxHeight: 'min(88dvh, 720px)',
-              marginTop: 'auto',
-              marginBottom: 'auto',
-            }}
-          >
-            <div
-              className="modal-content border-0 shadow-lg d-flex flex-column"
-              style={{
-                borderRadius: '14px',
-                overflow: 'hidden',
-                maxHeight: 'min(88dvh, 720px)',
-              }}
-            >
-              <div className="modal-header bg-light py-3 px-4 border-bottom flex-shrink-0">
-                <div className="d-flex align-items-center gap-2">
-                  <span className="badge bg-primary px-2.5 py-1.5 fs-7">
-                    <i className="bi bi-tags me-1" /> Quality
-                  </span>
-                  <h5 className="modal-title fs-6 fw-bold mb-0">Add Quality</h5>
-                </div>
-                <button
-                  type="button"
-                  className="btn-close"
-                  aria-label="Close"
-                  onClick={() => setIsAddModalOpen(false)}
-                />
-              </div>
-              <form
-                onSubmit={handleCreateQuality}
-                className="sara-add-beam-form d-flex flex-column flex-grow-1"
-                style={{ minHeight: 0 }}
-              >
-                <div
-                  className="modal-body p-4"
-                  style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: '1 1 auto' }}
-                >
-                  <div className="row g-3">
-                    <div className="col-12">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Quality Name <span className="text-danger">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        autoFocus
-                        data-add-q-field="name"
-                        className="form-control"
-                        placeholder="e.g. PARCOPV, EVEREST"
-                        value={addForm.name}
-                        onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'name')}
-                      />
-                    </div>
-
-                    <div className="col-md-6">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Fabric Type
-                      </label>
-                      <select
-                        data-add-q-field="fabricType"
-                        className="form-select"
-                        value={normalizeFabricType(addForm.fabricType)}
-                        onChange={(e) => setAddForm({ ...addForm, fabricType: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'fabricType')}
-                      >
-                        {QUALITY_FABRIC_TYPES.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="col-md-6">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Width (Inches)
-                      </label>
-                      <input
-                        type="number"
-                        data-add-q-field="widthInch"
-                        className="form-control"
-                        placeholder="e.g. 66"
-                        value={addForm.widthInch}
-                        onChange={(e) => setAddForm({ ...addForm, widthInch: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'widthInch')}
-                      />
-                    </div>
-
-                    <div className="col-md-6">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Warp Yarn
-                      </label>
-                      <input
-                        type="text"
-                        list="quality-warp-stock"
-                        data-add-q-field="warpYarn"
-                        className="form-control"
-                        placeholder="Beam stock se warp likho"
-                        value={addForm.warpYarn}
-                        onChange={(e) => setAddForm({ ...addForm, warpYarn: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'warpYarn')}
-                      />
-                    </div>
-
-                    <div className="col-md-6">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Weft Yarn
-                      </label>
-                      <input
-                        type="text"
-                        list="quality-weft-stock"
-                        data-add-q-field="weftYarn"
-                        className="form-control"
-                        placeholder="Yarn stock se weft likho"
-                        value={addForm.weftYarn}
-                        onChange={(e) => setAddForm({ ...addForm, weftYarn: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'weftYarn')}
-                      />
-                    </div>
-
-                    <div className="col-md-4">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Weave Plan
-                      </label>
-                      <input
-                        type="text"
-                        data-add-q-field="weavePlan"
-                        className="form-control"
-                        placeholder="e.g. 2/1 Twill"
-                        value={addForm.weavePlan}
-                        onChange={(e) => setAddForm({ ...addForm, weavePlan: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'weavePlan')}
-                      />
-                    </div>
-
-                    <div className="col-md-4">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Reed
-                      </label>
-                      <input
-                        type="number"
-                        data-add-q-field="reed"
-                        className="form-control"
-                        placeholder="e.g. 120"
-                        value={addForm.reed}
-                        onChange={(e) => setAddForm({ ...addForm, reed: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'reed')}
-                      />
-                    </div>
-
-                    <div className="col-md-4">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        Pick
-                      </label>
-                      <input
-                        type="number"
-                        data-add-q-field="pick"
-                        className="form-control"
-                        placeholder="e.g. 60"
-                        value={addForm.pick}
-                        onChange={(e) => setAddForm({ ...addForm, pick: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'pick')}
-                      />
-                    </div>
-
-                    <div className="col-md-6">
-                      <label className="form-label small fw-semibold sara-add-beam-label mb-1">
-                        GSM (2 Decimals)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        data-add-q-field="gsm"
-                        className="form-control"
-                        placeholder="e.g. 1.77"
-                        value={addForm.gsm}
-                        onChange={(e) => setAddForm({ ...addForm, gsm: e.target.value })}
-                        onKeyDown={(e) => handleAddFormKeyDown(e, 'gsm')}
-                      />
-                    </div>
-                  </div>
-                  <div className="form-text small mt-2 mb-0">
-                    Enter / → next · Ctrl+Enter save · Esc close
-                  </div>
-                </div>
-
-                <div className="modal-footer bg-light px-4 py-3 border-top flex-shrink-0">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary"
-                    onClick={() => setIsAddModalOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-sm btn-primary px-3">
-                    <i className="bi bi-plus-lg me-1" /> Add Quality
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+        <AddQualityModal
+          addForm={addForm}
+          setAddForm={setAddForm}
+          handleAddFormKeyDown={handleAddFormKeyDown}
+          handleCreateQuality={handleCreateQuality}
+          setIsAddModalOpen={setIsAddModalOpen}
+        />
       )}
       <datalist id="quality-warp-stock">
         {warpOptions.map((name) => (

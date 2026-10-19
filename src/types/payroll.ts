@@ -48,10 +48,17 @@ export interface EmployeeProfile {
   overtimeShifts?: number;
   remarks?: string; // e.g. "Resignation 31 Oct 2022" or "Rejoining 08 Jun-21"
   /**
-   * Contractors only: how they are paid. FORTNIGHTLY = two sheets (1–15 and 16–end),
-   * MONTHLY = one sheet for the whole month (1–30/31). Missing = FORTNIGHTLY.
+   * Contractors only (old setting, still read for profiles saved before contractorBasis /
+   * paidMidMonth existed). FORTNIGHTLY → paid in 1–15 too; MONTHLY → month end only.
    */
   payCycle?: 'FORTNIGHTLY' | 'MONTHLY';
+  /** Contractors only: BILL = paid against a bill; SALARY = fixed monthly salary. */
+  contractorBasis?: 'BILL' | 'SALARY';
+  /**
+   * Contractors only: also gets a 1–15 payment. Every contractor is on the 1–30/31
+   * (month end) sheet; this decides whether they are on the 1–15 sheet as well.
+   */
+  paidMidMonth?: boolean;
   /** Profile photo URL — optional; UI shows initials avatar until set. */
   photoUrl?: string;
   customFields?: Record<string, string | number>;

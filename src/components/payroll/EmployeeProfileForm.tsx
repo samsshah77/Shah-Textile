@@ -1,5 +1,6 @@
 'use client'
 
+import { contractorBasis, contractorPaidMidMonth } from '@/services/payroll/contractorPlan'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -34,7 +35,7 @@ export const FORM_KINDS = [
   { id: 'salaried' as const, label: 'Staff / Company Contract', hint: 'Monthly salary' },
   { id: 'weaver' as const, label: 'Weaver', hint: 'Daily wage' },
   { id: 'helper' as const, label: 'Helper / Winder', hint: 'Daily wage' },
-  { id: 'contractor' as const, label: 'Contractor', hint: 'Fortnightly ya Monthly' },
+  { id: 'contractor' as const, label: 'Contractor', hint: 'Bill ya Fix Salary' },
 ]
 
 export type FormKind = (typeof FORM_KINDS)[number]['id']
@@ -101,13 +102,15 @@ export function EmployeeProfileForm({
   const [status, setStatus] = useState<EmployeeStatus>('Active')
   const [resignedAt, setResignedAt] = useState('')
   const [advanceEligible, setAdvanceEligible] = useState(false)
-  const [payCycle, setPayCycle] = useState<'FORTNIGHTLY' | 'MONTHLY'>('FORTNIGHTLY')
+  const [contractorBasisValue, setContractorBasisValue] = useState<'BILL' | 'SALARY'>('SALARY')
+  const [paidMidMonth, setPaidMidMonth] = useState(false)
   const [remarks, setRemarks] = useState('')
 
   const loadCreateDefaults = () => {
     setEditingEmployee(null)
     setFormKind('salaried')
-    setPayCycle('FORTNIGHTLY')
+    setContractorBasisValue('SALARY')
+    setPaidMidMonth(false)
     setName('')
     setFatherName('')
     setCnic('')
@@ -172,7 +175,8 @@ export function EmployeeProfileForm({
     setStatus(emp.status || 'Active')
     setResignedAt(resolveResignedAt(emp) || '')
     setAdvanceEligible(Boolean(emp.advanceEligible || emp.advance))
-    setPayCycle(emp.payCycle === 'MONTHLY' ? 'MONTHLY' : 'FORTNIGHTLY')
+    setContractorBasisValue(contractorBasis(emp))
+    setPaidMidMonth(contractorPaidMidMonth(emp))
     setRemarks(emp.remarks || '')
   }
 
@@ -343,7 +347,10 @@ export function EmployeeProfileForm({
       resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
       advanceEligible,
       advance: advanceEligible,
-      payCycle: formKind === 'contractor' ? payCycle : undefined,
+      contractorBasis: formKind === 'contractor' ? contractorBasisValue : undefined,
+      paidMidMonth: formKind === 'contractor' ? paidMidMonth : undefined,
+      // Kept in step for anything still reading the old field.
+      payCycle: formKind === 'contractor' ? (paidMidMonth ? ('FORTNIGHTLY' as const) : ('MONTHLY' as const)) : undefined,
       remarks,
     }
 
@@ -758,21 +765,32 @@ export function EmployeeProfileForm({
           )}
 
           {formKind === 'contractor' && (
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold text-slate-700">Payment cycle *</span>
-              <select
-                className={inputClass}
-                disabled={readOnly}
-                value={payCycle}
-                onChange={(e) => setPayCycle(e.target.value === 'MONTHLY' ? 'MONTHLY' : 'FORTNIGHTLY')}
-              >
-                <option value="FORTNIGHTLY">Fortnightly — 1–15 aur 16–31</option>
-                <option value="MONTHLY">Monthly — 1–30/31 (poora mahina)</option>
-              </select>
+            <div className="block space-y-1">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-700">Payment type *</span>
+                <select
+                  className={inputClass}
+                  disabled={readOnly}
+                  value={contractorBasisValue}
+                  onChange={(e) => setContractorBasisValue(e.target.value === 'BILL' ? 'BILL' : 'SALARY')}
+                >
+                  <option value="SALARY">Fix Salary — 1–30/31</option>
+                  <option value="BILL">Bill — amount bill ke mutabiq</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 pt-1 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  disabled={readOnly}
+                  checked={paidMidMonth}
+                  onChange={(e) => setPaidMidMonth(e.target.checked)}
+                />
+                1–15 mein bhi payment (1–15 sheet par bhi aaye ga)
+              </label>
               <span className="block text-[11px] text-slate-500">
-                Contractors sheet par yeh contractor isi cycle mein aayega.
+                Har contractor 1–30/31 (month end) sheet par aata hai.
               </span>
-            </label>
+            </div>
           )}
 
           <label className="block space-y-1">

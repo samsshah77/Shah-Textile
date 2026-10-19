@@ -5,7 +5,11 @@ import {
   dbPayrollGetAll,
   dbPayrollIsEmpty,
   dbPayrollSave,
+  dbPayrollVersion,
+  dbPayrollVersions,
 } from '@/server/payrollDb'
+import { PayrollGuardError, assertFreshVersion, keepLockedMonths } from '@/server/payrollGuards'
+import { sameJson } from '@/server/stableJson'
 import {
   getPayrollSeedStore,
   integrateRosterRespectingTombstones,
@@ -47,30 +51,21 @@ export async function GET(req: NextRequest) {
       for (const [key, value] of missing) store[key] = value
     }
 
-    const repairedKeys = integrateRosterRespectingTombstones(store)
-    if (Object.keys(repairedKeys).length > 0) {
-      await Promise.all(
-        Object.entries(repairedKeys).map(([key, value]) => dbPayrollSave(key, value))
-      )
-      for (const [key, value] of Object.entries(repairedKeys)) store[key] = value
+    // Repairs below write ONLY when the content really changes — a no-op write would
+    // bump the key's version and make other open tabs look out of date.
+    const saveIfChanged = async (patch: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(patch)) {
+        if (sameJson(store[key], value)) continue
+        await dbPayrollSave(key, value)
+        store[key] = value
+      }
     }
-
-    const projected = projectProfilesOntoSheets(store)
-    await Promise.all(
-      Object.entries(projected).map(([key, value]) => dbPayrollSave(key, value))
-    )
-    for (const [key, value] of Object.entries(projected)) store[key] = value
-
+    await saveIfChanged(integrateRosterRespectingTombstones(store))
+    await saveIfChanged(projectProfilesOntoSheets(store))
     // Live self-heal: drop same person twice in one month (mirror ∪ DB merge by id).
-    const deduped = dedupePayrollStore(store)
-    if (Object.keys(deduped).length > 0) {
-      await Promise.all(
-        Object.entries(deduped).map(([key, value]) => dbPayrollSave(key, value))
-      )
-      for (const [key, value] of Object.entries(deduped)) store[key] = value
-    }
+    await saveIfChanged(dedupePayrollStore(store))
 
-    return NextResponse.json({ ok: true, store })
+    return NextResponse.json({ ok: true, store, versions: await dbPayrollVersions() })
   } catch (err) {
     console.error('[payroll/bootstrap]', err)
     return NextResponse.json(
@@ -107,11 +102,33 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `Unknown key: ${key}` }, { status: 400 })
     }
 
+    // 1. Built on an older copy than the database has? (other tab / computer saved since)
+    assertFreshVersion(body?.baseVersion, await dbPayrollVersion(key))
+    // 2. Locked months may not change.
     const before = await dbPayrollGet(key)
-    await dbPayrollSave(key, value)
-    await writeAudit({ req, actor, module: 'payroll', action: 'save', entityKey: key, before, after: value })
-    return NextResponse.json({ ok: true })
+    const meta = await dbPayrollGet(STORAGE_KEYS.HR_META)
+    const { value: toSave, keptMonths } = keepLockedMonths(before, value, meta, key === STORAGE_KEYS.HR_META)
+    const lockedNote =
+      keptMonths.length > 0
+        ? `Locked month (${keptMonths.join(', ')}) ki rows nahi badli gayin — baqi save ho gaya.`
+        : undefined
+
+    if (sameJson(before, toSave)) {
+      return NextResponse.json({ ok: true, version: await dbPayrollVersion(key), lockedNote })
+    }
+    await dbPayrollSave(key, toSave)
+    await writeAudit({
+      req, actor, module: 'payroll', action: 'save', entityKey: key, before, after: toSave,
+      meta: keptMonths.length ? { lockedMonthsKept: keptMonths } : undefined,
+    })
+    return NextResponse.json({ ok: true, version: await dbPayrollVersion(key), lockedNote })
   } catch (err) {
+    if (err instanceof PayrollGuardError) {
+      return NextResponse.json(
+        { ok: false, blocked: true, error: err.message },
+        { status: err.status }
+      )
+    }
     console.error('[payroll/store PUT]', err)
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : 'Save failed' },

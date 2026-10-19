@@ -32,3 +32,16 @@ export async function dbPayrollIsEmpty(): Promise<boolean> {
   const count = await prisma.payrollStore.count()
   return count === 0
 }
+
+/** Last-change time of every key (ISO). Used for the "saved elsewhere" check. */
+export async function dbPayrollVersions(): Promise<Record<string, string>> {
+  const rows = await prisma.payrollStore.findMany({ select: { key: true, updatedAt: true } })
+  const out: Record<string, string> = {}
+  for (const r of rows) out[r.key] = r.updatedAt.toISOString()
+  return out
+}
+
+export async function dbPayrollVersion(key: string): Promise<string | null> {
+  const row = await prisma.payrollStore.findUnique({ where: { key }, select: { updatedAt: true } })
+  return row ? row.updatedAt.toISOString() : null
+}

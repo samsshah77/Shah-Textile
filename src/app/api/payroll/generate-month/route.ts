@@ -5,6 +5,7 @@ import { isAccountsController } from '@/lib/accountsAccess'
 import { dbPayrollGetAll, dbPayrollSave } from '@/server/payrollDb'
 import { writeAudit } from '@/server/auditLog'
 import { takeSnapshot } from '@/server/dbSnapshot'
+import { lockedMonthsFromMeta } from '@/server/payrollGuards'
 import {
   STORAGE_KEYS,
   applySalariedMonthGenerateToStore,
@@ -45,6 +46,12 @@ export async function POST(req: NextRequest) {
     }
 
     const store = await dbPayrollGetAll()
+    if (lockedMonthsFromMeta(store[STORAGE_KEYS.HR_META]).has(month)) {
+      return NextResponse.json(
+        { ok: false, error: `${month} locked hai — generate se pehle unlock karein.` },
+        { status: 423 }
+      )
+    }
     const storeBefore = structuredClone(store)
     const result = applySalariedMonthGenerateToStore(store, month)
     if (!result.ok) {

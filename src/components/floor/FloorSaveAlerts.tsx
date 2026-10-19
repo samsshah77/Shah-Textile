@@ -8,7 +8,7 @@ type Problem = { id: number; status: number; message: string }
  * Shows a red banner whenever the server refuses a floor save (data-safety guard,
  * approval lock, or view-only access), so nobody walks away thinking it was saved.
  */
-export function FloorSaveAlerts() {
+export function FloorSaveAlerts({ eventName = 'floor:save-problem' }: { eventName?: string } = {}) {
   const [problems, setProblems] = useState<Problem[]>([])
 
   useEffect(() => {
@@ -21,9 +21,9 @@ export function FloorSaveAlerts() {
         return [...prev.slice(-2), { id: ++seq, status: detail.status, message: detail.message }]
       })
     }
-    window.addEventListener('floor:save-problem', onProblem)
-    return () => window.removeEventListener('floor:save-problem', onProblem)
-  }, [])
+    window.addEventListener(eventName, onProblem)
+    return () => window.removeEventListener(eventName, onProblem)
+  }, [eventName])
 
   if (problems.length === 0) return null
 
@@ -59,7 +59,7 @@ export function FloorSaveAlerts() {
             fontSize: 14,
           }}
         >
-          <strong style={{ whiteSpace: 'nowrap' }}>Not saved</strong>
+          <strong style={{ whiteSpace: 'nowrap' }}>{p.status === 200 ? 'Note' : 'Not saved'}</strong>
           <span style={{ flex: 1 }}>{p.message}</span>
           <button
             type="button"

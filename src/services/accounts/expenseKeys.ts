@@ -1,0 +1,7 @@
+/** Storage keys for the accounts sheets kept by expenseService. */
+import { ACCOUNTS_KEYS } from '@/lib/accountsKeys'
+
+export const STORAGE_KEY_PETTY_CASH = ACCOUNTS_KEYS.PETTY_CASH
+export const STORAGE_KEY_INVENTORY_PURCHASE = ACCOUNTS_KEYS.INVENTORY_PURCHASE
+export const STORAGE_KEY_COST_STATEMENT = ACCOUNTS_KEYS.COST_STATEMENT_PREFIX.slice(0, -1)
+export const STORAGE_KEY_COST_OVERRIDES = ACCOUNTS_KEYS.COST_OVERRIDES_PREFIX.slice(0, -1)

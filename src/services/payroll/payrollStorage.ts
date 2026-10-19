@@ -65,8 +65,47 @@ export function writeLocalMirror(key: string, value: unknown): void {
   if (!isPayrollClient() || !LOCAL_MIRROR_KEYS.has(key)) return
   try {
     localStorage.setItem(localMirrorKey(key), JSON.stringify(value))
+    // Marks the browser copy as "not yet confirmed by the server" (cleared on a good save).
+    localStorage.setItem(mirrorDirtyKey(key), String(Date.now()))
   } catch {
     // ignore quota / private mode
+  }
+}
+
+function mirrorDirtyKey(key: string): string {
+  return `sara_payroll_mirror_dirty_${key}`
+}
+
+function markMirrorSynced(key: string): void {
+  if (!isPayrollClient()) return
+  try {
+    localStorage.removeItem(mirrorDirtyKey(key))
+  } catch {
+    // ignore
+  }
+}
+
+/** Time (ms) the browser copy was changed without a confirmed server save, else null. */
+function mirrorDirtySince(key: string): number | null {
+  if (!isPayrollClient()) return null
+  try {
+    const raw = localStorage.getItem(mirrorDirtyKey(key))
+    const n = raw ? Number(raw) : NaN
+    return Number.isFinite(n) ? n : null
+  } catch {
+    return null
+  }
+}
+
+/** Server version (last change time) of each key, as loaded / last saved by this tab. */
+export const serverVersions = new Map<string, string>()
+
+function notifyPayrollSaveProblem(message: string, status: number): void {
+  if (!isPayrollClient()) return
+  try {
+    window.dispatchEvent(new CustomEvent('payroll:save-problem', { detail: { status, message } }))
+  } catch {
+    // ignore
   }
 }
 
@@ -82,8 +121,18 @@ export function readLocalMirror(key: string): unknown | null {
 }
 
 const lastPersistedValue = new Map<string, string>()
+/** Saves of one key run one after another, so each carries the version the previous one got. */
+const persistChains = new Map<string, Promise<boolean>>()
 
-export async function persistPayrollKey(key: string, value: unknown): Promise<boolean> {
+export function persistPayrollKey(key: string, value: unknown): Promise<boolean> {
+  if (!isPayrollClient()) return Promise.resolve(false)
+  const prev = persistChains.get(key) || Promise.resolve(true)
+  const next = prev.catch(() => false).then(() => persistPayrollKeyNow(key, value))
+  persistChains.set(key, next)
+  return next
+}
+
+async function persistPayrollKeyNow(key: string, value: unknown): Promise<boolean> {
   if (!isPayrollClient()) return false
   writeLocalMirror(key, value)
   let serialized = ''
@@ -103,13 +152,19 @@ export async function persistPayrollKey(key: string, value: unknown): Promise<bo
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ key, value }),
+      body: JSON.stringify({ key, value, baseVersion: serverVersions.get(key) }),
     })
+    const body = await res.json().catch(() => ({}))
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
       console.error('[payroll] persist rejected', key, res.status, body)
+      if (res.status === 409 || res.status === 423 || res.status === 403) {
+        notifyPayrollSaveProblem(String(body?.error || 'Save nahi hua.'), res.status)
+      }
       return false
     }
+    if (typeof body?.version === 'string') serverVersions.set(key, body.version)
+    if (body?.lockedNote) notifyPayrollSaveProblem(String(body.lockedNote), 200)
+    markMirrorSynced(key)
     if (serialized) {
       lastPersistedValue.set(key, serialized)
     }
@@ -600,9 +655,25 @@ export async function hydratePayrollFromDb(): Promise<void> {
           lastPersistedValue.set(key, raw)
         })
       }
+      const dbVersions: Record<string, string> =
+        data?.ok && data.versions && typeof data.versions === 'object' ? data.versions : {}
+      for (const [key, v] of Object.entries(dbVersions)) serverVersions.set(key, v)
 
-      // Merge local mirrors (e.g. September generated before PUT finished / offline).
+      // Merge local mirrors (e.g. September generated before PUT finished / offline) —
+      // only browser changes the server never confirmed, and only if the server has not
+      // changed since. An old copy on another computer must not bring deleted rows back.
       for (const key of LOCAL_MIRROR_KEYS) {
+        const dirtySince = mirrorDirtySince(key)
+        if (dirtySince == null) continue
+        const dbChanged = dbVersions[key] ? Date.parse(dbVersions[key]) : 0
+        if (dbChanged && dbChanged > dirtySince + 2 * 60_000) {
+          markMirrorSynced(key)
+          notifyPayrollSaveProblem(
+            'Is browser ki purani unsaved copy chhod di gayi — server par naya data hai (kisi aur computer se save hua).',
+            409
+          )
+          continue
+        }
         const mirrored = readLocalMirror(key)
         if (mirrored == null) continue
         if (key === STORAGE_KEYS.HR_META && typeof mirrored === 'object') {

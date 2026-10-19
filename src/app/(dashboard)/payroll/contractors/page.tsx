@@ -46,18 +46,24 @@ const DEFAULT_CONTRACTOR_WIDTHS = {
 }
 
 
-/** Contractor sheets: two fortnights, or one monthly sheet for MONTHLY-cycle contractors. */
-type ContractorCycle = '1-15' | '16-31' | '1-31'
+/**
+ * Contractor sheets (as in the Excel): 1–15 for those also paid mid-month, and one
+ * 1–30/31 month-end sheet for everyone (fix salary + the 16–end bill).
+ * Old links with "16-31" open the month-end sheet.
+ */
+type ContractorCycle = '1-15' | '1-31'
 
-function isContractorCycle(v: string): v is ContractorCycle {
-  return v === '1-15' || v === '16-31' || v === '1-31'
+function toContractorCycle(v: string | null): ContractorCycle | null {
+  if (v === '1-15') return '1-15'
+  if (v === '1-31' || v === '16-31') return '1-31'
+  return null
 }
 
 function cycleLabel(month: string, cycle: ContractorCycle): string {
-  if (cycle !== '1-31') return fortnightDisplayLabel(month, cycle)
+  if (cycle === '1-15') return fortnightDisplayLabel(month, '1-15')
   const [y, m] = (month || '').split('-').map(Number)
   const days = y && m ? new Date(y, m, 0).getDate() : 31
-  return `1–${days} (Monthly)`
+  return `1–${days} & 16–${days} (Month end)`
 }
 
 function ContractorsPayrollContent() {
@@ -66,10 +72,10 @@ function ContractorsPayrollContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const urlFn = searchParams.get('fortnight') as ContractorCycle | null
+  const urlFn = toContractorCycle(searchParams.get('fortnight'))
   const urlMonth = searchParams.get('month')
   const [activeFortnight, setActiveFortnight] = useState<ContractorCycle>(
-    urlFn && isContractorCycle(urlFn) ? urlFn : '1-15'
+    urlFn || '1-15'
   )
   const [selectedMonth, setSelectedMonth] = useState(
     () =>
@@ -109,17 +115,20 @@ function ContractorsPayrollContent() {
   } = useResizableColumns('contractors_payroll', DEFAULT_CONTRACTOR_WIDTHS)
 
   useEffect(() => {
-    const fn = searchParams.get('fortnight')
+    const fn = toContractorCycle(searchParams.get('fortnight'))
     const m = searchParams.get('month')
-    if (fn && isContractorCycle(fn)) setActiveFortnight(fn)
+    if (fn) setActiveFortnight(fn)
     if (m && /^\d{4}-\d{2}$/.test(m)) setSelectedMonth(m)
   }, [searchParams])
 
   const reload = (force = false) => {
     if (!force && hasUnsavedChanges) return
-    // Follow each contractor's profile: Monthly → 1–31 sheet, Fortnightly → 1–15 / 16–31.
+    // Follow each contractor's profile: everyone on 1–30/31, "also 1–15" people on 1–15 too.
     payrollService.alignContractorsToProfiles(selectedMonth)
-    const fresh = payrollService.getContractorsPayments(selectedMonth, activeFortnight)
+    const fresh =
+      activeFortnight === '1-31'
+        ? payrollService.getContractorsMonthEnd(selectedMonth)
+        : payrollService.getContractorsPayments(selectedMonth, '1-15')
     setContractorsList(fresh)
     resetSnapshot(fresh)
   }
@@ -170,12 +179,12 @@ function ContractorsPayrollContent() {
       serialNo: insertIdx !== undefined ? insertIdx + 2 : contractorsList.length + 1,
       name: 'NEW CONTRACTOR',
       contractType: 'Service Job',
-      contractualAmount: 20000,
+      contractualAmount: 0,
       extraIncentive: 0,
-      totalAmount: 20000,
+      totalAmount: 0,
       lessAdvance: 0,
-      netPayment: 20000,
-      remarks: 'Monthly Bill',
+      netPayment: 0,
+      remarks: 'Bill',
       fortnight: activeFortnight,
       month: selectedMonth,
     }
@@ -236,7 +245,11 @@ function ContractorsPayrollContent() {
       message: `Save ${formatPayrollMonthLabel(selectedMonth)} (${cycleLabel(selectedMonth, activeFortnight)})?`,
       confirmText: 'Save',
       onConfirm: () => {
-        payrollService.saveContractorsPayments(selectedMonth, activeFortnight, contractorsList)
+        if (activeFortnight === '1-31') {
+          payrollService.saveContractorsMonthEnd(selectedMonth, contractorsList)
+        } else {
+          payrollService.saveContractorsPayments(selectedMonth, '1-15', contractorsList)
+        }
         commitSaved(contractorsList)
         showSuccess('Saved', 'Contractors payments successfully saved.')
       },
@@ -337,8 +350,7 @@ function ContractorsPayrollContent() {
                     pushFilters({ fortnight: fn, month: selectedMonth })
                   }}
                 >
-                  <option value="1-15">{cycleLabel(selectedMonth, '1-15')} (Fortnightly)</option>
-                  <option value="16-31">{cycleLabel(selectedMonth, '16-31')} (Fortnightly)</option>
+                  <option value="1-15">{cycleLabel(selectedMonth, '1-15')} (Bill)</option>
                   <option value="1-31">{cycleLabel(selectedMonth, '1-31')}</option>
                 </select>
               </div>
@@ -735,7 +747,7 @@ function ContractorsPayrollContent() {
             <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{numberToWordsPKR(totalNet)}</div>
           </div>
           <div className="sm:text-right border-t sm:border-t-0 border-slate-200 dark:border-slate-700 pt-2 sm:pt-0 w-full sm:w-auto">
-            <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">{activeFortnight === '1-31' ? 'Total Monthly Contractor Disbursal:' : 'Total Fortnight Contractor Disbursal:'}</span>
+            <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">{activeFortnight === '1-31' ? 'Total Month-End Contractor Disbursal:' : 'Total 1–15 Contractor Disbursal:'}</span>
             <div className="text-base font-bold text-[#0066cc] dark:text-sky-400">{formatCurrency(totalNet)}</div>
           </div>
         </div>
