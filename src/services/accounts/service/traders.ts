@@ -159,6 +159,8 @@ export const traderMethods = {
       }
     })
 
+    const deletedTraders = this.getDeletedTraders()
+
     // 3. Scan Store Inward / Expense master entries (INVENTORY_CONTROL) for trader bills
     const storedInventoryMonths = accountsRead<Record<string, { items?: any[] }> | null>(
       ACCOUNTS_KEYS.INVENTORY_CONTROL,
@@ -170,16 +172,20 @@ export const traderMethods = {
         sheet.items.forEach((it: any, itIdx: number) => {
           const party = (it.companyName || it.partyName || '').trim()
           if (!party) return
-          const isWs =
-            party.toLowerCase().includes('engineering') ||
-            party.toLowerCase().includes('workshop') ||
-            party.toLowerCase().includes('repair') ||
-            party.toLowerCase().includes('lathe') ||
-            party.toLowerCase().includes('rewind') ||
-            accountsData.workshops.synopsis.some(
-              (w) => slugifyPartyName(w.workshopName) === slugifyPartyName(party)
-            )
-          if (isWs) return
+          if (deletedTraders.includes(slugifyPartyName(party))) return
+          if (it.partyType === 'Workshop') return
+          if (it.partyType !== 'Trader') {
+            const isWs =
+              party.toLowerCase().includes('engineering') ||
+              party.toLowerCase().includes('workshop') ||
+              party.toLowerCase().includes('repair') ||
+              party.toLowerCase().includes('lathe') ||
+              party.toLowerCase().includes('rewind') ||
+              accountsData.workshops.synopsis.some(
+                (w) => slugifyPartyName(w.workshopName) === slugifyPartyName(party)
+              )
+            if (isWs) return
+          }
 
           const s = slugifyPartyName(party)
           const existing = map.get(s)
@@ -234,7 +240,6 @@ export const traderMethods = {
       })
     }
 
-    const deletedTraders = this.getDeletedTraders()
     const allTraders = Array.from(map.values()).filter((t) => !deletedTraders.includes(t.slug))
 
     if (!monthFilter || monthFilter === 'ALL' || monthFilter.toLowerCase() === 'all months') {

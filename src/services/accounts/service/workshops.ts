@@ -159,6 +159,8 @@ export const workshopMethods = {
       }
     })
 
+    const deletedWorkshops = this.getDeletedWorkshops()
+
     // 3. Scan Store Inward / Expense master entries (INVENTORY_CONTROL) for workshop jobs
     const storedInventoryMonths = accountsRead<Record<string, { items?: any[] }> | null>(
       ACCOUNTS_KEYS.INVENTORY_CONTROL,
@@ -170,7 +172,10 @@ export const workshopMethods = {
         sheet.items.forEach((it: any, itIdx: number) => {
           const party = (it.companyName || it.partyName || '').trim()
           if (!party) return
+          if (deletedWorkshops.includes(slugifyPartyName(party))) return
+          if (it.partyType === 'Trader') return
           const isWs =
+            it.partyType === 'Workshop' ||
             party.toLowerCase().includes('engineering') ||
             party.toLowerCase().includes('workshop') ||
             party.toLowerCase().includes('repair') ||
@@ -234,7 +239,6 @@ export const workshopMethods = {
       })
     }
 
-    const deletedWorkshops = this.getDeletedWorkshops()
     const allWorkshops = Array.from(map.values()).filter((w) => !deletedWorkshops.includes(w.slug))
 
     if (!monthFilter || monthFilter === 'ALL' || monthFilter.toLowerCase() === 'all months') {

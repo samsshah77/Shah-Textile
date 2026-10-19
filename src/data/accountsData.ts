@@ -106,6 +106,7 @@ export interface InventoryItem {
   itemDescription: string
   companyName: string
   partyName?: string
+  partyType?: 'Trader' | 'Workshop'
   machineName: string
   quantity: number
   costPerItem: number

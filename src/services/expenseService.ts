@@ -145,14 +145,17 @@ export class ExpenseService {
   }): void {
     const partyName = params.partyName.trim()
     const isWorkshop =
-      params.isWorkshop ||
-      partyName.toLowerCase().includes('engineering') ||
-      partyName.toLowerCase().includes('workshop') ||
-      partyName.toLowerCase().includes('repair') ||
-      partyName.toLowerCase().includes('lathe') ||
-      accountsData.workshops.synopsis.some(
-        (w) => slugifyPartyName(w.workshopName) === slugifyPartyName(partyName)
-      )
+      typeof params.isWorkshop === 'boolean'
+        ? params.isWorkshop
+        : (
+            partyName.toLowerCase().includes('engineering') ||
+            partyName.toLowerCase().includes('workshop') ||
+            partyName.toLowerCase().includes('repair') ||
+            partyName.toLowerCase().includes('lathe') ||
+            accountsData.workshops.synopsis.some(
+              (w) => slugifyPartyName(w.workshopName) === slugifyPartyName(partyName)
+            )
+          )
 
     // Ensure vendor exists in directory synopsis with category and remarks
     if (isWorkshop) {

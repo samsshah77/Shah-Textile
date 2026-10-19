@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { accountsData, InventoryItem, MonthlyInventorySheet } from '@/data/accountsData'
 import { expenseService, getDefaultDateForMonth } from '@/services/expenseService'
+import { slugifyPartyName } from '@/services/accounts/expenseSeeds'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
 import { closeSidebar } from '@/lib/sidebarToggle'
 import {
@@ -123,6 +124,7 @@ export default function DailyInwardExpenseUnifiedPage() {
   const [filterMachine, setFilterMachine] = useState<string>('ALL')
   const [filterPartyType, setFilterPartyType] = useState<'ALL' | 'Trader' | 'Workshop'>('ALL')
   const [isSaved, setIsSaved] = useState(false)
+  const [accountsVersion, setAccountsVersion] = useState(0)
 
   const handleSelectMonth = (month: string) => {
     setSelectedMonth(month)
@@ -137,6 +139,7 @@ export default function DailyInwardExpenseUnifiedPage() {
   // Listen for real-time cross-tab sync & month change events
   useEffect(() => {
     const handleSync = () => {
+      setAccountsVersion((v) => v + 1)
       const stored = accountsRead<Record<string, MonthlyInventorySheet> | null>(
         STORAGE_KEY_INVENTORY,
         null
@@ -152,6 +155,7 @@ export default function DailyInwardExpenseUnifiedPage() {
       }
     }
     const handleStorage = (e: StorageEvent) => {
+      setAccountsVersion((v) => v + 1)
       if (e.key === STORAGE_KEY_INVENTORY && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue)
@@ -413,51 +417,79 @@ export default function DailyInwardExpenseUnifiedPage() {
   // Separate lists of Trader Parties & Workshop Vendors
   const traderOptions = useMemo(() => {
     const set = new Set<string>()
+    const deletedTraders = new Set((expenseService.getDeletedTraders() || []).map((s) => slugifyPartyName(s)))
+    const deletedWorkshops = new Set((expenseService.getDeletedWorkshops() || []).map((s) => slugifyPartyName(s)))
+
     try {
-      expenseService.getTradersList().forEach((t) => set.add(t.partyName.trim()))
+      expenseService.getTradersList().forEach((t) => {
+        const s = slugifyPartyName(t.partyName || t.slug)
+        if (!deletedTraders.has(s)) {
+          set.add(t.partyName.trim())
+        }
+      })
     } catch {}
-    accountsData.traders.synopsis.forEach((t) => set.add(t.traderName.trim()))
+
     Object.values(monthsData).forEach((m) => {
       ;(m.items || []).forEach((it) => {
         const name = (it.companyName || it.partyName || '').trim()
-        if (name) {
-          const lower = name.toLowerCase()
-          const isWs =
-            lower.includes('engineering') ||
-            lower.includes('workshop') ||
-            lower.includes('repair') ||
-            lower.includes('lathe') ||
-            lower.includes('rewind')
-          if (!isWs) set.add(name)
+        if (!name) return
+        const s = slugifyPartyName(name)
+        if (deletedTraders.has(s) || deletedWorkshops.has(s)) return
+        if (it.partyType === 'Workshop') return
+        if (it.partyType === 'Trader') {
+          set.add(name)
+          return
         }
+        const lower = name.toLowerCase()
+        const isWs =
+          lower.includes('engineering') ||
+          lower.includes('workshop') ||
+          lower.includes('repair') ||
+          lower.includes('lathe') ||
+          lower.includes('rewind')
+        if (!isWs) set.add(name)
       })
     })
-    return Array.from(set).filter(Boolean).sort()
-  }, [monthsData])
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b))
+  }, [monthsData, accountsVersion])
 
   const workshopOptions = useMemo(() => {
     const set = new Set<string>()
+    const deletedTraders = new Set((expenseService.getDeletedTraders() || []).map((s) => slugifyPartyName(s)))
+    const deletedWorkshops = new Set((expenseService.getDeletedWorkshops() || []).map((s) => slugifyPartyName(s)))
+
     try {
-      expenseService.getWorkshopsList().forEach((w) => set.add(w.workshopName.trim()))
+      expenseService.getWorkshopsList().forEach((w) => {
+        const s = slugifyPartyName(w.workshopName || w.slug)
+        if (!deletedWorkshops.has(s)) {
+          set.add(w.workshopName.trim())
+        }
+      })
     } catch {}
-    accountsData.workshops.synopsis.forEach((w) => set.add(w.workshopName.trim()))
+
     Object.values(monthsData).forEach((m) => {
       ;(m.items || []).forEach((it) => {
         const name = (it.companyName || it.partyName || '').trim()
-        if (name) {
-          const lower = name.toLowerCase()
-          const isWs =
-            lower.includes('engineering') ||
-            lower.includes('workshop') ||
-            lower.includes('repair') ||
-            lower.includes('lathe') ||
-            lower.includes('rewind')
-          if (isWs) set.add(name)
+        if (!name) return
+        const s = slugifyPartyName(name)
+        if (deletedWorkshops.has(s) || deletedTraders.has(s)) return
+        if (it.partyType === 'Trader') return
+        if (it.partyType === 'Workshop') {
+          set.add(name)
+          return
         }
+        const lower = name.toLowerCase()
+        const isWs =
+          lower.includes('engineering') ||
+          lower.includes('workshop') ||
+          lower.includes('repair') ||
+          lower.includes('lathe') ||
+          lower.includes('rewind')
+        if (isWs) set.add(name)
       })
     })
-    return Array.from(set).filter(Boolean).sort()
-  }, [monthsData])
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b))
+  }, [monthsData, accountsVersion])
 
   // Backward compatibility list
   const allPartySuggestions = useMemo(() => {
@@ -558,10 +590,13 @@ export default function DailyInwardExpenseUnifiedPage() {
 
       const partyLower = (item.companyName || '').toLowerCase()
       const isWorkshop =
-        partyLower.includes('engineering') ||
-        partyLower.includes('workshop') ||
-        partyLower.includes('repair') ||
-        partyLower.includes('lathe')
+        item.partyType === 'Workshop' ||
+        (item.partyType !== 'Trader' && (
+          partyLower.includes('engineering') ||
+          partyLower.includes('workshop') ||
+          partyLower.includes('repair') ||
+          partyLower.includes('lathe')
+        ))
       const matchPartyType =
         filterPartyType === 'ALL' ||
         (filterPartyType === 'Workshop' && isWorkshop) ||
@@ -700,6 +735,7 @@ export default function DailyInwardExpenseUnifiedPage() {
         itemDescription: row.description.trim(),
         companyName: entryPartyName.trim(),
         partyName: entryPartyName.trim(),
+        partyType: entryPartyType,
         machineName: row.machineName || 'G-6200',
         quantity: q,
         costPerItem: rate,
@@ -803,6 +839,7 @@ export default function DailyInwardExpenseUnifiedPage() {
       inwardNo: targetItem.inwardNo,
       companyName: targetItem.companyName || targetItem.partyName || '',
       partyName: targetItem.partyName || targetItem.companyName || '',
+      partyType: targetItem.partyType,
       itemDescription: '',
       machineName: targetItem.machineName || 'G-6200',
       quantity: 1,
