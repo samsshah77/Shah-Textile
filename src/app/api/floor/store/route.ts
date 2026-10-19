@@ -34,6 +34,7 @@ import { buildFloorSeedPayload } from '@/server/floorSeed'
 import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
 import { hasPermission } from '@/server/permissions'
 import { writeAudit } from '@/server/auditLog'
+import { rebuildProductionLedger } from '@/server/productionLedger'
 import {
   FloorGuardError,
   rowMeters,
@@ -132,8 +133,11 @@ function errorResponse(scope: string, err: unknown) {
   )
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    if (!(await requireSession(req))) {
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+    }
     // Heal missing columns (e.g. weavePlan) before any quality upsert/read.
     await ensureFloorPayrollTables()
 
@@ -398,6 +402,7 @@ export async function POST(req: NextRequest) {
       }
       const beforeQ = await dbGetQualities()
       await dbUpsertQuality(q)
+      await rebuildProductionLedger()
       await writeAudit({ req, actor: writer, module: 'floor', action: 'upsertQuality', entityKey: KEY_QUALITY, entityId: String(q.id), before: beforeQ, after: await dbGetQualities() })
       return NextResponse.json({ ok: true })
     }

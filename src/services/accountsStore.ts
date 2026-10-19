@@ -50,6 +50,21 @@ function migrateLegacy(present: Set<string>): void {
   }
 }
 
+/** Show the browser copy without sending it to the server (used when the server is unreachable). */
+function loadLegacyIntoMemory(): void {
+  if (!isClient()) return
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (!key || !isAccountsStoreKey(key) || memory.has(key)) continue
+      const raw = localStorage.getItem(key)
+      if (raw) memory.set(key, raw)
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export async function hydrateAccountsFromDb(): Promise<void> {
   if (!isClient()) return
   if (hydrated) return
@@ -109,7 +124,10 @@ export async function hydrateAccountsFromDb(): Promise<void> {
         })
       }
       hydrated = true
-      migrateLegacy(present)
+      // Only push browser-only keys when the server answered properly; on an error
+      // response we cannot know what is stored, so we must not overwrite it.
+      if (data?.ok) migrateLegacy(present)
+      else loadLegacyIntoMemory()
 
       // Flush any pending persists that were queued prior to hydration
       if (pendingPersists.size > 0) {
@@ -122,7 +140,7 @@ export async function hydrateAccountsFromDb(): Promise<void> {
     } catch (err) {
       console.error('[accounts] hydrate failed — using browser copy', err)
       hydrated = true
-      migrateLegacy(new Set())
+      loadLegacyIntoMemory()
     }
   })()
 

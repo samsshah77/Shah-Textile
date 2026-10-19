@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { assertSafeListReplace, assertSafeSheetOverwrite } from '@/server/floorGuards'
+import { rebuildProductionLedger, refreshProductionDay } from '@/server/productionLedger'
 import type { Prisma } from '@prisma/client'
 import type {
   BeamMaster,
@@ -514,6 +515,8 @@ export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void>
   for (const q of list) {
     await dbUpsertQuality(q)
   }
+  // Quality names/picks/runs decide how ledger rows link to qualities.
+  await rebuildProductionLedger()
 }
 
 export async function dbDeleteQuality(id: string): Promise<void> {
@@ -532,6 +535,7 @@ export async function dbDeleteQuality(id: string): Promise<void> {
   } catch {
     // Column may not exist until ensureFloorPayrollTables runs.
   }
+  await rebuildProductionLedger()
 }
 
 /** Patch one quality status/endedOn — survives refresh without rewriting the whole table. */
@@ -552,6 +556,7 @@ export async function dbPatchQualityStatus(
     // Row missing (rare) — skip rather than failing the whole end action.
     console.error('[floorDb] patchQualityStatus: quality not found', id)
   }
+  await rebuildProductionLedger()
 }
 
 /** Insert or update one quality — needed when reuse forks a new Active run. */
@@ -660,6 +665,7 @@ export async function dbReuseQuality(params: {
     endedOn,
   }
 
+  await rebuildProductionLedger()
   return { ended, active: activePayload }
 }
 
@@ -784,6 +790,7 @@ export async function dbUpdateLoomEntry(
       payload: stamped as unknown as Prisma.InputJsonValue,
     },
   })
+  await refreshProductionDay(dateStr)
 }
 
 export async function dbSetSheetApproval(
@@ -824,6 +831,7 @@ export async function dbSetSheetApproval(
       })
     }
   })
+  await refreshProductionDay(dateStr)
 
   return updatedEntries
 }
@@ -874,10 +882,12 @@ export async function dbSaveSheet(
       })
     }
   })
+  await refreshProductionDay(dateStr)
 }
 
 export async function dbDeleteSheet(dateStr: string): Promise<void> {
   await prisma.floorDailySheet.deleteMany({ where: { date: dateStr } })
+  await refreshProductionDay(dateStr)
 }
 
 /** Delete a same-day Part 2+ sheet row. Part 1 cannot be deleted this way. */
@@ -891,6 +901,7 @@ export async function dbDeleteLoomSegment(
   const result = await prisma.floorDailySheet.deleteMany({
     where: { date: dateStr, loomNumber, segmentIndex: seg },
   })
+  await refreshProductionDay(dateStr)
   return result.count > 0
 }
 

@@ -76,6 +76,25 @@ The database user must be allowed to create a schema. If startup logs show
 Root crontab runs `pg_dump` at 02:15 into `/root/sara-backups/` (30 days kept).
 Copy one off the server regularly.
 
+## Production ledger (`floor_production`)
+
+A normalized copy of the daily sheets with real columns (date, loom, quality id,
+shift A/B/total meters, efficiency …). Code: `src/server/productionLedger.ts`.
+
+- The JSON sheets (`floor_daily_sheets`) remain the source of truth. The ledger is
+  re-derived from them after every sheet write and fully rebuilt on every app start,
+  so it can be dropped and rebuilt at any time without losing anything.
+- Each row is linked to a quality by exact name (case/space-insensitive), preferring
+  same pick, then the quality run whose dates cover the row.
+- Reports: `GET /api/floor/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` → totals by day,
+  quality and loom, `unlinked` rows (name not in quality master) and `mismatches`
+  (ledger vs raw sheets — must be empty).
+
+```sql
+SELECT "qualityId", "qualityName", sum("totalMeters") FROM floor_production
+WHERE date BETWEEN '2026-10-01' AND '2026-10-31' GROUP BY 1,2 ORDER BY 3 DESC;
+```
+
 ## Rules for future changes (any developer / AI tool)
 
 1. Never filter, hide, or "clean" rows in server read functions.
