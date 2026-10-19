@@ -668,6 +668,11 @@ export function FloorEntryTable({
                   <td
                     className={`px-2 text-truncate${qualityEnded ? ' text-secondary' : ''}`}
                   >
+                    {qualityEnded ? (
+                      <span className="badge text-bg-secondary me-1" style={{ fontSize: '0.6rem' }}>
+                        Ended
+                      </span>
+                    ) : null}
                     {e.qualityName || '—'}
                   </td>
                   <td className="small text-secondary px-2 text-truncate">

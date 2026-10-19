@@ -703,6 +703,9 @@ function HelpersPayrollContent() {
           <div>• <strong>Net Payout</strong> = Wages Amt + Holiday OT</div>
         </div>
       </div>
+
+      {/* Confirm / success dialogs (Save, Delete, Discard). Without this, Save did nothing. */}
+      {modals}
     </div>
   )
 }

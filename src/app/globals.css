@@ -1998,6 +1998,29 @@ tr.sara-sheet-quality-ended > td:first-child {
   box-shadow: inset 3px 0 0 #6c757d;
 }
 
+/* Quality Master — ENDED / HOLD quality shown on a day it was running (read-only history) */
+tr.sara-quality-ended-history > td {
+  background-color: rgba(220, 53, 69, 0.08) !important;
+  color: #6c757d;
+}
+tr.sara-quality-ended-history > td:first-child {
+  box-shadow: inset 3px 0 0 #dc3545;
+}
+.master-grid-card.sara-quality-ended-history {
+  background-color: rgba(220, 53, 69, 0.08) !important;
+  box-shadow: inset 3px 0 0 #dc3545;
+}
+tr.sara-quality-held-history > td {
+  background-color: rgba(255, 193, 7, 0.12) !important;
+}
+tr.sara-quality-held-history > td:first-child {
+  box-shadow: inset 3px 0 0 #ffc107;
+}
+.master-grid-card.sara-quality-held-history {
+  background-color: rgba(255, 193, 7, 0.12) !important;
+  box-shadow: inset 3px 0 0 #ffc107;
+}
+
 /* Production module — skeleton loading shimmer */
 .sara-skel {
   display: block;

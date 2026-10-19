@@ -487,9 +487,31 @@ export function LoomMasterTable({
     return []
   }
 
+  /**
+   * Quality that ended on/before this day and has not been replaced on the loom:
+   * shown as "Ended · NAME" (not "—") until a new quality is assigned.
+   */
+  const endedQualityName = (loom: LoomMaster): string | null => {
+    const day = String(sheetDate || '').slice(0, 10)
+    const rows = dayRows.filter((e) => e.loomNumber === loom.loomNumber)
+    for (const row of rows) {
+      if (!namedPose(row.qualityName)) continue
+      if (isQualityEndedSheetRow(row)) return (row.qualityName || '').trim()
+      const owner = qualityRunThatOwnsSheetEntry({ ...row, date: day || row.date }, qualities, day || row.date)
+      if (owner && normalizeQualityStatus(owner.status) === 'ENDED') {
+        const stamp = owner.endedOn ? String(owner.endedOn).slice(0, 10) : ''
+        if (stamp && day && stamp < day) return (row.qualityName || '').trim()
+      }
+    }
+    return null
+  }
+
   const qualityLabel = (loom: LoomMaster) => {
     const parts = dayQualityParts(loom)
-    if (parts.length === 0) return '—'
+    if (parts.length === 0) {
+      const ended = endedQualityName(loom)
+      return ended ? `Ended · ${ended}` : '—'
+    }
     if (parts.length === 1) return parts[0].name
     return parts.map((p) => `P${p.seg}: ${p.name}`).join(' · ')
   }
@@ -511,6 +533,15 @@ export function LoomMasterTable({
     const parts = dayQualityParts(loom)
     const canRemovePart = Boolean(onRemoveQualitySegment) && editActive
     if (parts.length === 0) {
+      const ended = endedQualityName(loom)
+      if (ended) {
+        return (
+          <span className="d-inline-flex align-items-center gap-1 text-muted" title={`${ended} ended — assign a new quality to start`}>
+            <span className="badge text-bg-secondary" style={{ fontSize: '0.65rem' }}>Ended</span>
+            <span className="text-truncate">{ended}</span>
+          </span>
+        )
+      }
       return <span className="fw-semibold text-muted">—</span>
     }
     if (parts.length === 1) {
