@@ -117,6 +117,8 @@ function ContractorsPayrollContent() {
 
   const reload = (force = false) => {
     if (!force && hasUnsavedChanges) return
+    // Follow each contractor's profile: Monthly → 1–31 sheet, Fortnightly → 1–15 / 16–31.
+    payrollService.alignContractorsToProfiles(selectedMonth)
     const fresh = payrollService.getContractorsPayments(selectedMonth, activeFortnight)
     setContractorsList(fresh)
     resetSnapshot(fresh)

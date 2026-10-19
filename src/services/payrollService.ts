@@ -564,59 +564,75 @@ class PayrollService {
 
   /**
    * After a contractor's profile is saved: put them on the sheet that matches their pay
-   * cycle for the current fortnight month (only months whose contractor sheets exist).
-   * Rows of the other cycle are removed only if nothing was entered on them.
+   * cycle for the current fortnight month.
    */
   private placeContractorOnCycle(emp: EmployeeProfile): void {
-    if (inferEmployeeCategory(emp) !== 'Contractor') return
-    if ((emp.status || 'Active') === 'Resigned') return
-    if (isTombstonedEmployee(emp.id, emp.name)) return
     const { month } = this.getActiveFortnightPeriod()
-    const all = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
-    const monthRows = all.filter((r) => r.month === month)
-    if (monthRows.length === 0) return // month not generated yet — Generate will follow the profile
-    if (!employeeBelongsInMonth(emp, month)) return
+    this.alignContractorsToProfiles(month, [emp])
+  }
 
-    const mine = (r: ContractorPaymentRecord) =>
-      r.month === month && (r.employeeId === emp.id || namesMatch(r.name, emp.name))
+  /**
+   * Make the Contractors sheets of `month` follow each contractor's profile pay cycle:
+   *  - MONTHLY  → one 1–31 row (created if missing);
+   *  - FORTNIGHTLY → a row in 1–15 and in 16–31 (unless joined after / resigned before).
+   * Rows of the other cycle are removed only when nothing was entered on them, so no
+   * entered amount is ever lost. Only the running pay month and later months are touched.
+   */
+  alignContractorsToProfiles(month: string, people?: EmployeeProfile[]): boolean {
+    // Never before the DB snapshot is loaded — seed rows would be written back.
+    if (!this.canWrite() || (this.isClient() && !hydrated) || !/^\d{4}-\d{2}$/.test(month)) return false
+    // Resigned people are included on purpose: employeeBelongsInMonth keeps them for the
+    // resign month (and drops 16–31 when they left on/before the 15th).
+    const roster = (people || this.getEmployees()).filter(
+      (e) =>
+        inferEmployeeCategory(e) === 'Contractor' &&
+        !isTombstonedEmployee(e.id, e.name) &&
+        employeeBelongsInMonth(e, month)
+    )
+    if (roster.length === 0) return false
+    // Only the running pay month and later — past months are history and stay as they are.
+    if (month < this.getActiveFortnightPeriod().month || isMonthLocked(month)) return false
+    let next = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
     const untouched = (r: ContractorPaymentRecord) =>
       !(Number(r.extraIncentive) || 0) &&
       !(Number(r.lessAdvance) || 0) &&
       !String(r.remarks || '').trim() &&
       Object.keys(r.customFields || {}).length === 0
-    const monthly = contractorIsMonthly(emp)
-    const wanted: ('1-15' | '16-31' | '1-31')[] = monthly
-      ? ['1-31']
-      : (['1-15', '16-31'] as const).filter((h) => monthRows.some((r) => r.fortnight === h))
-
     let changed = false
-    let next = all.filter((r) => {
-      if (!mine(r)) return true
-      const keep = wanted.includes(r.fortnight) || !untouched(r)
-      if (!keep) changed = true
-      return keep
-    })
-    for (const half of wanted) {
-      if (next.some((r) => mine(r) && r.fortnight === half)) continue
-      next = [
-        ...next,
-        this.calculateContractorPaymentRow({
-          id: `c-${month}-${half}-${emp.id}`,
-          serialNo: next.filter((r) => r.month === month && r.fortnight === half).length + 1,
-          employeeId: emp.id,
-          name: emp.name,
-          contractType: emp.designation || 'Contract',
-          contractualAmount: Number(emp.salary) || 0,
-          extraIncentive: 0,
-          lessAdvance: 0,
-          remarks: '',
-          fortnight: half,
-          month,
-        }),
-      ]
-      changed = true
+    for (const emp of roster) {
+      const mine = (r: ContractorPaymentRecord) =>
+        r.month === month && (r.employeeId === emp.id || (!r.employeeId && namesMatch(r.name, emp.name)))
+      // Fortnightly: both halves, except a half they are not employed in
+      // (joined after the 15th → no 1–15; resigned on/before the 15th → no 16–31).
+      const wanted: ('1-15' | '16-31' | '1-31')[] = contractorIsMonthly(emp)
+        ? ['1-31']
+        : (['1-15', '16-31'] as const).filter((h) => employeeBelongsInMonth(emp, month, h))
+      const before = next.length
+      next = next.filter((r) => !mine(r) || wanted.includes(r.fortnight) || !untouched(r))
+      if (next.length !== before) changed = true
+      for (const half of wanted) {
+        if (next.some((r) => mine(r) && r.fortnight === half)) continue
+        next = [
+          ...next,
+          this.calculateContractorPaymentRow({
+            id: `c-${month}-${half}-${emp.id}`,
+            serialNo: next.filter((r) => r.month === month && r.fortnight === half).length + 1,
+            employeeId: emp.id,
+            name: emp.name,
+            contractType: emp.designation || 'Contract',
+            contractualAmount: Number(emp.salary) || 0,
+            extraIncentive: 0,
+            lessAdvance: 0,
+            remarks: '',
+            fortnight: half,
+            month,
+          }),
+        ]
+        changed = true
+      }
     }
     if (changed) this.saveContractorsPayments(next, false)
+    return changed
   }
 
   /** Staff / Admin → Staff sheet; Company Contract → Contract sheet. Attendance stays local. */
@@ -1146,11 +1162,9 @@ class PayrollService {
     const helperExists = allHelpers.some(
       (r) => (r.month || '') === month && (r.fortnight || '1-15') === fortnight
     )
-    const contractorExists = allContractors.some(
-      (r) => (r.month || '') === month && (r.fortnight || '1-15') === fortnight
-    )
-
-    if (weaverExists || helperExists || contractorExists) {
+    // Contractor rows may already exist (the Contractors page fills them from profiles),
+    // so only Weaver / Helper rows decide whether this fortnight was generated.
+    if (weaverExists || helperExists) {
       await this.setActiveFortnightPeriodAsync(month, fortnight)
       return {
         ok: true,
@@ -1212,7 +1226,13 @@ class PayrollService {
 
     // Contractor pay cycle comes from the profile: FORTNIGHTLY → this half's sheet,
     // MONTHLY → one 1–30/31 sheet row per month (created once, by whichever half runs first).
-    const fortnightlyContractors = contractorPeople.filter((e) => !contractorIsMonthly(e))
+    const fortnightlyContractors = contractorPeople.filter(
+      (e) =>
+        !contractorIsMonthly(e) &&
+        !allContractors.some(
+          (r) => r.month === month && r.fortnight === fortnight && r.employeeId === e.id
+        )
+    )
     const monthlyContractors = contractorPeople.filter(
       (e) =>
         contractorIsMonthly(e) &&
