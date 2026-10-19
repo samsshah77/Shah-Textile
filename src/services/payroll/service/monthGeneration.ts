@@ -26,6 +26,7 @@ import {
   weaverSheetFields,
   helperSheetFields,
   formatPayrollMonthLabel,
+  namesMatch,
 } from '@/services/payroll/payrollCalculations'
 import type { PayrollService } from '@/services/payrollService'
 
@@ -181,7 +182,13 @@ export const monthGenerationMethods = {
         ...new Set(allEff.map((r) => r.month).filter(Boolean) as string[]),
       ].sort()
       const sourceMonth = priorMonths[priorMonths.length - 1] || '2026-08'
-      const template = allEff.filter((r) => r.month === sourceMonth)
+      // Copy last month's list, minus people whose profile now says "not on Efficiency".
+      const offEfficiency = this.getEmployees().filter((e) => e.efficiencyEligible === false)
+      const template = allEff.filter(
+        (r) =>
+          r.month === sourceMonth &&
+          !offEfficiency.some((e) => r.employeeId === e.id || (!r.employeeId && namesMatch(r.name, e.name)))
+      )
       const seeded = template.map((r, i) =>
         this.calculateEfficiencyRow({
           id: `eff-${month}-${i + 1}`,

@@ -72,6 +72,8 @@ export default function TechnicalEfficiencyPage() {
 
   const reload = (force = false) => {
     if (!force && hasUnsavedChanges) return
+    // Company Contract profiles decide who is on this sheet (Efficiency tick).
+    payrollService.alignEfficiencyToProfiles(selectedMonth)
     const fresh = payrollService.getEfficiencyIncentives(selectedMonth)
     setIncentiveList(fresh)
     resetSnapshot(fresh)

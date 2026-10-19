@@ -10,6 +10,7 @@ import {
   WeaverWageRecord,
   HelperWageRecord,
   ContractorPaymentRecord,
+  EfficiencyIncentiveRecord,
 } from '@/types/payroll'
 import {
   INITIAL_STAFF_SALARIES,
@@ -18,9 +19,10 @@ import {
   INITIAL_CONTRACT_SALARIES,
   INITIAL_CONTRACTORS,
   INITIAL_EMPLOYEES,
+  INITIAL_EFFICIENCY_INCENTIVES,
 } from '@/data/payrollSeeds'
 import { STORAGE_KEYS } from '@/services/payroll/payrollConstants'
-import { hydrated, isTombstonedEmployee, isMonthLocked } from '@/services/payroll/payrollStorage'
+import { hydrated, isTombstonedEmployee, isMonthLocked, writeStore } from '@/services/payroll/payrollStorage'
 import {
   daysInCalendarMonth,
   parseResignationDateFromRemarks,
@@ -355,17 +357,25 @@ export const rosterPlacementMethods = {
    */
   placeContractorOnCycle(this: PayrollService, emp: EmployeeProfile): void {
     const { month } = this.getActiveFortnightPeriod()
-    this.alignContractorsToProfiles(month, [emp])
+    // Profile was just saved on purpose → its 1–15 setting wins, even over typed amounts.
+    this.alignContractorsToProfiles(month, [emp], true)
   },
 
   /**
    * Make the Contractors sheets of `month` follow each contractor's profile:
    *  - everyone → one 1–30/31 (month end) row (an old "16-31" row also counts);
    *  - "also paid in 1–15" → a 1–15 row as well (unless joined after the 15th).
-   * A 1–15 row is removed only when nothing was typed on it, so no entered amount is lost.
+   * Unticked → the 1–15 row goes: on page open only when nothing was typed on it; on a
+   * profile save (force) always — the profile is the decision.
    * Only the running pay month and later months are touched.
    */
-  alignContractorsToProfiles(this: PayrollService, month: string, people?: EmployeeProfile[]): boolean {
+  alignContractorsToProfiles(
+    this: PayrollService,
+    month: string,
+    people?: EmployeeProfile[],
+    /** Profile save: drop the 1–15 row of an unticked person even if amounts were typed. */
+    force = false
+  ): boolean {
     // Never before the DB snapshot is loaded — seed rows would be written back.
     if (!this.canWrite() || (this.isClient() && !hydrated) || !/^\d{4}-\d{2}$/.test(month)) return false
     const roster = (people || this.getEmployees()).filter(
@@ -386,7 +396,8 @@ export const rosterPlacementMethods = {
       if (!wanted.includes('1-15')) {
         const before = next.length
         next = next.filter(
-          (r) => !(mine(r) && r.fortnight === '1-15' && contractorRowUntouched(r, emp, '1-15'))
+          (r) =>
+            !(mine(r) && r.fortnight === '1-15' && (force || contractorRowUntouched(r, emp, '1-15')))
         )
         if (next.length !== before) changed = true
       }
@@ -405,6 +416,77 @@ export const rosterPlacementMethods = {
     }
     if (changed) this.saveContractorsPayments(next, false)
     return changed
+  },
+
+  /**
+   * Efficiency sheet of `month` follows the Company Contract profiles' "Efficiency" tick:
+   *  - ticked → a row (loom from the person's last efficiency row, salary from the Contract sheet);
+   *  - unticked → the row goes (on page open only if no efficiency % was typed; on a profile
+   *    save always) and its amount is taken off the Contract net payment;
+   *  - never decided (old profile) → left as it is.
+   * Only the running salary month and later; locked months are never touched.
+   */
+  alignEfficiencyToProfiles(
+    this: PayrollService,
+    month: string,
+    people?: EmployeeProfile[],
+    force = false
+  ): boolean {
+    if (!this.canWrite() || (this.isClient() && !hydrated) || !/^\d{4}-\d{2}$/.test(month)) return false
+    if (month < this.getActiveSalariedMonth() || isMonthLocked(month)) return false
+    const roster = (people || this.getEmployees()).filter(
+      (e) =>
+        inferEmployeeCategory(e) === 'Contract' &&
+        typeof e.efficiencyEligible === 'boolean' &&
+        !isTombstonedEmployee(e.id, e.name)
+    )
+    if (roster.length === 0) return false
+    const all = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
+    let next: EfficiencyIncentiveRecord[] = all
+    const zeroed: string[] = []
+    let changed = false
+    for (const emp of roster) {
+      const isMine = (r: EfficiencyIncentiveRecord) =>
+        r.employeeId === emp.id || (!r.employeeId && namesMatch(r.name, emp.name))
+      const mineNow = next.filter((r) => r.month === month && isMine(r))
+      const wanted = emp.efficiencyEligible === true && employeeBelongsInMonth(emp, month)
+      if (!wanted) {
+        const drop = mineNow.filter((r) => force || !(Number(r.efficiencyPercent) || 0))
+        if (drop.length) {
+          next = next.filter((r) => !drop.includes(r))
+          if (drop.some((r) => Number(r.amount) || 0)) zeroed.push(emp.name)
+          changed = true
+        }
+        continue
+      }
+      if (mineNow.length) continue
+      const last = [...next]
+        .filter((r) => r.month < month && isMine(r))
+        .sort((a, b) => b.month.localeCompare(a.month))[0]
+      const contractRow = this.getContractSalaries(month).find(
+        (c) => c.employeeId === emp.id || namesMatch(c.employeeName, emp.name)
+      )
+      next = [
+        ...next,
+        this.calculateEfficiencyRow({
+          id: `eff-${month}-${emp.id}`,
+          serialNo: next.filter((r) => r.month === month).length + 1,
+          employeeId: emp.id,
+          loom: last?.loom || 'Overall',
+          name: emp.name,
+          designation: emp.designation,
+          efficiencyPercent: 0,
+          salaryEarned: contractRow?.basicSalary ?? (Number(emp.salary) || 0),
+          month,
+        }),
+      ]
+      changed = true
+    }
+    if (!changed) return false
+    writeStore(STORAGE_KEYS.EFFICIENCY, this.renumberByMonth(next))
+    for (const name of zeroed) this.syncEfficiencyToSalaries(name, month, 0, false)
+    this.notifyDataChanged(month)
+    return true
   },
 
   /** A fresh contractor row with the profile's starting amount (see contractorDefaults). */

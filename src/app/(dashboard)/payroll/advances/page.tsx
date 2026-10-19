@@ -5,6 +5,7 @@ import { payrollService, formatPayrollMonthLabel } from '@/services/payrollServi
 import { AdvanceRecord, CustomColumn } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { ResizableTh } from '@/components/shared/ResizableTh'
+import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { formatCurrency, formatNumber, numberToWordsPKR, cn } from '@/lib/utils'
@@ -219,6 +220,14 @@ export default function SalaryAdvancesPage() {
         if (ok) commitSaved(updated)
       },
     })
+  }
+
+  // Up / down arrows on S.# (same as the other salary tables). Only on the full list —
+  // while searching the visible order is not the sheet order.
+  const handleMoveRow = (index: number, direction: 'up' | 'down') => {
+    if (!canEditAccounts || search.trim()) return
+    const next = reorderSerialRows(advances, index, direction)
+    if (next) setAdvances(next)
   }
 
   const handleSave = () => {
@@ -630,12 +639,24 @@ export default function SalaryAdvancesPage() {
                       isRowDirty(adv.id) && 'payroll-row-dirty'
                     )}
                   >
-                    <td
-                      style={{ width: `${widths.serialNo}px`, minWidth: `${widths.serialNo}px` }}
-                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center font-mono text-slate-700"
-                    >
-                      {adv.serialNo || idx + 1}
-                    </td>
+                    {canEditAccounts && !search.trim() ? (
+                      <SerialCellWithInsert
+                        serialNo={adv.serialNo || idx + 1}
+                        index={idx}
+                        onMoveUp={(i) => handleMoveRow(i, 'up')}
+                        onMoveDown={(i) => handleMoveRow(i, 'down')}
+                        canMoveUp={idx > 0}
+                        canMoveDown={idx < filtered.length - 1}
+                        className="border-slate-100 dark:border-slate-800 font-mono"
+                      />
+                    ) : (
+                      <td
+                        style={{ width: `${widths.serialNo}px`, minWidth: `${widths.serialNo}px` }}
+                        className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 text-center font-mono text-slate-700"
+                      >
+                        {adv.serialNo || idx + 1}
+                      </td>
+                    )}
 
                     {/* Date / Period */}
                     <td

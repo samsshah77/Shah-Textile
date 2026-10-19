@@ -223,6 +223,13 @@ export function usePayrollDirtyTracker<T extends { id?: string }>(
       }
     }
 
+    // Rows moved up / down with the arrows (same rows, new order) also need a Save.
+    if (count === 0) {
+      const before = [...snapshotMap.keys()]
+      const now = currentRows.map((r) => getId(r)).filter(Boolean)
+      if (before.length === now.length && before.some((id, i) => id !== now[i])) count += 1
+    }
+
     return count
   }, [snapshotMap, currentRows, isInitialized, getId, options, isCellDirty])
 

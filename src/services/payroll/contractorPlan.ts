@@ -52,7 +52,10 @@ export function contractorDefaults(
   return { contractualAmount: 0, remarks: sheet === '1-15' ? 'Bill Payment' : 'Bill' }
 }
 
-/** True when nobody has typed anything on this row (safe to remove when the profile changes). */
+/**
+ * True when nobody has typed anything on this row (safe to remove when the profile changes).
+ * "Less advance" is filled automatically from the Advance sheet, so it does not count.
+ */
 export function contractorRowUntouched(
   r: ContractorPaymentRecord,
   emp: EmployeeProfile,
@@ -62,7 +65,6 @@ export function contractorRowUntouched(
   const remark = String(r.remarks || '').trim()
   return (
     !(Number(r.extraIncentive) || 0) &&
-    !(Number(r.lessAdvance) || 0) &&
     // Starting amount: today's default, or the profile salary that older rows started with.
     [d.contractualAmount, Number(emp.salary) || 0].includes(Number(r.contractualAmount) || 0) &&
     (remark === '' || remark === d.remarks) &&

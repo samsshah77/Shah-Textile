@@ -59,6 +59,11 @@ export interface EmployeeProfile {
    * (month end) sheet; this decides whether they are on the 1–15 sheet as well.
    */
   paidMidMonth?: boolean;
+  /**
+   * Company Contract only: on the Efficiency sheet. true = add, false = remove,
+   * unset = old profile, leave the Efficiency sheet as it is.
+   */
+  efficiencyEligible?: boolean;
   /** Profile photo URL — optional; UI shows initials avatar until set. */
   photoUrl?: string;
   customFields?: Record<string, string | number>;

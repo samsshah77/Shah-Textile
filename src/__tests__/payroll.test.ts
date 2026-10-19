@@ -192,3 +192,12 @@ describe('Contractor sheets (1–15 + 1–30/31 month end)', () => {
     expect(isMonthEndContractorRow({ fortnight: '1-15' })).toBe(false)
   })
 })
+
+describe('Contractor row checks ignore the automatic advance', () => {
+  it('an advance filled in from the Advance sheet does not make a row "typed"', () => {
+    const emp = { id: 'c1', name: 'Amir', status: 'Active', salary: 70000, contractorBasis: 'SALARY', paidMidMonth: false } as EmployeeProfile
+    const row = { id: 'r', serialNo: 1, name: 'Amir', contractType: '', contractualAmount: 0, extraIncentive: 0,
+      totalAmount: 0, lessAdvance: 30000, netPayment: -30000, remarks: '', fortnight: '1-15' as const, month: '2026-10' }
+    expect(contractorRowUntouched(row, emp, '1-15')).toBe(true)
+  })
+})

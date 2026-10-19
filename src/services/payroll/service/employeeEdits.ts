@@ -85,6 +85,7 @@ export const employeeEditMethods = {
     const activeMonth = this.getActiveSalariedMonth()
     this.placeOnDailyWageSheets(saved, activeMonth)
     this.placeOnSalariedSheets(saved, activeMonth)
+    this.alignEfficiencyToProfiles(activeMonth, [saved], true)
     this.purgeJoinerFromPastMonths(saved)
     this.notifyDataChanged()
     return saved
@@ -135,6 +136,7 @@ export const employeeEditMethods = {
     const activeMonth = targetMonth || this.getActiveSalariedMonth()
     this.placeOnDailyWageSheets(saved, activeMonth)
     this.placeOnSalariedSheets(saved, activeMonth)
+    this.alignEfficiencyToProfiles(activeMonth, [saved], true)
     this.purgeJoinerFromPastMonths(saved)
     this.notifyDataChanged(targetMonth)
     return saved
@@ -238,6 +240,7 @@ export const employeeEditMethods = {
       this.placeOnDailyWageSheets(merged, placeMonth)
       this.placeContractorOnCycle(merged)
       this.placeOnSalariedSheets(merged, placeMonth)
+      this.alignEfficiencyToProfiles(placeMonth, [merged], true)
     }
     this.notifyDataChanged(targetMonth)
     return merged
@@ -340,6 +343,7 @@ export const employeeEditMethods = {
       this.placeOnDailyWageSheets(merged, placeMonth)
       this.placeContractorOnCycle(merged)
       this.placeOnSalariedSheets(merged, placeMonth)
+      this.alignEfficiencyToProfiles(placeMonth, [merged], true)
     }
     this.notifyDataChanged(targetMonth)
     return merged

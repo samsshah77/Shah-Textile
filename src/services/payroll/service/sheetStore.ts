@@ -73,9 +73,10 @@ export const sheetStoreMethods = {
       if (sheetMonthKey(c.month) !== sheetMonthKey(month)) return c
       if (this.rowMatchesPerson(employeeNameOrId, c.name, c.contractType, c.employeeId, roster)) {
         contractorUpdated = true
+        // Advance is taken once, on the month-end (1–30/31) payment — never on 1–15 too.
         return this.calculateContractorPaymentRow({
           ...c,
-          lessAdvance: newAmount,
+          lessAdvance: isMonthEndContractorRow(c) ? newAmount : 0,
         })
       }
       return c
@@ -255,7 +256,8 @@ export const sheetStoreMethods = {
         (c.month || '2026-08') === month
           ? this.calculateContractorPaymentRow({
               ...c,
-              lessAdvance: totalFor(c.name, c.contractType, c.employeeId),
+              // Once, on the month-end payment (as in the Excel) — not again on 1–15.
+              lessAdvance: isMonthEndContractorRow(c) ? totalFor(c.name, c.contractType, c.employeeId) : 0,
             })
           : c
       ),

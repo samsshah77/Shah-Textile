@@ -104,6 +104,7 @@ export function EmployeeProfileForm({
   const [advanceEligible, setAdvanceEligible] = useState(false)
   const [contractorBasisValue, setContractorBasisValue] = useState<'BILL' | 'SALARY'>('SALARY')
   const [paidMidMonth, setPaidMidMonth] = useState(false)
+  const [efficiencyEligible, setEfficiencyEligible] = useState(false)
   const [remarks, setRemarks] = useState('')
 
   const loadCreateDefaults = () => {
@@ -111,6 +112,7 @@ export function EmployeeProfileForm({
     setFormKind('salaried')
     setContractorBasisValue('SALARY')
     setPaidMidMonth(false)
+    setEfficiencyEligible(false)
     setName('')
     setFatherName('')
     setCnic('')
@@ -177,6 +179,14 @@ export function EmployeeProfileForm({
     setAdvanceEligible(Boolean(emp.advanceEligible || emp.advance))
     setContractorBasisValue(contractorBasis(emp))
     setPaidMidMonth(contractorPaidMidMonth(emp))
+    // Old profiles (never decided): ticked if they are on this month's Efficiency sheet.
+    setEfficiencyEligible(
+      typeof emp.efficiencyEligible === 'boolean'
+        ? emp.efficiencyEligible
+        : payrollService
+            .getEfficiencyIncentives(payrollService.getActiveSalariedMonth())
+            .some((r) => r.employeeId === emp.id || (!r.employeeId && r.name.trim().toLowerCase() === emp.name.trim().toLowerCase()))
+    )
     setRemarks(emp.remarks || '')
   }
 
@@ -349,6 +359,8 @@ export function EmployeeProfileForm({
       advance: advanceEligible,
       contractorBasis: formKind === 'contractor' ? contractorBasisValue : undefined,
       paidMidMonth: formKind === 'contractor' ? paidMidMonth : undefined,
+      efficiencyEligible:
+        formKind === 'salaried' && nextContract === 'Company Contract' ? efficiencyEligible : undefined,
       // Kept in step for anything still reading the old field.
       payCycle: formKind === 'contractor' ? (paidMidMonth ? ('FORTNIGHTLY' as const) : ('MONTHLY' as const)) : undefined,
       remarks,
@@ -699,6 +711,7 @@ export function EmployeeProfileForm({
           </label>
 
           {formKind === 'salaried' && (
+            <div className="block space-y-1">
             <label className="block space-y-1">
               <span className="text-xs font-semibold text-slate-700">Wage Type</span>
               <select
@@ -711,6 +724,18 @@ export function EmployeeProfileForm({
                 <option value="Permanent">Permanent (Monthly)</option>
               </select>
             </label>
+              {contractStatus !== 'Permanent' && (
+                <label className="flex items-center gap-2 pt-1 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    disabled={readOnly}
+                    checked={efficiencyEligible}
+                    onChange={(e) => setEfficiencyEligible(e.target.checked)}
+                  />
+                  Efficiency table mein shamil
+                </label>
+              )}
+            </div>
           )}
 
           {(formKind === 'weaver' || formKind === 'helper') && (
