@@ -9,9 +9,6 @@ import {
   dbGetQualities,
   dbGetSheet,
   dbListAllSheets,
-  dbGetMonthSheets,
-  dbGetBeamSheets,
-  dbGetMonthSummary,
   dbGetYarn,
   dbGetYarnIssuances,
   dbGetYarnMovements,
@@ -45,7 +42,6 @@ const KEY_YARN_ISSUANCE = 'sara_textile_yarn_issuance_v8'
 const KEY_QUALITY = 'sara_textile_quality_master_v8'
 const KEY_YARN_MOVEMENTS = 'sara_textile_yarn_movements_v8'
 const SHEET_PREFIX = 'sara_textile_production_sheet_v8_'
-const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 
 async function requireSession(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value
@@ -157,34 +153,6 @@ export async function POST(req: NextRequest) {
     if (action === 'getAllSheets') {
       const sheets = await dbListAllSheets()
       return NextResponse.json({ ok: true, sheets })
-    }
-
-    if (action === 'getMonthSheets') {
-      const monthStr = String(body?.month || '').trim()
-      if (!MONTH_RE.test(monthStr)) {
-        return NextResponse.json({ ok: false, error: 'month required (YYYY-MM)' }, { status: 400 })
-      }
-      const sheets = await dbGetMonthSheets(monthStr)
-      return NextResponse.json({ ok: true, sheets })
-    }
-
-    if (action === 'getBeamSheets') {
-      const beamNo = String(body?.beamNo || '').trim()
-      if (!beamNo) {
-        return NextResponse.json({ ok: false, error: 'beamNo required' }, { status: 400 })
-      }
-      const entries = await dbGetBeamSheets(beamNo)
-      return NextResponse.json({ ok: true, entries })
-    }
-
-    if (action === 'getMonthSummary') {
-      const monthStr = String(body?.month || '').trim()
-      if (!MONTH_RE.test(monthStr)) {
-        return NextResponse.json({ ok: false, error: 'month required (YYYY-MM)' }, { status: 400 })
-      }
-      const qualityId = body?.qualityId ? String(body.qualityId).trim() : undefined
-      const summary = await dbGetMonthSummary(monthStr, qualityId)
-      return NextResponse.json({ ok: true, summary })
     }
 
     if (action === 'deleteSheet') {
@@ -308,7 +276,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'upsertQuality') {
-      await ensureFloorPayrollTables()
       const q = body?.quality
       if (!q?.id || !q?.name) {
         return NextResponse.json({ ok: false, error: 'quality with id+name required' }, { status: 400 })

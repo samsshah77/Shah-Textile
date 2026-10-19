@@ -8,7 +8,7 @@ import {
   composeLot,
   formatSwLotForDailyEntry,
   parseLotKind,
-  preloadBeamSheets,
+  preloadAllFloorSheets,
   productionMastersService,
   type LotKind,
   type MountBeamResult,
@@ -414,10 +414,10 @@ export function BeamMasterTable({
   const openTrack = (b: BeamMaster) => {
     const qs = new URLSearchParams({ beam: b.beamNo })
     const href = `/floor/reports/beam?${qs.toString()}`
-    // Fetch only this beam's lot history; the report does not need the full factory archive.
+    // Sheets may not be in memory on Beams tab — preload then open (or open anyway).
     void (async () => {
       try {
-        await preloadBeamSheets(b.beamNo)
+        await preloadAllFloorSheets()
       } catch {
         // still open Track page; it hydrates itself
       }

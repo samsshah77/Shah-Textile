@@ -13,8 +13,6 @@ export interface DailyLoomProductionEntry {
   category: LoomCategory;
   model?: string;
   qualityName: string;
-  /** Stable quality-run id captured when the row was created. Legacy rows may not have one. */
-  qualityId?: string;
   fabricType: string;
   warpYarn: string;
   weftYarn: string;
@@ -43,8 +41,6 @@ export interface DailyLoomProductionEntry {
   /** Shift B fabric faults (newline-separated). */
   fabricFaultB?: string;
   lot?: string;
-  /** Legacy imports sometimes stored the beam lot under this alternate field. */
-  swLot?: string;
   approvalStatus?: 'DRAFT' | 'APPROVED';
   submittedBy?: string;
   submittedAt?: string;

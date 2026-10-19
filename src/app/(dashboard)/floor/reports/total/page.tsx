@@ -12,6 +12,7 @@ import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 import {
   hydrateFloorFromDb,
   preloadMonthSheets,
+  preloadAllFloorSheets,
   productionMastersService,
   qualityRunOwnsSheetEntry,
 } from '@/services/productionMastersService'
@@ -165,7 +166,9 @@ function ProductionTotalTrackingContent() {
       setShiftBMatrix(EMPTY_MATRIX)
       try {
         await hydrateFloorFromDb()
-        // Load target month immediately via fast single-batch query
+        // Keep prior months available for Overall / quality jump + dropdown history.
+        await preloadAllFloorSheets()
+        if (cancelled) return
         await preloadMonthSheets(month)
         if (cancelled) return
         const primary =

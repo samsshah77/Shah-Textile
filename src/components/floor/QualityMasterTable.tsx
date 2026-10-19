@@ -37,7 +37,6 @@ import {
   clearQualityAssignFlashIds,
 } from '@/lib/qualityAssignFlash'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
-import { QualitySpecHistoryModal } from './QualitySpecHistoryModal'
 
 /** Today only: looms from Hold that already carry another live quality. */
 function loomsBusyOnResumeToday(
@@ -240,7 +239,6 @@ export function QualityMasterTable({
   const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const [addForm, setAddForm] = useState(emptyAddForm)
   const [endsFabricFilter, setEndsFabricFilter] = useState<'ALL' | 'Suiting' | 'Shirting'>('ALL')
-  const [specHistoryQuality, setSpecHistoryQuality] = useState<QualityMaster | null>(null)
 
   const mode = viewModeProp ?? modeLocal
   const setMode = (next: TableGridMode) => {
@@ -384,11 +382,6 @@ export function QualityMasterTable({
       ? Number(e.totalMeters) || 0
       : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
 
-  const allDays = useMemo(
-    () => mergedSheetEntriesForTotals(sheetDate, entries || []),
-    [sheetDate, entries]
-  )
-
   const assignedByQuality = useMemo(() => {
     const map = new Map<string, number[]>()
     const dayKey = String(sheetDate || '').slice(0, 10)
@@ -409,53 +402,18 @@ export function QualityMasterTable({
             .map((l) => l.loomNumber)
           map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
         } else {
-          let fromDay = looms
+          const fromDay = looms
             .filter((l) => loomHasQualityOnDate(l, q.id, qualities, dayRows, sheetDate))
             .map((l) => l.loomNumber)
-          if (fromDay.length === 0) {
-            fromDay = looms.filter((l) => l.qualityId === q.id).map((l) => l.loomNumber)
-          }
-          if (fromDay.length === 0) {
-            fromDay = [
-              ...new Set(
-                allDays
-                  .filter(
-                    (e) =>
-                      qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
-                  )
-                  .map((e) => e.loomNumber)
-              ),
-            ].sort((a, b) => a - b)
-          }
           map.set(q.id, [...new Set(fromDay)].sort((a, b) => a - b))
         }
         continue
       }
       // ENDED on past Active days: that day's sheet allotment (not end-stamp looms).
       if (!isToday && qualityEndedButVisibleOnPastDay(q, sheetDate)) {
-        let fromDay = looms
+        const fromDay = looms
           .filter((l) => loomHasQualityOnDate(l, q.id, qualities, dayRows, sheetDate))
           .map((l) => l.loomNumber)
-        if (fromDay.length === 0) {
-          const fromEnds = qualityLoomEndsOnDate(q, sheetDate)
-          if (fromEnds.length > 0) fromDay = fromEnds
-          else {
-            const fromAllEnds = qualityLoomEndsOnDate(q)
-            if (fromAllEnds.length > 0) fromDay = fromAllEnds
-            else {
-              fromDay = [
-                ...new Set(
-                  allDays
-                    .filter(
-                      (e) =>
-                        qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
-                    )
-                    .map((e) => e.loomNumber)
-                ),
-              ].sort((a, b) => a - b)
-            }
-          }
-        }
         map.set(q.id, [...new Set(fromDay)].sort((a, b) => a - b))
         continue
       }
@@ -470,7 +428,7 @@ export function QualityMasterTable({
         map.set(q.id, fromAllEnds)
         continue
       }
-      let fromSheet = [
+      const fromSheet = [
         ...new Set(
           dayRows
             .filter(
@@ -480,26 +438,16 @@ export function QualityMasterTable({
             .map((e) => e.loomNumber)
         ),
       ].sort((a, b) => a - b)
-      if (fromSheet.length === 0) {
-        fromSheet = [
-          ...new Set(
-            allDays
-              .filter(
-                (e) =>
-                  qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
-              )
-              .map((e) => e.loomNumber)
-          ),
-        ].sort((a, b) => a - b)
-      }
       map.set(q.id, fromSheet)
     }
     return map
-  }, [dayRows, qualities, sheetDate, looms, allDays])
+  }, [dayRows, qualities, sheetDate, looms])
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, number> = {}
     for (const q of qualities) stats[q.id] = 0
+
+    const allDays = mergedSheetEntriesForTotals(sheetDate, entries || [])
 
     for (const e of allDays) {
       const owner = qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)
@@ -507,7 +455,7 @@ export function QualityMasterTable({
       stats[owner.id] = (stats[owner.id] || 0) + meterOf(e)
     }
     return stats
-  }, [qualities, allDays, sheetDate])
+  }, [qualities, entries, sheetDate])
 
   const tableMinWidth = useMemo(
     () => Object.values(widths).reduce((sum, w) => sum + w, 0),
@@ -855,11 +803,6 @@ export function QualityMasterTable({
         </button>
         <ul className="dropdown-menu dropdown-menu-end">
           <li>
-            <button type="button" className="dropdown-item" onClick={() => setSpecHistoryQuality(q)}>
-              <i className="bi bi-clock-history me-2 text-primary" /> Specs History
-            </button>
-          </li>
-          <li>
             <button type="button" className="dropdown-item" onClick={() => handleHold(q)}>
               <i className="bi bi-pause-circle me-2" /> Hold
             </button>
@@ -890,11 +833,6 @@ export function QualityMasterTable({
           <i className="bi bi-three-dots-vertical" />
         </button>
         <ul className="dropdown-menu dropdown-menu-end">
-          <li>
-            <button type="button" className="dropdown-item" onClick={() => setSpecHistoryQuality(q)}>
-              <i className="bi bi-clock-history me-2 text-primary" /> Specs History
-            </button>
-          </li>
           {isHoldView && (
             <li>
               <button type="button" className="dropdown-item" onClick={() => handleResume(q)}>
@@ -1428,20 +1366,7 @@ export function QualityMasterTable({
                     )}
                   </div>
                   <div className="flex-fill">
-                    <div className="d-flex align-items-center justify-content-between">
-                      <label className="small mb-0">Pick</label>
-                      {q.specHistory && q.specHistory.length > 1 && (
-                        <button
-                          type="button"
-                          className="btn btn-link p-0 text-decoration-none text-primary"
-                          style={{ fontSize: '0.68rem', lineHeight: 1 }}
-                          onClick={() => setSpecHistoryQuality(q)}
-                          title="View Specs History"
-                        >
-                          <i className="bi bi-clock-history me-0.5" />v{q.specHistory.length}
-                        </button>
-                      )}
-                    </div>
+                    <label className="small mb-0">Pick</label>
                     {rowMasterEdit ? (
                       <NumericCellInput
                         className="form-control form-control-sm text-end"
@@ -1799,19 +1724,7 @@ export function QualityMasterTable({
                           onValueChange={(v) => onUpdate(q.id, { pick: v })}
                         />
                       ) : (
-                        <div className="d-flex align-items-center justify-content-end px-1 gap-1">
-                          <span className="font-monospace">{q.pick}</span>
-                          {q.specHistory && q.specHistory.length > 1 && (
-                            <button
-                              type="button"
-                              className="btn btn-link p-0 text-decoration-none text-primary"
-                              onClick={() => setSpecHistoryQuality(q)}
-                              title={`Pick history: ${q.specHistory.length} versions. Click to view timeline.`}
-                            >
-                              <i className="bi bi-clock-history" style={{ fontSize: '0.72rem' }} />
-                            </button>
-                          )}
-                        </div>
+                        <div className="text-end px-1">{q.pick}</div>
                       )}
                     </td>
                     <td className="px-1">
@@ -2118,10 +2031,6 @@ export function QualityMasterTable({
           <option key={name} value={name} />
         ))}
       </datalist>
-      <QualitySpecHistoryModal
-        quality={specHistoryQuality}
-        onClose={() => setSpecHistoryQuality(null)}
-      />
     </div>
   )
 }

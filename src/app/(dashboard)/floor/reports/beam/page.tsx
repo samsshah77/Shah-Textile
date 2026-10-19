@@ -11,7 +11,6 @@ import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 import {
   hydrateFloorFromDb,
-  preloadBeamSheets,
   preloadAllFloorSheets,
   productionMastersService,
   refreshFloorMastersFromDb,
@@ -47,11 +46,7 @@ function BeamTrackContent() {
       try {
         await hydrateFloorFromDb()
         await refreshFloorMastersFromDb()
-        if (beamNo) {
-          await preloadBeamSheets(beamNo)
-        } else {
-          await preloadAllFloorSheets()
-        }
+        await preloadAllFloorSheets()
         if (cancelled || !beamNo) return
         setTrack(productionMastersService.buildBeamTrack(beamNo))
       } catch (err) {
