@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { assertSafeListReplace, assertSafeSheetOverwrite } from '@/server/floorGuards'
 import { rebuildProductionLedger, refreshProductionDay } from '@/server/productionLedger'
+import { loadQualityRefs, stampQualityIds } from '@/server/qualityStamp'
 import type { Prisma } from '@prisma/client'
 import type {
   BeamMaster,
@@ -770,6 +771,7 @@ export async function dbUpdateLoomEntry(
   }
   // Never persist the internal flag.
   delete (stamped as { _clearQuality?: boolean })._clearQuality
+  stamped = stampQualityIds(dateStr, [stamped], await loadQualityRefs())[0]
 
   await prisma.floorDailySheet.upsert({
     where: {
@@ -857,8 +859,10 @@ export async function dbSaveSheet(
   if (list.length === 0) {
     return
   }
+  // Every row records which quality run it belongs to (see qualityStamp.ts).
+  const withIds = stampQualityIds(dateStr, list, await loadQualityRefs())
   await prisma.$transaction(async (tx) => {
-    for (const e of list) {
+    for (const e of withIds) {
       const segmentIndex = sheetSegmentFromRow({ segmentIndex: e.segmentIndex, payload: e })
       const stamped: DailyLoomProductionEntry = { ...e, segmentIndex }
       await tx.floorDailySheet.upsert({

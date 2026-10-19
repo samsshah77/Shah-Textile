@@ -9,6 +9,7 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/shared/MiniCharts'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
+import { ServerMonthCheck } from '@/components/floor/ServerMonthCheck'
 import {
   hydrateFloorFromDb,
   preloadMonthSheets,
@@ -643,6 +644,9 @@ function ProductionTotalTrackingContent() {
         <ProductionReportSkeleton />
       ) : (
         <>
+      {view === 'meters' && !qualityFocus && (
+        <ServerMonthCheck month={month} pageTotal={matrix.grandTotalMeters} />
+      )}
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <MetricCard

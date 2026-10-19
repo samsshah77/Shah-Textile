@@ -908,12 +908,18 @@ export function loomHasQualityOnDate(
  * closed run via `loomEnds` (date + loom) so Ends totals match pre-End / Continue meters.
  */
 export function qualityRunThatOwnsSheetEntry(
-  entry: { qualityName?: string; pick?: number; date?: string; loomNumber?: number },
+  entry: { qualityName?: string; pick?: number; date?: string; loomNumber?: number; qualityId?: string },
   catalog: QualityMaster[],
   fallbackDate?: string
 ): QualityMaster | null {
   const day = String(entry.date || fallbackDate || '').slice(0, 10)
   if (!day) return null
+
+  // Server-stamped id wins (exact run), as long as the row still carries that quality's name.
+  if (entry.qualityId && entry.qualityName && entry.qualityName !== '—') {
+    const byId = catalog.find((q) => q.id === entry.qualityId)
+    if (byId && qualityNameKey(byId.name) === qualityNameKey(entry.qualityName)) return byId
+  }
 
   // Cleared end-day rows: meters stay, name wiped — credit via loomEnds stamp.
   if (!entry.qualityName || entry.qualityName === '—') {
@@ -1031,8 +1037,8 @@ export function qualityHeldButVisibleOnPastDay(
 }
 
 /**
- * True when an ENDED quality should still appear on Active for a *past* day
- * (it was running that day; End day onward → Ends tab only).
+ * True when an ENDED quality should still appear on Active for a day it ran
+ * (any day up to and including its End day; after that → Ends tab only).
  * History rows are read-only (E badge + muted BG).
  */
 export function qualityEndedButVisibleOnPastDay(
@@ -1043,8 +1049,9 @@ export function qualityEndedButVisibleOnPastDay(
   const day = String(sheetDate || '').slice(0, 10)
   const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
   if (!day || !stamp) return false
-  // End day and after → Ends tab only. Before end → history on Active.
-  return day < stamp
+  // Up to and including the End day it was running → stays on Active as read-only
+  // history (E badge, muted BG). Only after the End day does it leave Active.
+  return day <= stamp
 }
 
 /** HOLD or ENDED history row on Active for a past sheet date (read-only). */
@@ -3702,6 +3709,24 @@ class ProductionMastersService {
         return catalogBefore
       }
     }
+    // Renaming a quality that already ran on earlier days would split its history:
+    // those days' rows keep the old name and stop matching. Only allow a rename on the
+    // quality's first day (typo fix); otherwise End it and add the new name.
+    if (current && nextPatch.name !== undefined) {
+      const newKey = qualityNameKey(String(nextPatch.name))
+      const oldKey = qualityNameKey(current.name)
+      const startDay = current.createdOn ? String(current.createdOn).slice(0, 10) : ''
+      const day = String(fromDate || '').slice(0, 10)
+      if (newKey && oldKey && newKey !== oldKey && (!startDay || day > startDay)) {
+        notifyFloorSaveProblem(409, {
+          error:
+            `"${current.name}" ${startDay || 'pehle'} se chal rahi hai — naam badalne se pichle dinon ka record alag ho jayega. ` +
+            `Naam sirf pehle din (${startDay || 'start date'}) badal sakte hain. Warna is quality ko End karein aur naye naam se nayi quality add karein.`,
+        })
+        delete nextPatch.name
+        if (Object.keys(nextPatch).length === 0) return catalogBefore
+      }
+    }
     // Already ended/hold: only allow explicit revive to ACTIVE (or re-stamp date).
     if (currentStatus === 'ENDED' || currentStatus === 'HOLD') {
       if (nextPatch.status === 'ACTIVE') {
@@ -4434,7 +4459,13 @@ class ProductionMastersService {
           prior &&
           qualityNameKey(prev!.qualityName) === qualityNameKey(prior.qualityName || '') &&
           qualityPoseEndedBeforeDay(prior, catalog, dateStr))
-      const poseEnded = !loomHasLivePose && rowLooksEnded
+      // On a past day the loom's *current* quality does not apply (it starts on the day it
+      // was assigned and is written forward from there), so an End before this day wins.
+      const poseEnded = rowLooksEnded && (!loomHasLivePose || isPastDay)
+      // Carry yesterday's quality forward only while that quality is still running.
+      const priorStillRuns = Boolean(
+        prior && namedQualityOnRow(prior.qualityName) && !qualityPoseEndedBeforeDay(prior, catalog, dateStr)
+      )
       const endedLabelSrc = poseEnded
         ? prev && (namedQualityOnRow(prev.qualityName) || isQualityEndedSheetRow(prev))
           ? prev
@@ -4462,9 +4493,7 @@ class ProductionMastersService {
             ? live
             : prev
               ? prev
-              : prior &&
-                  namedQualityOnRow(prior.qualityName) &&
-                  loomHasLivePose
+              : priorStillRuns && loomHasLivePose
                 ? prior
                 : !isPastDay && loomHasLivePose && namedQualityOnRow(live.qualityName)
                   ? live
@@ -4579,6 +4608,8 @@ class ProductionMastersService {
         ...(prev?.fabricFaultA != null ? { fabricFaultA: prev.fabricFaultA } : {}),
         ...(prev?.fabricFaultB != null ? { fabricFaultB: prev.fabricFaultB } : {}),
         ...(!poseEnded && prev?.weightKg != null ? { weightKg: prev.weightKg } : {}),
+        // Server-stamped quality run id — kept while the row keeps the same quality.
+        ...(hasPose && identity?.qualityId ? { qualityId: identity.qualityId } : {}),
         lot,
       }
       // Guard: never demote a saved named primary to "—" on rebuild (dual-quality wipe).

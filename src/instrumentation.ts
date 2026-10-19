@@ -10,6 +10,20 @@ export async function register() {
       const { rebuildProductionLedger } = await import("@/server/productionLedger");
       const n = await rebuildProductionLedger();
       if (n != null) console.log("[ledger] rebuilt on startup:", n, "rows");
+      if (n == null) return;
+      // One-time: copy resolved quality ids into rows saved before ids existed.
+      try {
+        const q = await import("@/server/qualityStamp");
+        const missing = await q.countRowsMissingQualityId();
+        if (missing > 0) {
+          const { takeSnapshot } = await import("@/server/dbSnapshot");
+          await takeSnapshot("before-qualityId-backfill");
+          const done = await q.backfillQualityIds();
+          console.log("[qualityId] backfilled", done, "rows");
+        }
+      } catch (err) {
+        console.error("[qualityId] backfill skipped (app continues)", err);
+      }
     });
   }
 }

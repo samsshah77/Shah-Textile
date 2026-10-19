@@ -41,6 +41,8 @@ export interface DailyLoomProductionEntry {
   /** Shift B fabric faults (newline-separated). */
   fabricFaultB?: string;
   lot?: string;
+  /** Quality run this row belongs to — set by the server on save. */
+  qualityId?: string;
   /** Fabric weight (kg) punched on Daily Entry for this loom/day. Entry page only. */
   weightKg?: number;
   approvalStatus?: 'DRAFT' | 'APPROVED';

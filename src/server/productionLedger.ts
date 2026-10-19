@@ -56,6 +56,11 @@ function num(key: string): string {
   return `(CASE WHEN btrim(${v}) ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN btrim(${v})::numeric END)`
 }
 
+/** Same name key as the app: lowercase letters/digits only ("Gul Ahmed (1x1)" = "gulahmed1x1"). */
+function KEY(expr: string): string {
+  return `regexp_replace(lower(COALESCE(${expr}, '')), '[^a-z0-9]', '', 'g')`
+}
+
 const ISO_DATE = `s."date" ~ '^\\d{4}-\\d{2}-\\d{2}$'`
 
 /**
@@ -84,9 +89,11 @@ export function ledgerInsertSql(where = 'TRUE'): string {
   FROM "floor_daily_sheets" s
   -- a qualityId stored on the row itself wins, if it still exists
   LEFT JOIN "floor_qualities" pq ON pq."id" = NULLIF(s.payload->>'qualityId', '')
+    AND ${KEY('pq."name"')} = ${KEY(`s.payload->>'qualityName'`)}
   LEFT JOIN LATERAL (
     SELECT q."id" FROM "floor_qualities" q
-    WHERE lower(btrim(q."name")) = lower(btrim(s.payload->>'qualityName'))
+    WHERE ${KEY('q."name"')} = ${KEY(`s.payload->>'qualityName'`)}
+      AND ${KEY(`s.payload->>'qualityName'`)} <> ''
     ORDER BY
       (q."pick"::numeric IS NOT DISTINCT FROM ${num('pick')}) DESC,
       (q."createdOn" IS NULL OR q."createdOn" <= s."date") DESC,
@@ -145,7 +152,21 @@ export type ProductionReport = {
   totals: { rows: number; meters: number; shiftA: number; shiftB: number; days: number }
   byDay: Array<{ date: string; rows: number; meters: number; shiftA: number; shiftB: number; avgEfficiency: number | null }>
   byQuality: Array<{ qualityId: string | null; qualityName: string; pick: number | null; rows: number; looms: number; meters: number; firstDate: string; lastDate: string }>
-  byLoom: Array<{ loomNumber: number; rows: number; meters: number; avgEfficiency: number | null }>
+  byLoom: Array<{
+    loomNumber: number
+    category: string | null
+    rows: number
+    runDays: number
+    meters: number
+    shiftA: number
+    shiftB: number
+    theoretical: number
+    avgEfficiency: number | null
+    /** Quality with the most meters on this loom in the range. */
+    mainQuality: string | null
+  }>
+  /** Per day and loom model (G6200 / G6300 / PU …), for weekly breakdowns. */
+  byDayCategory: Array<{ date: string; category: string; meters: number; avgEfficiency: number | null; looms: number }>
   /** Sheet rows whose quality name matches no quality in the master. */
   unlinked: Array<{ date: string; loomNumber: number; qualityName: string; meters: number }>
   /** Rows dated before their quality's start date or (with meters) after its end date. */
@@ -179,9 +200,24 @@ export async function productionReport(from: string, to: string): Promise<Produc
     from, to
   )
   const byLoom = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT "loomNumber", count(*) AS rows, sum("totalMeters") AS meters,
-            avg("efficiencyPct") FILTER (WHERE "totalMeters" > 0) AS eff
-     FROM "floor_production" WHERE ${range} GROUP BY "loomNumber" ORDER BY "loomNumber"`,
+    `SELECT p."loomNumber", l."category", count(*) AS rows,
+            count(DISTINCT p."date") FILTER (WHERE p."totalMeters" > 0) AS days,
+            sum(p."totalMeters") AS meters, sum(p."shiftAMeters") AS a, sum(p."shiftBMeters") AS b,
+            sum(p."theoreticalMeters") FILTER (WHERE p."totalMeters" > 0) AS theo,
+            avg(p."efficiencyPct") FILTER (WHERE p."totalMeters" > 0) AS eff,
+            (SELECT x."qualityName" FROM "floor_production" x
+              WHERE x."loomNumber" = p."loomNumber" AND x.${range} AND x."qualityName" NOT IN ('', '-', '—')
+              GROUP BY x."qualityName" ORDER BY sum(x."totalMeters") DESC LIMIT 1) AS main
+     FROM "floor_production" p LEFT JOIN "floor_looms" l ON l."loomNumber" = p."loomNumber"
+     WHERE p.${range} GROUP BY p."loomNumber", l."category" ORDER BY p."loomNumber"`,
+    from, to
+  )
+  const byDayCategory = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+    `SELECT to_char(p."date",'YYYY-MM-DD') AS date, COALESCE(l."category", 'Other') AS category,
+            sum(p."totalMeters") AS meters, count(DISTINCT p."loomNumber") FILTER (WHERE p."totalMeters" > 0) AS looms,
+            avg(p."efficiencyPct") FILTER (WHERE p."totalMeters" > 0) AS eff
+     FROM "floor_production" p LEFT JOIN "floor_looms" l ON l."loomNumber" = p."loomNumber"
+     WHERE p.${range} GROUP BY p."date", COALESCE(l."category", 'Other') ORDER BY 1, 2`,
     from, to
   )
   const unlinked = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
@@ -234,9 +270,22 @@ export async function productionReport(from: string, to: string): Promise<Produc
     })),
     byLoom: byLoom.map((r) => ({
       loomNumber: n(r.loomNumber),
+      category: (r.category as string) ?? null,
       rows: n(r.rows),
+      runDays: n(r.days),
+      meters: n(r.meters),
+      shiftA: n(r.a),
+      shiftB: n(r.b),
+      theoretical: n(r.theo),
+      avgEfficiency: nn(r.eff),
+      mainQuality: (r.main as string) ?? null,
+    })),
+    byDayCategory: byDayCategory.map((r) => ({
+      date: String(r.date),
+      category: String(r.category),
       meters: n(r.meters),
       avgEfficiency: nn(r.eff),
+      looms: n(r.looms),
     })),
     unlinked: unlinked.map((r) => ({
       date: String(r.date),

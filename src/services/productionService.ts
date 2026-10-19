@@ -25,37 +25,6 @@ const STORAGE_KEY_PROD = 'sara_textile_production_entries_v6'
 const STORAGE_KEY_BEAMS = 'sara_textile_beam_stock_v6'
 const STORAGE_KEY_QUALITIES = 'sara_textile_qualities_v6'
 
-export interface LoomMonthlyRollup {
-  loomNumber: number
-  category: LoomCategory
-  qualityName: string
-  fabricType: string
-  totalRunningDays: number
-  totalShiftAMeters: number
-  totalShiftBMeters: number
-  grandTotalMeters: number
-  theoreticalMeters: number
-  averageEfficiency: number
-  bonusPercentage: number
-  bonusAmountPKR: number
-  totalStopLossMeters: number
-  totalRevenuePKR: number
-  dominantStatus: LoomStatus
-}
-
-export interface FloorWeeklyReport {
-  weekLabel: string
-  startDate: string
-  endDate: string
-  totalMeters: number
-  shiftAMeters: number
-  shiftBMeters: number
-  averageEfficiency: number
-  activeLoomsCount: number
-  totalRevenue: number
-  categoryBreakdown: Record<LoomCategory, { totalMeters: number; efficiency: number; revenue: number }>
-}
-
 class ProductionService {
   private inMemoryEntries: DailyLoomProductionEntry[] = []
   private inMemoryBeams: BeamStockItem[] = []
@@ -497,110 +466,8 @@ class ProductionService {
     }
   }
 
-  // Automatic Monthly Aggregation Rollup for all 34 Looms
-  async getMonthlyLoomRollup(monthStr: string = '2026-09'): Promise<{
-    month: string
-    looomRollups: LoomMonthlyRollup[]
-    grandTotalMeters: number
-    grandTheoreticalMeters: number
-    averageFloorEfficiency: number
-    totalRevenuePKR: number
-    totalBonusPayoutPKR: number
-  }> {
-    const entries = this.loadEntries()
-    const monthlyMatrix = getExcelMonthlyMatrix()
-
-    const looomRollups: LoomMonthlyRollup[] = entries.map((entry) => {
-      const matrixTotal = monthlyMatrix.loomTotals[entry.loomNumber]
-      const dailyMeters = entry.totalMeters || 140
-      const runningDays = entry.status === 'RUNNING' ? 8 : entry.status === 'STOPPED' ? 0 : 4
-
-      const grandTotalMeters = matrixTotal !== undefined ? matrixTotal : Math.round(dailyMeters * runningDays)
-      const dailyTheo = entry.pick > 0 ? (entry.rpm * 60 * (entry.runningHours || 24)) / (entry.pick * 39.3701) : 170
-      const theoreticalMeters = Math.round(dailyTheo * (runningDays || 8))
-      const averageEfficiency = theoreticalMeters > 0 ? Number(((grandTotalMeters / theoreticalMeters) * 100).toFixed(1)) : 0
-
-      let bonusPercentage = 0
-      if (averageEfficiency >= 70) {
-        bonusPercentage = Math.round(averageEfficiency - 60)
-      }
-
-      const totalRevenuePKR = Math.round(grandTotalMeters * (entry.pick * 0.95))
-      const bonusAmountPKR = bonusPercentage * 450
-
-      return {
-        loomNumber: entry.loomNumber,
-        category: entry.category,
-        qualityName: entry.qualityName,
-        fabricType: entry.fabricType,
-        totalRunningDays: runningDays,
-        totalShiftAMeters: Math.round(grandTotalMeters * 0.53),
-        totalShiftBMeters: Math.round(grandTotalMeters * 0.47),
-        grandTotalMeters,
-        theoreticalMeters,
-        averageEfficiency,
-        bonusPercentage,
-        bonusAmountPKR,
-        totalStopLossMeters: Math.max(0, theoreticalMeters - grandTotalMeters),
-        totalRevenuePKR,
-        dominantStatus: entry.status,
-      }
-    })
-
-    const grandTotalMeters = looomRollups.reduce((s, r) => s + r.grandTotalMeters, 0)
-    const grandTheoreticalMeters = looomRollups.reduce((s, r) => s + r.theoreticalMeters, 0)
-    const averageFloorEfficiency = grandTheoreticalMeters > 0 ? Number(((grandTotalMeters / grandTheoreticalMeters) * 100).toFixed(1)) : 0
-    const totalRevenuePKR = looomRollups.reduce((s, r) => s + r.totalRevenuePKR, 0)
-    const totalBonusPayoutPKR = looomRollups.reduce((s, r) => s + r.bonusAmountPKR, 0)
-
-    return {
-      month: monthStr,
-      looomRollups,
-      grandTotalMeters,
-      grandTheoreticalMeters,
-      averageFloorEfficiency,
-      totalRevenuePKR,
-      totalBonusPayoutPKR,
-    }
-  }
-
-  // Automatic Weekly Rollups
-  async getWeeklyRollups(): Promise<FloorWeeklyReport[]> {
-    return [
-      {
-        weekLabel: 'Week 1 (Sept 01 - Sept 07)',
-        startDate: '2026-09-01',
-        endDate: '2026-09-07',
-        totalMeters: 26926,
-        shiftAMeters: 14200,
-        shiftBMeters: 12726,
-        averageEfficiency: 74.2,
-        activeLoomsCount: 34,
-        totalRevenue: Math.round(26926 * 80 * 0.95),
-        categoryBreakdown: {
-          G6200: { totalMeters: 16800, efficiency: 75.1, revenue: 1276800 },
-          G6300: { totalMeters: 6300, efficiency: 68.4, revenue: 478800 },
-          PU: { totalMeters: 3826, efficiency: 71.0, revenue: 290776 },
-        },
-      },
-      {
-        weekLabel: 'Week 2 (Sept 08 - Sept 14)',
-        startDate: '2026-09-08',
-        endDate: '2026-09-14',
-        totalMeters: 8534,
-        shiftAMeters: 4500,
-        shiftBMeters: 4034,
-        averageEfficiency: 71.5,
-        activeLoomsCount: 34,
-        totalRevenue: Math.round(8534 * 80 * 0.95),
-        categoryBreakdown: {
-          G6200: { totalMeters: 5300, efficiency: 72.8, revenue: 402800 },
-          G6300: { totalMeters: 1900, efficiency: 65.2, revenue: 144400 },
-          PU: { totalMeters: 1334, efficiency: 70.1, revenue: 101384 },
-        },
-      },
-    ]
-  }
+  // Monthly / weekly rollups now come from the server: see services/floorReportsClient.ts
+  // (GET /api/floor/reports). The old hard-coded September figures were removed.
 
   getQualityEndRecords(): QualityEndRecord[] {
     return getExcelQualityEndRecords()

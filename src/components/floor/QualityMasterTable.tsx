@@ -193,8 +193,45 @@ const FLASH_CLASS: Record<FlashTone, string> = {
   reuse: 'sara-quality-flash-reuse',
 }
 
+/**
+ * Spec (pick, reed, width …) as it was on `sheetDate`.
+ * The master row holds only the latest spec; every saved sheet row keeps the spec of its
+ * own day. On a past day, show what that day's rows recorded, so a change made on the 19th
+ * does not appear on the 15th.
+ */
+function qualitiesAsOfDay(
+  qualities: QualityMaster[],
+  dayRows: DailyLoomProductionEntry[],
+  sheetDate: string
+): QualityMaster[] {
+  const day = String(sheetDate || '').slice(0, 10)
+  if (!day || day >= getProductionToday() || dayRows.length === 0) return qualities
+  return qualities.map((q) => {
+    const key = qualityNameKey(q.name)
+    if (!key) return q
+    const sameName = qualities.filter((x) => qualityNameKey(x.name) === key).length
+    const row = dayRows.find(
+      (r) =>
+        qualityNameKey(r.qualityName || '') === key &&
+        Number(r.pick) > 0 &&
+        (sameName === 1 || qualityRunThatOwnsSheetEntry({ ...r, date: day }, qualities, day)?.id === q.id)
+    )
+    if (!row) return q
+    return {
+      ...q,
+      pick: Number(row.pick) || q.pick,
+      reed: Number(row.reed) || q.reed,
+      widthInch: Number(row.widthInch) || q.widthInch,
+      gsm: row.gsm != null && Number(row.gsm) > 0 ? Number(row.gsm) : q.gsm,
+      fabricType: row.fabricType || q.fabricType,
+      warpYarn: row.warpYarn || q.warpYarn,
+      weftYarn: row.weftYarn || q.weftYarn,
+    }
+  })
+}
+
 export function QualityMasterTable({
-  qualities,
+  qualities: qualitiesLatest,
   onUpdate,
   onAdd,
   onDelete,
@@ -215,6 +252,10 @@ export function QualityMasterTable({
   addModalOpen: addModalOpenProp,
   onAddModalOpenChange,
 }: QualityMasterTableProps) {
+  const qualities = useMemo(
+    () => qualitiesAsOfDay(qualitiesLatest, entries, sheetDate),
+    [qualitiesLatest, entries, sheetDate]
+  )
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon, showInfo, showError } = useAlertDialog()
   const [modeLocal, setModeLocal] = useState<TableGridMode>('table')
