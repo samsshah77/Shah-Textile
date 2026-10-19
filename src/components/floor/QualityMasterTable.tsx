@@ -384,6 +384,11 @@ export function QualityMasterTable({
       ? Number(e.totalMeters) || 0
       : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
 
+  const allDays = useMemo(
+    () => mergedSheetEntriesForTotals(sheetDate, entries || []),
+    [sheetDate, entries]
+  )
+
   const assignedByQuality = useMemo(() => {
     const map = new Map<string, number[]>()
     const dayKey = String(sheetDate || '').slice(0, 10)
@@ -430,7 +435,7 @@ export function QualityMasterTable({
         map.set(q.id, fromAllEnds)
         continue
       }
-      const fromSheet = [
+      let fromSheet = [
         ...new Set(
           dayRows
             .filter(
@@ -440,16 +445,26 @@ export function QualityMasterTable({
             .map((e) => e.loomNumber)
         ),
       ].sort((a, b) => a - b)
+      if (fromSheet.length === 0) {
+        fromSheet = [
+          ...new Set(
+            allDays
+              .filter(
+                (e) =>
+                  qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
+              )
+              .map((e) => e.loomNumber)
+          ),
+        ].sort((a, b) => a - b)
+      }
       map.set(q.id, fromSheet)
     }
     return map
-  }, [dayRows, qualities, sheetDate, looms])
+  }, [dayRows, qualities, sheetDate, looms, allDays])
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, number> = {}
     for (const q of qualities) stats[q.id] = 0
-
-    const allDays = mergedSheetEntriesForTotals(sheetDate, entries || [])
 
     for (const e of allDays) {
       const owner = qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)
@@ -457,7 +472,7 @@ export function QualityMasterTable({
       stats[owner.id] = (stats[owner.id] || 0) + meterOf(e)
     }
     return stats
-  }, [qualities, entries, sheetDate])
+  }, [qualities, allDays, sheetDate])
 
   const tableMinWidth = useMemo(
     () => Object.values(widths).reduce((sum, w) => sum + w, 0),
