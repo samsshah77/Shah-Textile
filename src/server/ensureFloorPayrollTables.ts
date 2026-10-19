@@ -124,6 +124,14 @@ const STATEMENTS = [
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "payroll_store_pkey" PRIMARY KEY ("key")
   )`,
+  // Accounts entries are saved here. It was missing on the live server until 19 Oct 2026,
+  // so Accounts silently fell back to browser-only storage. Always ensure it exists.
+  `CREATE TABLE IF NOT EXISTS "accounts_store" (
+    "key" TEXT NOT NULL,
+    "payload" JSONB NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "accounts_store_pkey" PRIMARY KEY ("key")
+  )`,
   // Existing live tables may predate these columns — ADD IF NOT EXISTS (Postgres 9.1+ via DO block).
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'ACTIVE'`,
   `ALTER TABLE "floor_qualities" ADD COLUMN IF NOT EXISTS "endedOn" TEXT`,

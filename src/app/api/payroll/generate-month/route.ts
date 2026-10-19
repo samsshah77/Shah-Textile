@@ -3,6 +3,8 @@ import { SESSION_COOKIE, verifySession } from '@/lib/session'
 import { currentUser } from '@/server/current-user'
 import { isAccountsController } from '@/lib/accountsAccess'
 import { dbPayrollGetAll, dbPayrollSave } from '@/server/payrollDb'
+import { writeAudit } from '@/server/auditLog'
+import { takeSnapshot } from '@/server/dbSnapshot'
 import {
   STORAGE_KEYS,
   applySalariedMonthGenerateToStore,
@@ -43,14 +45,28 @@ export async function POST(req: NextRequest) {
     }
 
     const store = await dbPayrollGetAll()
+    const storeBefore = structuredClone(store)
     const result = applySalariedMonthGenerateToStore(store, month)
     if (!result.ok) {
       return NextResponse.json(result, { status: 400 })
     }
 
+    // Safety copy of all payroll tables before a month is generated (never blocks).
+    try {
+      await takeSnapshot(`before-generate-${month}`)
+    } catch (snapErr) {
+      console.error('[payroll/generate-month] snapshot failed (continuing)', snapErr)
+    }
+
     await Promise.all(
       Object.entries(result.patch).map(([key, value]) => dbPayrollSave(key, value))
     )
+    for (const [key, value] of Object.entries(result.patch)) {
+      await writeAudit({
+        req, actor, module: 'payroll', action: `generate:${month}`, entityKey: key,
+        before: storeBefore[key], after: value,
+      })
+    }
 
     return NextResponse.json({
       ok: true,

@@ -4,6 +4,8 @@ import { dbAccountsDelete, dbAccountsGetAll, dbAccountsSave } from '@/server/acc
 import { currentUser } from '@/server/current-user'
 import { isAccountsController } from '@/lib/accountsAccess'
 import { isAccountsStoreKey } from '@/lib/accountsKeys'
+import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
+import { writeAudit } from '@/server/auditLog'
 
 export const runtime = 'nodejs'
 
@@ -12,8 +14,12 @@ async function requireSession(req: NextRequest) {
   return token ? await verifySession(token) : null
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    if (process.env.NODE_ENV === 'production' && !(await requireSession(req))) {
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    await ensureFloorPayrollTables()
     const store = await dbAccountsGetAll()
     return NextResponse.json({ ok: true, store })
   } catch (err) {
@@ -33,6 +39,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Make sure accounts_store exists (it was missing on live until 19 Oct 2026).
+    await ensureFloorPayrollTables()
+
     const actor = claims ? await currentUser(req) : null
     if (!isDev && !isAccountsController(actor)) {
       return NextResponse.json(
@@ -49,11 +58,16 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `Unknown key: ${key}` }, { status: 400 })
     }
 
+    const before = (await dbAccountsGetAll())[key] ?? null
     if (value == null) {
       await dbAccountsDelete(key)
     } else {
       await dbAccountsSave(key, value)
     }
+    await writeAudit({
+      req, actor, module: 'accounts', action: value == null ? 'delete' : 'save',
+      entityKey: key, before, after: value ?? null,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (err) {

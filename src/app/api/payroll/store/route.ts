@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/session'
 import {
+  dbPayrollGet,
   dbPayrollGetAll,
   dbPayrollIsEmpty,
   dbPayrollSave,
@@ -14,6 +15,7 @@ import {
 } from '@/services/payrollService'
 import { currentUser } from '@/server/current-user'
 import { isAccountsController } from '@/lib/accountsAccess'
+import { writeAudit } from '@/server/auditLog'
 
 export const runtime = 'nodejs'
 
@@ -24,8 +26,12 @@ async function requireSession(req: NextRequest) {
   return token ? await verifySession(token) : null
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    // Salaries are private: only logged-in users may read them.
+    if (!(await requireSession(req))) {
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+    }
     if (await dbPayrollIsEmpty()) {
       const seed = getPayrollSeedStore()
       await Promise.all(
@@ -101,7 +107,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `Unknown key: ${key}` }, { status: 400 })
     }
 
+    const before = await dbPayrollGet(key)
     await dbPayrollSave(key, value)
+    await writeAudit({ req, actor, module: 'payroll', action: 'save', entityKey: key, before, after: value })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('[payroll/store PUT]', err)
