@@ -462,3 +462,25 @@ model AccountsStore {
   @@map("accounts_store")
 }
 
+
+/// Append-only change history (who changed what, when, old → new).
+/// Created at runtime by src/server/auditLog.ts (CREATE TABLE IF NOT EXISTS), so live
+/// servers get it without running `prisma db push`.
+model AuditLog {
+  id        String   @id
+  createdAt DateTime @default(now())
+  actorId   String?
+  actorName String?
+  actorRole String?
+  module    String
+  action    String
+  entityKey String
+  entityId  String?
+  changes   Json?
+  meta      Json?
+  ip        String?
+
+  @@index([createdAt])
+  @@index([module, entityKey])
+  @@map("audit_logs")
+}

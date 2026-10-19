@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { assertSafeListReplace, assertSafeSheetOverwrite } from '@/server/floorGuards'
 import type { Prisma } from '@prisma/client'
 import type {
   BeamMaster,
@@ -236,6 +237,9 @@ export async function dbSaveBeams(beams: BeamMaster[]): Promise<void> {
   const prevByNo = new Map(existing.map((r) => [r.beamNo, r]))
   const incomingNos = new Set(beams.map((b) => b.beamNo).filter(Boolean))
   const canDeleteStale = incomingNos.size > 0
+  if (canDeleteStale) {
+    assertSafeListReplace('beam', existing.map((r) => r.beamNo), incomingNos)
+  }
 
   const run = async (withBeamRepeat: boolean) => {
     await prisma.$transaction(async (tx) => {
@@ -351,6 +355,9 @@ export async function dbGetYarn(): Promise<YarnMaster[]> {
 }
 
 export async function dbSaveYarn(yarn: YarnMaster[]): Promise<void> {
+  if (!Array.isArray(yarn)) throw new Error('yarn must be an array')
+  const storedIds = (await prisma.floorYarn.findMany({ select: { id: true } })).map((r) => r.id)
+  assertSafeListReplace('yarn stock', storedIds, yarn.map((y) => y.id))
   await prisma.$transaction(async (tx) => {
     await tx.floorYarn.deleteMany()
     if (yarn.length === 0) return
@@ -389,6 +396,9 @@ export async function dbGetYarnMovements(): Promise<YarnMovementRecord[]> {
 }
 
 export async function dbSaveYarnMovements(list: YarnMovementRecord[]): Promise<void> {
+  if (!Array.isArray(list)) throw new Error('yarn movements must be an array')
+  const storedIds = (await prisma.floorYarnMovement.findMany({ select: { id: true } })).map((r) => r.id)
+  assertSafeListReplace('yarn movement', storedIds, list.map((m) => m.id))
   await prisma.$transaction(async (tx) => {
     await tx.floorYarnMovement.deleteMany()
     if (list.length === 0) return
@@ -416,6 +426,9 @@ export async function dbGetYarnIssuances(): Promise<YarnLoomIssuance[]> {
 }
 
 export async function dbSaveYarnIssuances(list: YarnLoomIssuance[]): Promise<void> {
+  if (!Array.isArray(list)) throw new Error('yarn issuances must be an array')
+  const storedIds = (await prisma.floorYarnIssuance.findMany({ select: { id: true } })).map((r) => r.id)
+  assertSafeListReplace('yarn issuance', storedIds, list.map((i) => i.id))
   await prisma.$transaction(async (tx) => {
     await tx.floorYarnIssuance.deleteMany()
     if (list.length === 0) return
@@ -691,6 +704,11 @@ export async function dbListAllSheets(): Promise<{ date: string; entries: DailyL
   return [...byDate.entries()].map(([date, entries]) => ({ date, entries }))
 }
 
+/**
+ * Returns EVERY stored row for the date. Never filter rows here: if a stored sheet
+ * looks empty to the browser, it rebuilds the day and saves it back over real data
+ * (this is exactly what happened on 16-18 Oct 2026). Filter only in the UI.
+ */
 export async function dbGetSheet(dateStr: string): Promise<DailyLoomProductionEntry[] | null> {
   const rows = await prisma.floorDailySheet.findMany({
     where: { date: dateStr },
@@ -816,6 +834,10 @@ export async function dbSaveSheet(
 ): Promise<void> {
   const list = Array.isArray(entries) ? entries : []
   const existing = await prisma.floorDailySheet.count({ where: { date: dateStr } })
+  if (existing > 0 && list.length > 0) {
+    // Refuse saves that would wipe meters / quality names already stored for this day.
+    assertSafeSheetOverwrite(dateStr, await dbGetSheet(dateStr), list)
+  }
   if (existing > 0 && list.length === 0) {
     throw new Error(`Refusing to wipe sheet ${dateStr} with an empty payload.`)
   }

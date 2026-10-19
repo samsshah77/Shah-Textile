@@ -2000,6 +2000,25 @@ const memoryStore = new Map<string, string>()
 let hydratePromise: Promise<void> | null = null
 let hydrated = false
 
+/**
+ * Tell the user when the server refused a floor save (blocked by a data-safety guard,
+ * locked by approval, or no permission). Previously failures were only logged to the
+ * console, so people believed unsaved work was saved.
+ */
+function notifyFloorSaveProblem(status: number, data: unknown) {
+  if (!isClient()) return
+  if (status !== 403 && status !== 409 && status !== 423) return
+  const message =
+    (data && typeof data === 'object' && 'error' in data && typeof (data as { error?: unknown }).error === 'string'
+      ? (data as { error: string }).error
+      : '') || 'This change was not saved.'
+  try {
+    window.dispatchEvent(new CustomEvent('floor:save-problem', { detail: { status, message } }))
+  } catch {
+    // ignore
+  }
+}
+
 async function persistKey(key: string, value: unknown): Promise<boolean> {
   if (!isClient()) return false
   // Never push seed/fallback masters before DB hydrate — that wiped swLot on refresh.
@@ -2024,6 +2043,7 @@ async function persistKey(key: string, value: unknown): Promise<boolean> {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
+      notifyFloorSaveProblem(res.status, data)
       console.error('[floor] persist failed', key, res.status, data)
       return false
     }
@@ -2054,6 +2074,7 @@ async function persistBeamPatch(
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
+      notifyFloorSaveProblem(res.status, data)
       console.error('[floor] patchBeam failed', beamNo, res.status, data)
       return false
     }
@@ -2083,6 +2104,7 @@ async function persistBeamUpsert(beam: BeamMaster): Promise<boolean> {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
+      notifyFloorSaveProblem(res.status, data)
       console.error('[floor] upsertBeam failed', beam.beamNo, res.status, data)
       return false
     }
@@ -2104,6 +2126,7 @@ async function persistBeamDelete(beamNo: string): Promise<boolean> {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
+      notifyFloorSaveProblem(res.status, data)
       console.error('[floor] deleteBeam failed', beamNo, res.status, data)
       return false
     }
@@ -2130,6 +2153,7 @@ async function persistQualityStatus(
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
+      notifyFloorSaveProblem(res.status, data)
       console.error('[floor] patchQualityStatus failed', id, res.status, data)
       return false
     }
@@ -2152,6 +2176,7 @@ async function persistQualityUpsert(quality: QualityMaster): Promise<boolean> {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
+      notifyFloorSaveProblem(res.status, data)
       console.error('[floor] upsertQuality failed', quality.id, res.status, data)
       return false
     }
@@ -2183,6 +2208,7 @@ async function persistQualityReuse(
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok || !data?.ok) {
+      notifyFloorSaveProblem(res.status, data)
       console.error('[floor] reuseQuality failed', endedId, res.status, data)
       return { ok: false, active: null, ended: null }
     }
@@ -2205,7 +2231,7 @@ async function persistLoomEntry(
   if (!isClient()) return
   const stamped = normalizeSheetEntry({ ...entry, date: dateStr, loomNumber })
   try {
-    await fetch('/api/floor/store', {
+    const res = await fetch('/api/floor/store', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2216,6 +2242,11 @@ async function persistLoomEntry(
         entry: stamped,
       }),
     })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      notifyFloorSaveProblem(res.status, data)
+      console.error('[floor] persist loom entry rejected', loomNumber, res.status, data)
+    }
   } catch (err) {
     console.error('[floor] persist loom entry failed', loomNumber, err)
   }
