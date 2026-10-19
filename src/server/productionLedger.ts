@@ -148,6 +148,8 @@ export type ProductionReport = {
   byLoom: Array<{ loomNumber: number; rows: number; meters: number; avgEfficiency: number | null }>
   /** Sheet rows whose quality name matches no quality in the master. */
   unlinked: Array<{ date: string; loomNumber: number; qualityName: string; meters: number }>
+  /** Rows dated before their quality's start date or (with meters) after its end date. */
+  outsideRun: Array<{ date: string; loomNumber: number; qualityName: string; meters: number; startedOn: string | null; endedOn: string | null }>
   /** Days where ledger and raw sheets disagree — should always be empty. */
   mismatches: Array<{ date: string; sheetRows: number; ledgerRows: number; sheetMeters: number; ledgerMeters: number }>
 }
@@ -187,6 +189,16 @@ export async function productionReport(from: string, to: string): Promise<Produc
      FROM "floor_production"
      WHERE ${range} AND "qualityId" IS NULL AND "qualityName" NOT IN ('', '-', '—')
      ORDER BY "date", "loomNumber" LIMIT 500`,
+    from, to
+  )
+  const outsideRun = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+    `SELECT to_char(p."date",'YYYY-MM-DD') AS date, p."loomNumber", p."qualityName", p."totalMeters" AS meters,
+            q."createdOn" AS started, q."endedOn" AS ended
+     FROM "floor_production" p JOIN "floor_qualities" q ON q."id" = p."qualityId"
+     WHERE p.${range}
+       AND ( (q."createdOn" ~ '^\\d{4}-\\d{2}-\\d{2}$' AND p."date" < q."createdOn"::date)
+          OR (q."endedOn" ~ '^\\d{4}-\\d{2}-\\d{2}$' AND p."date" > q."endedOn"::date AND p."totalMeters" > 0) )
+     ORDER BY p."date", p."loomNumber" LIMIT 500`,
     from, to
   )
   const mismatches = await reconcile(from, to)
@@ -231,6 +243,14 @@ export async function productionReport(from: string, to: string): Promise<Produc
       loomNumber: n(r.loomNumber),
       qualityName: String(r.qualityName),
       meters: n(r.meters),
+    })),
+    outsideRun: outsideRun.map((r) => ({
+      date: String(r.date),
+      loomNumber: n(r.loomNumber),
+      qualityName: String(r.qualityName),
+      meters: n(r.meters),
+      startedOn: (r.started as string) ?? null,
+      endedOn: (r.ended as string) ?? null,
     })),
     mismatches,
   }

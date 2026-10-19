@@ -2845,6 +2845,22 @@ class ProductionMastersService {
       }
     }
 
+    // A quality run cannot be put on a loom before the day it started — otherwise the
+    // days between an old End and the new start get back-filled with the new quality.
+    if (workingPatch.qualityId) {
+      const target = this.getQualities().find((q) => q.id === workingPatch.qualityId)
+      const startDay = target?.createdOn ? String(target.createdOn).slice(0, 10) : ''
+      const day = String(dateStr || '').slice(0, 10)
+      if (target && startDay && day && day < startDay) {
+        notifyFloorSaveProblem(409, {
+          error:
+            `"${target.name}" ki start date ${startDay} hai — ${day} par loom ${loomNumber} par nahi lag sakti. ` +
+            `Upar se ${startDay} (ya baad ki) date chunein, ya Quality Master mein start date theek karein.`,
+        })
+        return this.getLooms()
+      }
+    }
+
     const qualityAssign = workingPatch.qualityId !== undefined
     const dayOnlyRpm = isPastProductionDay && workingPatch.defaultRpm !== undefined
     const dayOnlyStatus = isPastProductionDay && workingPatch.status !== undefined
@@ -4559,6 +4575,10 @@ class ProductionMastersService {
         status,
         remarks,
         fabricFault: prev?.fabricFault || '',
+        // Same-day values typed on Daily Entry — keep them when the day is rebuilt.
+        ...(prev?.fabricFaultA != null ? { fabricFaultA: prev.fabricFaultA } : {}),
+        ...(prev?.fabricFaultB != null ? { fabricFaultB: prev.fabricFaultB } : {}),
+        ...(!poseEnded && prev?.weightKg != null ? { weightKg: prev.weightKg } : {}),
         lot,
       }
       // Guard: never demote a saved named primary to "—" on rebuild (dual-quality wipe).

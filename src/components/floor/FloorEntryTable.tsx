@@ -40,6 +40,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   shiftA: 88,
   shiftB: 88,
   totalAB: 94,
+  weight: 88,
   remarks: 150,
   lot: 130,
   fabricFault: 200,
@@ -78,7 +79,7 @@ export function FloorEntryTable({
   }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_prod_entry_col_widths_v4',
+    'sara_prod_entry_col_widths_v5',
     DEFAULT_WIDTHS
   )
 
@@ -144,6 +145,26 @@ export function FloorEntryTable({
     }
     return maxByLoom
   }, [entries])
+
+  /** Day totals for the bottom row (every loom / part on this sheet). */
+  const dayTotals = useMemo(() => {
+    let rollerHours = 0
+    let shiftA = 0
+    let shiftB = 0
+    let total = 0
+    let weight = 0
+    for (const e of entries) {
+      rollerHours += Number(e.rollerHours) || 0
+      shiftA += Number(e.shiftAMeters) || 0
+      shiftB += Number(e.shiftBMeters) || 0
+      total += Number(e.totalMeters) || 0
+      weight += Number(e.weightKg) || 0
+    }
+    const looms = new Set(entries.map((e) => e.loomNumber)).size
+    return { rollerHours, shiftA, shiftB, total, weight, looms }
+  }, [entries])
+
+  const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString()
 
   const showPartBadge = (e: DailyLoomProductionEntry) =>
     (loomHasParts.get(e.loomNumber) || 1) > 1
@@ -496,6 +517,21 @@ export function FloorEntryTable({
                 <strong>{(e.totalMeters ?? 0).toLocaleString()}</strong>
               </div>
 
+              <label className="small mb-0">Weight (kg)</label>
+              {canEdit ? (
+                <NumericCellInput
+                  className="form-control form-control-sm text-end"
+                  value={e.weightKg ?? 0}
+                  navRow={rowIdx}
+                  navCol={3}
+                  onValueChange={(v) => patchEntry(e, { weightKg: v })}
+                />
+              ) : (
+                <div className="form-control form-control-sm bg-light text-end">
+                  {e.weightKg ? fmt(e.weightKg) : '—'}
+                </div>
+              )}
+
               <label className="small mb-0">Remarks</label>
               <div
                 className="small text-secondary"
@@ -522,6 +558,16 @@ export function FloorEntryTable({
               </button>
             </div>
           ))}
+          {entries.length > 0 && (
+            <div className="master-grid-card fw-semibold" style={{ backgroundColor: 'rgba(25, 135, 84, 0.08)' }}>
+              <div>Total ({dayTotals.looms} looms)</div>
+              <div className="small">Roller Hours: {fmt(dayTotals.rollerHours)}</div>
+              <div className="small">Shift A: {fmt(dayTotals.shiftA)}</div>
+              <div className="small">Shift B: {fmt(dayTotals.shiftB)}</div>
+              <div className="small">Total (A Plus B): {fmt(dayTotals.total)}</div>
+              <div className="small">Weight: {fmt(dayTotals.weight)} kg</div>
+            </div>
+          )}
         </div>
       ) : (
         <TablePanScroll className="card-body p-0">
@@ -560,6 +606,10 @@ export function FloorEntryTable({
                 <ResizableTh columnKey="totalAB" width={widths.totalAB} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center"
                   style={{ whiteSpace: 'normal', fontSize: '0.75rem' }}>
                   Actual Total (A Plus B)
+                </ResizableTh>
+                <ResizableTh columnKey="weight" width={widths.weight} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center"
+                  style={{ whiteSpace: 'normal', fontSize: '0.75rem' }}>
+                  Weight (kg)
                 </ResizableTh>
                 <ResizableTh columnKey="remarks" width={widths.remarks} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Remarks
@@ -669,6 +719,20 @@ export function FloorEntryTable({
                     {(e.totalMeters ?? 0).toLocaleString()}
                   </td>
                   <td className="px-1">
+                    {canEdit ? (
+                      <NumericCellInput
+                        className="form-control form-control-sm text-end"
+                        style={{ width: '100%', minWidth: 0 }}
+                        value={e.weightKg ?? 0}
+                        navRow={rowIdx}
+                        navCol={3}
+                        onValueChange={(v) => patchEntry(e, { weightKg: v })}
+                      />
+                    ) : (
+                      <div className="text-end px-1">{e.weightKg ? fmt(e.weightKg) : '—'}</div>
+                    )}
+                  </td>
+                  <td className="px-1">
                     <div
                       className="px-1 text-truncate text-secondary"
                       title={
@@ -707,6 +771,21 @@ export function FloorEntryTable({
                 </tr>
               )})}
             </tbody>
+            {entries.length > 0 && (
+              <tfoot>
+                <tr className="table-success fw-bold">
+                  <td className="px-2" colSpan={3}>
+                    Total <span className="fw-normal small text-secondary">({dayTotals.looms} looms)</span>
+                  </td>
+                  <td className="text-end px-2">{fmt(dayTotals.rollerHours)}</td>
+                  <td className="text-end px-2">{fmt(dayTotals.shiftA)}</td>
+                  <td className="text-end px-2">{fmt(dayTotals.shiftB)}</td>
+                  <td className="text-end px-2">{fmt(dayTotals.total)}</td>
+                  <td className="text-end px-2">{fmt(dayTotals.weight)}</td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </TablePanScroll>
       )}
