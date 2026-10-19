@@ -409,18 +409,53 @@ export function QualityMasterTable({
             .map((l) => l.loomNumber)
           map.set(q.id, [...new Set(fromLooms)].sort((a, b) => a - b))
         } else {
-          const fromDay = looms
+          let fromDay = looms
             .filter((l) => loomHasQualityOnDate(l, q.id, qualities, dayRows, sheetDate))
             .map((l) => l.loomNumber)
+          if (fromDay.length === 0) {
+            fromDay = looms.filter((l) => l.qualityId === q.id).map((l) => l.loomNumber)
+          }
+          if (fromDay.length === 0) {
+            fromDay = [
+              ...new Set(
+                allDays
+                  .filter(
+                    (e) =>
+                      qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
+                  )
+                  .map((e) => e.loomNumber)
+              ),
+            ].sort((a, b) => a - b)
+          }
           map.set(q.id, [...new Set(fromDay)].sort((a, b) => a - b))
         }
         continue
       }
       // ENDED on past Active days: that day's sheet allotment (not end-stamp looms).
       if (!isToday && qualityEndedButVisibleOnPastDay(q, sheetDate)) {
-        const fromDay = looms
+        let fromDay = looms
           .filter((l) => loomHasQualityOnDate(l, q.id, qualities, dayRows, sheetDate))
           .map((l) => l.loomNumber)
+        if (fromDay.length === 0) {
+          const fromEnds = qualityLoomEndsOnDate(q, sheetDate)
+          if (fromEnds.length > 0) fromDay = fromEnds
+          else {
+            const fromAllEnds = qualityLoomEndsOnDate(q)
+            if (fromAllEnds.length > 0) fromDay = fromAllEnds
+            else {
+              fromDay = [
+                ...new Set(
+                  allDays
+                    .filter(
+                      (e) =>
+                        qualityRunThatOwnsSheetEntry(e, qualities, e.date || sheetDate)?.id === q.id
+                    )
+                    .map((e) => e.loomNumber)
+                ),
+              ].sort((a, b) => a - b)
+            }
+          }
+        }
         map.set(q.id, [...new Set(fromDay)].sort((a, b) => a - b))
         continue
       }

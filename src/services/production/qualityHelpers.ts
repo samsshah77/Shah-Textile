@@ -371,7 +371,7 @@ export function qualityIdsOnLoomForDate(
   }
 
   if (ids.length > 0) return ids
-  if (rows.length > 0 && isPastDay) return []
+  if (rows.some((r) => isQualityEndedSheetRow(r))) return []
 
   if (loom.qualityId) {
     // If assigned on a specific date and current date is before that date, do not fall back to qualityId:
