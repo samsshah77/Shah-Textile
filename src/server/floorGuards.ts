@@ -36,6 +36,34 @@ function rowKey(e: { loomNumber?: number; segmentIndex?: number }): string {
   return `${Number(e.loomNumber)}:${Math.max(1, Math.floor(Number(e.segmentIndex) || 1))}`
 }
 
+/**
+ * Names (letters/digits only, lower case) of qualities that are ENDED, with their End date.
+ * Used to recognise the zeros a confirmed "Quality End" writes on the days after it.
+ */
+export type EndedQualities = Map<string, string>
+
+function nameKey(name: unknown): string {
+  return String(name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/**
+ * True when `next` is the stub a confirmed End writes: same quality as the stored row,
+ * remark "Quality Ended", and that quality really is ENDED before this day.
+ */
+export function isConfirmedEndWipe(
+  prev: Partial<DailyLoomProductionEntry>,
+  next: Partial<DailyLoomProductionEntry>,
+  day: string,
+  ended: EndedQualities | undefined
+): boolean {
+  if (!ended || ended.size === 0) return false
+  if (!/quality\s*ended/i.test(String(next.remarks ?? ''))) return false
+  const key = nameKey(prev.qualityName)
+  if (!key || key !== nameKey(next.qualityName)) return false
+  const endedOn = ended.get(key)
+  return Boolean(endedOn && endedOn < day)
+}
+
 /** A whole-sheet save may not wipe production that is already stored. */
 export const SHEET_GUARD = {
   /** Refuse if this many (or more) rows would go from meters > 0 to 0 in one save. */
@@ -59,7 +87,9 @@ export type SheetGuardReport = {
  */
 export function analyzeSheetOverwrite(
   stored: DailyLoomProductionEntry[] | null | undefined,
-  incoming: DailyLoomProductionEntry[]
+  incoming: DailyLoomProductionEntry[],
+  day = '',
+  ended?: EndedQualities
 ): SheetGuardReport {
   const storedRows = stored || []
   const byKey = new Map(storedRows.map((e) => [rowKey(e), e]))
@@ -67,9 +97,15 @@ export function analyzeSheetOverwrite(
 
   const zeroedRows: string[] = []
   const nameWipedRows: string[] = []
+  // Rows a confirmed Quality End zeroes on purpose are not counted as losses.
+  const endWiped = new Set<string>()
   for (const [key, next] of incomingByKey) {
     const prev = byKey.get(key)
-    if (!prev) continue
+    if (prev && isConfirmedEndWipe(prev, next, day, ended)) endWiped.add(key)
+  }
+  for (const [key, next] of incomingByKey) {
+    const prev = byKey.get(key)
+    if (!prev || endWiped.has(key)) continue
     const prevMeters = rowMeters(prev)
     if (prevMeters > 0 && rowMeters(next) === 0) zeroedRows.push(key)
     const intentionalClear = Boolean((next as { _clearQuality?: boolean })._clearQuality)
@@ -78,9 +114,11 @@ export function analyzeSheetOverwrite(
     }
   }
 
-  const storedTotal = storedRows.reduce((s, e) => s + rowMeters(e), 0)
+  let storedTotal = 0
   let resultingTotal = 0
   for (const [key, prev] of byKey) {
+    if (endWiped.has(key)) continue
+    storedTotal += rowMeters(prev)
     resultingTotal += rowMeters(incomingByKey.get(key) ?? prev)
   }
   for (const [key, next] of incomingByKey) if (!byKey.has(key)) resultingTotal += rowMeters(next)
@@ -91,9 +129,10 @@ export function analyzeSheetOverwrite(
 export function assertSafeSheetOverwrite(
   dateStr: string,
   stored: DailyLoomProductionEntry[] | null | undefined,
-  incoming: DailyLoomProductionEntry[]
+  incoming: DailyLoomProductionEntry[],
+  ended?: EndedQualities
 ): void {
-  const r = analyzeSheetOverwrite(stored, incoming)
+  const r = analyzeSheetOverwrite(stored, incoming, dateStr, ended)
   const problems: string[] = []
   if (r.zeroedRows.length >= SHEET_GUARD.maxZeroedRows) {
     problems.push(`${r.zeroedRows.length} looms would lose their meters`)

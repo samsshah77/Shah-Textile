@@ -846,7 +846,18 @@ export async function dbSaveSheet(
   const existing = await prisma.floorDailySheet.count({ where: { date: dateStr } })
   if (existing > 0 && list.length > 0) {
     // Refuse saves that would wipe meters / quality names already stored for this day.
-    assertSafeSheetOverwrite(dateStr, await dbGetSheet(dateStr), list)
+    const endedRows = await prisma.floorQuality.findMany({
+      where: { status: 'ENDED' },
+      select: { name: true, endedOn: true },
+    })
+    const ended = new Map<string, string>()
+    for (const q of endedRows) {
+      const key = q.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const on = String(q.endedOn || '').slice(0, 10)
+      // Same name ended more than once: keep the latest End.
+      if (key && on && (!ended.has(key) || on > (ended.get(key) as string))) ended.set(key, on)
+    }
+    assertSafeSheetOverwrite(dateStr, await dbGetSheet(dateStr), list, ended)
   }
   if (existing > 0 && list.length === 0) {
     throw new Error(`Refusing to wipe sheet ${dateStr} with an empty payload.`)

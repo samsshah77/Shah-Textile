@@ -47,6 +47,11 @@ export interface EmployeeProfile {
   /** Overtime shifts worked (H/Day attendance shifts). */
   overtimeShifts?: number;
   remarks?: string; // e.g. "Resignation 31 Oct 2022" or "Rejoining 08 Jun-21"
+  /**
+   * Contractors only: how they are paid. FORTNIGHTLY = two sheets (1–15 and 16–end),
+   * MONTHLY = one sheet for the whole month (1–30/31). Missing = FORTNIGHTLY.
+   */
+  payCycle?: 'FORTNIGHTLY' | 'MONTHLY';
   /** Profile photo URL — optional; UI shows initials avatar until set. */
   photoUrl?: string;
   customFields?: Record<string, string | number>;

@@ -26,7 +26,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
-import { FortnightSelect, fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
+import { fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
@@ -45,16 +45,31 @@ const DEFAULT_CONTRACTOR_WIDTHS = {
   action: 48,
 }
 
+
+/** Contractor sheets: two fortnights, or one monthly sheet for MONTHLY-cycle contractors. */
+type ContractorCycle = '1-15' | '16-31' | '1-31'
+
+function isContractorCycle(v: string): v is ContractorCycle {
+  return v === '1-15' || v === '16-31' || v === '1-31'
+}
+
+function cycleLabel(month: string, cycle: ContractorCycle): string {
+  if (cycle !== '1-31') return fortnightDisplayLabel(month, cycle)
+  const [y, m] = (month || '').split('-').map(Number)
+  const days = y && m ? new Date(y, m, 0).getDate() : 31
+  return `1–${days} (Monthly)`
+}
+
 function ContractorsPayrollContent() {
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const urlFn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+  const urlFn = searchParams.get('fortnight') as ContractorCycle | null
   const urlMonth = searchParams.get('month')
-  const [activeFortnight, setActiveFortnight] = useState<'1-15' | '16-31'>(
-    urlFn === '1-15' || urlFn === '16-31' ? urlFn : '1-15'
+  const [activeFortnight, setActiveFortnight] = useState<ContractorCycle>(
+    urlFn && isContractorCycle(urlFn) ? urlFn : '1-15'
   )
   const [selectedMonth, setSelectedMonth] = useState(
     () =>
@@ -62,7 +77,7 @@ function ContractorsPayrollContent() {
       payrollService.getActiveSalariedMonth()
   )
 
-  const pushFilters = (next: { fortnight?: '1-15' | '16-31'; month?: string }) => {
+  const pushFilters = (next: { fortnight?: ContractorCycle; month?: string }) => {
     const params = new URLSearchParams(searchParams.toString())
     if (next.fortnight) params.set('fortnight', next.fortnight)
     if (next.month) params.set('month', next.month)
@@ -94,9 +109,9 @@ function ContractorsPayrollContent() {
   } = useResizableColumns('contractors_payroll', DEFAULT_CONTRACTOR_WIDTHS)
 
   useEffect(() => {
-    const fn = searchParams.get('fortnight') as '1-15' | '16-31' | null
+    const fn = searchParams.get('fortnight')
     const m = searchParams.get('month')
-    if (fn === '1-15' || fn === '16-31') setActiveFortnight(fn)
+    if (fn && isContractorCycle(fn)) setActiveFortnight(fn)
     if (m && /^\d{4}-\d{2}$/.test(m)) setSelectedMonth(m)
   }, [searchParams])
 
@@ -216,7 +231,7 @@ function ContractorsPayrollContent() {
     if (!canEditAccounts) return
     askConfirm({
       title: 'Save contractors sheet?',
-      message: `Save ${formatPayrollMonthLabel(selectedMonth)} (${fortnightDisplayLabel(selectedMonth, activeFortnight)})?`,
+      message: `Save ${formatPayrollMonthLabel(selectedMonth)} (${cycleLabel(selectedMonth, activeFortnight)})?`,
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveContractorsPayments(selectedMonth, activeFortnight, contractorsList)
@@ -296,11 +311,12 @@ function ContractorsPayrollContent() {
                     pushFilters({ month: m, fortnight: activeFortnight })
                   }}
                 />
-                <FortnightSelect
-                  month={selectedMonth}
+                <select
                   value={activeFortnight}
-                  onlyGenerated={false}
-                  onChange={(fn) => {
+                  aria-label="Contractor pay cycle"
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc]"
+                  onChange={(ev) => {
+                    const fn = ev.target.value as ContractorCycle
                     if (fn === activeFortnight) return
                     if (hasUnsavedChanges) {
                       askConfirm({
@@ -318,7 +334,11 @@ function ContractorsPayrollContent() {
                     setActiveFortnight(fn)
                     pushFilters({ fortnight: fn, month: selectedMonth })
                   }}
-                />
+                >
+                  <option value="1-15">{cycleLabel(selectedMonth, '1-15')} (Fortnightly)</option>
+                  <option value="16-31">{cycleLabel(selectedMonth, '16-31')} (Fortnightly)</option>
+                  <option value="1-31">{cycleLabel(selectedMonth, '1-31')}</option>
+                </select>
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
                 <AddColumnButton onAddColumn={handleAddCustomColumn} />
@@ -371,10 +391,10 @@ function ContractorsPayrollContent() {
           <h1 className="text-xl font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
           <h2 className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
             CONTRACTORS & OUTSOURCED SERVICES BILL PAYMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '}
-            {fortnightDisplayLabel(selectedMonth, activeFortnight)})
+            {cycleLabel(selectedMonth, activeFortnight)})
           </h2>
           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Cycle: {fortnightDisplayLabel(selectedMonth, activeFortnight)}
+            Cycle: {cycleLabel(selectedMonth, activeFortnight)}
           </p>
         </div>
 
@@ -677,7 +697,7 @@ function ContractorsPayrollContent() {
             <tfoot>
               <tr className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white text-xs">
                 <td colSpan={3} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 font-sans uppercase text-[11px] text-slate-600 dark:text-slate-300">
-                  Totals & Live Aggregates ({fortnightDisplayLabel(selectedMonth, activeFortnight)}):
+                  Totals & Live Aggregates ({cycleLabel(selectedMonth, activeFortnight)}):
                 </td>
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
                   {formatNumber(totalContractual, 0)}
@@ -713,7 +733,7 @@ function ContractorsPayrollContent() {
             <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{numberToWordsPKR(totalNet)}</div>
           </div>
           <div className="sm:text-right border-t sm:border-t-0 border-slate-200 dark:border-slate-700 pt-2 sm:pt-0 w-full sm:w-auto">
-            <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Total Fortnight Contractor Disbursal:</span>
+            <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">{activeFortnight === '1-31' ? 'Total Monthly Contractor Disbursal:' : 'Total Fortnight Contractor Disbursal:'}</span>
             <div className="text-base font-bold text-[#0066cc] dark:text-sky-400">{formatCurrency(totalNet)}</div>
           </div>
         </div>

@@ -21,6 +21,7 @@ import {
   qualityEndedButVisibleOnPastDay,
   qualityHistoryOnActivePastDay,
   findLiveQualityByName,
+  productionMastersService,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY, getProductionToday } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -640,6 +641,32 @@ export function QualityMasterTable({
     if ((q.status ?? 'ACTIVE') === 'ENDED') return
     const endDate = String(sheetDate || '').slice(0, 10)
     const label = qualityDisplayName(q, qualities)
+    // Production already entered after the End date → warn, list it, and wipe only on confirm.
+    const later = productionMastersService.productionAfterEnd(q.id, endDate)
+    if (later.meters > 0) {
+      const lines = later.days
+        .map((d) => `• ${formatShortDate(d.date)}: ${Math.round(d.meters).toLocaleString()} m (Loom ${d.looms.join(', ')})`)
+        .join('\n')
+      showConfirm({
+        title: 'Warning — aage ki production mit jayegi',
+        message:
+          `"${label}" ki production ${formatShortDate(endDate)} ke baad bhi darj hai:\n${lines}\n\n` +
+          `${formatShortDate(endDate)} ko End karne se in dinon ke meter, pick, reed, width sab 0 ho jayenge ` +
+          `aur "Quality Ended" likha aayega. Kul ${Math.round(later.meters).toLocaleString()} m hatenge. ` +
+          `Phir in dinon par nayi quality laga sakte hain. Kya aap sure hain?`,
+        type: 'warning',
+        confirmText: 'Haan, End karo aur mitao',
+        cancelText: 'Cancel',
+        onConfirm: () => {
+          onUpdate(q.id, { status: 'ENDED', endedOn: endDate, _allowWipe: true } as Partial<QualityMaster>)
+          showSuccessSoon({
+            title: 'Quality Ended',
+            message: `"${label}" ${formatShortDate(endDate)} ko end. Baad ke dinon ki production 0 kar di gayi.`,
+          })
+        },
+      })
+      return
+    }
     showConfirm({
       title: 'Quality End Karein?',
       message: `"${label}" ko ${formatShortDate(endDate)} pe end kar dein? Loom se bhi hata di jayegi.`,

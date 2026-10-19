@@ -34,7 +34,7 @@ export const FORM_KINDS = [
   { id: 'salaried' as const, label: 'Staff / Company Contract', hint: 'Monthly salary' },
   { id: 'weaver' as const, label: 'Weaver', hint: 'Daily wage' },
   { id: 'helper' as const, label: 'Helper / Winder', hint: 'Daily wage' },
-  { id: 'contractor' as const, label: 'Contractor', hint: 'Fortnightly' },
+  { id: 'contractor' as const, label: 'Contractor', hint: 'Fortnightly ya Monthly' },
 ]
 
 export type FormKind = (typeof FORM_KINDS)[number]['id']
@@ -101,11 +101,13 @@ export function EmployeeProfileForm({
   const [status, setStatus] = useState<EmployeeStatus>('Active')
   const [resignedAt, setResignedAt] = useState('')
   const [advanceEligible, setAdvanceEligible] = useState(false)
+  const [payCycle, setPayCycle] = useState<'FORTNIGHTLY' | 'MONTHLY'>('FORTNIGHTLY')
   const [remarks, setRemarks] = useState('')
 
   const loadCreateDefaults = () => {
     setEditingEmployee(null)
     setFormKind('salaried')
+    setPayCycle('FORTNIGHTLY')
     setName('')
     setFatherName('')
     setCnic('')
@@ -170,6 +172,7 @@ export function EmployeeProfileForm({
     setStatus(emp.status || 'Active')
     setResignedAt(resolveResignedAt(emp) || '')
     setAdvanceEligible(Boolean(emp.advanceEligible || emp.advance))
+    setPayCycle(emp.payCycle === 'MONTHLY' ? 'MONTHLY' : 'FORTNIGHTLY')
     setRemarks(emp.remarks || '')
   }
 
@@ -340,6 +343,7 @@ export function EmployeeProfileForm({
       resignedAt: status === 'Resigned' ? resignedAt || undefined : undefined,
       advanceEligible,
       advance: advanceEligible,
+      payCycle: formKind === 'contractor' ? payCycle : undefined,
       remarks,
     }
 
@@ -750,6 +754,24 @@ export function EmployeeProfileForm({
                 value={salary}
                 onChange={(e) => setSalary(e.target.value)}
               />
+            </label>
+          )}
+
+          {formKind === 'contractor' && (
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold text-slate-700">Payment cycle *</span>
+              <select
+                className={inputClass}
+                disabled={readOnly}
+                value={payCycle}
+                onChange={(e) => setPayCycle(e.target.value === 'MONTHLY' ? 'MONTHLY' : 'FORTNIGHTLY')}
+              >
+                <option value="FORTNIGHTLY">Fortnightly — 1–15 aur 16–31</option>
+                <option value="MONTHLY">Monthly — 1–30/31 (poora mahina)</option>
+              </select>
+              <span className="block text-[11px] text-slate-500">
+                Contractors sheet par yeh contractor isi cycle mein aayega.
+              </span>
             </label>
           )}
 

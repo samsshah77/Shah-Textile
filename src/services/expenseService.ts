@@ -1473,7 +1473,11 @@ class ExpenseService {
     const helpers1 = payrollService.getHelpersWages(monthStr, '1-15')
     const helpers2 = payrollService.getHelpersWages(monthStr, '16-31')
     const contractors1 = payrollService.getContractorsPayments(monthStr, '1-15')
-    const contractors2 = payrollService.getContractorsPayments(monthStr, '16-31')
+    // Monthly contractors (1–30/31) are paid with the second half.
+    const contractors2 = [
+      ...payrollService.getContractorsPayments(monthStr, '16-31'),
+      ...payrollService.getContractorsPayments(monthStr, '1-31'),
+    ]
 
     const staffBasic = staff.reduce((s, st) => s + (st.basicSalary || 0), 0)
     const staffOt = staff.reduce((s, st) => s + (st.otAmount || 0), 0)

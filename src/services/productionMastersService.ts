@@ -3693,6 +3693,38 @@ class ProductionMastersService {
     }
   }
 
+  /**
+   * Production of this quality entered on days *after* `endDay` (up to today).
+   * Ending on `endDay` would zero these days, so the UI must warn first.
+   */
+  productionAfterEnd(
+    id: string,
+    endDay: string
+  ): { lastDay: string; meters: number; days: { date: string; looms: number[]; meters: number }[] } {
+    const catalog = this.getQualities()
+    const q = catalog.find((item) => item.id === id)
+    const out = { lastDay: '', meters: 0, days: [] as { date: string; looms: number[]; meters: number }[] }
+    if (!q || !endDay) return out
+    const until = getProductionToday()
+    let cursor = shiftProductionDate(endDay, 1)
+    while (cursor <= until) {
+      const rows = (this.peekSheetDay(cursor) || []).filter(
+        (e) =>
+          !isQualityEndedSheetRow(e) &&
+          sheetRowShowsQuality(e, q, catalog) &&
+          (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0) > 0
+      )
+      if (rows.length > 0) {
+        const meters = rows.reduce((sum, e) => sum + (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0), 0)
+        out.days.push({ date: cursor, looms: [...new Set(rows.map((e) => e.loomNumber))].sort((a, b) => a - b), meters })
+        out.meters += meters
+        out.lastDay = cursor
+      }
+      cursor = shiftProductionDate(cursor, 1)
+    }
+    return out
+  }
+
   updateQuality(
     id: string,
     patch: Partial<QualityMaster>,
@@ -3768,6 +3800,22 @@ class ProductionMastersService {
       : []
 
     // End / Hold: collect looms first, stamp loomEnds, then clear allotment + sheet.
+    // End on a past date wipes production already entered on later days only when the
+    // user confirmed it (the Quality table asks first, listing what will be removed).
+    const allowWipe = Boolean((nextPatch as { _allowWipe?: boolean })._allowWipe)
+    delete (nextPatch as { _allowWipe?: boolean })._allowWipe
+    if (nextPatch.status === 'ENDED' && current && currentStatus !== 'ENDED' && !allowWipe) {
+      const later = this.productionAfterEnd(id, String(fromDate || '').slice(0, 10))
+      if (later.meters > 0) {
+        notifyFloorSaveProblem(409, {
+          error:
+            `"${current.name}" ki production ${later.lastDay} tak darj hai — End nahi hua. ` +
+            `Quality table se End dabayein aur warning confirm karein.`,
+        })
+        return catalogBefore
+      }
+    }
+
     const clearing = nextPatch.status === 'ENDED' || nextPatch.status === 'HOLD'
     const clearLoomNums = new Set<number>()
     if (clearing) {
@@ -3848,58 +3896,72 @@ class ProductionMastersService {
         }
       }
       if (nextPatch.status === 'ENDED') {
-        const endDay = String(fromDate).slice(0, 10)
-        const today = getProductionToday()
-        const endedName = (current?.name || '').trim()
-        // Wipe through today, and any already-seeded days after today (local override / seed).
-        let cursor = shiftProductionDate(endDay, 1)
-        const wipeUntil = shiftProductionDate(today, 60)
-        while (cursor <= wipeUntil) {
-          const exists = this.peekSheetDay(cursor) != null
-          if (!exists && cursor > today) break
-          if (exists) {
-            for (const loomNumber of clearLoomNums) {
-              const dayRows = this.peekSheetDay(cursor) || []
-              const segs = dayRows.filter((e) => e.loomNumber === loomNumber)
-              const targets =
-                segs.length > 0
-                  ? segs
-                  : [{ loomNumber, segmentIndex: 1 } as DailyLoomProductionEntry]
-              for (const row of targets) {
-                if (
-                  current &&
-                  segs.length > 0 &&
-                  namedQualityOnRow(row.qualityName) &&
-                  !sheetRowShowsQuality(row, current, catalogBefore)
-                ) {
-                  continue
+        const runEndWipe = () => {
+          const endDay = String(fromDate).slice(0, 10)
+          const today = getProductionToday()
+          const endedName = (current?.name || '').trim()
+          // Wipe through today, and any already-seeded days after today (local override / seed).
+          let cursor = shiftProductionDate(endDay, 1)
+          const wipeUntil = shiftProductionDate(today, 60)
+          while (cursor <= wipeUntil) {
+            const exists = this.peekSheetDay(cursor) != null
+            if (!exists && cursor > today) break
+            if (exists) {
+              for (const loomNumber of clearLoomNums) {
+                const dayRows = this.peekSheetDay(cursor) || []
+                const segs = dayRows.filter((e) => e.loomNumber === loomNumber)
+                const targets =
+                  segs.length > 0
+                    ? segs
+                    : [{ loomNumber, segmentIndex: 1 } as DailyLoomProductionEntry]
+                for (const row of targets) {
+                  if (
+                    current &&
+                    segs.length > 0 &&
+                    namedQualityOnRow(row.qualityName) &&
+                    !sheetRowShowsQuality(row, current, catalogBefore)
+                  ) {
+                    continue
+                  }
+                  this.updateSheetEntry(
+                    cursor,
+                    loomNumber,
+                    {
+                      qualityName: endedName || '—',
+                      fabricType: current?.fabricType || '',
+                      warpYarn: '',
+                      weftYarn: '',
+                      pick: 0,
+                      reed: 0,
+                      widthInch: 0,
+                      gsm: 0,
+                      rollerHours: 0,
+                      shiftAMeters: 0,
+                      shiftBMeters: 0,
+                      totalMeters: 0,
+                      remarks: QUALITY_ENDED_REMARK,
+                      _clearQuality: !endedName,
+                    } as Partial<DailyLoomProductionEntry> & { _clearQuality?: boolean },
+                    undefined,
+                    sheetSegmentIndex(row)
+                  )
                 }
-                this.updateSheetEntry(
-                  cursor,
-                  loomNumber,
-                  {
-                    qualityName: endedName || '—',
-                    fabricType: current?.fabricType || '',
-                    warpYarn: '',
-                    weftYarn: '',
-                    pick: 0,
-                    reed: 0,
-                    widthInch: 0,
-                    gsm: 0,
-                    rollerHours: 0,
-                    shiftAMeters: 0,
-                    shiftBMeters: 0,
-                    totalMeters: 0,
-                    remarks: QUALITY_ENDED_REMARK,
-                    _clearQuality: !endedName,
-                  } as Partial<DailyLoomProductionEntry> & { _clearQuality?: boolean },
-                  undefined,
-                  sheetSegmentIndex(row)
-                )
               }
             }
+            cursor = shiftProductionDate(cursor, 1)
           }
-          cursor = shiftProductionDate(cursor, 1)
+        }
+        if (allowWipe) {
+          // Confirmed wipe of later production: the server accepts those zeros only once it
+          // knows the quality is ENDED, so store the status first, then write the days.
+          this.saveQualities(qualities)
+          const endDay = String(fromDate).slice(0, 10)
+          void persistQualityStatus(id, 'ENDED', endDay).then(() => {
+            runEndWipe()
+            if (isClient()) window.dispatchEvent(new CustomEvent('floor:sheets-changed'))
+          })
+        } else {
+          runEndWipe()
         }
       }
       const looms = this.getLooms()
@@ -4461,7 +4523,23 @@ class ProductionMastersService {
           qualityPoseEndedBeforeDay(prior, catalog, dateStr))
       // On a past day the loom's *current* quality does not apply (it starts on the day it
       // was assigned and is written forward from there), so an End before this day wins.
-      const poseEnded = rowLooksEnded && (!loomHasLivePose || isPastDay)
+      // A saved row that already has production is never blanked by a rebuild: the stored
+      // meters win (an explicit End writes its zeros itself). Otherwise a quality ended "before"
+      // this day would wipe real entries just by opening the sheet.
+      const prevHasProduction = Boolean(
+        prev && (Number(prev.shiftAMeters) || 0) + (Number(prev.shiftBMeters) || 0) > 0
+      )
+      const poseEnded = rowLooksEnded && (!loomHasLivePose || isPastDay) && !prevHasProduction
+      // Quality Ended *on this day*: the day itself still belongs to it (entry allowed),
+      // even though the loom master was already cleared by the End.
+      const priorOwner = prior
+        ? qualityRunThatOwnsSheetEntry({ ...prior, date: dateStr }, catalog, dateStr)
+        : null
+      const priorEndsToday = Boolean(
+        priorOwner &&
+          normalizeQualityStatus(priorOwner.status) === 'ENDED' &&
+          String(priorOwner.endedOn || '').slice(0, 10) === dateStr
+      )
       // Carry yesterday's quality forward only while that quality is still running.
       const priorStillRuns = Boolean(
         prior && namedQualityOnRow(prior.qualityName) && !qualityPoseEndedBeforeDay(prior, catalog, dateStr)
@@ -4493,7 +4571,7 @@ class ProductionMastersService {
             ? live
             : prev
               ? prev
-              : priorStillRuns && loomHasLivePose
+              : priorStillRuns && (loomHasLivePose || priorEndsToday)
                 ? prior
                 : !isPastDay && loomHasLivePose && namedQualityOnRow(live.qualityName)
                   ? live

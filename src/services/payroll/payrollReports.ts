@@ -14,7 +14,7 @@ export interface PayrollReportContext {
   getAdvances(month?: string): AdvanceRecord[]
   getWeaversWages(month?: string, fortnight?: '1-15' | '16-31'): WeaverWageRecord[]
   getHelpersWages(month?: string, fortnight?: '1-15' | '16-31'): HelperWageRecord[]
-  getContractorsPayments(month?: string, fortnight?: '1-15' | '16-31'): ContractorPaymentRecord[]
+  getContractorsPayments(month?: string, fortnight?: '1-15' | '16-31' | '1-31'): ContractorPaymentRecord[]
   getStaffSalaries(month?: string): StaffSalaryRecord[]
   getContractSalaries(month?: string): ContractSalaryRecord[]
   getPettyCashInflow(month: string, fortnight: '1-15' | '16-31'): number
@@ -99,7 +99,11 @@ export function buildFortnightSynopsis(
   const helpers2 = ctx.getHelpersWages(month, '16-31')
   const totalHelperWages2 = helpers2.reduce((s, h) => s + (h.netAmount || 0), 0)
 
-  const contractors2 = ctx.getContractorsPayments(month, '16-31')
+  const contractors2 = [
+    // Monthly contractors (1–30/31) are paid with the second half.
+    ...ctx.getContractorsPayments(month, '16-31'),
+    ...ctx.getContractorsPayments(month, '1-31'),
+  ]
   const totalContractor2 = contractors2.reduce((s, c) => s + (c.netPayment || 0), 0)
 
   const totalPayrollCash = Math.round(
@@ -173,7 +177,11 @@ export function buildMonthlyGrandSummary(
   const helpers1 = ctx.getHelpersWages(month, '1-15')
   const helpers2 = ctx.getHelpersWages(month, '16-31')
   const contractors1 = ctx.getContractorsPayments(month, '1-15')
-  const contractors2 = ctx.getContractorsPayments(month, '16-31')
+  const contractors2 = [
+    // Monthly contractors (1–30/31) are paid with the second half.
+    ...ctx.getContractorsPayments(month, '16-31'),
+    ...ctx.getContractorsPayments(month, '1-31'),
+  ]
 
   const totalStaffGross = staff.reduce((s, st) => s + (st.grossAmount || 0), 0)
   const totalStaffCheque = staff.reduce((s, st) => s + (st.chequeAmount || 0), 0)

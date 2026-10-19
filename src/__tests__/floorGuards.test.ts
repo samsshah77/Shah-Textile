@@ -134,3 +134,27 @@ describe('Approval fields cannot be forged by normal saves', () => {
     expect(sheetIsApproved([row(1, 1, 1)])).toBe(false)
   })
 })
+
+describe('Confirmed Quality End', () => {
+  const ended = new Map([['pakeeza', '2026-10-09']])
+  const endStub = (e: DailyLoomProductionEntry) =>
+    ({ ...e, shiftAMeters: 0, shiftBMeters: 0, totalMeters: 0, pick: 0, remarks: 'Quality Ended' }) as DailyLoomProductionEntry
+
+  it('allows the zeros a confirmed End writes on later days', () => {
+    const wiped = storedDay.map(endStub)
+    expect(() => assertSafeSheetOverwrite('2026-10-10', storedDay, wiped, ended)).not.toThrow()
+  })
+
+  it('still blocks if the quality is not actually ended before that day', () => {
+    const wiped = storedDay.map(endStub)
+    expect(() => assertSafeSheetOverwrite('2026-10-10', storedDay, wiped)).toThrow(FloorGuardError)
+    const endedLater = new Map([['pakeeza', '2026-10-12']])
+    expect(() => assertSafeSheetOverwrite('2026-10-10', storedDay, wiped, endedLater)).toThrow(FloorGuardError)
+  })
+
+  it('still blocks zeros without the "Quality Ended" stub', () => {
+    const blank = storedDay.map((e) => ({ ...e, shiftAMeters: 0, shiftBMeters: 0, totalMeters: 0 }))
+    expect(() => assertSafeSheetOverwrite('2026-10-10', storedDay, blank, ended)).toThrow(FloorGuardError)
+  })
+})
+
