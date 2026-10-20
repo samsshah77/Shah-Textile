@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import { monthLabel, rs, qty } from '@/lib/accounts/util'
-import type { PartyKind, PartyLedger, PaymentMode } from '@/lib/accounts/types'
+import type { PartyKind, PartyLedger, PayAccount, PaymentKind, PaymentMode } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, MonthPicker } from '@/components/accounts/ui'
@@ -28,7 +28,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
   const cell = 'border border-slate-400 dark:border-slate-600'
 
   const removePayment = async (id: string, version: number) => {
-    if (!window.confirm('Yeh payment delete karein?')) return
+    if (!window.confirm('Yeh entry delete karein?')) return
     await accountsApi.deletePayment(id, version).catch(() => {})
   }
 
@@ -46,7 +46,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               {canEditAccounts && ledger && (
                 <>
                   <button type="button" onClick={() => setPaying(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer !min-h-9 !h-9">
-                    <Wallet className="size-4" /> Add payment
+                    <Wallet className="size-4" /> Payment / entry
                   </button>
                   <button type="button" onClick={() => setEditing(true)} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                     <Pencil className="size-3.5" /> Edit party
@@ -67,14 +67,17 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
       <LoadState loading={loading} error={error} hasData={Boolean(ledger)}>
         {ledger && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {[
-                ['Purchases', ledger.summary.purchases, 'text-slate-900'],
-                ['Paid', ledger.summary.paid, 'text-emerald-700'],
-                ['Balance (this period)', ledger.summary.balance, 'text-slate-900'],
-                ['Brought forward', ledger.opening, 'text-slate-600'],
-                ['Total payable', ledger.opening + ledger.summary.balance, 'text-[#0066cc]'],
-              ].map(([label, value, cls]) => (
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {(
+                [
+                  ['Brought forward', ledger.opening, 'text-slate-600'],
+                  ...(ledger.summary.opening ? [['Opening balance', ledger.summary.opening, 'text-amber-700']] : []),
+                  ['Bills (debit)', ledger.summary.purchases, 'text-slate-900'],
+                  ['Paid (credit)', ledger.summary.paid, 'text-emerald-700'],
+                  ...(ledger.summary.adjusted ? [['Adjustments', ledger.summary.adjusted, 'text-sky-700']] : []),
+                  [`Total payable${ledger.party.account === 'FOI' ? ' (FOI)' : ''}`, ledger.opening + ledger.summary.balance, 'text-[#0066cc]'],
+                ] as Array<[string, number, string]>
+              ).map(([label, value, cls]) => (
                 <div key={label as string} className="erp-card p-3">
                   <div className="text-[10px] font-bold uppercase text-slate-500">{label}</div>
                   <div className={cn('text-lg font-black font-mono', cls as string)}>{rs(value as number)}</div>
@@ -94,7 +97,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                 <table className="w-full min-w-[900px] text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-100 font-bold uppercase text-[10px]">
-                      {['S.No', 'Date', 'Bill No', 'Inward No', 'Description', 'Qty', 'Rate', 'Amount', 'Paid', 'Balance'].map((h, i) => (
+                      {['S.No', 'Date', 'Bill / Ref No', 'Inward No', 'Description', 'Qty', 'Rate', 'Debit (bill)', 'Credit (paid)', 'Balance'].map((h, i) => (
                         <th key={h} className={cn(cell, 'py-2 px-2', i >= 5 ? 'text-right' : i === 4 ? 'text-left' : 'text-center')}>
                           {h}
                         </th>
@@ -124,7 +127,20 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                     ) : (
                       ledger.rows.map((r, i) => {
                         return (
-                          <tr key={i} className={r.kind === 'PAYMENT' ? 'bg-emerald-50/60' : i % 2 ? 'bg-slate-50/60' : ''}>
+                          <tr
+                            key={i}
+                            className={
+                              r.kind === 'PAYMENT'
+                                ? 'bg-emerald-50/60'
+                                : r.kind === 'OPENING'
+                                  ? 'bg-amber-50/70'
+                                  : r.kind === 'ADJUSTMENT'
+                                    ? 'bg-sky-50/70'
+                                    : i % 2
+                                      ? 'bg-slate-50/60'
+                                      : ''
+                            }
+                          >
                             <td className={cn(cell, 'px-2 text-center font-mono text-slate-500')}>{i + 1}</td>
                             <td className={cn(cell, 'px-2 text-center font-mono')}>{r.date}</td>
                             <td className={cn(cell, 'px-2 text-center font-mono font-bold')}>{r.billNo || '-'}</td>
@@ -138,7 +154,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                             {canEditAccounts && (
                               <td className={cn(cell, 'text-center print:hidden')}>
                                 {r.paymentId && (
-                                  <button type="button" onClick={() => removePayment(r.paymentId!, r.paymentVersion || 1)} className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" aria-label="Delete payment">
+                                  <button type="button" onClick={() => removePayment(r.paymentId!, r.paymentVersion || 1)} className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" aria-label="Delete entry">
                                     <Trash2 className="size-3.5" />
                                   </button>
                                 )}
@@ -164,7 +180,9 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               </div>
             </div>
             {editing && <PartyForm kind={kind} party={ledger.party} onClose={() => setEditing(false)} />}
-            {paying && <PaymentForm partyId={ledger.party.id} month={month === 'all' ? '' : month} onClose={() => setPaying(false)} />}
+            {paying && (
+              <PaymentForm partyId={ledger.party.id} account={ledger.party.account} month={month === 'all' ? '' : month} onClose={() => setPaying(false)} />
+            )}
           </>
         )}
       </LoadState>
@@ -172,11 +190,23 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
   )
 }
 
-function PaymentForm({ partyId, month, onClose }: { partyId: string; month: string; onClose: () => void }) {
+function PaymentForm({
+  partyId,
+  account,
+  month,
+  onClose,
+}: {
+  partyId: string
+  account: PayAccount
+  month: string
+  onClose: () => void
+}) {
   const today = new Date().toISOString().slice(0, 10)
+  const [kind, setKind] = useState<PaymentKind>('PAYMENT')
   const [date, setDate] = useState(month && !today.startsWith(month) ? `${month}-01` : today)
   const [amount, setAmount] = useState('')
-  const [mode, setMode] = useState<PaymentMode>('CASH')
+  const [mode, setMode] = useState<PaymentMode>('CHEQUE')
+  const [paidFrom, setPaidFrom] = useState<PayAccount>(account)
   const [reference, setReference] = useState('')
   const [remarks, setRemarks] = useState('')
   const [busy, setBusy] = useState(false)
@@ -187,7 +217,16 @@ function PaymentForm({ partyId, month, onClose }: { partyId: string; month: stri
     setBusy(true)
     setError(null)
     try {
-      await accountsApi.createPayment({ partyId, date, amount: Number(amount), mode, reference, remarks })
+      await accountsApi.createPayment({
+        partyId,
+        date,
+        amount: Number(amount),
+        kind,
+        mode: kind === 'PAYMENT' ? mode : 'OTHER',
+        paidFrom: kind === 'PAYMENT' ? paidFrom : account,
+        reference,
+        remarks,
+      })
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save nahi hua.')
@@ -195,10 +234,35 @@ function PaymentForm({ partyId, month, onClose }: { partyId: string; month: stri
       setBusy(false)
     }
   }
+  const hint: Record<PaymentKind, string> = {
+    PAYMENT: 'Party ko diye gaye paise (cheque / cash). Is se baqi kam hota hai.',
+    OPENING:
+      'Purane ledger ka baqi jo is system se pehle ka hai (jis tareekh tak). Positive = humne dena hai; minus = party ko advance diya hua.',
+    ADJUSTMENT: 'Set-off / discount / maal wapsi (jaise scrap sale ka adjust). Positive se baqi kam hota hai; minus se barhta hai.',
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
       <form onSubmit={submit} className="w-full max-w-md bg-background rounded-xl border border-border shadow-2xl p-5 space-y-3">
-        <h3 className="font-bold text-sm">Payment (FOI cash / cheque)</h3>
+        <h3 className="font-bold text-sm">Ledger entry</h3>
+        <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+          {(
+            [
+              ['PAYMENT', 'Payment'],
+              ['OPENING', 'Opening balance'],
+              ['ADJUSTMENT', 'Adjustment'],
+            ] as Array<[PaymentKind, string]>
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setKind(k)}
+              className={cn('flex-1 rounded-md px-2 py-1 text-xs font-bold cursor-pointer', kind === k ? 'bg-white shadow text-slate-900' : 'text-slate-500')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-slate-500">{hint[kind]}</p>
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-slate-600">Date *</span>
@@ -206,19 +270,38 @@ function PaymentForm({ partyId, month, onClose }: { partyId: string; month: stri
           </label>
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-slate-600">Amount *</span>
-            <input type="number" min={1} step="any" required value={amount} onChange={(e) => setAmount(e.target.value)} className={cn(input, 'font-mono text-right')} />
+            <input
+              type="number"
+              min={kind === 'PAYMENT' ? 0.01 : undefined}
+              step="any"
+              required
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className={cn(input, 'font-mono text-right')}
+            />
           </label>
-          <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Mode</span>
-            <select value={mode} onChange={(e) => setMode(e.target.value as PaymentMode)} className={input}>
-              <option value="CASH">Cash</option>
-              <option value="CHEQUE">Cheque</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </label>
-          <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Cheque / ref no.</span>
-            <input value={reference} onChange={(e) => setReference(e.target.value)} className={input} />
+          {kind === 'PAYMENT' && (
+            <>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-slate-600">Mode</span>
+                <select value={mode} onChange={(e) => setMode(e.target.value as PaymentMode)} className={input}>
+                  <option value="CHEQUE">Cheque</option>
+                  <option value="CASH">Cash</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-slate-600">Kis account se</span>
+                <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value as PayAccount)} className={input}>
+                  <option value="SARA">Sara Textile</option>
+                  <option value="FOI">FOI</option>
+                </select>
+              </label>
+            </>
+          )}
+          <label className={cn('block space-y-1', kind !== 'PAYMENT' && 'col-span-2')}>
+            <span className="text-[11px] font-semibold text-slate-600">{kind === 'PAYMENT' ? 'Bank / cheque no.' : 'Reference'}</span>
+            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={kind === 'PAYMENT' ? 'Meezan 34378721' : ''} className={input} />
           </label>
         </div>
         <label className="block space-y-1">
@@ -231,7 +314,7 @@ function PaymentForm({ partyId, month, onClose }: { partyId: string; month: stri
             Cancel
           </button>
           <button type="submit" disabled={busy} className="px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer disabled:opacity-60">
-            {busy ? 'Saving…' : 'Save payment'}
+            {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
       </form>

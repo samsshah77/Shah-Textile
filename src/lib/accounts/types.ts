@@ -12,6 +12,15 @@ export type PartyKind = 'TRADER' | 'WORKSHOP'
 export type CostBucket = 'MACHINERY' | 'ELECTRIC' | 'REPAIR'
 export type PettyCashKind = 'OPENING' | 'CASH_IN' | 'EXPENSE' | 'SALARY'
 export type PaymentMode = 'CASH' | 'CHEQUE' | 'OTHER'
+/** Which money pays a supplier: Sara Textile's own account, or FOI. */
+export type PayAccount = 'SARA' | 'FOI'
+/**
+ * Entries on a supplier's payable ledger besides bills:
+ *  - PAYMENT    money paid to the supplier (reduces what we owe)
+ *  - OPENING    balance brought forward from the old ledger (positive = we owe them)
+ *  - ADJUSTMENT set-off / discount / return (positive reduces what we owe; negative adds)
+ */
+export type PaymentKind = 'PAYMENT' | 'OPENING' | 'ADJUSTMENT'
 
 export const MACHINE_OPTIONS = ['G-6200', 'G-6300', 'PU', 'Electronic', 'ALL'] as const
 
@@ -24,6 +33,8 @@ export interface Party {
   costBucket: CostBucket
   remarks: string
   active: boolean
+  /** Whose payable this is (A/P Synopsis column). */
+  account: PayAccount
   version: number
 }
 
@@ -58,7 +69,10 @@ export interface Payment {
   month: string
   date: string
   amount: number
+  kind: PaymentKind
   mode: PaymentMode
+  /** Account the money came from (payments only). */
+  paidFrom: PayAccount
   reference: string
   remarks: string
   version: number
@@ -96,14 +110,19 @@ export interface PartySummary {
   party: Party
   bills: number
   items: number
+  /** Balance brought forward from the old ledger. */
+  opening: number
   purchases: number
   paid: number
+  /** Set-offs / discounts / returns (positive = reduces payable). */
+  adjusted: number
+  /** opening + purchases − paid − adjusted */
   balance: number
   lastDate: string | null
 }
 
 export interface LedgerRow {
-  kind: 'LINE' | 'PAYMENT'
+  kind: 'LINE' | 'PAYMENT' | 'OPENING' | 'ADJUSTMENT'
   /** Set on payment rows (to delete one). */
   paymentId?: string
   paymentVersion?: number
@@ -216,4 +235,22 @@ export interface CostStatement {
   inputs: CostInputs
   inputsVersion: number
   lock: MonthLock
+}
+
+/** One supplier on the A/P Synopsis (what we owe, as of a date). */
+export interface PayableRow {
+  party: Party
+  opening: number
+  purchases: number
+  paid: number
+  adjusted: number
+  balance: number
+  lastBill: string | null
+  lastPayment: string | null
+}
+
+export interface PayablesReport {
+  asOf: string
+  rows: PayableRow[]
+  totals: { sara: number; foi: number; total: number }
 }

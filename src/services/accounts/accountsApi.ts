@@ -20,6 +20,9 @@ import type {
   PettyCashKind,
   PettyCashStatement,
   PaymentMode,
+  PaymentKind,
+  PayAccount,
+  PayablesReport,
   CostBucket,
 } from '@/lib/accounts/types'
 
@@ -110,15 +113,24 @@ export const accountsApi = {
 
   directory: (kind: PartyKind | null, month: string | 'all') =>
     call<{ rows: PartySummary[] }>('GET', `/api/accounts/parties${q({ kind, month })}`).then((r) => r.rows),
-  createParty: (input: { name: string; kind: PartyKind; category?: string; costBucket?: CostBucket; remarks?: string }) =>
+  createParty: (input: { name: string; kind: PartyKind; category?: string; costBucket?: CostBucket; remarks?: string; account?: PayAccount }) =>
     call<{ party: Party }>('POST', '/api/accounts/parties', input).then((r) => r.party),
-  updateParty: (id: string, baseVersion: number, patch: Partial<Pick<Party, 'name' | 'kind' | 'category' | 'costBucket' | 'remarks' | 'active'>>) =>
+  updateParty: (id: string, baseVersion: number, patch: Partial<Pick<Party, 'name' | 'kind' | 'category' | 'costBucket' | 'remarks' | 'active' | 'account'>>) =>
     call<{ party: Party }>('PATCH', `/api/accounts/parties/${id}`, { baseVersion, ...patch }).then((r) => r.party),
   ledger: (idOrSlug: string, month: string | 'all') =>
     call<{ ledger: PartyLedger }>('GET', `/api/accounts/parties/${encodeURIComponent(idOrSlug)}${q({ month })}`).then((r) => r.ledger),
 
-  createPayment: (input: { partyId: string; date: string; amount: number; mode: PaymentMode; reference?: string; remarks?: string }) =>
-    call<{ payment: Payment }>('POST', '/api/accounts/payments', input).then((r) => r.payment),
+  createPayment: (input: {
+    partyId: string
+    date: string
+    amount: number
+    kind?: PaymentKind
+    mode: PaymentMode
+    paidFrom?: PayAccount
+    reference?: string
+    remarks?: string
+  }) => call<{ payment: Payment }>('POST', '/api/accounts/payments', input).then((r) => r.payment),
+  payables: (asOf: string) => call<{ report: PayablesReport }>('GET', `/api/accounts/payables${q({ asOf })}`).then((r) => r.report),
   deletePayment: (id: string, version: number) => call<{ deleted: string }>('DELETE', `/api/accounts/payments/${id}${q({ version })}`),
 
   petty: (month: string) => call<{ statement: PettyCashStatement }>('GET', `/api/accounts/petty-cash${q({ month })}`).then((r) => r.statement),

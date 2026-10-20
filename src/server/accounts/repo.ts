@@ -8,7 +8,9 @@ import type {
   MonthLock,
   Party,
   PartyKind,
+  PayAccount,
   Payment,
+  PaymentKind,
   PaymentMode,
   PettyCashEntry,
   PettyCashKind,
@@ -43,7 +45,7 @@ export async function db(): Promise<Db> {
 
 // ---------------------------------------------------------------- mappers
 
-const PARTY_COLS = `"id","name","slug","kind","category","costBucket","remarks","active","version"`
+const PARTY_COLS = `"id","name","slug","kind","category","costBucket","remarks","active","account","version"`
 function toParty(r: Row): Party {
   return {
     id: s(r.id),
@@ -54,6 +56,7 @@ function toParty(r: Row): Party {
     costBucket: s(r.costBucket) as CostBucket,
     remarks: s(r.remarks),
     active: Boolean(r.active),
+    account: s(r.account) === 'FOI' ? 'FOI' : 'SARA',
     version: n(r.version),
   }
 }
@@ -161,7 +164,7 @@ export function defaultCostBucket(name: string, kind: PartyKind, category = ''):
 
 export async function createParty(
   dbc: Db,
-  input: { name: string; kind: PartyKind; category?: string; costBucket?: CostBucket; remarks?: string }
+  input: { name: string; kind: PartyKind; category?: string; costBucket?: CostBucket; remarks?: string; account?: PayAccount }
 ): Promise<Party> {
   const name = input.name.trim().replace(/\s+/g, ' ')
   const slug = slugifyPartyName(name)
@@ -183,14 +186,15 @@ export async function createParty(
   }
   const id = randomUUID()
   await dbc.$executeRawUnsafe(
-    `INSERT INTO "acc_parties" ("id","name","slug","kind","category","costBucket","remarks") VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    `INSERT INTO "acc_parties" ("id","name","slug","kind","category","costBucket","remarks","account") VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
     id,
     name,
     slug,
     input.kind,
     input.category || '',
     input.costBucket || defaultCostBucket(name, input.kind, input.category),
-    input.remarks || ''
+    input.remarks || '',
+    input.account || 'SARA'
   )
   return (await getParty(dbc, id))!
 }
@@ -215,7 +219,7 @@ export async function updateParty(
   dbc: Db,
   id: string,
   baseVersion: number,
-  patch: Partial<Pick<Party, 'name' | 'kind' | 'category' | 'costBucket' | 'remarks' | 'active'>>
+  patch: Partial<Pick<Party, 'name' | 'kind' | 'category' | 'costBucket' | 'remarks' | 'active' | 'account'>>
 ): Promise<Party> {
   const cur = await getParty(dbc, id)
   if (!cur) throw new AccountsError(404, 'Party not found.', 'NOT_FOUND')
@@ -228,7 +232,7 @@ export async function updateParty(
   }
   await dbc.$executeRawUnsafe(
     `UPDATE "acc_parties" SET "name"=$2,"slug"=$3,"kind"=$4,"category"=$5,"costBucket"=$6,"remarks"=$7,"active"=$8,
-       "version"="version"+1,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,
+       "account"=$9,"version"="version"+1,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,
     id,
     name,
     slug,
@@ -236,7 +240,8 @@ export async function updateParty(
     patch.category ?? cur.category,
     patch.costBucket ?? cur.costBucket,
     patch.remarks ?? cur.remarks,
-    patch.active ?? cur.active
+    patch.active ?? cur.active,
+    patch.account ?? cur.account
   )
   return (await getParty(dbc, id))!
 }
@@ -478,7 +483,7 @@ export async function listMonths(dbc: Db): Promise<string[]> {
 
 // ---------------------------------------------------------------- payments
 
-const PAY_COLS = `"id","partyId","month",to_char("date",'YYYY-MM-DD') AS "date","amount"::float8 AS "amount","mode","reference","remarks","version"`
+const PAY_COLS = `"id","partyId","month",to_char("date",'YYYY-MM-DD') AS "date","amount"::float8 AS "amount","kind","mode","paidFrom","reference","remarks","version"`
 function toPayment(r: Row): Payment {
   return {
     id: s(r.id),
@@ -486,7 +491,9 @@ function toPayment(r: Row): Payment {
     month: s(r.month),
     date: s(r.date),
     amount: n(r.amount),
+    kind: (['OPENING', 'ADJUSTMENT'].includes(s(r.kind)) ? s(r.kind) : 'PAYMENT') as PaymentKind,
     mode: s(r.mode) as PaymentMode,
+    paidFrom: s(r.paidFrom) === 'FOI' ? 'FOI' : 'SARA',
     reference: s(r.reference),
     remarks: s(r.remarks),
     version: n(r.version),
@@ -513,20 +520,34 @@ export async function listPayments(dbc: Db, where: { partyId?: string; month?: s
 
 export async function createPayment(
   dbc: Db,
-  p: { partyId: string; date: string; month?: string; amount: number; mode: PaymentMode; reference: string; remarks: string; id?: string }
+  p: {
+    partyId: string
+    date: string
+    month?: string
+    amount: number
+    kind?: PaymentKind
+    mode: PaymentMode
+    paidFrom?: PayAccount
+    reference: string
+    remarks: string
+    id?: string
+  }
 ): Promise<Payment> {
   const month = p.month || monthOfDate(p.date)
   await assertUnlocked(dbc, month)
   if (!(await getParty(dbc, p.partyId))) throw new AccountsError(404, 'Party not found.', 'NOT_FOUND')
   const id = p.id || randomUUID()
   await dbc.$executeRawUnsafe(
-    `INSERT INTO "acc_payments" ("id","partyId","month","date","amount","mode","reference","remarks") VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8)`,
+    `INSERT INTO "acc_payments" ("id","partyId","month","date","amount","kind","mode","paidFrom","reference","remarks")
+     VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10)`,
     id,
     p.partyId,
     month,
     p.date,
     p.amount,
+    p.kind || 'PAYMENT',
     p.mode,
+    p.paidFrom || 'SARA',
     p.reference,
     p.remarks
   )

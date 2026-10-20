@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import { monthLabel, rs, qty } from '@/lib/accounts/util'
-import type { CostBucket, Party, PartyKind, PartySummary } from '@/lib/accounts/types'
+import type { CostBucket, Party, PartyKind, PartySummary, PayAccount } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, MonthPicker } from '@/components/accounts/ui'
@@ -41,10 +41,10 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
     return (rows || []).filter(
       (r) =>
         (showRemoved || r.party.active) &&
-        (showIdle || month === 'all' || r.bills > 0 || r.paid !== 0) &&
+        (showIdle || month === 'all' || r.bills > 0 || r.paid !== 0 || r.opening !== 0 || r.adjusted !== 0) &&
         (!q || `${r.party.name} ${r.party.category} ${r.party.remarks}`.toLowerCase().includes(q))
     )
-  }, [rows, search, showRemoved])
+  }, [rows, search, showRemoved, showIdle, month])
   const removedCount = (rows || []).filter((r) => !r.party.active).length
   const tot = (pick: (r: PartySummary) => number) => shown.reduce((s, r) => s + pick(r), 0)
   const period = month === 'all' ? 'All months' : monthLabel(month)
@@ -155,6 +155,7 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
                         <Link href={`${base}/${r.party.slug}?month=${month}`} className="hover:underline text-slate-900">
                           {r.party.name}
                         </Link>
+                        {r.party.account === 'FOI' && <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800">FOI</span>}
                         {!r.party.active && <span className="ml-1.5 text-[10px] font-semibold text-rose-600">(removed)</span>}
                       </td>
                       <td className="py-2 px-3 text-slate-600">{r.party.category || '-'}</td>
@@ -211,6 +212,7 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
   const [category, setCategory] = useState(party?.category || '')
   const [bucket, setBucket] = useState<CostBucket | ''>(party?.costBucket || '')
   const [remarks, setRemarks] = useState(party?.remarks || '')
+  const [account, setAccount] = useState<PayAccount>(party?.account || 'SARA')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const input = 'w-full px-2.5 py-1.5 text-xs bg-background border border-slate-300 rounded-md'
@@ -221,9 +223,9 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
     setError(null)
     try {
       if (party) {
-        await accountsApi.updateParty(party.id, party.version, { name, kind: k, category, remarks, ...(bucket ? { costBucket: bucket } : {}) })
+        await accountsApi.updateParty(party.id, party.version, { name, kind: k, category, remarks, account, ...(bucket ? { costBucket: bucket } : {}) })
       } else {
-        await accountsApi.createParty({ name, kind: k, category, remarks, ...(bucket ? { costBucket: bucket } : {}) })
+        await accountsApi.createParty({ name, kind: k, category, remarks, account, ...(bucket ? { costBucket: bucket } : {}) })
       }
       onClose()
     } catch (err) {
@@ -278,6 +280,13 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
               </select>
             </label>
           </div>
+          <label className="block space-y-1">
+            <span className="text-[11px] font-semibold text-slate-600">Payable kis account se (A/P Synopsis)</span>
+            <select value={account} onChange={(e) => setAccount(e.target.value as PayAccount)} className={input}>
+              <option value="SARA">Sara Textile</option>
+              <option value="FOI">FOI</option>
+            </select>
+          </label>
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-slate-600">Category</span>
             <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Spares, Electronics, Petroleum…" className={input} />

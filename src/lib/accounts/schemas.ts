@@ -7,6 +7,8 @@ const date = z.string().regex(DATE_RE, 'Date must be YYYY-MM-DD').refine(isDate,
 const text = (max: number) => z.string().trim().max(max)
 const money = z.coerce.number().finite().min(0).max(1e11)
 const qty = z.coerce.number().finite().min(0).max(1e7)
+/** Money that may be negative (opening balances, adjustments). */
+const signedMoney = z.coerce.number().finite().min(-1e11).max(1e11)
 
 export const lineInput = z.object({
   id: z.string().max(64).optional(),
@@ -62,6 +64,7 @@ export const partyCreate = z.object({
   kind: z.enum(['TRADER', 'WORKSHOP']),
   category: text(80).default(''),
   costBucket: z.enum(['MACHINERY', 'ELECTRIC', 'REPAIR']).optional(),
+  account: z.enum(['SARA', 'FOI']).default('SARA'),
   remarks: text(500).default(''),
 })
 
@@ -71,6 +74,7 @@ export const partyUpdate = z.object({
   kind: z.enum(['TRADER', 'WORKSHOP']).optional(),
   category: text(80).optional(),
   costBucket: z.enum(['MACHINERY', 'ELECTRIC', 'REPAIR']).optional(),
+  account: z.enum(['SARA', 'FOI']).optional(),
   remarks: text(500).optional(),
   active: z.boolean().optional(),
 })
@@ -79,10 +83,16 @@ export const paymentCreate = z.object({
   partyId: z.string().min(1).max(64),
   date,
   month: month.optional(),
-  amount: money.refine((v) => v > 0, 'Amount must be more than 0'),
+  amount: signedMoney,
+  kind: z.enum(['PAYMENT', 'OPENING', 'ADJUSTMENT']).default('PAYMENT'),
   mode: z.enum(['CASH', 'CHEQUE', 'OTHER']).default('CASH'),
+  paidFrom: z.enum(['SARA', 'FOI']).default('SARA'),
   reference: text(80).default(''),
   remarks: text(500).default(''),
+}).superRefine((p, ctx) => {
+  // A payment is always money out; an opening balance or adjustment may be negative.
+  if (p.kind === 'PAYMENT' ? p.amount <= 0 : p.amount === 0)
+    ctx.addIssue({ code: 'custom', path: ['amount'], message: p.kind === 'PAYMENT' ? 'Amount must be more than 0' : 'Amount cannot be 0' })
 })
 
 export const pettyCreate = z.object({

@@ -99,6 +99,13 @@ export const ACCOUNTS_DDL = [
   )`,
 
   /** One row per old store key (or seed) that was copied in, so it is never copied twice. */
+  // Payables (A/P): whose payable a supplier is, and opening / adjustment entries.
+  `ALTER TABLE "acc_parties" ADD COLUMN IF NOT EXISTS "account" TEXT NOT NULL DEFAULT 'SARA' CHECK ("account" IN ('SARA','FOI'))`,
+  `ALTER TABLE "acc_payments" ADD COLUMN IF NOT EXISTS "kind" TEXT NOT NULL DEFAULT 'PAYMENT' CHECK ("kind" IN ('PAYMENT','OPENING','ADJUSTMENT'))`,
+  `ALTER TABLE "acc_payments" ADD COLUMN IF NOT EXISTS "paidFrom" TEXT NOT NULL DEFAULT 'SARA' CHECK ("paidFrom" IN ('SARA','FOI'))`,
+  // Payments copied from the old synopsis "FOI paid" column were FOI money.
+  `UPDATE "acc_payments" SET "paidFrom" = 'FOI' WHERE "paidFrom" = 'SARA' AND "remarks" LIKE 'FOI paid (copied%'`,
+
   `CREATE TABLE IF NOT EXISTS "acc_import_log" (
     "source" TEXT PRIMARY KEY,
     "hash" TEXT NOT NULL,

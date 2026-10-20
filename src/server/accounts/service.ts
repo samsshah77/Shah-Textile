@@ -1,6 +1,7 @@
 /** Read models for the accounts pages (repo rows → report shapes). */
 import { prisma } from '@/lib/prisma'
-import type { CostStatement, MonthBook, PartyKind, PartyLedger, PartySummary, PettyCashStatement } from '@/lib/accounts/types'
+import type { CostStatement, MonthBook, PartyKind, PartyLedger, PartySummary, PayablesReport, PettyCashStatement } from '@/lib/accounts/types'
+import { payableEffect } from '@/lib/accounts/util'
 
 import { productionAccountingMonthBounds, getProductionTodayMonth } from '@/constants/productionCalendar'
 import { loadSalaryStore } from '@/server/payroll/api'
@@ -10,6 +11,7 @@ import {
   buildCostStatement,
   partyLedger,
   partySummaries,
+  payablesReport,
   payrollTotals,
   pettyStatement,
   resolveCostInputs,
@@ -47,7 +49,7 @@ export async function directory(kind: PartyKind | null, month: string | null): P
   const parties = (await repo.listParties(dbc)).filter((p) => !kind || p.kind === kind)
   const bills = await repo.listBills(dbc, month ? { month } : {})
   const payments = await repo.listPayments(dbc, month ? { month } : {})
-  const rows = partySummaries(parties, bills, payments).filter((r) => r.party.active || r.purchases || r.paid)
+  const rows = partySummaries(parties, bills, payments).filter((r) => r.party.active || r.purchases || r.paid || r.opening || r.adjusted)
   return { rows }
 }
 
@@ -59,8 +61,8 @@ export async function ledger(idOrSlug: string, month: string | null): Promise<Pa
   const allPay = await repo.listPayments(dbc, { partyId: party.id })
   if (!month) return partyLedger(party, allBills, allPay, 0)
   const before =
-    allBills.filter((b) => b.month < month).reduce((t, b) => t + b.total, 0) -
-    allPay.filter((p) => p.month < month).reduce((t, p) => t + p.amount, 0)
+    allBills.filter((b) => b.month < month).reduce((t, b) => t + b.total, 0) +
+    allPay.filter((p) => p.month < month).reduce((t, p) => t + payableEffect(p), 0)
   return partyLedger(
     party,
     allBills.filter((b) => b.month === month),
@@ -138,3 +140,10 @@ export async function costStatement(month: string): Promise<CostStatement> {
   })
 }
 
+
+/** A/P Synopsis — every supplier's payable balance on `asOf` (YYYY-MM-DD). */
+export async function payables(asOf: string): Promise<PayablesReport> {
+  const dbc = await repo.db()
+  const [parties, bills, payments] = await Promise.all([repo.listParties(dbc), repo.listBills(dbc, {}), repo.listPayments(dbc)])
+  return payablesReport(asOf, parties, bills, payments)
+}

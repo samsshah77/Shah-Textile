@@ -84,3 +84,8 @@ export function rs(n: number): string {
 export function qty(n: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(Number(n) || 0)
 }
+
+/** How a ledger entry changes what we owe (OPENING adds; PAYMENT / ADJUSTMENT reduce). */
+export function payableEffect(p: { kind?: string; amount: number }): number {
+  return p.kind === 'OPENING' ? p.amount : -p.amount
+}

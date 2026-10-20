@@ -7,13 +7,14 @@ import {
   pettyStatement,
   resolveCostInputs,
   EXCEL_AUG_2026_INPUTS,
+  payablesReport,
 } from '@/server/accounts/reports'
 import { defaultCostBucket, pettySides } from '@/server/accounts/repo'
 import { lineAmount, monthLabel, shiftMonth, slugifyPartyName } from '@/lib/accounts/util'
 import type { Bill, Party } from '@/lib/accounts/types'
 
 const party = (id: string, name: string, extra: Partial<Party> = {}): Party => ({
-  id, name, slug: slugifyPartyName(name), kind: 'TRADER', category: '', costBucket: 'MACHINERY', remarks: '', active: true, version: 1, ...extra,
+  id, name, slug: slugifyPartyName(name), kind: 'TRADER', category: '', costBucket: 'MACHINERY', remarks: '', active: true, account: 'SARA', version: 1, ...extra,
 })
 const bill = (id: string, partyId: string, month: string, date: string, lines: [string, number, number][], billNo = id): Bill => {
   const ls = lines.map(([description, quantity, rate], i) => ({ id: `${id}-${i}`, lineNo: i + 1, description, machine: '', quantity, rate, amount: lineAmount(quantity, rate) }))
@@ -109,7 +110,7 @@ describe('copying the old data', () => {
 describe('party reports', () => {
   const p1 = party('p1', 'Fahad Traders')
   const bills = [bill('b1', 'p1', '2026-09', '2026-09-02', [['Left', 2, 10500], ['Right', 2, 10500]]), bill('b2', 'p1', '2026-09', '2026-09-09', [['Frame', 24, 100]])]
-  const pay = [{ id: 'y', partyId: 'p1', month: '2026-09', date: '2026-09-05', amount: 20000, mode: 'CASH' as const, reference: '', remarks: '', version: 1 }]
+  const pay = [{ id: 'y', partyId: 'p1', month: '2026-09', date: '2026-09-05', amount: 20000, kind: 'PAYMENT' as const, mode: 'CASH' as const, paidFrom: 'SARA' as const, reference: '', remarks: '', version: 1 }]
   it('summary: purchases, bills, items, paid, balance', () => {
     const [s] = partySummaries([p1], bills, pay)
     expect(s).toMatchObject({ purchases: 44400, bills: 2, items: 28, paid: 20000, balance: 24400, lastDate: '2026-09-09' })
@@ -117,6 +118,23 @@ describe('party reports', () => {
   it('ledger runs a balance in date order with payments in between', () => {
     const l = partyLedger(p1, bills, pay, 1000)
     expect(l.rows.map((r) => r.balance)).toEqual([22000, 43000, 23000, 25400])
+  })
+  it('payables: opening balance + bills − payments − set-offs, split Sara / FOI (like the Excel A/P Synopsis)', () => {
+    const p2 = party('p2', 'Merab Traders', { account: 'FOI' })
+    const entries = [
+      ...pay,
+      { ...pay[0], id: 'o1', date: '2026-01-01', month: '2026-01', amount: 81900, kind: 'OPENING' as const },
+      { ...pay[0], id: 'a1', date: '2026-09-20', amount: 400, kind: 'ADJUSTMENT' as const },
+      { ...pay[0], id: 'o2', partyId: 'p2', date: '2026-01-01', month: '2026-01', amount: 17000, kind: 'OPENING' as const },
+      { ...pay[0], id: 'f1', partyId: 'p2', date: '2026-10-01', month: '2026-10', amount: 17000, paidFrom: 'FOI' as const },
+    ]
+    const r = payablesReport('2026-09-30', [p1, p2], bills, entries)
+    expect(r.rows.find((x) => x.party.id === 'p1')).toMatchObject({ opening: 81900, purchases: 44400, paid: 20000, adjusted: 400, balance: 105900 })
+    expect(r.totals).toEqual({ sara: 105900, foi: 17000, total: 122900 })
+    expect(payablesReport('2026-10-31', [p1, p2], bills, entries).totals.foi).toBe(0)
+    const l = partyLedger(p1, bills, entries.filter((e) => e.partyId === 'p1'))
+    expect(l.rows[0]).toMatchObject({ kind: 'OPENING', amount: 81900, balance: 81900 })
+    expect(l.rows[l.rows.length - 1].balance).toBe(105900)
   })
   it('petty statement carries the balance b/f', () => {
     const s = pettyStatement('2026-09', [

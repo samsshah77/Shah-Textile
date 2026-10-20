@@ -12,11 +12,13 @@ import type {
   Party,
   PartyLedger,
   PartySummary,
+  PayableRow,
+  PayablesReport,
   Payment,
   PettyCashEntry,
   PettyCashStatement,
 } from '@/lib/accounts/types'
-import { costPeriodTitle, sum } from '@/lib/accounts/util'
+import { costPeriodTitle, payableEffect, sum } from '@/lib/accounts/util'
 import {
   employeeBelongsInMonth,
   findLinkedEmployee,
@@ -30,7 +32,7 @@ import type { EmployeeProfile } from '@/types/payroll'
 export function partySummaries(parties: Party[], bills: Bill[], payments: Payment[]): PartySummary[] {
   const byParty = new Map<string, PartySummary>()
   for (const p of parties) {
-    byParty.set(p.id, { party: p, bills: 0, items: 0, purchases: 0, paid: 0, balance: 0, lastDate: null })
+    byParty.set(p.id, { party: p, bills: 0, items: 0, opening: 0, purchases: 0, paid: 0, adjusted: 0, balance: 0, lastDate: null })
   }
   const billNos = new Map<string, Set<string>>()
   for (const b of bills) {
@@ -45,17 +47,23 @@ export function partySummaries(parties: Party[], bills: Bill[], payments: Paymen
   }
   for (const p of payments) {
     const row = byParty.get(p.partyId)
-    if (row) row.paid += p.amount
+    if (!row) continue
+    if (p.kind === 'OPENING') row.opening += p.amount
+    else if (p.kind === 'ADJUSTMENT') row.adjusted += p.amount
+    else row.paid += p.amount
   }
   for (const [id, row] of byParty) {
     row.bills = billNos.get(id)?.size || 0
-    row.balance = row.purchases - row.paid
+    row.balance = round2(row.opening + row.purchases - row.paid - row.adjusted)
   }
   return [...byParty.values()].sort((a, b) => b.purchases - a.purchases || a.party.name.localeCompare(b.party.name))
 }
 
+const round2 = (v: number) => Math.round(v * 100) / 100
+
 /**
- * Date-wise ledger: purchase lines and payments, with a running balance.
+ * Date-wise payable ledger (like the Excel "Payable Ledger Account"): purchase lines are
+ * debits, payments and set-offs are credits, opening balances come first; running balance.
  * `opening` = everything owed before the period (0 when showing all months).
  */
 export function partyLedger(
@@ -89,34 +97,65 @@ export function partyLedger(
     }
   }
   for (const p of payments) {
+    const effect = payableEffect(p)
+    const label =
+      p.kind === 'OPENING'
+        ? 'Opening balance (purana ledger)'
+        : p.kind === 'ADJUSTMENT'
+          ? 'Adjustment'
+          : `Payment — ${p.mode === 'CHEQUE' ? 'cheque' : p.mode === 'CASH' ? 'cash' : 'other'}${p.paidFrom === 'FOI' ? ' (FOI)' : ''}`
     items.push({
       date: p.date,
-      order: 1e9,
+      order: p.kind === 'OPENING' ? -1 : 1e9,
       row: {
-        kind: 'PAYMENT',
+        kind: p.kind,
         paymentId: p.id,
         paymentVersion: p.version,
         date: p.date,
         month: p.month,
         billNo: p.reference,
         inwardNo: '',
-        description: `Payment (${p.mode.toLowerCase()})${p.remarks ? ` — ${p.remarks}` : ''}`,
+        description: `${label}${p.remarks ? ` — ${p.remarks}` : ''}`,
         machine: '',
         quantity: 0,
         rate: 0,
-        amount: 0,
-        paid: p.amount,
+        amount: effect > 0 ? effect : 0,
+        paid: effect < 0 ? -effect : 0,
       },
     })
   }
   items.sort((a, b) => (a.date === b.date ? a.order - b.order : a.date < b.date ? -1 : 1))
   let balance = opening
   const rows: LedgerRow[] = items.map(({ row }) => {
-    balance += row.amount - row.paid
+    balance = round2(balance + row.amount - row.paid)
     return { ...row, balance }
   })
   const [summary] = partySummaries([party], bills, payments)
   return { party, opening, rows, summary, payments }
+}
+
+/** A/P Synopsis: what we owe each supplier on `asOf` (bills and entries dated up to it). */
+export function payablesReport(asOf: string, parties: Party[], bills: Bill[], payments: Payment[]): PayablesReport {
+  const b = bills.filter((x) => x.date <= asOf)
+  const p = payments.filter((x) => x.date <= asOf)
+  const lastPay = new Map<string, string>()
+  for (const x of p) if (x.kind === 'PAYMENT' && (!lastPay.get(x.partyId) || x.date > lastPay.get(x.partyId)!)) lastPay.set(x.partyId, x.date)
+  const rows: PayableRow[] = partySummaries(parties, b, p)
+    .filter((r) => r.party.active || r.opening || r.purchases || r.paid || r.adjusted)
+    .map((r) => ({
+      party: r.party,
+      opening: r.opening,
+      purchases: r.purchases,
+      paid: r.paid,
+      adjusted: r.adjusted,
+      balance: r.balance,
+      lastBill: r.lastDate,
+      lastPayment: lastPay.get(r.party.id) || null,
+    }))
+    .sort((x, y) => Math.abs(y.balance) - Math.abs(x.balance) || x.party.name.localeCompare(y.party.name))
+  const sara = round2(sum(rows.filter((r) => r.party.account !== 'FOI'), (r) => r.balance))
+  const foi = round2(sum(rows.filter((r) => r.party.account === 'FOI'), (r) => r.balance))
+  return { asOf, rows, totals: { sara, foi, total: round2(sara + foi) } }
 }
 
 // ---------------------------------------------------------------- petty cash

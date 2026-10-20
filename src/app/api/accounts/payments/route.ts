@@ -4,7 +4,7 @@ import * as repo from '@/server/accounts/repo'
 
 export const runtime = 'nodejs'
 
-/** Record money paid to a party (FOI cash / cheque). */
+/** Record a payable ledger entry: payment (Sara / FOI), opening balance or adjustment. */
 export const POST = accountsHandler(
   async (ctx) => {
     const input = await body(ctx.req, paymentCreate)

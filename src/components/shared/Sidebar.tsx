@@ -106,6 +106,12 @@ const ACCOUNTS_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p.startsWith('/accounts/workshops'),
   },
   {
+    title: 'Payables (A/P Synopsis)',
+    href: '/accounts/payables',
+    icon: 'bi-cash-stack',
+    activeCheck: (p) => p.startsWith('/accounts/payables'),
+  },
+  {
     title: 'Petty Cash Journal',
     href: '/accounts/petty-cash',
     icon: 'bi-wallet2',
@@ -194,16 +200,16 @@ const PAYROLL_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p === '/payroll/contractors',
   },
   {
-    title: 'Petty Cash',
-    href: '/payroll/petty-cash',
-    icon: 'bi-wallet',
-    activeCheck: (p) => p === '/payroll/petty-cash',
-  },
-  {
     title: 'Synopsis',
     href: '/payroll/synopsis',
     icon: 'bi-file-earmark-spreadsheet',
     activeCheck: (p) => p === '/payroll/synopsis',
+  },
+  {
+    title: 'Data Check',
+    href: '/payroll/data-check',
+    icon: 'bi-clipboard-check',
+    activeCheck: (p) => p === '/payroll/data-check',
   },
 ]
 
