@@ -165,3 +165,9 @@ export function zodMessage(err: z.ZodError): string {
   const where = i.path.length ? `${i.path.join('.')}: ` : ''
   return `${where}${i.message}`
 }
+
+/** Several lists and days saved as one change (all or nothing). */
+export const batchSchema = z.object({
+  lists: z.array(listChangesSchema).max(3).default([]),
+  days: z.array(sheetChangesSchema).max(62).default([]),
+})

@@ -173,3 +173,15 @@ function, `src/lib/floor/dayBuilder.ts`, used by the Daily Entry screen and by t
 it builds the day from the database and saves it through the normal row save (month lock,
 quality run ids, conflict check). A day that already has rows is returned unchanged, so
 pressing it twice or from two computers cannot create or overwrite anything.
+
+## Quality on a loom / Quality End / beams are saved as one change
+
+Putting a quality on a loom from a date writes the loom master, the quality list and the
+loom's row on every day from that date to today. Ending a quality, adding / removing a
+part (+P), and beam mount / unmount also touch several lists or days. These are now sent
+as ONE save (`saveBatch`, `applyBatch` in `src/server/floor/rowSync.ts`) inside one
+database transaction: if any row was changed by someone else meanwhile (409), a month is
+locked (423) or a guard refuses, **nothing** is saved and the screen reloads what is
+really stored — a half-written quality pose can no longer be left behind. The methods
+saved this way are listed in `BATCHED_METHODS` (`src/services/productionMastersService.ts`).
+If the network fails, the edits are kept and sent again list by list / day by day.

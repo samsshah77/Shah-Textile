@@ -191,6 +191,10 @@ export function markExplicitSheetRow(date: string, entry: { loomNumber: number; 
 /** Ask for the list / day in memory to be saved. Resolves true when it is saved. */
 export function schedulePersist(key: string): Promise<boolean> {
   if (!isClient()) return Promise.resolve(false)
+  if (batchKeys && (dateOfSheetKey(key) || isRowListKey(key))) {
+    batchKeys.add(key)
+    return Promise.resolve(true)
+  }
   const queued = flushQueued.get(key)
   if (queued) return queued
   const p = enqueue(key, async () => {
@@ -292,33 +296,30 @@ function scheduleRetry(key: string) {
   )
 }
 
-async function flushKey(key: string): Promise<boolean> {
-  if (needsReload.has(key)) {
-    // The last save was refused and the fresh copy never arrived: get it first.
-    await reloadFromServer(key)
-    return false
-  }
+type Prepared =
+  | { kind: 'none' }
+  | { kind: 'day'; key: string; date: string; part: { date: string; rows: SheetRowChange[] }; sent: Map<string, string>; explicitSnapshot?: Map<string, { clearQuality: boolean }> }
+  | { kind: 'list'; key: string; part: { key: RowListKey; upserts: unknown[]; deletes: unknown[] }; sent: Map<string, string> }
+
+/** What would be sent for one list / day right now (rows changed since the server copy). */
+function prepareKey(key: string): Prepared | null {
   const raw = memoryStore.get(key)
-  if (!raw) return true
+  if (!raw) return { kind: 'none' }
   let rows: AnyRow[]
   try {
     rows = JSON.parse(raw) as AnyRow[]
   } catch {
-    return false
+    return null
   }
-  if (!Array.isArray(rows)) return true
+  if (!Array.isArray(rows)) return { kind: 'none' }
   const canon = baseCanon.get(key) || new Map<string, string>()
   const hash = baseHash.get(key) || new Map<string, string>()
   const date = dateOfSheetKey(key)
-
-  let body: Record<string, unknown>
-  let sent: Map<string, string> // id → canonical of what was sent
-  let explicitSnapshot: Map<string, { clearQuality: boolean }> | undefined
   if (date) {
     const { upserts } = diffRows(rows, (r) => sheetRowId(r), canon, hash, normalizerFor(key))
-    explicitSnapshot = explicitRows.get(key)
+    const explicitSnapshot = explicitRows.get(key)
     explicitRows.delete(key)
-    if (upserts.length === 0) return true
+    if (upserts.length === 0) return { kind: 'none' }
     const changes: SheetRowChange[] = upserts.map((u) => {
       const id = sheetRowId(u.row)
       const ex = explicitSnapshot?.get(id)
@@ -326,33 +327,56 @@ async function flushKey(key: string): Promise<boolean> {
       delete entry._clearQuality
       return { entry, base: u.base, ...(ex ? { explicit: true, clearQuality: ex.clearQuality } : {}) }
     })
-    body = { action: 'saveSheetRows', date, rows: changes }
-    sent = new Map(upserts.map((u) => [sheetRowId(u.row), canonical(normalizerFor(key)(u.row))]))
-  } else if (isRowListKey(key)) {
+    const sent = new Map(upserts.map((u) => [sheetRowId(u.row), canonical(normalizerFor(key)(u.row))]))
+    return { kind: 'day', key, date, part: { date, rows: changes }, sent, explicitSnapshot }
+  }
+  if (isRowListKey(key)) {
     const { upserts, deletes } = diffRows(rows, idFor(key), canon, hash, normalizerFor(key), {
       allowDeletes: key !== FLOOR_KEYS.QUALITY && canon.size > 0,
     })
-    if (upserts.length === 0 && deletes.length === 0) return true
-    body = { action: 'saveRows', key: key as RowListKey, upserts, deletes }
-    sent = new Map(upserts.map((u) => [rowIdOf(key, u.row), canonical(normalizerFor(key)(u.row))]))
-  } else {
-    return true // yarn lists are saved by the yarn actions
+    if (upserts.length === 0 && deletes.length === 0) return { kind: 'none' }
+    const sent = new Map(upserts.map((u) => [rowIdOf(key, u.row), canonical(normalizerFor(key)(u.row))]))
+    return { kind: 'list', key, part: { key: key as RowListKey, upserts, deletes }, sent }
   }
+  return { kind: 'none' } // yarn lists are saved by the yarn actions
+}
+
+/** Put back the "edited by hand" marks of a day whose save did not reach the server. */
+function restoreExplicit(p: Prepared) {
+  if (p.kind !== 'day' || !p.explicitSnapshot) return
+  const m = explicitRows.get(p.key) || new Map()
+  for (const [id, v] of p.explicitSnapshot) if (!m.has(id)) m.set(id, v)
+  explicitRows.set(p.key, m)
+}
+
+function applySaved(p: Prepared, sync: { rows?: AnyRow[]; hashes?: RowHashes; deleted?: string[] }) {
+  if (p.kind === 'none') return
+  mergeBase(p.key, sync.rows || [], sync.hashes || {}, sync.deleted || [])
+  if (p.kind === 'day') mergeStoredRowsIntoMemory(p.key, sync.rows || [], p.sent)
+}
+
+async function flushKey(key: string): Promise<boolean> {
+  if (needsReload.has(key)) {
+    // The last save was refused and the fresh copy never arrived: get it first.
+    await reloadFromServer(key)
+    return false
+  }
+  const prepared = prepareKey(key)
+  if (!prepared) return false
+  if (prepared.kind === 'none') return true
+  const body =
+    prepared.kind === 'day'
+      ? { action: 'saveSheetRows', ...prepared.part }
+      : { action: 'saveRows', ...prepared.part }
 
   const { status, data } = await post(body)
   if (status === 200 && data?.ok) {
-    const sync = data.sync as { rows: AnyRow[]; hashes: RowHashes; deleted: string[] }
-    mergeBase(key, sync.rows || [], sync.hashes || {}, sync.deleted || [])
-    if (date) mergeStoredRowsIntoMemory(key, sync.rows || [], sent)
+    applySaved(prepared, data.sync as { rows: AnyRow[]; hashes: RowHashes; deleted: string[] })
     return true
   }
   if (status === 0 || status >= 500) {
     // Network / server trouble: keep the edits and try again shortly.
-    if (explicitSnapshot) {
-      const m = explicitRows.get(key) || new Map()
-      for (const [id, v] of explicitSnapshot) if (!m.has(id)) m.set(id, v)
-      explicitRows.set(key, m)
-    }
+    restoreExplicit(prepared)
     notifyFloorSaveProblem(409, { error: 'Server se raabta nahi ho saka — tabdeeli abhi save nahi hui, thodi der mein dobara koshish hogi.' })
     scheduleRetry(key)
     return false
@@ -363,6 +387,88 @@ async function flushKey(key: string): Promise<boolean> {
   console.error('[floor] save refused', key, status, data)
   await reloadFromServer(key)
   return false
+}
+
+// ---------------------------------------------------------------------------
+// One change that touches several lists / days (quality on a loom from a date to today,
+// Quality End …) is sent as ONE all-or-nothing save.
+// ---------------------------------------------------------------------------
+
+let batchKeys: Set<string> | null = null
+let batchDepth = 0
+
+/** Start collecting saves; they go to the server together at `endFloorBatch()`. */
+export function beginFloorBatch() {
+  if (!isClient()) return
+  batchDepth += 1
+  if (!batchKeys) batchKeys = new Set()
+}
+
+/** Send everything collected since `beginFloorBatch()` as one change. */
+export function endFloorBatch(): Promise<boolean> {
+  if (!isClient() || batchDepth === 0) return Promise.resolve(true)
+  batchDepth -= 1
+  if (batchDepth > 0) return Promise.resolve(true)
+  const keys = [...(batchKeys || [])]
+  batchKeys = null
+  if (!keys.length) return Promise.resolve(true)
+  if (keys.length === 1) return schedulePersist(keys[0])
+  return flushBatch(keys)
+}
+
+async function flushBatch(keys: string[]): Promise<boolean> {
+  // Wait for earlier saves of the same lists / days, and hold them while this one runs.
+  for (const k of keys) running.set(k, (running.get(k) || 0) + 1)
+  const done = () => {
+    for (const k of keys) running.set(k, (running.get(k) || 1) - 1)
+  }
+  let release: () => void = () => undefined
+  const gate = new Promise<void>((r) => (release = r))
+  const waits = keys.map((k) => chains.get(k) || Promise.resolve())
+  for (const k of keys) chains.set(k, gate)
+  try {
+    await Promise.all(waits.map((w) => w.catch(() => undefined)))
+    const stale = keys.filter((k) => needsReload.has(k))
+    if (stale.length) {
+      for (const k of keys) await reloadFromServer(k)
+      notifyFloorSaveProblem(409, { error: CONFLICT_MESSAGE })
+      return false
+    }
+    const prepared = keys.map((k) => prepareKey(k))
+    if (prepared.some((p) => p === null)) return false
+    const real = prepared.filter((p): p is Exclude<Prepared, { kind: 'none' }> => p !== null && p.kind !== 'none')
+    if (!real.length) return true
+    const body = {
+      action: 'saveBatch',
+      lists: real.filter((p) => p.kind === 'list').map((p) => p.part),
+      days: real.filter((p) => p.kind === 'day').map((p) => p.part),
+    }
+    const { status, data } = await post(body)
+    if (status === 200 && data?.ok) {
+      const lists = (data.lists || []) as Array<{ key: string; rows: AnyRow[]; hashes: RowHashes; deleted: string[] }>
+      const days = (data.days || []) as Array<{ date: string; rows: AnyRow[]; hashes: RowHashes; deleted: string[] }>
+      for (const p of real) {
+        const sync = p.kind === 'list' ? lists.find((l) => l.key === p.key) : days.find((d) => d.date === p.date)
+        if (sync) applySaved(p, sync)
+      }
+      return true
+    }
+    if (status === 0 || status >= 500) {
+      // Network trouble: keep the edits; they go again (list by list / day by day) shortly.
+      for (const p of real) restoreExplicit(p)
+      notifyFloorSaveProblem(409, { error: 'Server se raabta nahi ho saka — tabdeeli abhi save nahi hui, thodi der mein dobara koshish hogi.' })
+      for (const p of real) scheduleRetry(p.key)
+      return false
+    }
+    // Refused: nothing was saved anywhere — show what is really stored.
+    notifyFloorSaveProblem(status === 400 ? 409 : status, data?.conflict ? { error: CONFLICT_MESSAGE } : data)
+    console.error('[floor] batch save refused', keys, status, data)
+    for (const k of keys) await reloadFromServer(k)
+    return false
+  } finally {
+    done()
+    release()
+  }
 }
 
 /** Put the server's stored version of rows we just saved back into memory (ids, stamps). */

@@ -83,8 +83,8 @@ export function stampQualityIds<T extends DailyLoomProductionEntry>(
   })
 }
 
-export async function loadQualityRefs(): Promise<QualityRef[]> {
-  const rows = await prisma.floorQuality.findMany({
+export async function loadQualityRefs(db: Pick<typeof prisma, 'floorQuality'> = prisma): Promise<QualityRef[]> {
+  const rows = await db.floorQuality.findMany({
     select: { id: true, name: true, pick: true, createdOn: true, endedOn: true },
   })
   return rows

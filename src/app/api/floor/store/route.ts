@@ -42,6 +42,7 @@ import {
   FloorConflictError,
   applyListChanges,
   applySheetRows,
+  applyBatch,
   listsWithHashes,
   sheetHashes,
   syncFor,
@@ -52,6 +53,7 @@ import {
   beamRowSchema,
   isoDate,
   listChangesSchema,
+  batchSchema,
   monthLockSchema,
   qualityRowSchema,
   sheetChangesSchema,
@@ -311,6 +313,27 @@ export async function POST(req: NextRequest) {
       const result = await applySheetRows(p.date, p.rows, { name: writerName, isAdmin: writerIsAdmin })
       await writeAudit({ req, actor: writer, module: 'floor', action: 'saveSheetRows', entityKey: `sheet:${p.date}`, before: result.before, after: result.after, meta: { rows: p.rows.length } })
       return NextResponse.json({ ok: true, sync: { date: p.date, rows: result.rows, hashes: result.hashes, deleted: [] } })
+    }
+
+    // ---- Several lists / days as one all-or-nothing change (quality pose, End …) ----
+    if (action === 'saveBatch') {
+      const p = parse(batchSchema, body)
+      if (!p.lists.length && !p.days.length) return bad('Kuch bheja nahi gaya.')
+      const listBefore = []
+      for (const cs of p.lists) {
+        const ids = cs.upserts.map((u) => String(cs.key === KEY_LOOMS ? u.row.loomNumber : cs.key === KEY_BEAMS ? u.row.beamNo : u.row.id))
+        listBefore.push(await syncFor(cs.key, [...ids, ...cs.deletes.map((d) => d.id)]))
+      }
+      const result = await applyBatch(p, { name: writerName, isAdmin: writerIsAdmin })
+      for (const [i, l] of result.lists.entries())
+        await writeAudit({ req, actor: writer, module: 'floor', action: 'saveBatch', entityKey: l.key, before: listBefore[i]?.rows, after: l.rows, meta: { batch: true } })
+      for (const d of result.days)
+        await writeAudit({ req, actor: writer, module: 'floor', action: 'saveBatch', entityKey: `sheet:${d.date}`, before: d.before, after: d.rows, meta: { batch: true } })
+      return NextResponse.json({
+        ok: true,
+        lists: result.lists,
+        days: result.days.map((d) => ({ date: d.date, rows: d.rows, hashes: d.hashes, deleted: [] })),
+      })
     }
 
     // ---- Start a new day: the server builds it from the database ----
