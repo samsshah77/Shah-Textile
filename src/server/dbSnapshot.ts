@@ -19,6 +19,7 @@ export const SNAPSHOT_TABLES = [
   'floor_yarns',
   'floor_yarn_movements',
   'floor_yarn_issuances',
+  'floor_month_locks',
   'payroll_store',
   'payroll_rows',
   'accounts_store',

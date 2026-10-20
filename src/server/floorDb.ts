@@ -97,6 +97,25 @@ export function beamRowToMaster(row: {
   }
 }
 
+export function loomWriteData(l: LoomMaster) {
+  return {
+    name: l.name,
+    model: l.model,
+    category: l.category,
+    year: l.year ?? null,
+    pictureDataUrl: l.pictureDataUrl ?? null,
+    pictureDataUrls: (Array.isArray(l.pictureDataUrls) ? l.pictureDataUrls : []) as Prisma.InputJsonValue,
+    defaultRpm: l.defaultRpm,
+    shed: l.shed ?? null,
+    isActive: l.isActive !== false,
+    status: l.status,
+    statusSince: l.statusSince ?? null,
+    qualityId: l.qualityId ?? null,
+    weftYarnId: l.weftYarnId ?? null,
+    isTwinBeam: Boolean(l.isTwinBeam),
+  }
+}
+
 export async function dbGetLooms(): Promise<LoomMaster[]> {
   const rows = await prisma.floorLoom.findMany({ orderBy: { loomNumber: 'asc' } })
   return rows.map(loomRowToMaster)
@@ -152,7 +171,7 @@ export async function dbGetBeams(): Promise<BeamMaster[]> {
   return rows.map(beamRowToMaster)
 }
 
-function beamWriteData(b: BeamMaster, prev?: { swLot: string | null; qualityId: string | null; beamRepeat: string | null } | null) {
+export function beamWriteData(b: BeamMaster, prev?: { swLot: string | null; qualityId: string | null; beamRepeat: string | null } | null) {
   const swLotIncoming =
     b.swLot != null && String(b.swLot).trim() !== '' ? String(b.swLot).trim() : undefined
   const qualityIdIncoming =
@@ -381,6 +400,16 @@ export async function dbSaveYarn(yarn: YarnMaster[]): Promise<void> {
 
 export async function dbGetYarnMovements(): Promise<YarnMovementRecord[]> {
   const rows = await prisma.floorYarnMovement.findMany({ orderBy: { createdAt: 'desc' } })
+  // "kind" is added at runtime (src/server/floor/setup.ts), so it is read with SQL.
+  const kinds = new Map<string, string>()
+  try {
+    const k = await prisma.$queryRawUnsafe<Array<{ id: string; kind: string }>>(
+      `SELECT "id", "kind" FROM "floor_yarn_movements" WHERE "kind" <> 'NORMAL'`
+    )
+    for (const r of k) kinds.set(r.id, r.kind)
+  } catch {
+    // column not added yet — every movement is NORMAL
+  }
   return rows.map((r) => ({
     id: r.id,
     type: r.type as YarnMovementRecord['type'],
@@ -393,6 +422,7 @@ export async function dbGetYarnMovements(): Promise<YarnMovementRecord[]> {
     loomNumber: r.loomNumber ?? undefined,
     pick: r.pick ?? undefined,
     lotOrSupplier: r.lotOrSupplier ?? undefined,
+    kind: (kinds.get(r.id) || 'NORMAL') as YarnMovementRecord['kind'],
     createdAt: r.createdAt,
   }))
 }
@@ -449,28 +479,44 @@ export async function dbSaveYarnIssuances(list: YarnLoomIssuance[]): Promise<voi
   })
 }
 
+type QualityRow = {
+  id: string
+  name: string
+  fabricType: string
+  warpYarn: string
+  weftYarn: string
+  reed: number
+  pick: number
+  widthInch: number
+  gsm: number
+  status: string
+  createdOn: string | null
+  endedOn: string | null
+}
+
+export function qualityRowToMaster(q: QualityRow): QualityMaster {
+  const status = q.status === 'ENDED' ? 'ENDED' : q.status === 'HOLD' ? 'HOLD' : 'ACTIVE'
+  return {
+    id: q.id,
+    name: q.name,
+    fabricType: q.fabricType,
+    weavePlan: (q as { weavePlan?: string | null }).weavePlan ?? '',
+    weftPlan: (q as { weftPlan?: string | null }).weftPlan ?? '',
+    warpYarn: q.warpYarn,
+    weftYarn: q.weftYarn,
+    reed: q.reed,
+    pick: q.pick,
+    widthInch: q.widthInch,
+    gsm: q.gsm,
+    status,
+    createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
+    endedOn: status === 'ACTIVE' ? null : q.endedOn,
+  }
+}
+
 export async function dbGetQualities(): Promise<QualityMaster[]> {
   const rows = await prisma.floorQuality.findMany({ orderBy: { name: 'asc' } })
-  return rows.map((q) => {
-    const status =
-      q.status === 'ENDED' ? 'ENDED' : q.status === 'HOLD' ? 'HOLD' : 'ACTIVE'
-    return {
-      id: q.id,
-      name: q.name,
-      fabricType: q.fabricType,
-      weavePlan: (q as { weavePlan?: string | null }).weavePlan ?? '',
-      weftPlan: (q as { weftPlan?: string | null }).weftPlan ?? '',
-      warpYarn: q.warpYarn,
-      weftYarn: q.weftYarn,
-      reed: q.reed,
-      pick: q.pick,
-      widthInch: q.widthInch,
-      gsm: q.gsm,
-      status,
-      createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
-      endedOn: status === 'ACTIVE' ? null : q.endedOn,
-    }
-  })
+  return rows.map(qualityRowToMaster)
 }
 
 export async function dbSaveQualities(qualities: QualityMaster[]): Promise<void> {
@@ -561,7 +607,7 @@ export async function dbPatchQualityStatus(
 }
 
 /** Insert or update one quality — needed when reuse forks a new Active run. */
-export async function dbUpsertQuality(q: QualityMaster): Promise<void> {
+export function qualityWriteData(q: QualityMaster) {
   const status =
     q.status === 'ENDED' ? 'ENDED' : q.status === 'HOLD' ? 'HOLD' : 'ACTIVE'
   const data = {
@@ -579,6 +625,11 @@ export async function dbUpsertQuality(q: QualityMaster): Promise<void> {
     createdOn: q.createdOn ? String(q.createdOn).slice(0, 10) : null,
     endedOn: status === 'ACTIVE' ? null : q.endedOn ?? null,
   }
+  return data
+}
+
+export async function dbUpsertQuality(q: QualityMaster): Promise<void> {
+  const data = qualityWriteData(q)
   await prisma.floorQuality.upsert({
     where: { id: q.id },
     create: { id: q.id, ...data },
@@ -670,7 +721,7 @@ export async function dbReuseQuality(params: {
   return { ended, active: activePayload }
 }
 
-function sheetSegmentFromRow(row: {
+export function sheetSegmentFromRow(row: {
   segmentIndex?: number | null
   payload?: unknown
 }): number {
@@ -682,7 +733,7 @@ function sheetSegmentFromRow(row: {
   return 1
 }
 
-function sheetEntryFromDbRow(row: {
+export function sheetEntryFromDbRow(row: {
   date: string
   loomNumber: number
   segmentIndex?: number | null

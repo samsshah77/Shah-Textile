@@ -29,6 +29,7 @@ import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
 import { DateStepper } from '@/components/floor/DateStepper'
+import { FloorMonthLockBar, useFloorMonthLocked } from '@/components/floor/FloorMonthLock'
 
 function ProductionWorkspaceContent() {
   const router = useRouter()
@@ -45,7 +46,7 @@ function ProductionWorkspaceContent() {
             ? 'quality'
             : rawTab
 
-  const { isAccountant, canEditProduction } = useAuth()
+  const { isAccountant, canEditProduction, isAdmin } = useAuth()
   const { setDateLabel } = useFloorDateLabel()
   const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
   const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
@@ -114,6 +115,10 @@ function ProductionWorkspaceContent() {
     unlockSheet,
     loading,
   } = useProductionGrid()
+
+  // A locked production month is view-only for everyone (the server refuses changes too).
+  const monthLocked = useFloorMonthLocked(selectedDate.slice(0, 7))
+  const canEditDay = canEditProduction && !monthLocked
 
   const getFormattedDateLabel = (dateStr: string) => {
     try {
@@ -295,7 +300,7 @@ function ProductionWorkspaceContent() {
                 </>
               )}
 
-              {currentTab === 'entry' && canEditProduction && (
+              {currentTab === 'entry' && canEditDay && (
                 <button
                   type="button"
                   className={`btn btn-sm ${entryEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
@@ -306,7 +311,7 @@ function ProductionWorkspaceContent() {
                 </button>
               )}
 
-              {currentTab === 'fabric-fault' && canEditProduction && (
+              {currentTab === 'fabric-fault' && canEditDay && (
                 <button
                   type="button"
                   className={`btn btn-sm ${fabricFaultEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
@@ -393,9 +398,13 @@ function ProductionWorkspaceContent() {
             selectedMonth={selectedMonth}
             setSelectedMonth={setSelectedMonth}
             onOpenNewDayModal={() => setIsNewDayModalOpen(true)}
-            canEdit={canEditProduction}
+            canEdit={canEditDay}
             showStartNewDay={currentTab !== 'quality' && !todaySheetReady}
           />
+        )}
+
+        {showDateBar && currentTab !== 'quality' && currentTab !== 'looms' && (
+          <FloorMonthLockBar month={selectedDate.slice(0, 7)} isAdmin={isAdmin} />
         )}
 
         {isAccountant && (
@@ -417,7 +426,7 @@ function ProductionWorkspaceContent() {
                 onUpdateEntry={updateEntry}
                 onResetDayMeters={resetDayMeters}
                 onRemoveQualitySegment={removeQualitySegment}
-                canEdit={canEditProduction}
+                canEdit={canEditDay}
                 selectedDate={selectedDate}
                 onSubmitForApproval={submitForApproval}
                 onApproveSheet={approveSheet}
@@ -433,7 +442,7 @@ function ProductionWorkspaceContent() {
                 entries={entries}
                 selectedDate={selectedDate}
                 onUpdateEntry={updateEntry}
-                canEdit={canEditProduction && fabricFaultEdit}
+                canEdit={canEditDay && fabricFaultEdit}
               />
             )}
 

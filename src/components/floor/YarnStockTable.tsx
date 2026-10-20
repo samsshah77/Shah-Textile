@@ -179,7 +179,7 @@ export function YarnStockTable({
   }, [issuances])
 
   // Complete List of Movements (Inward Arrivals + Outward Issuances)
-  const allMovements = useMemo(() => {
+  const allMovements = useMemo((): YarnMovementRecord[] => {
     if (movements && movements.length > 0) return movements
     return issuances.map((iss) => ({
       id: `mov-${iss.id}`,
@@ -935,6 +935,10 @@ export function YarnStockTable({
                           })
                         : '—'
                       const isInward = mov.type === 'INWARD'
+                      // Opening stock / corrections of a typed total (may be minus).
+                      const isFix = mov.kind === 'CORRECTION' || mov.kind === 'OPENING'
+                      const kg = Number(mov.weightKg) || 0
+                      const sign = (isInward ? kg >= 0 : kg < 0) ? '+' : '-'
 
                       return (
                         <tr key={mov.id}>
@@ -943,7 +947,12 @@ export function YarnStockTable({
                             {mov.date}
                           </td>
                           <td className="px-2">
-                            {isInward ? (
+                            {isFix ? (
+                              <span className="badge bg-warning-subtle text-dark border border-warning-subtle px-2 py-1">
+                                <i className="bi bi-sliders me-1" />
+                                {mov.kind === 'OPENING' ? 'Opening' : `Correction (${isInward ? 'In' : 'Out'})`}
+                              </span>
+                            ) : isInward ? (
                               <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
                                 <i className="bi bi-box-arrow-in-down me-1" />
                                 IN (Arrival)
@@ -957,7 +966,7 @@ export function YarnStockTable({
                           </td>
                           <td className="px-2 fw-medium text-dark">{mov.yarnType}</td>
                           <td className="px-2">
-                            {isInward ? (
+                            {isInward || isFix ? (
                               <span className="badge bg-light text-secondary border px-2 py-1">
                                 {mov.lotOrSupplier || 'Warehouse Receipt'}
                               </span>
@@ -967,12 +976,12 @@ export function YarnStockTable({
                               </span>
                             )}
                           </td>
-                          <td className={`px-2 text-end fw-bold ${isInward ? 'text-success' : 'text-danger'}`}>
-                            {isInward ? '+' : '-'}
-                            {displayWeight(mov.weightKg, mov.weightLbs)} {unit.toLowerCase()}
+                          <td className={`px-2 text-end fw-bold ${sign === '+' ? 'text-success' : 'text-danger'}`}>
+                            {sign}
+                            {displayWeight(Math.abs(kg), Math.abs(Number(mov.weightLbs) || 0))} {unit.toLowerCase()}
                           </td>
                           <td className="px-2 text-end fw-semibold text-secondary">
-                            {isInward ? (mov.bags ? `${mov.bags} bags` : '—') : `${mov.pick || '—'} picks`}
+                            {isInward ? (mov.bags ? `${mov.bags} bags` : '—') : isFix ? '—' : `${mov.pick || '—'} picks`}
                           </td>
                           <td className="px-2 text-muted small">
                             <i className="bi bi-clock me-1" />

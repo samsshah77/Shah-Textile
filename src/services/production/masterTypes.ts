@@ -62,6 +62,8 @@ export interface YarnMovementRecord {
   loomNumber?: number
   pick?: number
   lotOrSupplier?: string
+  /** NORMAL = arrival / issue; OPENING = carried-over stock; CORRECTION = a fixed total. */
+  kind?: 'NORMAL' | 'OPENING' | 'CORRECTION'
   createdAt: string
 }
 

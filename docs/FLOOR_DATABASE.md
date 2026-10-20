@@ -52,11 +52,24 @@ Expect JSON: `{ success: true, date: "2026-09-23", looms: 34, totalAB: 3078, ...
 
 If the API says `floorLoom model missing`, clear the Next build cache (`.next`) and restart after `prisma generate`.
 
-## API
+## API (`src/app/api/floor/store/route.ts`)
 
-- `GET /api/floor/store` — bootstrap / load masters (auto-seed if empty)
-- `PUT /api/floor/store` — `{ key, value }` persist one collection
-- `POST /api/floor/store` — `{ action: "getSheet"|"deleteSheet", date }`
-- `GET /api/floor/seed-sheet?key=…` — one-shot seed for 2026-09-23 sheet (deploy key)
+- `GET /api/floor/store` — load masters (auto-seed if empty) + a hash of every loom / beam /
+  quality row + the locked production months.
+- `POST { action: "getSheet" | "getAllSheets", date }` — day rows + the hash of each row.
+- `POST { action: "saveRows", key, upserts: [{ row, base }], deletes: [{ id, base }] }` —
+  changed loom / beam / quality rows only (see "Row-level saving" in PRODUCTION_SAFETY.md).
+- `POST { action: "saveSheetRows", date, rows: [{ entry, base, explicit?, clearQuality? }] }` —
+  changed rows of one day.
+- Yarn: `yarnInward`, `yarnIssue`, `yarnCorrect`, `yarnAdd`, `yarnRename`, `yarnDelete` —
+  the server records the movement and recomputes the stock.
+- `setMonthLock { month, locked }` (admin), plus the existing targeted actions
+  (patchBeam, upsertBeam, deleteBeam, upsertQuality, patchQualityStatus, reuseQuality,
+  deleteQuality, deleteLoomSegment, deleteSheet, submit / approve / unlock sheet).
+- `PUT` (whole list / whole day) is no longer accepted — it answers 409 "refresh the page".
 
-Tables: `floor_looms`, `floor_beams`, `floor_yarns`, `floor_yarn_movements`, `floor_yarn_issuances`, `floor_qualities`, `floor_daily_sheets`.
+Every write is validated (`src/lib/floor/schemas.ts`); bad input gets 400.
+
+Tables: `floor_looms`, `floor_beams`, `floor_yarns`, `floor_yarn_movements` (+ `kind`),
+`floor_yarn_issuances`, `floor_qualities`, `floor_daily_sheets`, `floor_month_locks`,
+`floor_migrations` (one-time jobs that already ran).

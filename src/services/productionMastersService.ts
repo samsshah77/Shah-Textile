@@ -102,6 +102,23 @@ import {
   forgetLocalQualityEnd,
   rememberLocalQualityEnd,
 } from '@/services/production/floorLocalCache'
+import {
+  memoryStore,
+  notifyFloorSaveProblem,
+  schedulePersist,
+  setListFromServer,
+  setSheetFromServer,
+  applyServerSync,
+  markExplicitSheetRow,
+  runAction,
+  enqueue,
+  clearBase,
+  isBusy,
+  reloadFromServer,
+  announceReload,
+  post as floorPost,
+} from '@/services/production/floorSync'
+import type { RowHashes } from '@/lib/floor/rowSync'
 
 const KEY_LOOMS = 'sara_textile_loom_master_v8'
 const KEY_BEAMS = 'sara_textile_beam_master_v9'
@@ -110,65 +127,44 @@ const KEY_YARN_ISSUANCE = 'sara_textile_yarn_issuance_v8'
 const KEY_QUALITY = 'sara_textile_quality_master_v8'
 const KEY_SHEET = 'sara_textile_production_sheet_v8'
 const KEY_YARN_MOVEMENTS = 'sara_textile_yarn_movements_v8'
-/** In-memory cache hydrated from PostgreSQL via /api/floor/store. */
-const memoryStore = new Map<string, string>()
 let hydratePromise: Promise<void> | null = null
 let hydrated = false
 
-/**
- * Tell the user when the server refused a floor save (blocked by a data-safety guard,
- * locked by approval, or no permission). Previously failures were only logged to the
- * console, so people believed unsaved work was saved.
- */
-function notifyFloorSaveProblem(status: number, data: unknown) {
-  if (!isClient()) return
-  if (status !== 403 && status !== 409 && status !== 423) return
-  const message =
-    (data && typeof data === 'object' && 'error' in data && typeof (data as { error?: unknown }).error === 'string'
-      ? (data as { error: string }).error
-      : '') || 'This change was not saved.'
-  try {
-    window.dispatchEvent(new CustomEvent('floor:save-problem', { detail: { status, message } }))
-  } catch {
-    // ignore
-  }
-}
+const ROW_SAVED_KEYS = new Set<string>([KEY_LOOMS, KEY_BEAMS, KEY_QUALITY])
 
+/**
+ * Save a list / day: only the rows that changed since the server copy are sent
+ * (src/services/production/floorSync.ts). Yarn lists are never saved this way —
+ * yarn changes go through the yarn actions.
+ */
 async function persistKey(key: string, value: unknown): Promise<boolean> {
   if (!isClient()) return false
+  const isSheet = key.startsWith(`${KEY_SHEET}_`)
+  if (!isSheet && !ROW_SAVED_KEYS.has(key)) return false
+  // A locked production month is read-only: rebuilding one of its days is not saved.
+  if (isSheet && isFloorMonthLocked(key.slice(`${KEY_SHEET}_`.length, `${KEY_SHEET}_`.length + 7))) return false
   // Never push seed/fallback masters before DB hydrate — that wiped swLot on refresh.
-  if (
-    !hydrated &&
-    (key === KEY_BEAMS ||
-      key === KEY_LOOMS ||
-      key === KEY_QUALITY ||
-      key === KEY_YARN ||
-      key === KEY_YARN_ISSUANCE ||
-      key === KEY_YARN_MOVEMENTS)
-  ) {
+  if (!hydrated && !isSheet) {
     console.warn('[floor] skip persist before hydrate', key)
     return false
   }
   try {
-    const res = await fetch('/api/floor/store', {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] persist failed', key, res.status, data)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[floor] persist failed', key, err)
+    memoryStore.set(key, JSON.stringify(value))
+  } catch {
     return false
   }
+  return schedulePersist(key)
 }
 
+/** Run one floor action in the save order of `key`; tell the user if it is refused. */
+async function floorAction(key: string, body: Record<string, unknown>, label: string): Promise<Record<string, unknown> | null> {
+  if (!isClient()) return null
+  const { status, data } = await runAction(key, body)
+  if (status === 200 && data?.ok) return data
+  if (status !== 0) notifyFloorSaveProblem(status, data)
+  console.error(`[floor] ${label} failed`, status, data)
+  return null
+}
 
 async function persistBeamPatch(
   beamNo: string,
@@ -180,24 +176,7 @@ async function persistBeamPatch(
   >
 ): Promise<boolean> {
   if (!isClient() || !beamNo) return false
-  try {
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'patchBeam', beamNo, patch }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] patchBeam failed', beamNo, res.status, data)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[floor] patchBeam failed', beamNo, err)
-    return false
-  }
+  return Boolean(await floorAction(KEY_BEAMS, { action: 'patchBeam', beamNo, patch }, `patchBeam ${beamNo}`))
 }
 
 /** Persist one full beam row (Add Beam) — does not rewrite/delete sibling beams. */
@@ -210,46 +189,12 @@ async function persistBeamUpsert(beam: BeamMaster): Promise<boolean> {
       // still try upsert
     }
   }
-  try {
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upsertBeam', beam }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] upsertBeam failed', beam.beamNo, res.status, data)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[floor] upsertBeam failed', beam.beamNo, err)
-    return false
-  }
+  return Boolean(await floorAction(KEY_BEAMS, { action: 'upsertBeam', beam }, `upsertBeam ${beam.beamNo}`))
 }
 
 async function persistBeamDelete(beamNo: string): Promise<boolean> {
   if (!isClient() || !beamNo) return false
-  try {
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'deleteBeam', beamNo }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] deleteBeam failed', beamNo, res.status, data)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[floor] deleteBeam failed', beamNo, err)
-    return false
-  }
+  return Boolean(await floorAction(KEY_BEAMS, { action: 'deleteBeam', beamNo }, `deleteBeam ${beamNo}`))
 }
 
 /** Patch one quality ENDED/ACTIVE in DB so refresh keeps the record. */
@@ -259,47 +204,13 @@ async function persistQualityStatus(
   endedOn: string | null
 ): Promise<boolean> {
   if (!isClient()) return false
-  try {
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'patchQualityStatus', id, status, endedOn }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] patchQualityStatus failed', id, res.status, data)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[floor] patchQualityStatus failed', id, err)
-    return false
-  }
+  return Boolean(await floorAction(KEY_QUALITY, { action: 'patchQualityStatus', id, status, endedOn }, `patchQualityStatus ${id}`))
 }
 
 /** Insert/update one quality row — reuse fork must hit DB or refresh drops Active. */
 async function persistQualityUpsert(quality: QualityMaster): Promise<boolean> {
   if (!isClient()) return false
-  try {
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upsertQuality', quality }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] upsertQuality failed', quality.id, res.status, data)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[floor] upsertQuality failed', quality.id, err)
-    return false
-  }
+  return Boolean(await floorAction(KEY_QUALITY, { action: 'upsertQuality', quality }, `upsertQuality ${quality.id}`))
 }
 
 /** Server-atomic reuse: keep ENDED + insert Active in one request. */
@@ -309,62 +220,27 @@ async function persistQualityReuse(
   newQuality: QualityMaster
 ): Promise<{ ok: boolean; active: QualityMaster | null; ended: QualityMaster | null }> {
   if (!isClient()) return { ok: false, active: null, ended: null }
-  try {
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'reuseQuality',
-        endedId,
-        createdOn,
-        newQuality,
-      }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok || !data?.ok) {
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] reuseQuality failed', endedId, res.status, data)
-      return { ok: false, active: null, ended: null }
-    }
-    return {
-      ok: true,
-      active: data.active ? normalizeQuality(data.active) : newQuality,
-      ended: data.ended ? normalizeQuality(data.ended) : null,
-    }
-  } catch (err) {
-    console.error('[floor] reuseQuality failed', endedId, err)
-    return { ok: false, active: null, ended: null }
+  const data = await floorAction(KEY_QUALITY, { action: 'reuseQuality', endedId, createdOn, newQuality }, `reuseQuality ${endedId}`)
+  if (!data) return { ok: false, active: null, ended: null }
+  return {
+    ok: true,
+    active: data.active ? normalizeQuality(data.active as QualityMaster) : newQuality,
+    ended: data.ended ? normalizeQuality(data.ended as QualityMaster) : null,
   }
 }
 
-async function persistLoomEntry(
+/**
+ * A row edited by hand: mark it so the server applies the hand-edit rules
+ * (keep the quality name unless cleared on purpose), then save the day's changed rows.
+ */
+function persistLoomEntry(
   dateStr: string,
   loomNumber: number,
-  entry: DailyLoomProductionEntry
-): Promise<void> {
+  entry: DailyLoomProductionEntry & { _clearQuality?: boolean }
+): void {
   if (!isClient()) return
-  const stamped = normalizeSheetEntry({ ...entry, date: dateStr, loomNumber })
-  try {
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'updateLoomEntry',
-        date: dateStr,
-        loomNumber,
-        segmentIndex: sheetSegmentIndex(stamped),
-        entry: stamped,
-      }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notifyFloorSaveProblem(res.status, data)
-      console.error('[floor] persist loom entry rejected', loomNumber, res.status, data)
-    }
-  } catch (err) {
-    console.error('[floor] persist loom entry failed', loomNumber, err)
-  }
+  markExplicitSheetRow(dateStr, { loomNumber, segmentIndex: sheetSegmentIndex(entry) }, Boolean(entry._clearQuality))
+  void schedulePersist(`${KEY_SHEET}_${dateStr}`)
 }
 
 async function persistDeleteLoomSegment(
@@ -375,20 +251,11 @@ async function persistDeleteLoomSegment(
   if (!isClient()) return
   const seg = sheetSegmentIndex({ segmentIndex })
   if (seg <= 1) return
-  try {
-    await fetch('/api/floor/store', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'deleteLoomSegment',
-        date: dateStr,
-        loomNumber,
-        segmentIndex: seg,
-      }),
-    })
-  } catch (err) {
-    console.error('[floor] delete loom segment failed', loomNumber, seg, err)
-  }
+  await floorAction(
+    `${KEY_SHEET}_${dateStr}`,
+    { action: 'deleteLoomSegment', date: dateStr, loomNumber, segmentIndex: seg },
+    `deleteLoomSegment ${loomNumber}:${seg}`
+  )
 }
 
 function clearLegacyFloorLocalStorage() {
@@ -465,14 +332,65 @@ function removeStoreKey(key: string) {
       // ignore
     }
   }
-  void fetch('/api/floor/store', {
+  if (!isClient()) return
+  // In the day's save order: the rebuild that follows must not race the delete.
+  void enqueue(key, async () => {
+    try {
+      const res = await fetch('/api/floor/store', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteSheet', date: key.replace(`${KEY_SHEET}_`, '') }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data?.ok) {
+        clearBase(key)
+        return
+      }
+      notifyFloorSaveProblem(res.status, data)
+    } catch {
+      // network — the next save compares against the old copy, which is safe
+    }
+    await reloadFromServer(key)
+  })
+}
+
+export type FloorMonthLock = { month: string; locked: boolean; lockedBy: string | null; lockedAt: string | null }
+let floorMonthLocks: FloorMonthLock[] = []
+
+function rememberMonthLocks(list: unknown) {
+  if (!Array.isArray(list)) return
+  floorMonthLocks = list as FloorMonthLock[]
+  if (isClient()) {
+    try {
+      window.dispatchEvent(new CustomEvent('floor:month-locks', { detail: floorMonthLocks }))
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/** Locked production months (from the last server read). */
+export function getFloorMonthLocks(): FloorMonthLock[] {
+  return floorMonthLocks
+}
+
+export function isFloorMonthLocked(month: string): boolean {
+  return floorMonthLocks.some((l) => l.month === month && l.locked)
+}
+
+/** Admin only: lock / unlock a production month. Throws the server's message when refused. */
+export async function setFloorMonthLock(month: string, locked: boolean): Promise<FloorMonthLock[]> {
+  const res = await fetch('/api/floor/store', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'deleteSheet',
-      date: key.replace(`${KEY_SHEET}_`, ''),
-    }),
-  }).catch(() => {})
+    body: JSON.stringify({ action: 'setMonthLock', month, locked }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Month lock save nahi hua.')
+  rememberMonthLocks(data.monthLocks)
+  return floorMonthLocks
 }
 
 /** Load floor masters from DB (seeds DB if empty). Call once before using the grid. */
@@ -486,9 +404,11 @@ export async function hydrateFloorFromDb(): Promise<void> {
       const res = await fetch('/api/floor/store', { method: 'GET', cache: 'no-store' })
       const data = await res.json()
       if (data?.ok && data.store && typeof data.store === 'object') {
+        const hashes = (data.hashes || {}) as Record<string, RowHashes>
         Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
-          memoryStore.set(key, JSON.stringify(value))
+          setListFromServer(key, value, hashes[key], { force: true })
         })
+        rememberMonthLocks(data.monthLocks)
         // Re-apply browser-backed Quality Ends + pending reused Actives if DB lagged.
         try {
           const raw = memoryStore.get(KEY_QUALITY)
@@ -506,7 +426,11 @@ export async function hydrateFloorFromDb(): Promise<void> {
             for (const q of merged) {
               // Never re-stamp ENDED over a same-id Active reuse still in pending.
               if (q.status === 'ENDED' && q.endedOn && !pendingActiveIds.has(q.id)) {
-                void persistQualityStatus(q.id, 'ENDED', q.endedOn)
+                // Only when the server does not already have this End.
+                const db = fromDb.find((x) => x.id === q.id)
+                if (!db || db.status !== 'ENDED' || String(db.endedOn || '').slice(0, 10) !== String(q.endedOn).slice(0, 10)) {
+                  void persistQualityStatus(q.id, 'ENDED', q.endedOn)
+                }
               }
             }
             // Push any still-pending rows (Active reuse / new quality) to DB.
@@ -539,7 +463,10 @@ export async function hydrateFloorFromDb(): Promise<void> {
             const merged = applyLocalBeamSwLots(withPending)
             memoryStore.set(KEY_BEAMS, JSON.stringify(merged.map((b) => normalizeBeam(b))))
             for (const b of merged) {
-              if (b.swLot) void persistBeamPatch(b.beamNo, { swLot: b.swLot })
+              // Only beams whose Sw# the server does not have yet.
+              if (b.swLot && !fromDb.find((x) => x.beamNo === b.beamNo)?.swLot) {
+                void persistBeamPatch(b.beamNo, { swLot: b.swLot })
+              }
             }
             // Flush any beams that only exist in browser pending backup.
             for (const p of readLocalPendingBeams()) {
@@ -571,9 +498,12 @@ export async function refreshFloorMastersFromDb(): Promise<void> {
     const data = await res.json()
     if (!data?.ok || !data.store || typeof data.store !== 'object') return
     const store = data.store as Record<string, unknown>
+    const hashes = (data.hashes || {}) as Record<string, RowHashes>
     for (const key of [KEY_BEAMS, KEY_LOOMS, KEY_QUALITY, KEY_YARN, KEY_YARN_ISSUANCE, KEY_YARN_MOVEMENTS]) {
-      if (key in store) memoryStore.set(key, JSON.stringify(store[key]))
+      // A list with edits still on their way to the server keeps the browser copy.
+      if (key in store) setListFromServer(key, store[key], hashes[key])
     }
+    rememberMonthLocks(data.monthLocks)
     // Keep browser Sw# + pending new beams if server row is still empty / missing.
     try {
       const rawBeams = memoryStore.get(KEY_BEAMS)
@@ -602,17 +532,19 @@ export async function refreshFloorMastersFromDb(): Promise<void> {
   }
 }
 
-async function loadSheetFromDb(dateStr: string): Promise<DailyLoomProductionEntry[] | null> {
+async function loadSheetFromDb(
+  dateStr: string
+): Promise<{ entries: DailyLoomProductionEntry[]; hashes: RowHashes } | null> {
   if (!isClient()) return null
   try {
     const res = await fetch('/api/floor/store', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getSheet', date: dateStr }),
     })
     const data = await res.json()
-    if (data?.ok && Array.isArray(data.entries)) return data.entries
-    if (data?.ok && data.entries === null) return null
+    if (data?.ok && Array.isArray(data.entries)) return { entries: data.entries, hashes: data.hashes || {} }
   } catch {
     // ignore
   }
@@ -631,11 +563,11 @@ export async function preloadAllFloorSheets(): Promise<void> {
     })
     const data = await res.json()
     if (!data?.ok || !Array.isArray(data.sheets)) return
-    for (const sheet of data.sheets as { date?: string; entries?: DailyLoomProductionEntry[] }[]) {
+    for (const sheet of data.sheets as { date?: string; entries?: DailyLoomProductionEntry[]; hashes?: RowHashes }[]) {
       if (!sheet?.date || !Array.isArray(sheet.entries) || sheet.entries.length === 0) continue
-      const key = `${KEY_SHEET}_${sheet.date}`
       // Always take DB truth — stale in-memory sheets (wrong lot / 0 meters) were blocking Track.
-      memoryStore.set(key, JSON.stringify(sheet.entries))
+      // (A day with edits still on their way to the server keeps the browser copy.)
+      setSheetFromServer(sheet.date, sheet.entries, sheet.hashes)
     }
   } catch (err) {
     console.error('[floor] preload all sheets failed', err)
@@ -652,8 +584,9 @@ export async function preloadFloorSheet(
   // Always prefer DB when forcing (date change / after seed) — stale memory was
   // wiping named dual-quality rows (e.g. DUM DUM seg1 → "—") on rebuild+persist.
   if (!opts?.force && memoryStore.has(key)) return
-  const entries = await loadSheetFromDb(dateStr)
-  if (entries) memoryStore.set(key, JSON.stringify(entries.map(normalizeSheetEntry)))
+  if (opts?.force && isBusy(key)) return
+  const loaded = await loadSheetFromDb(dateStr)
+  if (loaded && loaded.entries.length) setSheetFromServer(dateStr, loaded.entries, loaded.hashes)
 }
 
 /** Dates that have a saved production sheet in memory (after hydrate). */
@@ -1573,11 +1506,34 @@ class ProductionMastersService {
     return loadJson(KEY_YARN, seedYarn).map((y) => withYarnWeights(y))
   }
 
+  /** Memory only — yarn is saved by the yarn actions; the server works out the stock. */
   saveYarn(yarn: YarnMaster[]) {
-    saveJson(KEY_YARN, yarn.map((y) => withYarnWeights(y)))
+    memoryStore.set(KEY_YARN, JSON.stringify(yarn.map((y) => withYarnWeights(y))))
+  }
+
+  /**
+   * Send one yarn action; the server records the movement, recomputes the stock and
+   * returns fresh yarn / movements / issuances, which replace the browser copy.
+   */
+  private yarnServerAction(body: Record<string, unknown>): void {
+    if (!isClient()) return
+    void enqueue('floor:yarn', async () => {
+      const { status, data } = await floorPost(body)
+      if (status === 200 && data?.ok && data.yarnState) {
+        const st = data.yarnState as { yarn: unknown; movements: unknown; issuances: unknown }
+        setListFromServer(KEY_YARN, st.yarn, undefined, { force: true })
+        setListFromServer(KEY_YARN_MOVEMENTS, st.movements, undefined, { force: true })
+        setListFromServer(KEY_YARN_ISSUANCE, st.issuances, undefined, { force: true })
+      } else {
+        notifyFloorSaveProblem(status === 0 || status >= 500 ? 409 : status, data || { error: 'Yarn save nahi hua — server se raabta nahi.' })
+        await refreshFloorMastersFromDb()
+      }
+      announceReload('yarn')
+    })
   }
 
   updateYarn(id: string, patch: Partial<YarnMaster>): YarnMaster[] {
+    const before = this.getYarn().find((y) => y.id === id)
     const yarn = this.getYarn().map((y) => {
       if (y.id !== id) return y
       const merged = { ...y, ...patch }
@@ -1596,27 +1552,48 @@ class ProductionMastersService {
       return withYarnWeights(merged)
     })
     this.saveYarn(yarn)
+    const after = yarn.find((y) => y.id === id)
+    if (before && after) {
+      if (patch.yarnType != null && after.yarnType.trim() && after.yarnType !== before.yarnType) {
+        this.yarnServerAction({ action: 'yarnRename', yarnId: id, yarnType: after.yarnType })
+      }
+      const totals: Record<string, number> = {}
+      if ((patch.receivedKg != null || patch.receivedLbs != null) && after.receivedKg !== before.receivedKg) totals.receivedKg = after.receivedKg
+      if ((patch.issuedKg != null || patch.issuedLbs != null) && after.issuedKg !== before.issuedKg) totals.issuedKg = after.issuedKg
+      if (patch.bags != null && after.bags !== before.bags) totals.bags = Math.max(0, Math.round(after.bags))
+      // A typed total is saved as a correction movement of the difference.
+      if (Object.keys(totals).length) {
+        this.yarnServerAction({ action: 'yarnCorrect', yarnId: id, date: getProductionToday(), ...totals })
+      }
+    }
     return yarn
   }
 
   addYarn(partial?: Partial<YarnMaster>): YarnMaster[] {
     const yarn = this.getYarn()
-    yarn.unshift(
-      withYarnWeights({
-        id: `yarn-${Date.now()}`,
-        yarnType: partial?.yarnType || 'New Yarn',
-        bags: partial?.bags ?? 0,
-        receivedKg: partial?.receivedKg ?? 0,
-        issuedKg: partial?.issuedKg ?? 0,
-      })
-    )
+    const added = withYarnWeights({
+      id: `yarn-${Date.now()}`,
+      yarnType: partial?.yarnType || 'New Yarn',
+      bags: partial?.bags ?? 0,
+      receivedKg: partial?.receivedKg ?? 0,
+      issuedKg: 0,
+    })
+    yarn.unshift(added)
     this.saveYarn(yarn)
+    this.yarnServerAction({
+      action: 'yarnAdd',
+      yarnType: added.yarnType,
+      bags: Math.max(0, Math.round(added.bags || 0)),
+      receivedKg: Math.max(0, added.receivedKg || 0),
+      date: getProductionToday(),
+    })
     return yarn
   }
 
   deleteYarn(id: string): YarnMaster[] {
     const yarn = this.getYarn().filter((y) => y.id !== id)
     this.saveYarn(yarn)
+    this.yarnServerAction({ action: 'yarnDelete', yarnId: id })
     return yarn
   }
 
@@ -1628,8 +1605,9 @@ class ProductionMastersService {
     return list
   }
 
+  /** Memory only (see saveYarn). */
   saveYarnIssuances(list: YarnLoomIssuance[]) {
-    saveJson(KEY_YARN_ISSUANCE, list)
+    memoryStore.set(KEY_YARN_ISSUANCE, JSON.stringify(list))
   }
 
   issueYarnToLoom(params: {
@@ -1644,11 +1622,13 @@ class ProductionMastersService {
     const targetYarn = yarns.find((y) => y.id === yarnId)
     if (!targetYarn) throw new Error('Yarn not found')
 
+    // Show it at once; the server's answer replaces these numbers.
     const updatedIssued = Number(((targetYarn.issuedKg || 0) + issuedKg).toFixed(2))
-    this.updateYarn(yarnId, { issuedKg: updatedIssued })
+    this.saveYarn(yarns.map((y) => (y.id === yarnId ? withYarnWeights({ ...y, issuedKg: updatedIssued }) : y)))
 
     const issuances = this.getYarnIssuances()
-    const newIssuance: YarnLoomIssuance = {
+    const now = new Date().toISOString()
+    issuances.unshift({
       id: `iss-${Date.now()}`,
       yarnId,
       yarnType: targetYarn.yarnType,
@@ -1656,12 +1636,10 @@ class ProductionMastersService {
       issuedKg,
       pick,
       date: dateStr,
-      createdAt: new Date().toISOString(),
-    }
-    issuances.unshift(newIssuance)
+      createdAt: now,
+    })
     this.saveYarnIssuances(issuances)
 
-    // Also record in complete movements ledger
     const movements = this.getYarnMovements()
     movements.unshift({
       id: `mov-iss-${Date.now()}`,
@@ -1673,10 +1651,11 @@ class ProductionMastersService {
       weightLbs: kgToLbs(issuedKg),
       loomNumber,
       pick,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     })
     this.saveYarnMovements(movements)
 
+    this.yarnServerAction({ action: 'yarnIssue', yarnId, loomNumber, issuedKg, pick: Math.max(0, Math.round(pick || 0)), date: dateStr })
     this.updateLoom(loomNumber, { weftYarnId: yarnId }, dateStr)
 
     return {
@@ -1693,8 +1672,9 @@ class ProductionMastersService {
     return list
   }
 
+  /** Memory only (see saveYarn). */
   saveYarnMovements(list: YarnMovementRecord[]) {
-    saveJson(KEY_YARN_MOVEMENTS, list)
+    memoryStore.set(KEY_YARN_MOVEMENTS, JSON.stringify(list))
   }
 
   recordYarnInward(params: {
@@ -1711,10 +1691,16 @@ class ProductionMastersService {
       (y) => (params.yarnId ? y.id === params.yarnId : y.yarnType.toLowerCase() === yarnType.toLowerCase())
     )
 
+    // Show it at once; the server's answer replaces these numbers.
     if (target) {
-      const updatedRec = Number(((target.receivedKg || 0) + weightKg).toFixed(2))
-      const updatedBags = (target.bags || 0) + bags
-      this.updateYarn(target.id, { receivedKg: updatedRec, bags: updatedBags })
+      const t = target
+      this.saveYarn(
+        yarns.map((y) =>
+          y.id === t.id
+            ? withYarnWeights({ ...y, receivedKg: Number(((y.receivedKg || 0) + weightKg).toFixed(2)), bags: (y.bags || 0) + bags })
+            : y
+        )
+      )
     } else {
       const newYarn = withYarnWeights({
         id: `yarn-${Date.now()}`,
@@ -1723,13 +1709,12 @@ class ProductionMastersService {
         receivedKg: weightKg,
         issuedKg: 0,
       })
-      yarns.push(newYarn)
-      this.saveYarn(yarns)
+      this.saveYarn([...yarns, newYarn])
       target = newYarn
     }
 
     const movements = this.getYarnMovements()
-    const newMov: YarnMovementRecord = {
+    movements.unshift({
       id: `mov-in-${Date.now()}`,
       type: 'INWARD',
       yarnId: target.id,
@@ -1740,9 +1725,19 @@ class ProductionMastersService {
       bags,
       lotOrSupplier: lotOrSupplier || 'Warehouse Inward',
       createdAt: new Date().toISOString(),
-    }
-    movements.unshift(newMov)
+    })
     this.saveYarnMovements(movements)
+
+    this.yarnServerAction({
+      action: 'yarnInward',
+      // A yarn only known to this browser (just added) is matched by name on the server.
+      yarnId: params.yarnId || (yarns.some((y) => y.id === target.id) ? target.id : null),
+      yarnType: target.yarnType,
+      bags: Math.max(0, Math.round(bags || 0)),
+      weightKg,
+      date: dateStr,
+      lotOrSupplier: lotOrSupplier || null,
+    })
 
     return {
       yarn: this.getYarn(),
@@ -2463,12 +2458,10 @@ class ProductionMastersService {
       this.saveBeams(beams.map((b) => (b.qualityId === id ? { ...b, qualityId: null } : b)))
     }
     if (isClient()) {
-      void fetch('/api/floor/store', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteQuality', id }),
-      }).catch((err) => console.error('[floor] deleteQuality failed', id, err))
+      void floorAction(KEY_QUALITY, { action: 'deleteQuality', id }, `deleteQuality ${id}`).then((data) => {
+        // The server also unlinked beams from this quality.
+        if (data?.beamSync) applyServerSync(data.beamSync)
+      })
     }
     return qualities
   }
@@ -2991,13 +2984,10 @@ class ProductionMastersService {
     }
 
     const sorted = sortSheetEntries(next)
-    // Save the patched day once, so an older rebuild cannot put today's quality onto another day.
+    // This row was edited by hand (server keeps its quality unless cleared on purpose).
+    if (updatedLoom) persistLoomEntry(dateStr, loomNumber, updatedLoom)
+    // Save the patched day: only rows that differ from the server copy are sent.
     saveJson(this.sheetKey(dateStr), sorted)
-
-    // Row-level persist to DB (prevents overwriting other looms / segments)
-    if (updatedLoom) {
-      void persistLoomEntry(dateStr, loomNumber, updatedLoom)
-    }
 
     return sorted
   }
@@ -3109,23 +3099,23 @@ class ProductionMastersService {
         lastEditedAt: now,
       } satisfies DailyLoomProductionEntry
     })
+    for (const row of next) persistLoomEntry(dateStr, row.loomNumber, row)
     saveJson(this.sheetKey(dateStr), next)
-    for (const row of next) {
-      void persistLoomEntry(dateStr, row.loomNumber, row)
-    }
     return next
   }
 
   async submitSheetForApproval(dateStr: string): Promise<DailyLoomProductionEntry[]> {
     if (!isClient()) return this.buildSheetForDate(dateStr)
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'submitForApproval', date: dateStr }),
-    })
-    const data = await res.json()
+    // In the day's save order, after any edits still on their way.
+    const { data: reply } = await runAction(this.sheetKey(dateStr), { action: 'submitForApproval', date: dateStr })
+    const data = (reply || { ok: false, error: 'Server se raabta nahi ho saka.' }) as {
+      ok?: boolean
+      error?: string
+      entries?: DailyLoomProductionEntry[]
+      hashes?: RowHashes
+    }
     if (data.ok && Array.isArray(data.entries)) {
-      memoryStore.set(this.sheetKey(dateStr), JSON.stringify(data.entries))
+      setSheetFromServer(dateStr, data.entries, data.hashes, { force: true })
       return data.entries
     }
     return this.buildSheetForDate(dateStr)
@@ -3133,14 +3123,16 @@ class ProductionMastersService {
 
   async approveSheet(dateStr: string): Promise<DailyLoomProductionEntry[]> {
     if (!isClient()) return this.buildSheetForDate(dateStr)
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'approveSheet', date: dateStr }),
-    })
-    const data = await res.json()
+    // In the day's save order, after any edits still on their way.
+    const { data: reply } = await runAction(this.sheetKey(dateStr), { action: 'approveSheet', date: dateStr })
+    const data = (reply || { ok: false, error: 'Server se raabta nahi ho saka.' }) as {
+      ok?: boolean
+      error?: string
+      entries?: DailyLoomProductionEntry[]
+      hashes?: RowHashes
+    }
     if (data.ok && Array.isArray(data.entries)) {
-      memoryStore.set(this.sheetKey(dateStr), JSON.stringify(data.entries))
+      setSheetFromServer(dateStr, data.entries, data.hashes, { force: true })
       return data.entries
     }
     if (!data.ok) {
@@ -3151,14 +3143,16 @@ class ProductionMastersService {
 
   async unlockSheet(dateStr: string): Promise<DailyLoomProductionEntry[]> {
     if (!isClient()) return this.buildSheetForDate(dateStr)
-    const res = await fetch('/api/floor/store', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'unlockSheet', date: dateStr }),
-    })
-    const data = await res.json()
+    // In the day's save order, after any edits still on their way.
+    const { data: reply } = await runAction(this.sheetKey(dateStr), { action: 'unlockSheet', date: dateStr })
+    const data = (reply || { ok: false, error: 'Server se raabta nahi ho saka.' }) as {
+      ok?: boolean
+      error?: string
+      entries?: DailyLoomProductionEntry[]
+      hashes?: RowHashes
+    }
     if (data.ok && Array.isArray(data.entries)) {
-      memoryStore.set(this.sheetKey(dateStr), JSON.stringify(data.entries))
+      setSheetFromServer(dateStr, data.entries, data.hashes, { force: true })
       return data.entries
     }
     if (!data.ok) {

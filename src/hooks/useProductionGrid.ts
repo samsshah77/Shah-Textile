@@ -167,20 +167,24 @@ export function useProductionGrid() {
     }
   }, [selectedDate, showError])
 
-  // Periodic background sync (every 15s or on window focus) so Ahmer/Javed stay updated without manual reload
+  // A save was refused or yarn came back from the server: show what is really stored.
+  useEffect(() => {
+    const onReload = () => refresh(selectedDate)
+    window.addEventListener('floor:data-reloaded', onReload)
+    return () => window.removeEventListener('floor:data-reloaded', onReload)
+  }, [refresh, selectedDate])
+
+  // Periodic background sync (every 15s or on window focus) so Ahmer/Javed stay updated without manual reload.
+  // The day is reloaded into memory too (not only the screen), so the next edit starts from
+  // what is really saved; a day with edits still on their way to the server is left alone.
   useEffect(() => {
     let active = true
     const syncLatest = async () => {
       if (typeof window === 'undefined') return
       try {
-        const res = await fetch('/api/floor/store', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'getSheet', date: selectedDate }),
-        })
-        const data = await res.json()
-        if (active && data.ok && Array.isArray(data.entries) && data.entries.length > 0) {
-          setEntries(data.entries)
+        await preloadFloorSheet(selectedDate, { force: true })
+        if (active && productionMastersService.hasPersistedSheet(selectedDate)) {
+          setEntries(productionMastersService.buildSheetForDate(selectedDate, { skipPersist: true }))
         }
       } catch {
         // silent

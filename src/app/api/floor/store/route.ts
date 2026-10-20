@@ -5,7 +5,6 @@ import {
   dbDeleteSheet,
   dbFloorIsEmpty,
   dbGetBeams,
-  dbGetLooms,
   dbGetQualities,
   dbGetSheet,
   dbListAllSheets,
@@ -22,7 +21,6 @@ import {
   dbUpsertQuality,
   dbReuseQuality,
   dbDeleteQuality,
-  dbSaveSheet,
   dbSaveYarn,
   dbSaveYarnIssuances,
   dbSaveYarnMovements,
@@ -31,28 +29,51 @@ import {
   dbSetSheetApproval,
 } from '@/server/floorDb'
 import { buildFloorSeedPayload } from '@/server/floorSeed'
-import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
 import { hasPermission } from '@/server/permissions'
 import { writeAudit } from '@/server/auditLog'
 import { rebuildProductionLedger } from '@/server/productionLedger'
+import { FloorGuardError, rowMeters, keepStoredApproval, sheetIsApproved } from '@/server/floorGuards'
+import { ensureFloorSetup } from '@/server/floor/setup'
+import { FloorLockedError, assertDateOpen, listMonthLocks, setMonthLock } from '@/server/floor/locks'
 import {
-  FloorGuardError,
-  rowMeters,
-  keepStoredApproval,
-  keepStoredApprovalForSheet,
-  sheetIsApproved,
-} from '@/server/floorGuards'
+  FloorApprovalLockedError,
+  FloorBadRequest,
+  FloorConflictError,
+  applyListChanges,
+  applySheetRows,
+  listsWithHashes,
+  sheetHashes,
+  syncFor,
+} from '@/server/floor/rowSync'
+import { YarnError, yarnAdd, yarnCorrect, yarnDelete, yarnInward, yarnIssue, yarnRename, yarnSnapshot } from '@/server/floor/yarn'
+import { FLOOR_KEYS, STALE_PAGE_MESSAGE, sheetRowId } from '@/lib/floor/rowSync'
+import {
+  beamRowSchema,
+  isoDate,
+  listChangesSchema,
+  monthLockSchema,
+  qualityRowSchema,
+  sheetChangesSchema,
+  sheetEntrySchema,
+  yarnAddSchema,
+  yarnCorrectSchema,
+  yarnDeleteSchema,
+  yarnInwardSchema,
+  yarnIssueSchema,
+  yarnRenameSchema,
+  zodMessage,
+} from '@/lib/floor/schemas'
+import type { z } from 'zod'
 import type { DailyLoomProductionEntry } from '@/types/production'
 
 export const runtime = 'nodejs'
 
-const KEY_LOOMS = 'sara_textile_loom_master_v8'
-const KEY_BEAMS = 'sara_textile_beam_master_v9'
-const KEY_YARN = 'sara_textile_yarn_master_v8'
-const KEY_YARN_ISSUANCE = 'sara_textile_yarn_issuance_v8'
-const KEY_QUALITY = 'sara_textile_quality_master_v8'
-const KEY_YARN_MOVEMENTS = 'sara_textile_yarn_movements_v8'
-const SHEET_PREFIX = 'sara_textile_production_sheet_v8_'
+const KEY_LOOMS = FLOOR_KEYS.LOOMS
+const KEY_BEAMS = FLOOR_KEYS.BEAMS
+const KEY_YARN = FLOOR_KEYS.YARN
+const KEY_YARN_ISSUANCE = FLOOR_KEYS.YARN_ISSUANCE
+const KEY_QUALITY = FLOOR_KEYS.QUALITY
+const KEY_YARN_MOVEMENTS = FLOOR_KEYS.YARN_MOVEMENTS
 
 async function requireSession(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value
@@ -111,17 +132,34 @@ function segmentOf(e: { segmentIndex?: number }) {
   return Math.max(1, Math.floor(Number(e.segmentIndex) || 1))
 }
 
-async function collectionSnapshot(key: string): Promise<unknown> {
-  if (key === KEY_LOOMS) return dbGetLooms()
-  if (key === KEY_BEAMS) return dbGetBeams()
-  if (key === KEY_YARN) return dbGetYarn()
-  if (key === KEY_YARN_ISSUANCE) return dbGetYarnIssuances()
-  if (key === KEY_YARN_MOVEMENTS) return dbGetYarnMovements()
-  if (key === KEY_QUALITY) return dbGetQualities()
-  return null
+function bad(message: string) {
+  return NextResponse.json({ ok: false, error: message }, { status: 400 })
+}
+
+function parse<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
+  const r = schema.safeParse(value)
+  if (!r.success) throw new FloorBadRequest(zodMessage(r.error))
+  return r.data
+}
+
+function dateParam(value: unknown): string {
+  return parse(isoDate, String(value || ''))
 }
 
 function errorResponse(scope: string, err: unknown) {
+  if (err instanceof FloorConflictError) {
+    console.warn(`[${scope}] conflict:`, JSON.stringify(err.conflicts))
+    return NextResponse.json({ ok: false, conflict: true, conflicts: err.conflicts, error: err.message }, { status: 409 })
+  }
+  if (err instanceof FloorLockedError) {
+    return NextResponse.json({ ok: false, monthLocked: true, error: err.message }, { status: 423 })
+  }
+  if (err instanceof FloorApprovalLockedError) {
+    return NextResponse.json({ ok: false, locked: true, error: err.message }, { status: 403 })
+  }
+  if (err instanceof FloorBadRequest || err instanceof YarnError) {
+    return NextResponse.json({ ok: false, error: err.message }, { status: err.status })
+  }
   if (err instanceof FloorGuardError) {
     console.warn(`[${scope}] blocked:`, err.message)
     return NextResponse.json({ ok: false, blocked: true, error: err.message }, { status: err.status })
@@ -138,8 +176,7 @@ export async function GET(req: NextRequest) {
     if (!(await requireSession(req))) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
-    // Heal missing columns (e.g. weavePlan) before any quality upsert/read.
-    await ensureFloorPayrollTables()
+    await ensureFloorSetup()
 
     if (await dbFloorIsEmpty()) {
       const seed = buildFloorSeedPayload()
@@ -151,25 +188,26 @@ export async function GET(req: NextRequest) {
       await dbSaveQualities(seed.qualities)
     }
 
-    const [looms, beams, yarn, issuances, movements, qualities] = await Promise.all([
-      dbGetLooms(),
-      dbGetBeams(),
+    const [lists, yarn, issuances, movements, monthLocks] = await Promise.all([
+      listsWithHashes(),
       dbGetYarn(),
       dbGetYarnIssuances(),
       dbGetYarnMovements(),
-      dbGetQualities(),
+      listMonthLocks(),
     ])
 
     return NextResponse.json({
       ok: true,
       store: {
-        [KEY_LOOMS]: looms,
-        [KEY_BEAMS]: beams,
+        [KEY_LOOMS]: lists.looms,
+        [KEY_BEAMS]: lists.beams,
         [KEY_YARN]: yarn,
         [KEY_YARN_ISSUANCE]: issuances,
         [KEY_YARN_MOVEMENTS]: movements,
-        [KEY_QUALITY]: qualities,
+        [KEY_QUALITY]: lists.qualities,
       },
+      hashes: lists.hashes,
+      monthLocks,
     })
   } catch (err) {
     console.error('[floor/bootstrap]', err)
@@ -180,64 +218,15 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * Whole-list / whole-sheet saves are no longer accepted: they overwrote other people's
+ * work. Only a page loaded before the update still sends them — it is asked to refresh.
+ */
 export async function PUT(req: NextRequest) {
-  try {
-    const claims = await requireSession(req)
-    if (!claims) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const user = await requireFloorWriter(req)
-    if (!user) return forbidden()
-
-    // Ensure new columns (swLot, qualityId) exist before any beam write.
-    await ensureFloorPayrollTables()
-
-    const body = await req.json()
-    const key = String(body?.key || '')
-    const value = body?.value
-
-    if (!key) {
-      return NextResponse.json({ ok: false, error: 'key required' }, { status: 400 })
-    }
-
-    if (key.startsWith(SHEET_PREFIX)) {
-      const dateStr = key.slice(SHEET_PREFIX.length)
-      const existing = await dbGetSheet(dateStr)
-      if (sheetIsApproved(existing) && !isAdminUser(user)) return approvedLocked()
-      if (value == null) {
-        if (sheetHasProduction(existing) && !isAdminUser(user)) return productionDeleteBlocked()
-        await dbDeleteSheet(dateStr)
-        await writeAudit({ req, actor: user, module: 'floor', action: 'deleteSheet', entityKey: `sheet:${dateStr}`, before: existing, after: null })
-      } else {
-        let entries = value as DailyLoomProductionEntry[]
-        if (Array.isArray(entries) && !isAdminUser(user)) {
-          entries = keepStoredApprovalForSheet(entries, existing)
-        }
-        await dbSaveSheet(dateStr, entries)
-        await writeAudit({ req, actor: user, module: 'floor', action: 'saveSheet', entityKey: `sheet:${dateStr}`, before: existing, after: await dbGetSheet(dateStr) })
-      }
-      return NextResponse.json({ ok: true })
-    }
-
-    const known = [KEY_LOOMS, KEY_BEAMS, KEY_YARN, KEY_YARN_ISSUANCE, KEY_YARN_MOVEMENTS, KEY_QUALITY]
-    if (!known.includes(key)) {
-      return NextResponse.json({ ok: false, error: `Unknown key: ${key}` }, { status: 400 })
-    }
-
-    const before = await collectionSnapshot(key)
-    if (key === KEY_LOOMS) await dbSaveLooms(value)
-    else if (key === KEY_BEAMS) await dbSaveBeams(value)
-    else if (key === KEY_YARN) await dbSaveYarn(value)
-    else if (key === KEY_YARN_ISSUANCE) await dbSaveYarnIssuances(value)
-    else if (key === KEY_YARN_MOVEMENTS) await dbSaveYarnMovements(value)
-    else if (key === KEY_QUALITY) await dbSaveQualities(value)
-    await writeAudit({ req, actor: user, module: 'floor', action: 'save', entityKey: key, before, after: await collectionSnapshot(key) })
-
-    return NextResponse.json({ ok: true })
-  } catch (err) {
-    return errorResponse('floor/store PUT', err)
+  if (!(await requireSession(req))) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
   }
+  return NextResponse.json({ ok: false, stale: true, error: STALE_PAGE_MESSAGE }, { status: 409 })
 }
 
 export async function POST(req: NextRequest) {
@@ -246,28 +235,102 @@ export async function POST(req: NextRequest) {
     if (!claims) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
+    await ensureFloorSetup()
 
     const body = await req.json()
     const action = String(body?.action || '')
 
     if (action === 'getSheet') {
-      const dateStr = String(body?.date || '')
+      const dateStr = dateParam(body?.date)
       const entries = await dbGetSheet(dateStr)
-      return NextResponse.json({ ok: true, entries })
+      return NextResponse.json({ ok: true, entries, hashes: sheetHashes(entries) })
     }
 
     if (action === 'getAllSheets') {
       const sheets = await dbListAllSheets()
-      return NextResponse.json({ ok: true, sheets })
+      return NextResponse.json({
+        ok: true,
+        sheets: sheets.map((s) => ({ ...s, hashes: sheetHashes(s.entries) })),
+      })
+    }
+
+    if (action === 'getMonthLocks') {
+      return NextResponse.json({ ok: true, monthLocks: await listMonthLocks() })
+    }
+
+    if (action === 'approveSheet' || action === 'unlockSheet') {
+      const user = await currentUser(req)
+      if (!isAdminUser(user) || !user) {
+        return NextResponse.json(
+          { ok: false, error: `Only Javed Sir (Main Admin) can ${action === 'approveSheet' ? 'approve' : 'unlock'} production sheets.` },
+          { status: 403 }
+        )
+      }
+      const dateStr = dateParam(body?.date)
+      await assertDateOpen(dateStr)
+      const status = action === 'approveSheet' ? 'APPROVED' : 'DRAFT'
+      const entries = await dbSetSheetApproval(dateStr, status, {
+        name: user.name || 'Javed Sir',
+        role: 'admin',
+      })
+      await writeAudit({ req, actor: user, module: 'floor', action, entityKey: `sheet:${dateStr}`, changes: { status } })
+      return NextResponse.json({ ok: true, entries, hashes: sheetHashes(entries) })
+    }
+
+    if (action === 'setMonthLock') {
+      const admin = await currentUser(req)
+      if (!admin || !isAdminUser(admin)) {
+        return NextResponse.json({ ok: false, error: 'Production mahina sirf Javed Sir lock / unlock kar sakte hain.' }, { status: 403 })
+      }
+      const p = parse(monthLockSchema, body)
+      const lock = await setMonthLock(p.month, p.locked, admin.name || admin.email || 'Admin')
+      await writeAudit({ req, actor: admin, module: 'floor', action: p.locked ? 'lockMonth' : 'unlockMonth', entityKey: 'floor_month_locks', entityId: p.month, changes: { locked: p.locked } })
+      return NextResponse.json({ ok: true, lock, monthLocks: await listMonthLocks() })
     }
 
     // ---- Everything below changes data ----
     const writer = await requireFloorWriter(req)
     if (!writer) return forbidden()
     const writerIsAdmin = isAdminUser(writer)
+    const writerName = writer.name || writer.email || 'Floor Operator'
+
+    // Changed rows of looms / beams / qualities, each with the hash it started from.
+    if (action === 'saveRows') {
+      const cs = parse(listChangesSchema, body)
+      const ids = cs.upserts.map((u) => String(cs.key === KEY_LOOMS ? u.row.loomNumber : cs.key === KEY_BEAMS ? u.row.beamNo : u.row.id))
+      const before = await syncFor(cs.key, [...ids, ...cs.deletes.map((d) => d.id)])
+      const result = await applyListChanges(cs)
+      await writeAudit({ req, actor: writer, module: 'floor', action: 'saveRows', entityKey: cs.key, before: before.rows, after: result.rows, meta: { upserts: cs.upserts.length, deletes: result.deleted } })
+      return NextResponse.json({ ok: true, sync: result })
+    }
+
+    // Changed rows of one day sheet.
+    if (action === 'saveSheetRows') {
+      const p = parse(sheetChangesSchema, body)
+      const result = await applySheetRows(p.date, p.rows, { name: writerName, isAdmin: writerIsAdmin })
+      await writeAudit({ req, actor: writer, module: 'floor', action: 'saveSheetRows', entityKey: `sheet:${p.date}`, before: result.before, after: result.after, meta: { rows: p.rows.length } })
+      return NextResponse.json({ ok: true, sync: { date: p.date, rows: result.rows, hashes: result.hashes, deleted: [] } })
+    }
+
+    // ---- Yarn: the server records movements and works out the stock ----
+    if (action.startsWith('yarn')) {
+      let result: unknown
+      if (action === 'yarnInward') result = await yarnInward(parse(yarnInwardSchema, body))
+      else if (action === 'yarnIssue') result = await yarnIssue(parse(yarnIssueSchema, body))
+      else if (action === 'yarnCorrect') result = await yarnCorrect(parse(yarnCorrectSchema, body))
+      else if (action === 'yarnAdd') result = await yarnAdd(parse(yarnAddSchema, body))
+      else if (action === 'yarnRename') result = await yarnRename(parse(yarnRenameSchema, body))
+      else if (action === 'yarnDelete') result = await yarnDelete(parse(yarnDeleteSchema, body))
+      else return bad('Unknown yarn action')
+      const { action: _a, ...input } = body as Record<string, unknown>
+      void _a
+      await writeAudit({ req, actor: writer, module: 'floor', action, entityKey: KEY_YARN_MOVEMENTS, changes: { input, result } })
+      return NextResponse.json({ ok: true, result, yarnState: await yarnSnapshot() })
+    }
 
     if (action === 'deleteSheet') {
-      const dateStr = String(body?.date || '')
+      const dateStr = dateParam(body?.date)
+      await assertDateOpen(dateStr)
       const existing = await dbGetSheet(dateStr)
       if (sheetIsApproved(existing) && !writerIsAdmin) return approvedLocked()
       if (sheetHasProduction(existing) && !writerIsAdmin) return productionDeleteBlocked()
@@ -277,57 +340,48 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'patchBeam') {
-      await ensureFloorPayrollTables()
       const beamNo = String(body?.beamNo || '').trim()
       const patch = body?.patch || {}
-      if (!beamNo) {
-        return NextResponse.json({ ok: false, error: 'beamNo required' }, { status: 400 })
-      }
+      if (!beamNo) return bad('beamNo required')
+      parse(beamRowSchema, { ...patch, beamNo })
       const beforeBeam = (await dbGetBeams()).find((b) => b.beamNo === beamNo)
       const beam = await dbPatchBeam(beamNo, patch)
       if (!beam) {
         return NextResponse.json({ ok: false, error: 'Beam not found' }, { status: 404 })
       }
       await writeAudit({ req, actor: writer, module: 'floor', action: 'patchBeam', entityKey: KEY_BEAMS, entityId: beamNo, before: beforeBeam ? [beforeBeam] : [], after: [beam] })
-      return NextResponse.json({ ok: true, beam })
+      return NextResponse.json({ ok: true, beam, sync: await syncFor(KEY_BEAMS, [beamNo]) })
     }
 
     if (action === 'upsertBeam') {
-      await ensureFloorPayrollTables()
       const beam = body?.beam
-      if (!beam?.beamNo) {
-        return NextResponse.json({ ok: false, error: 'beam with beamNo required' }, { status: 400 })
-      }
+      if (!beam?.beamNo) return bad('beam with beamNo required')
+      parse(beamRowSchema, beam)
       const beforeBeam = (await dbGetBeams()).find((b) => b.beamNo === beam.beamNo)
       const saved = await dbUpsertBeam(beam)
       await writeAudit({ req, actor: writer, module: 'floor', action: 'upsertBeam', entityKey: KEY_BEAMS, entityId: String(beam.beamNo), before: beforeBeam ? [beforeBeam] : [], after: [saved] })
-      return NextResponse.json({ ok: true, beam: saved })
+      return NextResponse.json({ ok: true, beam: saved, sync: await syncFor(KEY_BEAMS, [saved.beamNo]) })
     }
 
     if (action === 'deleteBeam') {
-      await ensureFloorPayrollTables()
       const beamNo = String(body?.beamNo || '').trim()
-      if (!beamNo) {
-        return NextResponse.json({ ok: false, error: 'beamNo required' }, { status: 400 })
-      }
+      if (!beamNo) return bad('beamNo required')
       const beforeBeam = (await dbGetBeams()).find((b) => b.beamNo === beamNo)
       await dbDeleteBeam(beamNo)
       await writeAudit({ req, actor: writer, module: 'floor', action: 'deleteBeam', entityKey: KEY_BEAMS, entityId: beamNo, before: beforeBeam ? [beforeBeam] : [], after: [] })
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({ ok: true, sync: await syncFor(KEY_BEAMS, [], [beamNo]) })
     }
 
     if (action === 'updateLoomEntry') {
-      const dateStr = String(body?.date || '')
+      const dateStr = dateParam(body?.date)
       const loomNumber = Number(body?.loomNumber)
       const entry = body?.entry
-      if (!dateStr || !loomNumber || !entry) {
-        return NextResponse.json({ ok: false, error: 'date, loomNumber, entry required' }, { status: 400 })
-      }
+      if (!loomNumber || !entry) return bad('date, loomNumber, entry required')
+      parse(sheetEntrySchema, { ...entry, loomNumber })
+      await assertDateOpen(dateStr)
 
-      const user = writer
       const currentSheet = await dbGetSheet(dateStr)
-      const isAdmin = writerIsAdmin
-      if (sheetIsApproved(currentSheet) && !isAdmin) return approvedLocked()
+      if (sheetIsApproved(currentSheet) && !writerIsAdmin) return approvedLocked()
 
       const segmentIndex = Math.max(
         1,
@@ -336,13 +390,12 @@ export async function POST(req: NextRequest) {
       const storedRow = currentSheet?.find(
         (e) => e.loomNumber === loomNumber && segmentOf(e) === segmentIndex
       )
-      const safeEntry = isAdmin ? entry : keepStoredApproval(entry, storedRow)
-      // Track editor
+      const safeEntry = writerIsAdmin ? entry : keepStoredApproval(entry, storedRow)
       const stampedEntry = {
         ...safeEntry,
         loomNumber,
         segmentIndex,
-        lastEditedBy: user?.name || entry.lastEditedBy || 'Floor Operator',
+        lastEditedBy: writer.name || entry.lastEditedBy || 'Floor Operator',
         lastEditedAt: new Date().toISOString(),
       }
 
@@ -361,15 +414,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'deleteLoomSegment') {
-      const dateStr = String(body?.date || '')
+      const dateStr = dateParam(body?.date)
       const loomNumber = Number(body?.loomNumber)
       const segmentIndex = Math.max(1, Math.floor(Number(body?.segmentIndex) || 1))
-      if (!dateStr || !loomNumber || segmentIndex <= 1) {
-        return NextResponse.json(
-          { ok: false, error: 'date, loomNumber, segmentIndex (>1) required' },
-          { status: 400 }
-        )
-      }
+      if (!loomNumber || segmentIndex <= 1) return bad('date, loomNumber, segmentIndex (>1) required')
+      await assertDateOpen(dateStr)
 
       const currentSheet = await dbGetSheet(dateStr)
       if (sheetIsApproved(currentSheet) && !writerIsAdmin) return approvedLocked()
@@ -378,7 +427,11 @@ export async function POST(req: NextRequest) {
       )
       const deleted = await dbDeleteLoomSegment(dateStr, loomNumber, segmentIndex)
       await writeAudit({ req, actor: writer, module: 'floor', action: 'deleteLoomSegment', entityKey: `sheet:${dateStr}`, entityId: `${loomNumber}:${segmentIndex}`, before: storedRow ? [storedRow] : [], after: [] })
-      return NextResponse.json({ ok: true, deleted })
+      return NextResponse.json({
+        ok: true,
+        deleted,
+        sync: { date: dateStr, rows: [], hashes: {}, deleted: [sheetRowId({ loomNumber, segmentIndex })] },
+      })
     }
 
     if (action === 'patchQualityStatus') {
@@ -386,62 +439,57 @@ export async function POST(req: NextRequest) {
       const status =
         body?.status === 'ENDED' ? 'ENDED' : body?.status === 'HOLD' ? 'HOLD' : 'ACTIVE'
       const endedOn = body?.endedOn != null ? String(body.endedOn) : null
-      if (!id) {
-        return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 })
-      }
+      if (!id) return bad('id required')
       const beforeQ = await dbGetQualities()
       await dbPatchQualityStatus(id, status, status === 'ACTIVE' ? null : endedOn)
-      await writeAudit({ req, actor: writer, module: 'floor', action: 'patchQualityStatus', entityKey: KEY_QUALITY, entityId: id, before: beforeQ, after: await dbGetQualities() })
-      return NextResponse.json({ ok: true })
+      await writeAudit({ req, actor: writer, module: 'floor', action: 'patchQualityStatus', entityKey: KEY_QUALITY, entityId: id, before: beforeQ.filter((q) => q.id === id), after: (await dbGetQualities()).filter((q) => q.id === id) })
+      return NextResponse.json({ ok: true, sync: await syncFor(KEY_QUALITY, [id]) })
     }
 
     if (action === 'upsertQuality') {
       const q = body?.quality
-      if (!q?.id || !q?.name) {
-        return NextResponse.json({ ok: false, error: 'quality with id+name required' }, { status: 400 })
-      }
+      if (!q?.id || !q?.name) return bad('quality with id+name required')
+      parse(qualityRowSchema, q)
       const beforeQ = await dbGetQualities()
       await dbUpsertQuality(q)
       await rebuildProductionLedger()
-      await writeAudit({ req, actor: writer, module: 'floor', action: 'upsertQuality', entityKey: KEY_QUALITY, entityId: String(q.id), before: beforeQ, after: await dbGetQualities() })
-      return NextResponse.json({ ok: true })
+      await writeAudit({ req, actor: writer, module: 'floor', action: 'upsertQuality', entityKey: KEY_QUALITY, entityId: String(q.id), before: beforeQ.filter((x) => x.id === q.id), after: (await dbGetQualities()).filter((x) => x.id === q.id) })
+      return NextResponse.json({ ok: true, sync: await syncFor(KEY_QUALITY, [String(q.id)]) })
     }
 
     if (action === 'reuseQuality') {
       const endedId = String(body?.endedId || '')
       const createdOn = String(body?.createdOn || '').slice(0, 10)
-      if (!endedId || !createdOn) {
-        return NextResponse.json(
-          { ok: false, error: 'endedId and createdOn required' },
-          { status: 400 }
-        )
-      }
+      if (!endedId || !createdOn) return bad('endedId and createdOn required')
+      dateParam(createdOn)
+      if (body?.newQuality) parse(qualityRowSchema, body.newQuality)
       const beforeQ = await dbGetQualities()
       const result = await dbReuseQuality({
         endedId,
         createdOn,
         newQuality: body?.newQuality || null,
       })
-      await writeAudit({ req, actor: writer, module: 'floor', action: 'reuseQuality', entityKey: KEY_QUALITY, entityId: endedId, before: beforeQ, after: await dbGetQualities() })
-      return NextResponse.json({ ok: true, ...result })
+      await writeAudit({ req, actor: writer, module: 'floor', action: 'reuseQuality', entityKey: KEY_QUALITY, entityId: endedId, before: beforeQ.filter((x) => x.id === endedId), after: [result.ended, result.active] })
+      return NextResponse.json({ ok: true, ...result, sync: await syncFor(KEY_QUALITY, [endedId, result.active.id]) })
     }
 
     if (action === 'deleteQuality') {
       const id = String(body?.id || '')
-      if (!id) {
-        return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 })
-      }
+      if (!id) return bad('id required')
       const beforeQ = await dbGetQualities()
+      const linkedBeams = (await dbGetBeams()).filter((b) => b.qualityId === id).map((b) => b.beamNo)
       await dbDeleteQuality(id)
-      await writeAudit({ req, actor: writer, module: 'floor', action: 'deleteQuality', entityKey: KEY_QUALITY, entityId: id, before: beforeQ, after: await dbGetQualities() })
-      return NextResponse.json({ ok: true })
+      await writeAudit({ req, actor: writer, module: 'floor', action: 'deleteQuality', entityKey: KEY_QUALITY, entityId: id, before: beforeQ.filter((x) => x.id === id), after: [] })
+      return NextResponse.json({
+        ok: true,
+        sync: await syncFor(KEY_QUALITY, [], [id]),
+        beamSync: linkedBeams.length ? await syncFor(KEY_BEAMS, linkedBeams) : null,
+      })
     }
 
     if (action === 'submitForApproval') {
-      const dateStr = String(body?.date || '')
-      if (!dateStr) {
-        return NextResponse.json({ ok: false, error: 'date required' }, { status: 400 })
-      }
+      const dateStr = dateParam(body?.date)
+      await assertDateOpen(dateStr)
 
       // Re-submitting an approved sheet would silently unlock it — admin only.
       if (sheetIsApproved(await dbGetSheet(dateStr)) && !writerIsAdmin) return approvedLocked()
@@ -450,53 +498,7 @@ export async function POST(req: NextRequest) {
         role: writer.roleKey || 'quality_controller',
       })
       await writeAudit({ req, actor: writer, module: 'floor', action: 'submitForApproval', entityKey: `sheet:${dateStr}`, changes: { status: 'DRAFT' } })
-      return NextResponse.json({ ok: true, entries })
-    }
-
-    if (action === 'approveSheet') {
-      const user = await currentUser(req)
-      const isAdmin = (user?.roleKey || '').toLowerCase() === 'admin'
-      if (!isAdmin) {
-        return NextResponse.json(
-          { ok: false, error: 'Only Javed Sir (Main Admin) can approve production sheets.' },
-          { status: 403 }
-        )
-      }
-
-      const dateStr = String(body?.date || '')
-      if (!dateStr) {
-        return NextResponse.json({ ok: false, error: 'date required' }, { status: 400 })
-      }
-
-      const entries = await dbSetSheetApproval(dateStr, 'APPROVED', {
-        name: user?.name || 'Javed Sir',
-        role: 'admin',
-      })
-      await writeAudit({ req, actor: user, module: 'floor', action: 'approveSheet', entityKey: `sheet:${dateStr}`, changes: { status: 'APPROVED' } })
-      return NextResponse.json({ ok: true, entries })
-    }
-
-    if (action === 'unlockSheet') {
-      const user = await currentUser(req)
-      const isAdmin = (user?.roleKey || '').toLowerCase() === 'admin'
-      if (!isAdmin) {
-        return NextResponse.json(
-          { ok: false, error: 'Only Javed Sir (Main Admin) can unlock production sheets.' },
-          { status: 403 }
-        )
-      }
-
-      const dateStr = String(body?.date || '')
-      if (!dateStr) {
-        return NextResponse.json({ ok: false, error: 'date required' }, { status: 400 })
-      }
-
-      const entries = await dbSetSheetApproval(dateStr, 'DRAFT', {
-        name: user?.name || 'Javed Sir',
-        role: 'admin',
-      })
-      await writeAudit({ req, actor: user, module: 'floor', action: 'unlockSheet', entityKey: `sheet:${dateStr}`, changes: { status: 'DRAFT' } })
-      return NextResponse.json({ ok: true, entries })
+      return NextResponse.json({ ok: true, entries, hashes: sheetHashes(entries) })
     }
 
     return NextResponse.json({ ok: false, error: 'Unknown action' }, { status: 400 })
