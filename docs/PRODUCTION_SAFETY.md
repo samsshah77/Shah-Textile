@@ -162,3 +162,14 @@ shift A / B meters — figures sent by a browser are never stored as they are. T
 Entry screen uses the same function, so the screen and the server always agree. A row
 with no pick and no meters (e.g. a loom whose quality ended) has no theoretical output, so
 it adds no false "loss" to the reports. Rows nobody edits keep their stored figures.
+
+## One day builder; "Start New Day" runs on the server
+
+How a production day is built from the masters (which quality is on which loom, the
+"Quality Ended" rows, carried-over status and RPM, beam SW #, the recipe) lives in one pure
+function, `src/lib/floor/dayBuilder.ts`, used by the Daily Entry screen and by the server.
+
+"Start New Day" is done by the server (`startDay` action, `src/server/floor/dayBuild.ts`):
+it builds the day from the database and saves it through the normal row save (month lock,
+quality run ids, conflict check). A day that already has rows is returned unchanged, so
+pressing it twice or from two computers cannot create or overwrite anything.

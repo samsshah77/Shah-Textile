@@ -97,3 +97,20 @@ describe('Row figures are worked out from what was typed', () => {
     expect(empty.totalMeters).toBe(0)
   })
 })
+
+describe('One day builder for browser and server', () => {
+  it('clears looms still pointing at an ended quality, and builds a day with zero meters', async () => {
+    const { clearEndedLoomQualities, buildDayRows } = await import('@/lib/floor/dayBuilder')
+    const looms = [
+      { loomNumber: 1, qualityId: 'q-end', defaultRpm: 340, status: 'RUNNING', category: 'Airjet', model: 'G-6200' },
+      { loomNumber: 2, qualityId: null, defaultRpm: 340, status: 'RUNNING', category: 'Airjet', model: 'G-6200' },
+    ] as never[]
+    const catalog = [{ id: 'q-end', name: 'Old', status: 'ENDED' }] as never[]
+    const r = clearEndedLoomQualities(looms, catalog)
+    expect(r.changed).toBe(true)
+    expect((r.looms[0] as { qualityId: unknown }).qualityId).toBeNull()
+    const rows = buildDayRows({ dateStr: '2026-10-21', today: '2026-10-21', looms: r.looms, catalog, beams: [], loaded: [], prior: () => null, recipe: () => ({ qualityName: '—' }) })
+    expect(rows.map((e) => e.loomNumber)).toEqual([1, 2])
+    expect(rows.every((e) => e.shiftAMeters === 0 && e.shiftBMeters === 0)).toBe(true)
+  })
+})

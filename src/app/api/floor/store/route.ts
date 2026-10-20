@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { startDayOnServer } from '@/server/floor/dayBuild'
 import { SESSION_COOKIE, verifySession } from '@/lib/session'
 import { currentUser } from '@/server/current-user'
 import {
@@ -310,6 +311,15 @@ export async function POST(req: NextRequest) {
       const result = await applySheetRows(p.date, p.rows, { name: writerName, isAdmin: writerIsAdmin })
       await writeAudit({ req, actor: writer, module: 'floor', action: 'saveSheetRows', entityKey: `sheet:${p.date}`, before: result.before, after: result.after, meta: { rows: p.rows.length } })
       return NextResponse.json({ ok: true, sync: { date: p.date, rows: result.rows, hashes: result.hashes, deleted: [] } })
+    }
+
+    // ---- Start a new day: the server builds it from the database ----
+    if (action === 'startDay') {
+      const dateStr = dateParam(body?.date)
+      const result = await startDayOnServer(dateStr, { name: writerName, isAdmin: writerIsAdmin })
+      if (result.created)
+        await writeAudit({ req, actor: writer, module: 'floor', action: 'startDay', entityKey: `sheet:${dateStr}`, before: [], after: result.rows, meta: { rows: result.rows.length } })
+      return NextResponse.json({ ok: true, created: result.created, sync: { date: dateStr, rows: result.rows, hashes: result.hashes, deleted: [] } })
     }
 
     // ---- Yarn: the server records movements and works out the stock ----

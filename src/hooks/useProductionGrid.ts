@@ -519,7 +519,7 @@ export function useProductionGrid() {
     async (targetDate: string) => {
     setLoading(true)
     try {
-        productionMastersService.startNewDay(targetDate)
+        await productionMastersService.startNewDay(targetDate)
         setSelectedDateState(targetDate)
         setSelectedMonth(targetDate.slice(0, 7) || getProductionTodayMonth())
         refresh(targetDate)
