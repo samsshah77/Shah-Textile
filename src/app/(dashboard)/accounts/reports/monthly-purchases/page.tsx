@@ -1,305 +1,162 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { expenseService } from '@/services/expenseService'
-import { InventoryPurchaseEntry, MachineExpenseCategory } from '@/types/expense'
-import { formatCurrency, formatNumber, cn } from '@/lib/utils'
-import {
-  CalendarDays,
-  Layers,
-  Cpu,
-  Building2,
-  Download,
-  Filter,
-  Search,
-  Printer,
-} from 'lucide-react'
+import { Suspense, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { Search, Printer } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { cn } from '@/lib/utils'
+import { monthLabel, rs, qty } from '@/lib/accounts/util'
+import type { MonthBook } from '@/lib/accounts/types'
+import { accountsApi } from '@/services/accounts/accountsApi'
+import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
+import { LoadState, MonthPicker } from '@/components/accounts/ui'
 
-interface GroupedMonthlyBill {
-  key: string
-  date: string
-  billNo: string
-  inwardNo: string
-  partyName: string
-  items: InventoryPurchaseEntry[]
-  billTotal: number
-}
-
-export default function MonthlyPurchasesReportPage() {
-  const [summaries, setSummaries] = useState<
-    { month: string; totalAmount: number; totalEntries: number; uniqueParties: number; entries: InventoryPurchaseEntry[] }[]
-  >([])
-  const [selectedMonth, setSelectedMonth] = useState('2026-08')
-  const [search, setSearch] = useState('')
-  const [filterCategory, setFilterCategory] = useState<string>('ALL')
-
-  useEffect(() => {
-    const list = expenseService.getMonthlyPurchasesSummary()
-    setSummaries(list)
-  }, [])
-
-  const currentSummary = summaries.find((s) => s.month === selectedMonth) || summaries[0]
-
-  // Machine Category Breakdown for selected month
-  const categoryBreakdown = (currentSummary?.entries || []).reduce(
-    (acc, e) => {
-      const cat = e.machineCategory || 'All'
-      acc[cat] = (acc[cat] || 0) + e.totalPrice
-      return acc
-    },
-    {} as Record<string, number>
+/** Monthly spares & supplier purchases — read-only view of the month's bills. */
+function MonthlyPurchasesContent() {
+  const { month, setMonth, months } = useAccountsMonth()
+  const { data: book, error, loading } = useAccountsData<MonthBook | null>(
+    () => (month ? accountsApi.book(month) : Promise.resolve(null)),
+    [month]
   )
+  const [search, setSearch] = useState('')
+  const [kind, setKind] = useState<'ALL' | 'TRADER' | 'WORKSHOP'>('ALL')
 
-  const filteredEntries = (currentSummary?.entries || []).filter((e) => {
-    if (filterCategory !== 'ALL' && e.machineCategory !== filterCategory) return false
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      return e.partyName.toLowerCase().includes(q) || e.itemDescription.toLowerCase().includes(q) || e.billNo.includes(q)
-    }
-    return true
-  })
-
-  // Group contiguous items belonging to same bill & inward into single merged boxes (rowSpan)
-  const groupedEntries = useMemo(() => {
-    const groups: GroupedMonthlyBill[] = []
-    let currentGroup: GroupedMonthlyBill | null = null
-
-    filteredEntries.forEach((e) => {
-      const key = `${e.date}_${e.billNo}_${e.inwardNo}_${e.partyName}`
-      if (!currentGroup || currentGroup.key !== key) {
-        if (currentGroup) groups.push(currentGroup)
-        currentGroup = {
-          key,
-          date: e.date,
-          billNo: e.billNo,
-          inwardNo: e.inwardNo,
-          partyName: e.partyName,
-          items: [e],
-          billTotal: e.totalPrice,
-        }
-      } else {
-        currentGroup.items.push(e)
-        currentGroup.billTotal += e.totalPrice
-      }
+  const { lines, byParty } = useMemo(() => {
+    const parties = new Map((book?.parties || []).map((p) => [p.id, p]))
+    const q = search.trim().toLowerCase()
+    const lines = (book?.bills || []).flatMap((b) => {
+      const party = parties.get(b.partyId)
+      if (kind !== 'ALL' && party?.kind !== kind) return []
+      return b.lines
+        .filter((l) => !q || `${party?.name} ${b.billNo} ${b.inwardNo} ${l.description} ${l.machine}`.toLowerCase().includes(q))
+        .map((l) => ({ bill: b, line: l, party }))
     })
-
-    if (currentGroup) groups.push(currentGroup)
-    return groups
-  }, [filteredEntries])
-
-  const handlePrint = () => {
-    if (typeof window !== 'undefined') {
-      window.print()
+    const agg = new Map<string, { name: string; slug: string; kind: string; amount: number; bills: Set<string> }>()
+    for (const r of lines) {
+      const key = r.party?.id || '?'
+      const a = agg.get(key) || { name: r.party?.name || '-', slug: r.party?.slug || '', kind: r.party?.kind || '', amount: 0, bills: new Set<string>() }
+      a.amount += r.line.amount
+      a.bills.add(r.bill.id)
+      agg.set(key, a)
     }
-  }
+    return { lines, byParty: [...agg.values()].sort((a, b) => b.amount - a.amount) }
+  }, [book, search, kind])
+  const total = lines.reduce((t, r) => t + r.line.amount, 0)
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="print:hidden">
-        <PageHeader
-          title="Monthly Spares & Supplier Purchases"
-          showTitle={false}
-          breadcrumbs={[
-            { label: 'Home', href: '/dashboard' },
-            { label: 'Accounts', href: '/accounts/reports/monthly-purchases' },
-            { label: 'Monthly Purchases' },
-          ]}
-          actions={
-            <>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="h-9 appearance-none rounded-md border border-slate-200 bg-white px-2.5 pr-7 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
-                  aria-label="Statement month"
-                >
-                  <option value="2026-08">August-2026</option>
-                  <option value="2026-07">July-2026</option>
-                  <option value="2026-09">September-2026</option>
-                </select>
-              </div>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Printer className="size-3.5" />
-                  <span>Print</span>
-                </button>
-              </div>
-            </>
-          }
-        />
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title={`Monthly Purchases — ${month ? monthLabel(month) : ''}`}
+        showTitle={false}
+        actions={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <MonthPicker month={month} months={months} onChange={setMonth} />
+            <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <Printer className="size-3.5" /> Print
+            </button>
+          </div>
+        }
+      />
+      <LoadState loading={loading} error={error} hasData={Boolean(book)}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            ['Total purchases', rs(total)],
+            ['Bills', String(new Set(lines.map((l) => l.bill.id)).size)],
+            ['Items', String(lines.length)],
+            ['Parties', String(byParty.length)],
+          ].map(([l, v]) => (
+            <div key={l} className="erp-card p-3">
+              <div className="text-[10px] font-bold uppercase text-slate-500">{l}</div>
+              <div className="text-lg font-black font-mono">{v}</div>
+            </div>
+          ))}
+        </div>
 
-      {/* Loom Model Category Allocation Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 print:hidden">
-        {(['G6200', 'G6300', 'PU', 'Electronic', 'All'] as const).map((cat) => (
-          <div key={cat} className="rounded-xl border border-border bg-card p-3.5 space-y-1 shadow-xs">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground">{cat} Spares</span>
-            <div className="font-mono text-base font-bold text-foreground">
-              {formatCurrency(categoryBreakdown[cat] || 0)}
+        <div className="erp-card overflow-hidden">
+          <div className="p-3 border-b flex flex-wrap gap-2 items-center bg-slate-50/50 print:hidden">
+            <div className="relative w-72">
+              <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search party, item, bill #..." className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
+            </div>
+            <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className="text-xs font-bold border border-slate-300 rounded-lg px-2 py-1.5" aria-label="Party type">
+              <option value="ALL">All parties</option>
+              <option value="TRADER">Traders</option>
+              <option value="WORKSHOP">Workshops</option>
+            </select>
+          </div>
+          <div className="grid lg:grid-cols-[320px_1fr]">
+            <div className="border-r border-slate-200 p-3">
+              <h3 className="text-[11px] font-bold uppercase text-slate-600 mb-2">By party</h3>
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-slate-100">
+                  {byParty.map((p) => (
+                    <tr key={p.slug}>
+                      <td className="py-1.5">
+                        <Link href={`/accounts/${p.kind === 'WORKSHOP' ? 'workshops' : 'traders'}/${p.slug}?month=${month}`} className="hover:underline font-semibold">
+                          {p.name}
+                        </Link>
+                        <span className="text-slate-400"> · {p.bills.size}</span>
+                      </td>
+                      <td className="py-1.5 text-right font-mono font-bold">{rs(p.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 font-bold uppercase text-[10px] border-b-2 border-slate-800">
+                    {['Date', 'Bill #', 'Inw #', 'Party', 'Item', 'Machine', 'Qty', 'Rate', 'Total'].map((h, i) => (
+                      <th key={h} className={cn('py-2.5 px-2', i >= 6 ? 'text-right' : 'text-left')}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {lines.map(({ bill, line, party }) => (
+                    <tr key={line.id} className="hover:bg-blue-50/40">
+                      <td className="py-1.5 px-2 font-mono">{bill.date}</td>
+                      <td className="py-1.5 px-2 font-mono">{bill.billNo || '-'}</td>
+                      <td className="py-1.5 px-2 font-mono">{bill.inwardNo || '-'}</td>
+                      <td className="py-1.5 px-2 font-semibold">{party?.name}</td>
+                      <td className="py-1.5 px-2">{line.description}</td>
+                      <td className="py-1.5 px-2">{line.machine}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{qty(line.quantity)}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{qty(line.rate)}</td>
+                      <td className="py-1.5 px-2 text-right font-mono font-bold">{rs(line.amount)}</td>
+                    </tr>
+                  ))}
+                  {!lines.length && (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                        Koi purchase nahi.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-200 font-black border-t-2 border-slate-800">
+                    <td colSpan={8} className="py-2.5 px-2 text-right uppercase">
+                      Total
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono text-[#0066cc]">{rs(total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* Filter and Table */}
-      <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-card p-4 rounded-xl border border-border print:hidden">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(['ALL', 'G6200', 'G6300', 'PU', 'Electronic', 'All'] as const).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFilterCategory(cat)}
-                className={cn(
-                  'erp-filter-tab',
-                  filterCategory === cat
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-              >
-                {cat === 'ALL' ? 'All Categories' : `${cat} Model`}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search party, item, bill #..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-60 rounded-lg border border-border bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-blue-500 focus:outline-none"
-            />
-          </div>
         </div>
-
-        {/* Printable Report Card with Merged Cells ("Ek hi dabba") */}
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs print:border-none print:shadow-none">
-          {/* Printable Header */}
-          <div className="hidden print:block p-6 text-center border-b-2 border-black font-sans">
-            <h1 className="text-2xl font-black uppercase">Sara Textile (Pvt) Limited</h1>
-            <h2 className="text-base font-bold text-gray-800">Monthly Spares & Supplier Purchases Summary</h2>
-            <p className="text-xs text-gray-600 font-mono">Statement for Month: {selectedMonth}</p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs font-mono">
-              <thead>
-                <tr className="border-b border-border bg-muted/60 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans print:bg-gray-200 print:text-black print:border-black">
-                  <th className="py-3 px-3 w-24">Date</th>
-                  <th className="py-3 px-2.5 w-20">Bill #</th>
-                  <th className="py-3 px-2.5 w-20">Inw #</th>
-                  <th className="py-3 px-3 w-40">Party / Supplier Name</th>
-                  <th className="py-3 px-4 font-sans">Item Description</th>
-                  <th className="py-3 px-2 text-center w-16">Model</th>
-                  <th className="py-3 px-2 text-center w-14">Qty</th>
-                  <th className="py-3 px-3 text-right w-20">Rate</th>
-                  <th className="py-3 px-4 text-right w-28">Total (PKR)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupedEntries.map((group) => {
-                  const rowSpan = group.items.length
-                  return group.items.map((e, itemIdx) => {
-                    const isFirst = itemIdx === 0
-                    const isLast = itemIdx === rowSpan - 1
-
-                    return (
-                      <tr
-                        key={e.id}
-                        className={cn(
-                          'hover:bg-muted/30 transition-colors text-foreground print:text-black',
-                          isLast
-                            ? 'border-b-2 border-border/80 print:border-black'
-                            : 'border-b border-border/30 print:border-gray-300'
-                        )}
-                      >
-                        {/* Merged Date Box */}
-                        {isFirst && (
-                          <td
-                            rowSpan={rowSpan}
-                            className="py-2.5 px-3 text-muted-foreground font-semibold border-r border-border/60 bg-muted/20 align-top print:border-black print:bg-transparent print:text-black"
-                          >
-                            <div className="sticky top-2">{group.date}</div>
-                          </td>
-                        )}
-
-                        {/* Merged Bill # Box */}
-                        {isFirst && (
-                          <td
-                            rowSpan={rowSpan}
-                            className="py-2.5 px-2.5 font-bold text-foreground border-r border-border/60 bg-muted/20 align-top print:border-black print:bg-transparent print:text-black"
-                          >
-                            <div className="sticky top-2">{group.billNo}</div>
-                          </td>
-                        )}
-
-                        {/* Merged Inw # Box */}
-                        {isFirst && (
-                          <td
-                            rowSpan={rowSpan}
-                            className="py-2.5 px-2.5 text-muted-foreground border-r border-border/60 bg-muted/20 align-top print:border-black print:bg-transparent print:text-black"
-                          >
-                            <div className="sticky top-2">{group.inwardNo}</div>
-                          </td>
-                        )}
-
-                        {/* Merged Party / Supplier Box */}
-                        {isFirst && (
-                          <td
-                            rowSpan={rowSpan}
-                            className="py-2.5 px-3 font-semibold text-foreground font-sans border-r border-border/60 bg-muted/10 align-top print:border-black print:bg-transparent print:text-black"
-                          >
-                            <div className="sticky top-2 font-bold">{group.partyName}</div>
-                          </td>
-                        )}
-
-                        {/* Item-specific fields */}
-                        <td className="py-2.5 px-4 text-foreground font-sans border-r border-border/20 print:border-black print:text-black">
-                          {e.itemDescription}
-                        </td>
-                        <td className="py-2.5 px-2 text-center border-r border-border/20 print:border-black">
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-foreground border print:border-black print:bg-transparent">
-                            {e.machineCategory}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-2 text-center font-bold border-r border-border/20 print:border-black">
-                          {e.quantity}
-                        </td>
-                        <td className="py-2.5 px-3 text-right text-muted-foreground border-r border-border/20 print:border-black print:text-black">
-                          {formatNumber(e.costPerItem, 0)}
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-bold text-blue-600 print:text-black">
-                          {formatCurrency(e.totalPrice)}
-                        </td>
-                      </tr>
-                    )
-                  })
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border bg-muted/80 font-mono text-xs font-bold text-foreground print:border-black print:bg-gray-100 print:text-black">
-                  <td colSpan={6} className="py-3 px-3 uppercase tracking-wider font-sans border-r print:border-black">
-                    Monthly Purchases Grand Total ({filteredEntries.length} items logged across {groupedEntries.length} Bills):
-                  </td>
-                  <td className="py-3 px-2 text-center border-r print:border-black font-bold">
-                    {filteredEntries.reduce((s, e) => s + e.quantity, 0)}
-                  </td>
-                  <td className="py-3 px-3 text-right border-r print:border-black">-</td>
-                  <td className="py-3 px-4 text-right text-sm font-black text-blue-600 print:text-black">
-                    {formatCurrency(filteredEntries.reduce((s, e) => s + e.totalPrice, 0))}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      </div>
+      </LoadState>
     </div>
+  )
+}
+
+export default function MonthlyPurchasesPage() {
+  return (
+    <Suspense fallback={null}>
+      <MonthlyPurchasesContent />
+    </Suspense>
   )
 }

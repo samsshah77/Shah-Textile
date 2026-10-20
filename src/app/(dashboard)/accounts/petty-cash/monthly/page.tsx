@@ -1,178 +1,71 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { expenseService } from '@/services/expenseService'
-import { PettyCashEntry } from '@/types/expense'
-import { formatCurrency, formatNumber } from '@/lib/utils'
-import { Printer, Download, ArrowLeft, Receipt, Building } from 'lucide-react'
 import Link from 'next/link'
+import { ArrowLeft, Printer } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { monthLabel, rs } from '@/lib/accounts/util'
+import { accountsApi } from '@/services/accounts/accountsApi'
+import { useAccountsData } from '@/hooks/useAccounts'
+import { LoadState } from '@/components/accounts/ui'
 
-export default function MonthlyPettyCashStatementPage() {
-  const [statements, setStatements] = useState<
-    { month: string; entries: PettyCashEntry[]; totalDr: number; totalCr: number; closingBalance: number }[]
-  >([])
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-08')
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const list = expenseService.getMonthlyPettyCashStatements()
-    setStatements(list)
-    setLoading(false)
-  }, [])
-
-  const currentStatement = statements.find((s) => s.month === selectedMonth) || statements[0]
-
-  const handlePrint = () => {
-    if (typeof window !== 'undefined') {
-      window.print()
-    }
-  }
-
+/** Month-by-month petty cash: b/f, in, out, mill expense, closing. */
+export default function PettyCashMonthlyPage() {
+  const { data: rows, error, loading } = useAccountsData(() => accountsApi.pettySummary(), [])
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-12">
-      <div className="print:hidden">
-        <PageHeader
-          title="Petty Cash Statement"
-          showTitle={false}
-          breadcrumbs={[
-            { label: 'Home', href: '/dashboard' },
-            { label: 'Accounts', href: '/accounts/petty-cash' },
-            { label: 'Petty Cash', href: '/accounts/petty-cash' },
-            { label: 'Monthly Statement' },
-          ]}
-          actions={
-            <>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
-                <Link
-                  href="/accounts/petty-cash"
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <ArrowLeft className="size-3.5" />
-                  <span>Daily Journal</span>
-                </Link>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="h-9 appearance-none rounded-md border border-slate-200 bg-white px-2.5 pr-7 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
-                  aria-label="Statement month"
-                >
-                  <option value="2026-08">August-2026</option>
-                  <option value="2026-07">July-2026</option>
-                  <option value="2026-09">September-2026</option>
-                </select>
-              </div>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Printer className="size-3.5" />
-                  <span>Print</span>
-                </button>
-              </div>
-            </>
-          }
-        />
-      </div>
-
-      {/* Formal Statement Layout (Designed to match the exact Excel Sheet) */}
-      <div className="rounded-2xl border border-border bg-white text-black p-8 sm:p-10 shadow-lg print:border-none print:p-0 print:shadow-none font-sans">
-        {/* Header Title */}
-        <div className="text-center border-b-2 border-black pb-4 mb-6">
-          <h1 className="text-xl sm:text-2xl font-black tracking-wide uppercase text-black">
-            Sara Textile
-          </h1>
-          <h2 className="text-base sm:text-lg font-bold text-gray-900 mt-0.5 underline">
-            Petty Cash Statement
-          </h2>
-          <p className="text-xs sm:text-sm font-semibold text-gray-700 mt-0.5">
-            For the Month Of {selectedMonth === '2026-08' ? 'August-2026' : selectedMonth}
-          </p>
-        </div>
-
-        {/* Statement Table */}
-        <div className="overflow-x-auto rounded-xl border border-black shadow-xs">
-          <table className="w-full min-w-[850px] text-left border-collapse border border-black text-xs font-mono">
+    <div className="space-y-4">
+      <PageHeader
+        title="Petty Cash — Monthly"
+        showTitle={false}
+        actions={
+          <div className="flex items-center justify-between w-full">
+            <Link href="/accounts/petty-cash" className="erp-btn-secondary text-xs !min-h-9 !h-9">
+              <ArrowLeft className="size-3.5" /> Petty cash journal
+            </Link>
+            <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <Printer className="size-3.5" /> Print
+            </button>
+          </div>
+        }
+      />
+      <LoadState loading={loading} error={error} hasData={Boolean(rows)}>
+        <div className="erp-card overflow-x-auto">
+          <table className="w-full min-w-[720px] text-xs">
             <thead>
-              <tr className="bg-gray-200 border-b border-black font-bold uppercase text-[11px]">
-                <th className="border-r border-black py-2.5 px-3 text-center w-14 min-w-[56px]">S.No</th>
-                <th className="border-r border-black py-2.5 px-3 text-center w-28 min-w-[110px]">Date</th>
-                <th className="border-r border-black py-2.5 px-4 text-left font-sans min-w-[320px]">Description</th>
-                <th className="border-r border-black py-2.5 px-4 text-right w-32 min-w-[120px]">Dr.</th>
-                <th className="border-r border-black py-2.5 px-4 text-right w-32 min-w-[120px]">Cr.</th>
-                <th className="py-2.5 px-4 text-right w-32 min-w-[130px] font-bold">Balance</th>
+              <tr className="bg-slate-100 font-bold uppercase text-[10px] border-b-2 border-slate-800">
+                <th className="py-2.5 px-3 text-left">Month</th>
+                <th className="py-2.5 px-3 text-right">Balance b/f</th>
+                <th className="py-2.5 px-3 text-right">Cash in</th>
+                <th className="py-2.5 px-3 text-right">Cash out</th>
+                <th className="py-2.5 px-3 text-right">Mill expense</th>
+                <th className="py-2.5 px-3 text-right">Closing</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-300">
-              {currentStatement?.entries.map((entry, index) => {
-                const isOpening = entry.description.toLowerCase().includes('balance b/f')
-                return (
-                  <tr key={entry.id} className="text-black hover:bg-gray-50">
-                    <td className="border-r border-black py-2 px-3 text-center font-bold min-w-[56px]">
-                      {index + 1}
-                    </td>
-                    <td className="border-r border-black py-2 px-3 text-center text-gray-800 min-w-[110px]">
-                      {entry.date}
-                    </td>
-                    <td className="border-r border-black py-2 px-4 font-sans font-medium text-black min-w-[320px]">
-                      {entry.description}
-                    </td>
-                    <td className="border-r border-black py-2 px-4 text-right font-bold min-w-[120px]">
-                      {entry.debitAmount && entry.debitAmount > 0
-                        ? formatNumber(entry.debitAmount, 0)
-                        : ''}
-                    </td>
-                    <td className="border-r border-black py-2 px-4 text-right min-w-[120px]">
-                      {entry.creditAmount && entry.creditAmount > 0
-                        ? formatNumber(entry.creditAmount, 0)
-                        : ''}
-                    </td>
-                    <td className="py-2 px-4 text-right font-bold min-w-[130px]">
-                      {formatNumber(entry.balance, 0)}
-                    </td>
-                  </tr>
-                )
-              })}
+            <tbody className="divide-y divide-slate-200">
+              {(rows || []).map((r) => (
+                <tr key={r.month} className="hover:bg-blue-50/40">
+                  <td className="py-2 px-3 font-bold">
+                    <Link href={`/accounts/petty-cash?month=${r.month}`} className="hover:underline">
+                      {monthLabel(r.month)}
+                    </Link>
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono">{rs(r.opening)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{rs(r.totalIn)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{rs(r.totalOut)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{rs(r.expenseOut)}</td>
+                  <td className="py-2 px-3 text-right font-mono font-bold">{rs(r.closing)}</td>
+                </tr>
+              ))}
+              {rows && rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                    Abhi koi petty cash entry nahi.
+                  </td>
+                </tr>
+              )}
             </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-black bg-gray-100 font-bold text-black text-xs">
-                <td colSpan={3} className="border-r border-black py-3 px-4 font-sans uppercase min-w-[480px]">
-                  Monthly Total Aggregates:
-                </td>
-                <td className="border-r border-black py-3 px-4 text-right text-sm min-w-[120px]">
-                  {formatNumber(currentStatement?.totalDr || 0, 0)}
-                </td>
-                <td className="border-r border-black py-3 px-4 text-right text-sm min-w-[120px]">
-                  {formatNumber(currentStatement?.totalCr || 0, 0)}
-                </td>
-                <td className="py-3 px-4 text-right text-sm font-black min-w-[130px]">
-                  {formatNumber(currentStatement?.closingBalance || 0, 0)}
-                </td>
-              </tr>
-            </tfoot>
           </table>
         </div>
-
-        {/* Signatures */}
-        <div className="mt-14 pt-4 border-t border-gray-300">
-          <div className="grid grid-cols-3 gap-6 text-center text-xs font-mono">
-            <div>
-              <div className="border-t border-black pt-1.5 font-bold">Prepared By</div>
-              <div className="text-[10px] text-gray-600">Mill Accountant</div>
-            </div>
-            <div>
-              <div className="border-t border-black pt-1.5 font-bold">Verified By</div>
-              <div className="text-[10px] text-gray-600">Internal Auditor</div>
-            </div>
-            <div>
-              <div className="border-t border-black pt-1.5 font-bold">Approved By</div>
-              <div className="text-[10px] text-gray-600">Director / GM Operations</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      </LoadState>
     </div>
   )
 }

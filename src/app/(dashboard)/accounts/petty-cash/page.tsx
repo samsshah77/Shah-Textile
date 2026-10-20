@@ -1,307 +1,269 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
-import { PettyCashEntry } from '@/types/expense'
-import { expenseService } from '@/services/expenseService'
-import { PettyCashForm } from '@/components/accounts/PettyCashForm'
-import { formatCurrency, formatNumber, cn } from '@/lib/utils'
-import {
-  Wallet,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Search,
-  FileSpreadsheet,
-  RotateCcw,
-  Trash2,
-  CheckCircle2,
-  Download,
-  Printer,
-} from 'lucide-react'
-import { accountsData } from '@/data/accountsData'
+import { Printer, Trash2, Plus, BarChart3 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { useAuth } from '@/context/AuthContext'
+import { cn } from '@/lib/utils'
+import { monthLabel, rs } from '@/lib/accounts/util'
+import type { PettyCashEntry, PettyCashKind, PettyCashStatement } from '@/lib/accounts/types'
+import { accountsApi } from '@/services/accounts/accountsApi'
+import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
+import { LoadState, LockControl, MonthPicker, useSaveStatus } from '@/components/accounts/ui'
 
-const INITIAL_AUTHENTIC_PETTY_CASH: PettyCashEntry[] = accountsData.dailyExpense.pettyCash.map((item, idx) => ({
-  id: `pc-${item.sNo || idx + 1}`,
-  date: item.date || '2026-08-01',
-  description: item.description,
-  debitAmount: item.debit || 0,
-  creditAmount: item.credit || 0,
-  balance: item.balance || 0,
-}))
+const KIND_LABEL: Record<PettyCashKind, string> = {
+  OPENING: 'Opening balance',
+  CASH_IN: 'Cash in (Dr)',
+  EXPENSE: 'Mill expense (Cr)',
+  SALARY: 'Salary / contractor paid (Cr)',
+}
+const isIn = (k: PettyCashKind) => k === 'OPENING' || k === 'CASH_IN'
 
-export default function PettyCashPage() {
-  const [entries, setEntries] = useState<PettyCashEntry[]>([])
-  const [search, setSearch] = useState('')
-  const [isSaved, setIsSaved] = useState(false)
+/**
+ * Petty Cash Statement. "Balance b/f" comes from the previous months automatically;
+ * running balance is always recomputed on the server — never typed.
+ */
+function PettyCashContent() {
+  const { canEditAccounts } = useAuth()
+  const { month, setMonth, months } = useAccountsMonth()
+  const { data: st, setData, error, loading, reload } = useAccountsData<PettyCashStatement | null>(
+    () => (month ? accountsApi.petty(month) : Promise.resolve(null)),
+    [month],
+    { reloadOnChange: false }
+  )
+  const save = useSaveStatus()
+  const canEdit = canEditAccounts && !st?.lock.locked
+  const today = new Date().toISOString().slice(0, 10)
+  const [draft, setDraft] = useState({ date: '', description: '', kind: 'EXPENSE' as PettyCashKind, amount: '' })
+  const cell = 'border border-slate-300 dark:border-slate-700'
 
-  const refreshData = () => {
-    const list = expenseService.getPettyCashEntries()
-    setEntries(list)
-  }
-
-  useEffect(() => {
-    refreshData()
-  }, [])
-
-  // =========================================================================
-  // REACTIVE EXCEL FORMULAS COMPUTATION
-  // =========================================================================
-  // Excel formula: Balance_n = Balance_{n-1} + Debit_n - Credit_n
-  const computedEntries = useMemo(() => {
-    let runningBalance = 0
-    return entries.map((entry, idx) => {
-      const dr = Number(entry.debitAmount) || 0
-      const cr = Number(entry.creditAmount) || 0
-
-      if (idx === 0 && entry.description.toLowerCase().includes('balance b/f')) {
-        runningBalance = entry.balance || (dr - cr)
-      } else {
-        runningBalance = runningBalance + dr - cr
-      }
-
-      return {
-        ...entry,
-        debitAmount: dr,
-        creditAmount: cr,
-        balance: runningBalance,
-      }
-    })
-  }, [entries])
-
-  const currentBalance = computedEntries.length > 0 ? computedEntries[computedEntries.length - 1].balance : 0
-  const totalDebit = useMemo(() => computedEntries.reduce((s, e) => s + e.debitAmount, 0), [computedEntries])
-  const totalCredit = useMemo(() => computedEntries.reduce((s, e) => s + e.creditAmount, 0), [computedEntries])
-
-  // Operational cash expenses (excluding salary and contractor bulk pass-through payments)
-  const operationalExpenses = useMemo(() => {
-    return computedEntries
-      .filter((e) => !e.description.toLowerCase().includes('paid salaries'))
-      .reduce((s, e) => s + e.creditAmount, 0)
-  }, [computedEntries])
-
-  const filteredEntries = useMemo(() => {
-    if (!search.trim()) return computedEntries
-    const q = search.toLowerCase()
-    return computedEntries.filter(
-      (entry) => entry.description.toLowerCase().includes(q) || entry.date.toLowerCase().includes(q)
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const date = draft.date || (today.startsWith(month) ? today : `${month}-01`)
+    const entry = await save.run(() =>
+      accountsApi.createPetty({ date, description: draft.description, kind: draft.kind, amount: Number(draft.amount) || 0 })
     )
-  }, [computedEntries, search])
-
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this cash entry? Running balances will recalculate automatically.')) {
-      const updated = entries.filter((e) => e.id !== id)
-      expenseService.savePettyCashEntries(updated)
-      refreshData()
-      setIsSaved(true)
-      setTimeout(() => setIsSaved(false), 2000)
+    if (entry) {
+      setDraft({ date: draft.date, description: '', kind: draft.kind, amount: '' })
+      void reload()
     }
   }
-
-  const handleReset = () => {
-    if (confirm('Reset Petty Cash Ledger to authentic Excel defaults (27 transactions • Closing PKR 4,635)?')) {
-      expenseService.savePettyCashEntries(INITIAL_AUTHENTIC_PETTY_CASH)
-      refreshData()
-      setIsSaved(true)
-      setTimeout(() => setIsSaved(false), 2000)
-    }
+  const edit = async (e: PettyCashEntry, patch: Partial<{ date: string; description: string; kind: PettyCashKind; amount: number }>) => {
+    const amount = e.debit || e.credit
+    if (
+      (patch.date === undefined || patch.date === e.date) &&
+      (patch.description === undefined || patch.description === e.description) &&
+      (patch.kind === undefined || patch.kind === e.kind) &&
+      (patch.amount === undefined || patch.amount === amount)
+    )
+      return
+    await save.run(() => accountsApi.updatePetty(e.id, e.version, patch))
+    void reload()
   }
-
-  const handlePrint = () => {
-    if (typeof window !== 'undefined') {
-      window.print()
-    }
-  }
-
-  const exportCSV = () => {
-    const headers = ['S.No', 'Date', 'Description', 'Debit (Cash In)', 'Credit (Cash Out)', 'Balance']
-    const rows = filteredEntries.map((e, idx) => [
-      idx + 1,
-      e.date,
-      `"${e.description}"`,
-      e.debitAmount,
-      e.creditAmount,
-      e.balance,
-    ])
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', 'Sara_Textile_Petty_Cash_Aug2026.csv')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const remove = async (e: PettyCashEntry) => {
+    if (!window.confirm(`"${e.description}" delete karein?`)) return
+    await save.run(() => accountsApi.deletePetty(e.id, e.version))
+    void reload()
   }
 
   return (
-    <div className="space-y-6 pb-16">
-      <div className="print:hidden">
-        <PageHeader
-          title="Petty Cash Statement"
-          showTitle={false}
-          breadcrumbs={[
-            { label: 'Home', href: '/dashboard' },
-            { label: 'Accounts', href: '/accounts/petty-cash' },
-            { label: 'Petty Cash' },
-          ]}
-          actions={
-            <>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
-                <Link
-                  href="/accounts/petty-cash/monthly"
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <FileSpreadsheet className="size-3.5" />
-                  <span>Monthly</span>
-                </Link>
-              </div>
-              <div className="inline-flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  title="Reset to Excel authentic data"
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={exportCSV}
-                  className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
-                >
-                  <Download className="size-3.5" />
-                  <span>Export</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="erp-btn-primary text-xs !min-h-9 !h-9"
-                >
-                  <Printer className="size-3.5" />
-                  <span>Print</span>
-                </button>
-              </div>
-            </>
-          }
-        />
-      </div>
-
-      {/* Save Toast Notification */}
-      {isSaved && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in print:hidden">
-          <CheckCircle2 className="size-4 text-emerald-600" />
-          <span>Formulas recalculated and cash balance updated successfully!</span>
-        </div>
-      )}
-
-      {/* Quick Add Form */}
-      <PettyCashForm onEntryAdded={refreshData} />
-
-      {/* ========================================================================= */}
-      {/* 3. PRINTABLE COMPANY HEADER                                               */}
-      {/* ========================================================================= */}
-      <div className="hidden print:block text-center border-b pb-4 mb-4">
-        <h1 className="text-2xl font-black uppercase tracking-wider text-slate-900">SARA TEXTILE</h1>
-        <h2 className="text-base font-bold text-slate-700">Petty Cash Statement</h2>
-        <p className="text-xs font-semibold text-slate-500">
-          For the Month Of August-2026 • Closing Balance: PKR {formatNumber(currentBalance)}
-        </p>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 4. DATA TABLE                                                             */}
-      {/* ========================================================================= */}
-      <div className="rounded-2xl border border-border bg-card shadow-xs overflow-hidden">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border bg-muted/20 px-5 py-3.5">
-          <div className="flex items-center gap-2">
-            <Wallet className="size-4 text-amber-600" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
-              Cash Transaction Journal ({filteredEntries.length} Vouchers)
-            </h3>
+    <div className="space-y-4">
+      <PageHeader
+        title={`Petty Cash — ${month ? monthLabel(month) : ''}`}
+        showTitle={false}
+        actions={
+          <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+            <div className="flex items-center gap-2">
+              {st && <LockControl lock={st.lock} canEdit={canEditAccounts} onChanged={(lock) => setData((s) => (s ? { ...s, lock } : s))} />}
+              <Link href="/accounts/petty-cash/monthly" className="erp-btn-secondary text-xs !min-h-9 !h-9">
+                <BarChart3 className="size-3.5" /> Monthly summary
+              </Link>
+            </div>
+            <div className="flex items-center gap-2">
+              {save.node}
+              <MonthPicker month={month} months={months} onChange={setMonth} />
+              <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+                <Printer className="size-3.5" /> Print
+              </button>
+            </div>
           </div>
-
-          <div className="relative print:hidden w-full sm:w-auto">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search description, date..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full sm:w-60 rounded-xl border border-border bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-blue-500 focus:outline-hidden"
-            />
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 font-black uppercase text-[10px] text-muted-foreground tracking-wider">
-                <th className="py-3 px-3 text-center w-12">S.No</th>
-                <th className="py-3 px-3 w-28">Date</th>
-                <th className="py-3 px-3">Description / Purpose</th>
-                <th className="py-3 px-3 text-right w-36">Debit (Cash In)</th>
-                <th className="py-3 px-3 text-right w-36">Credit (Cash Out)</th>
-                <th className="py-3 px-4 text-right w-36">
-                  Balance (PKR)
-                  <span className="block text-[8px] font-mono text-purple-600 lowercase font-normal">fx: =Prev+Dr-Cr</span>
-                </th>
-                <th className="py-3 px-3 text-center w-16 print:hidden">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredEntries.map((entry, idx) => (
-                <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="py-2.5 px-3 text-center font-mono font-bold text-muted-foreground">
-                    {idx + 1}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono text-muted-foreground whitespace-nowrap">
-                    {entry.date}
-                  </td>
-                  <td className="py-2.5 px-3 text-foreground font-medium">
-                    {entry.description}
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
-                    {entry.debitAmount ? `+${formatNumber(entry.debitAmount)}` : '-'}
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
-                    {entry.creditAmount ? `-${formatNumber(entry.creditAmount)}` : '-'}
-                  </td>
-                  <td className="py-2.5 px-4 text-right font-mono font-black text-foreground">
-                    {formatNumber(entry.balance)}
-                  </td>
-                  <td className="py-2.5 px-3 text-center print:hidden">
-                    <button
-                      onClick={() => handleDelete(entry.id)}
-                      className="rounded p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
-                      title="Delete Entry"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </td>
-                </tr>
+        }
+      />
+      <LoadState loading={loading} error={error} hasData={Boolean(st)}>
+        {st && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {[
+                ['Balance b/f', st.opening],
+                ['Cash in', st.totalIn],
+                ['Cash out', st.totalOut],
+                ['Mill expense (Cost Statement)', st.expenseOut],
+                ['Closing balance', st.closing],
+              ].map(([l, v]) => (
+                <div key={l as string} className="erp-card p-3">
+                  <div className="text-[10px] font-bold uppercase text-slate-500">{l}</div>
+                  <div className="text-lg font-black font-mono">{rs(v as number)}</div>
+                </div>
               ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-border bg-muted/50 font-black text-xs">
-                <td colSpan={3} className="py-3 px-3 uppercase text-foreground">
-                  Total Monthly Petty Cash Transactions
-                </td>
-                <td className="py-3 px-3 text-right font-mono text-blue-600 dark:text-blue-400 font-black text-sm">
-                  {formatCurrency(totalDebit)}
-                </td>
-                <td className="py-3 px-3 text-right font-mono text-rose-600 dark:text-rose-400 font-black text-sm">
-                  {formatCurrency(totalCredit)}
-                </td>
-                <td className="py-3 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-black text-sm">
-                  {formatCurrency(currentBalance)}
-                </td>
-                <td className="print:hidden"></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
+            </div>
+            <div className="erp-card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[860px] text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 font-bold uppercase text-[10px]">
+                      <th className={cn(cell, 'py-2 px-2 w-12 text-center')}>S.No</th>
+                      <th className={cn(cell, 'py-2 px-2 w-32')}>Date</th>
+                      <th className={cn(cell, 'py-2 px-2 text-left')}>Description</th>
+                      <th className={cn(cell, 'py-2 px-2 w-48')}>Type</th>
+                      <th className={cn(cell, 'py-2 px-2 w-32 text-right')}>Dr (cash in)</th>
+                      <th className={cn(cell, 'py-2 px-2 w-32 text-right')}>Cr (cash out)</th>
+                      <th className={cn(cell, 'py-2 px-2 w-32 text-right')}>Balance</th>
+                      {canEdit && <th className={cn(cell, 'w-10 print:hidden')} />}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="bg-amber-50/60 italic">
+                      <td className={cn(cell, 'text-center')}>-</td>
+                      <td className={cn(cell, 'px-2 font-mono')}>{month}-01</td>
+                      <td className={cn(cell, 'px-2')}>Balance b/f</td>
+                      <td className={cell} />
+                      <td className={cell} />
+                      <td className={cell} />
+                      <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(st.opening)}</td>
+                      {canEdit && <td className={cn(cell, 'print:hidden')} />}
+                    </tr>
+                    {st.entries.map((e, i) => (
+                      <tr key={e.id} className={i % 2 ? 'bg-slate-50/60' : ''}>
+                        <td className={cn(cell, 'text-center font-mono text-slate-500')}>{i + 1}</td>
+                        <td className={cn(cell, 'px-1')}>
+                          {canEdit ? (
+                            <input type="date" defaultValue={e.date} aria-label="Date" onBlur={(ev) => edit(e, { date: ev.target.value })} className="w-full bg-transparent px-1 py-1 font-mono" />
+                          ) : (
+                            <span className="px-1 font-mono">{e.date}</span>
+                          )}
+                        </td>
+                        <td className={cn(cell, 'px-1')}>
+                          {canEdit ? (
+                            <input defaultValue={e.description} aria-label="Description" onBlur={(ev) => edit(e, { description: ev.target.value.trim() })} className="w-full bg-transparent px-1 py-1" />
+                          ) : (
+                            <span className="px-1">{e.description}</span>
+                          )}
+                        </td>
+                        <td className={cn(cell, 'px-1')}>
+                          {canEdit ? (
+                            <select value={e.kind} aria-label="Type" onChange={(ev) => edit(e, { kind: ev.target.value as PettyCashKind })} className="w-full bg-transparent px-1 py-1">
+                              {(Object.keys(KIND_LABEL) as PettyCashKind[]).map((k) => (
+                                <option key={k} value={k}>
+                                  {KIND_LABEL[k]}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="px-1">{KIND_LABEL[e.kind]}</span>
+                          )}
+                        </td>
+                        {(['debit', 'credit'] as const).map((side) => (
+                          <td key={side} className={cn(cell, 'px-1 text-right font-mono')}>
+                            {canEdit && (side === 'debit') === isIn(e.kind) ? (
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                aria-label={side === 'debit' ? 'Dr amount' : 'Cr amount'}
+                                defaultValue={e[side]}
+                                onBlur={(ev) => edit(e, { amount: Number(ev.target.value) || 0 })}
+                                className="w-full bg-transparent px-1 py-1 text-right"
+                              />
+                            ) : e[side] ? (
+                              rs(e[side])
+                            ) : (
+                              ''
+                            )}
+                          </td>
+                        ))}
+                        <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(e.balance)}</td>
+                        {canEdit && (
+                          <td className={cn(cell, 'text-center print:hidden')}>
+                            <button type="button" onClick={() => remove(e)} className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" aria-label="Delete entry">
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                  {canEdit && (
+                    <tfoot className="print:hidden">
+                      <tr className="bg-blue-50/50">
+                        <td className={cn(cell, 'text-center')}>
+                          <Plus className="size-3.5 mx-auto text-[#0066cc]" />
+                        </td>
+                        <td className={cn(cell, 'px-1')}>
+                          <input type="date" value={draft.date} aria-label="New entry date" onChange={(e) => setDraft({ ...draft, date: e.target.value })} className="w-full bg-white border rounded px-1 py-1 font-mono" />
+                        </td>
+                        <td className={cn(cell, 'px-1')} colSpan={1}>
+                          <form id="petty-add" onSubmit={add} />
+                          <input
+                            form="petty-add"
+                            required
+                            value={draft.description}
+                            aria-label="New entry description"
+                            onChange={(e) => {
+                              const v = e.target.value
+                              setDraft((d) => ({ ...d, description: v, kind: /paid salar|salaries|wages/i.test(v) && d.kind === 'EXPENSE' ? 'SALARY' : d.kind }))
+                            }}
+                            placeholder="Description (e.g. Bearing 6207 5pcs)"
+                            className="w-full bg-white border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td className={cn(cell, 'px-1')}>
+                          <select form="petty-add" value={draft.kind} aria-label="New entry type" onChange={(e) => setDraft({ ...draft, kind: e.target.value as PettyCashKind })} className="w-full bg-white border rounded px-1 py-1">
+                            {(Object.keys(KIND_LABEL) as PettyCashKind[])
+                              .filter((k) => k !== 'OPENING' || st.entries.length === 0)
+                              .map((k) => (
+                                <option key={k} value={k}>
+                                  {KIND_LABEL[k]}
+                                </option>
+                              ))}
+                          </select>
+                        </td>
+                        <td className={cn(cell, 'px-1')} colSpan={2}>
+                          <input form="petty-add" required type="number" min={0} step="any" value={draft.amount} aria-label="New entry amount" onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="Amount" className="w-full bg-white border rounded px-2 py-1 text-right font-mono" />
+                        </td>
+                        <td className={cn(cell, 'px-1')} colSpan={2}>
+                          <button form="petty-add" type="submit" className="w-full px-2 py-1 rounded bg-[#0066cc] text-white font-bold cursor-pointer">
+                            Add
+                          </button>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                  <tfoot>
+                    <tr className="bg-slate-200 font-black">
+                      <td colSpan={4} className={cn(cell, 'px-3 py-2 text-right uppercase')}>
+                        Total
+                      </td>
+                      <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(st.totalIn)}</td>
+                      <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(st.totalOut)}</td>
+                      <td className={cn(cell, 'px-2 text-right font-mono text-[#0066cc]')}>{rs(st.closing)}</td>
+                      {canEdit && <td className={cn(cell, 'print:hidden')} />}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </LoadState>
     </div>
+  )
+}
+
+export default function PettyCashPage() {
+  return (
+    <Suspense fallback={null}>
+      <PettyCashContent />
+    </Suspense>
   )
 }

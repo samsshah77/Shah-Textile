@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/session'
-import { dbAccountsDelete, dbAccountsGetAll, dbAccountsSave } from '@/server/accountsDb'
-import { currentUser } from '@/server/current-user'
-import { isAccountsController } from '@/lib/accountsAccess'
-import { isAccountsStoreKey } from '@/lib/accountsKeys'
+import { dbAccountsGetAll } from '@/server/accountsDb'
 import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
-import { writeAudit } from '@/server/auditLog'
 
 export const runtime = 'nodejs'
 
@@ -31,50 +27,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function PUT(req: NextRequest) {
-  try {
-    const isDev = process.env.NODE_ENV !== 'production'
-    const claims = await requireSession(req)
-    if (!claims && !isDev) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Make sure accounts_store exists (it was missing on live until 19 Oct 2026).
-    await ensureFloorPayrollTables()
-
-    const actor = claims ? await currentUser(req) : null
-    if (!isDev && !isAccountsController(actor)) {
-      return NextResponse.json(
-        { ok: false, error: 'Account changes are limited to Tufail.' },
-        { status: 403 }
-      )
-    }
-
-    const body = await req.json()
-    const key = String(body?.key || '')
-    const value = body?.value
-
-    if (!isAccountsStoreKey(key)) {
-      return NextResponse.json({ ok: false, error: `Unknown key: ${key}` }, { status: 400 })
-    }
-
-    const before = (await dbAccountsGetAll())[key] ?? null
-    if (value == null) {
-      await dbAccountsDelete(key)
-    } else {
-      await dbAccountsSave(key, value)
-    }
-    await writeAudit({
-      req, actor, module: 'accounts', action: value == null ? 'delete' : 'save',
-      entityKey: key, before, after: value ?? null,
-    })
-
-    return NextResponse.json({ ok: true })
-  } catch (err) {
-    console.error('[accounts/store PUT]', err)
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : 'Save failed' },
-      { status: 500 }
-    )
-  }
+/**
+ * The old pages saved whole blobs here. Since the move to real tables (Oct 2026) this
+ * store is a read-only backup; an old open tab must not write to it, or the copy could
+ * bring back bills deleted in the new system.
+ */
+export async function PUT() {
+  return NextResponse.json(
+    { ok: false, error: 'Accounts ka naya version aa gaya hai — page refresh karein (Ctrl+F5).' },
+    { status: 410 }
+  )
 }
