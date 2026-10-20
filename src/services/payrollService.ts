@@ -37,21 +37,14 @@ import {
 } from './payroll/payrollConstants'
 
 import {
-  memoryStore,
-  hydrated,
   allowServerSheetWrite,
   isPayrollClient,
   readStore,
-  writeStore,
   writeStoreAndWait,
-  readLocalMirror,
   readHrMetaRaw,
   writeHrMeta,
   isTombstonedEmployee,
-  registerPostHydrateHook,
   advancePersonMonthKey,
-  setHydrated,
-  setAllowServerSheetWrite,
   hydratePayrollFromDb,
 } from './payroll/payrollStorage'
 
@@ -98,49 +91,10 @@ import {
 } from '@/services/payroll/service/pettyCashAndSynopsis'
 import { lockSlipMethods, type LockSlipMethods } from '@/services/payroll/service/locksAndSlips'
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- methods are attached below (see end of file)
 export class PayrollService {
   /** Previous name, so a renamed person still matches their wage-sheet row. */
   profileAliases = new Map<string, string>()
-
-  constructor() {
-    registerPostHydrateHook(() => {
-      try {
-        this.repairCorruptedStaffChequeAmounts()
-      } catch (e) {
-        console.error('[payroll] staff cheque repair skipped', e)
-      }
-      try {
-        this.repairCorruptedContractRates()
-      } catch (e) {
-        console.error('[payroll] contract rate repair skipped', e)
-      }
-      try {
-        this.repairDuplicatePayrollRows()
-      } catch (e) {
-        console.error('[payroll] duplicate repair skipped', e)
-      }
-      try {
-        this.purgeAllJoinersFromPastMonths()
-      } catch (e) {
-        console.error('[payroll] joiner purge skipped', e)
-      }
-      try {
-        this.purgeAllResignedFortnightCuts()
-      } catch (e) {
-        console.error('[payroll] resigned fortnight purge skipped', e)
-      }
-      try {
-        this.repairMissingFortnightWageRows()
-      } catch (e) {
-        console.error('[payroll] missing fortnight wage repair skipped', e)
-      }
-      try {
-        this.repairMissingContractSheetRows()
-      } catch (e) {
-        console.error('[payroll] missing contract repair skipped', e)
-      }
-    })
-  }
 
   isClient(): boolean {
     return isPayrollClient()
@@ -220,15 +174,10 @@ export class PayrollService {
   // LOCAL STORAGE GETTERS & PERSISTENCE
   // ==========================================
 
+  /** HR roster (permanently deleted people hidden). Reading never changes stored data. */
   getEmployees(): EmployeeProfile[] {
     const list = this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
-    const { list: repaired, changed } = this.repairRoster(list)
-    const cleaned = repaired.filter((e) => !isTombstonedEmployee(e.id, e.name))
-    const removedTombstones = cleaned.length !== repaired.length
-    if ((changed || removedTombstones) && this.isClient() && hydrated) {
-      writeStore(STORAGE_KEYS.EMPLOYEES, cleaned)
-    }
-    return cleaned
+    return list.filter((e) => !isTombstonedEmployee(e.id, e.name))
   }
 
   listPayrollMonths(): string[] {
@@ -238,17 +187,6 @@ export class PayrollService {
     }
     for (const row of this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)) {
       if (row.month) months.add(row.month)
-    }
-    // Also surface months only present in local mirror (pre-hydrate)
-    if (isPayrollClient()) {
-      for (const key of [STORAGE_KEYS.STAFF, STORAGE_KEYS.CONTRACT]) {
-        const mirrored = readLocalMirror(key)
-        if (Array.isArray(mirrored)) {
-          for (const row of mirrored as { month?: string }[]) {
-            if (row.month) months.add(row.month)
-          }
-        }
-      }
     }
     return [...months].sort()
   }
@@ -326,14 +264,6 @@ export class PayrollService {
       const rows = this.readStore(storeKey, fallback)
       for (const row of rows) {
         if (row.month) months.add(row.month)
-      }
-      if (isPayrollClient()) {
-        const mirrored = readLocalMirror(storeKey)
-        if (Array.isArray(mirrored)) {
-          for (const row of mirrored as { month?: string }[]) {
-            if (row.month) months.add(row.month)
-          }
-        }
       }
     }
     return [...months].sort()
@@ -589,110 +519,3 @@ export interface PayrollService extends RosterPlacementMethods, MonthGenerationM
 Object.assign(PayrollService.prototype, rosterPlacementMethods, monthGenerationMethods, rosterRepairMethods, employeeEditMethods, employeeSyncMethods, sheetStoreMethods, pettyCashSynopsisMethods, lockSlipMethods)
 
 export const payrollService = new PayrollService()
-
-/**
- * Server GET: run roster repair with the DB snapshot loaded in memory so
- * HR_META tombstones are visible (server memoryStore is otherwise empty →
- * deleted seed weavers/helpers were pushed back into EMPLOYEES on every refresh).
- * Also strips rows of permanently-deleted people from every sheet.
- * Returns changed store keys.
- */
-export function integrateRosterRespectingTombstones(
-  store: Record<string, unknown>
-): Record<string, unknown> {
-  const previous = new Map(memoryStore)
-  memoryStore.clear()
-  for (const [key, value] of Object.entries(store)) {
-    memoryStore.set(key, JSON.stringify(value ?? null))
-  }
-  const changed: Record<string, unknown> = {}
-  try {
-    const repaired = payrollService.integrateEmployeeRoster(
-      store[STORAGE_KEYS.EMPLOYEES],
-      store[STORAGE_KEYS.WEAVERS],
-      store[STORAGE_KEYS.HELPERS]
-    )
-    const roster = repaired.list.filter((e) => !isTombstonedEmployee(e.id, e.name))
-    if (repaired.changed || roster.length !== repaired.list.length) {
-      changed[STORAGE_KEYS.EMPLOYEES] = roster
-    }
-
-    const purge = (key: string, nameKey: 'employeeName' | 'name') => {
-      const rows = store[key]
-      if (!Array.isArray(rows)) return
-      const kept = (rows as Array<Record<string, unknown>>).filter(
-        (r) =>
-          !isTombstonedEmployee(
-            r.employeeId as string | undefined,
-            r[nameKey] as string | undefined
-          )
-      )
-      if (kept.length !== rows.length) changed[key] = kept
-    }
-    purge(STORAGE_KEYS.WEAVERS, 'employeeName')
-    purge(STORAGE_KEYS.HELPERS, 'employeeName')
-  } finally {
-    memoryStore.clear()
-    for (const [key, value] of previous) memoryStore.set(key, value)
-  }
-  return changed
-}
-
-/** Copy HR name, designation, and wage onto each person's own sheet. Returns changed store keys. */
-export function projectProfilesOntoSheets(store: Record<string, unknown>): Record<string, unknown> {
-  const previous = new Map(memoryStore)
-  const snapshot = new Map<string, string>()
-  memoryStore.clear()
-  for (const [key, value] of Object.entries(store)) {
-    const raw = JSON.stringify(value ?? null)
-    memoryStore.set(key, raw)
-    snapshot.set(key, raw)
-  }
-  setAllowServerSheetWrite(true)
-  try {
-    payrollService.syncMasterRoster()
-  } finally {
-    setAllowServerSheetWrite(false)
-  }
-  const changed: Record<string, unknown> = {}
-  for (const [key, value] of memoryStore) {
-    if (snapshot.get(key) !== value) changed[key] = JSON.parse(value) as unknown
-  }
-  memoryStore.clear()
-  for (const [key, value] of previous) memoryStore.set(key, value)
-  return changed
-}
-
-/** Server-side: strip same-person duplicate rows from a payroll store snapshot. */
-export function dedupePayrollStore(store: Record<string, unknown>): Record<string, unknown> {
-  const previous = new Map(memoryStore)
-  const snapshot = new Map<string, string>()
-  const prevHydrated = hydrated
-  memoryStore.clear()
-  for (const [key, value] of Object.entries(store)) {
-    const raw = JSON.stringify(value ?? null)
-    memoryStore.set(key, raw)
-    snapshot.set(key, raw)
-  }
-  setHydrated(true)
-  setAllowServerSheetWrite(true)
-  try {
-    payrollService.repairCorruptedStaffChequeAmounts()
-    payrollService.repairCorruptedContractRates()
-    payrollService.repairDuplicatePayrollRows()
-    payrollService.purgeAllJoinersFromPastMonths()
-    payrollService.purgeAllResignedFortnightCuts()
-    payrollService.repairMissingFortnightWageRows()
-    payrollService.repairMissingContractSheetRows()
-  } finally {
-    setAllowServerSheetWrite(false)
-    setHydrated(prevHydrated)
-  }
-  const changed: Record<string, unknown> = {}
-  for (const [key, value] of memoryStore) {
-    if (snapshot.get(key) !== value) changed[key] = JSON.parse(value) as unknown
-  }
-  memoryStore.clear()
-  for (const [key, value] of previous) memoryStore.set(key, value)
-  return changed
-}

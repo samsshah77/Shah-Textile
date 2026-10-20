@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import type { CostStatement, MonthBook, PartyKind, PartyLedger, PartySummary, PettyCashStatement } from '@/lib/accounts/types'
 
 import { productionAccountingMonthBounds, getProductionTodayMonth } from '@/constants/productionCalendar'
-import { dbPayrollGetAll } from '@/server/payrollDb'
+import { loadSalaryStore } from '@/server/payroll/api'
 import { AccountsError } from '@/server/accounts/errors'
 import * as repo from '@/server/accounts/repo'
 import {
@@ -119,7 +119,7 @@ export async function costStatement(month: string): Promise<CostStatement> {
     repo.listPetty(dbc, month),
     repo.pettyBalanceBefore(dbc, month),
     repo.getLock(dbc, month),
-    dbPayrollGetAll(),
+    loadSalaryStore(),
     productionMeters(month),
   ])
   const resolved = resolveCostInputs(saved?.inputs ?? null, previous)

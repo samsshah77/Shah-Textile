@@ -3,12 +3,8 @@ import { FortnightSynopsis, MonthlyGrandSalarySynopsis, PettyCashRecord } from '
 import { INITIAL_HELPERS_WAGES, INITIAL_CONTRACTORS, INITIAL_PETTY_CASH } from '@/data/payrollSeeds'
 import { STORAGE_KEYS } from '@/services/payroll/payrollConstants'
 import {
-  memoryStore,
-  isPayrollClient,
   writeStore,
   writeStoreAndWait,
-  readLocalMirror,
-  writeLocalMirror,
   readHrMetaRaw,
   writeHrMeta,
   hydratePayrollFromDb,
@@ -71,13 +67,6 @@ export const pettyCashSynopsisMethods = {
         [key]: n,
       },
     }
-    // Write memory + mirror first so refresh keeps the value even if PUT races.
-    writeLocalMirror(STORAGE_KEYS.HR_META, meta)
-    try {
-      memoryStore.set(STORAGE_KEYS.HR_META, JSON.stringify(meta))
-    } catch {
-      // ignore
-    }
     const ok = await writeStoreAndWait(STORAGE_KEYS.HR_META, meta)
     this.notifyDataChanged(month)
     return ok
@@ -96,14 +85,6 @@ export const pettyCashSynopsisMethods = {
     for (const row of this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)) {
       if (row.month) months.add(row.month)
     }
-    if (isPayrollClient()) {
-      const mirrored = readLocalMirror(STORAGE_KEYS.HELPERS)
-      if (Array.isArray(mirrored)) {
-        for (const row of mirrored as { month?: string }[]) {
-          if (row.month) months.add(row.month)
-        }
-      }
-    }
     return [...months].sort()
   },
 
@@ -113,14 +94,6 @@ export const pettyCashSynopsisMethods = {
     for (const row of this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)) {
       if (row.month) months.add(row.month)
     }
-    if (isPayrollClient()) {
-      const mirrored = readLocalMirror(STORAGE_KEYS.CONTRACTORS)
-      if (Array.isArray(mirrored)) {
-        for (const row of mirrored as { month?: string }[]) {
-          if (row.month) months.add(row.month)
-        }
-      }
-    }
     return [...months].sort()
   },
 
@@ -129,14 +102,6 @@ export const pettyCashSynopsisMethods = {
     const months = new Set<string>(this.listPayrollMonths())
     for (const row of this.readStore(STORAGE_KEYS.PETTY_CASH, INITIAL_PETTY_CASH)) {
       if (row.month) months.add(row.month)
-    }
-    if (isPayrollClient()) {
-      const mirrored = readLocalMirror(STORAGE_KEYS.PETTY_CASH)
-      if (Array.isArray(mirrored)) {
-        for (const row of mirrored as { month?: string }[]) {
-          if (row.month) months.add(row.month)
-        }
-      }
     }
     return [...months].sort()
   },

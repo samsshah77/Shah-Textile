@@ -38,7 +38,7 @@ Example `changes`: `{"kind":"rows","changed":[{"id":"e7","fields":{"shiftAMeters
 On every app start (= every deploy) the server copies these tables into the
 `data_snapshots` schema (skipped if the last copy is < 6 h old; last 20 kept):
 `floor_daily_sheets, floor_looms, floor_beams, floor_qualities, floor_yarns,
-floor_yarn_movements, floor_yarn_issuances, payroll_store, accounts_store`.
+floor_yarn_movements, floor_yarn_issuances, payroll_store, payroll_rows, accounts_store` and the `acc_*` accounts tables.
 
 Admin can also take one on demand: `POST /api/admin/snapshots` (list: `GET`).
 

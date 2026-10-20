@@ -20,7 +20,15 @@ export const SNAPSHOT_TABLES = [
   'floor_yarn_movements',
   'floor_yarn_issuances',
   'payroll_store',
+  'payroll_rows',
   'accounts_store',
+  'acc_parties',
+  'acc_bills',
+  'acc_bill_lines',
+  'acc_payments',
+  'acc_petty_cash',
+  'acc_cost_inputs',
+  'acc_month_locks',
 ] as const
 
 const SCHEMA = 'data_snapshots'

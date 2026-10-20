@@ -64,8 +64,8 @@ export function parseResignationDateFromRemarks(remarks?: string): string | unde
   // 31-10-2022 or 31/10/22 (D-M-Y)
   const dmy = afterLabel.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/)
   if (dmy) {
-    let a = Number(dmy[1])
-    let b = Number(dmy[2])
+    const a = Number(dmy[1])
+    const b = Number(dmy[2])
     let year = Number(dmy[3])
     if (year < 100) year += 2000
     let day = a
@@ -130,8 +130,8 @@ export function parseDojToIso(doj?: string): string | undefined {
 
   const dmy = text.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/)
   if (dmy) {
-    let a = Number(dmy[1])
-    let b = Number(dmy[2])
+    const a = Number(dmy[1])
+    const b = Number(dmy[2])
     let year = Number(dmy[3])
     if (year < 100) year += 2000
     let day = a

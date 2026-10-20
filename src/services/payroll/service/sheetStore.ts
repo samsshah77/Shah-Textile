@@ -138,10 +138,8 @@ export const sheetStoreMethods = {
 
   getAdvances(this: PayrollService, month: string = '2026-08', fortnight?: string): AdvanceRecord[] {
     const list = this.readStore(STORAGE_KEYS.ADVANCES, INITIAL_ADVANCES)
-    const { list: deduped, removed } = dedupeRowsByKey(list, advancePersonMonthKey)
-    if (removed > 0 && this.canWrite()) {
-      writeStore(STORAGE_KEYS.ADVANCES, this.renumberByMonth(deduped))
-    }
+    // Same person twice in one month is shown once (saving the sheet then stores it once).
+    const { list: deduped } = dedupeRowsByKey(list, advancePersonMonthKey)
     let filtered = deduped.filter((a) => sheetMonthKey(a.month) === sheetMonthKey(month))
     if (fortnight && fortnight !== 'all') {
       filtered = filtered.filter((a) => (a.fortnight || '1-15') === fortnight)

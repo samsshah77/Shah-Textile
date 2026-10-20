@@ -185,7 +185,7 @@ export function planImport(store: Record<string, unknown>): ImportPlan {
   const plan: ImportPlan = { sources: [], parties: [], bills: [], payments: [], petty: [], costInputs: [], notes: [] }
   const wsSlugs = seedWorkshopSlugs()
   const kindOf = (name: string): PartyKind => (oldLooksLikeWorkshop(name, wsSlugs) ? 'WORKSHOP' : 'TRADER')
-  const use = (source: string, key: string, seed: unknown): [unknown, string] => {
+  const pickSource = (source: string, key: string, seed: unknown): [unknown, string] => {
     const has = Object.prototype.hasOwnProperty.call(store, key) && store[key] != null
     const value = has ? store[key] : seed
     const origin = has ? `store:${key}` : `seed:${source}`
@@ -201,7 +201,7 @@ export function planImport(store: Record<string, unknown>): ImportPlan {
   const deletedWorkshops = new Set(
     [...strs(store[ACCOUNTS_KEYS.DELETED_WORKSHOPS]), ...strs(store['sara_deleted_workshops_v1'])].map(slugifyPartyName)
   )
-  const [tradersRaw, tradersOrigin] = use('traders', ACCOUNTS_KEYS.TRADERS_STORE, accountsData.traders.synopsis)
+  const [tradersRaw, tradersOrigin] = pickSource('traders', ACCOUNTS_KEYS.TRADERS_STORE, accountsData.traders.synopsis)
   const traders = arr(tradersRaw)
   for (const t of traders) {
     const name = str(t.traderName)
@@ -211,7 +211,7 @@ export function planImport(store: Record<string, unknown>): ImportPlan {
     if (num(t.foiPayable) > 0)
       plan.payments.push({ origin: tradersOrigin, partyName: name, partyKind: 'TRADER', date: '2026-08-31', amount: num(t.foiPayable), remarks: 'FOI paid (copied from old synopsis)' })
   }
-  const [workshopsRaw, workshopsOrigin] = use('workshops', ACCOUNTS_KEYS.WORKSHOPS_STORE, accountsData.workshops.synopsis)
+  const [workshopsRaw, workshopsOrigin] = pickSource('workshops', ACCOUNTS_KEYS.WORKSHOPS_STORE, accountsData.workshops.synopsis)
   const workshops = arr(workshopsRaw)
   for (const w of workshops) {
     const name = str(w.workshopName)
@@ -223,7 +223,7 @@ export function planImport(store: Record<string, unknown>): ImportPlan {
   }
 
   // 1) Daily Inward sheet — the main book, in sheet order.
-  const [inventoryRaw, inventoryOrigin] = use('inventory', ACCOUNTS_KEYS.INVENTORY_CONTROL, accountsData.inventoryControl.months)
+  const [inventoryRaw, inventoryOrigin] = pickSource('inventory', ACCOUNTS_KEYS.INVENTORY_CONTROL, accountsData.inventoryControl.months)
   const inventory =
     inventoryRaw && typeof inventoryRaw === 'object' && !Array.isArray(inventoryRaw)
       ? (inventoryRaw as Record<string, { items?: unknown }>)
@@ -285,7 +285,7 @@ export function planImport(store: Record<string, unknown>): ImportPlan {
   }
 
   // Petty cash journal.
-  const [pettyRaw, pettyOrigin] = use('petty', ACCOUNTS_KEYS.PETTY_CASH, accountsData.dailyExpense.pettyCash)
+  const [pettyRaw, pettyOrigin] = pickSource('petty', ACCOUNTS_KEYS.PETTY_CASH, accountsData.dailyExpense.pettyCash)
   const petty = arr(pettyRaw)
   petty.forEach((e, i) => {
     const date = isDate(str(e.date).slice(0, 10)) ? str(e.date).slice(0, 10) : '2026-08-01'

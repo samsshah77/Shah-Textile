@@ -8,12 +8,13 @@ import {
   employeeBelongsInMonth,
 } from '@/services/payroll/payrollCalculations'
 import {
-  assertFreshVersion,
-  changedLockedMonths,
-  keepLockedMonths,
-  lockedMonthsFromMeta,
-  PayrollGuardError,
-} from '@/server/payrollGuards'
+  META_SHEET,
+  diffSheet,
+  ensureRowIds,
+  sheetStateFrom,
+  rowMonth,
+} from '@/lib/payroll/sync'
+import { lockedMonths, storeToRows, validateChangeSet } from '@/server/payroll/rows'
 import {
   contractorBasis,
   contractorDefaults,
@@ -109,44 +110,101 @@ describe('Who belongs on which fortnight', () => {
   })
 })
 
-describe('Salary save guards', () => {
-  const meta = { monthLocks: { '2026-09': { locked: true }, '2026-10': { locked: false } } }
+describe('Salary saves send only what changed', () => {
+  const W = 'sara_payroll_weavers_v6'
+  const rows = [
+    { id: 'a', month: '2026-10', netPay: 100 },
+    { id: 'b', month: '2026-10', netPay: 200 },
+    { id: 'c', month: '2026-09', netPay: 300 },
+  ]
+  const state = () => sheetStateFrom(W, rows, { a: 3, b: 1, c: 7 })
 
-  it('reads locked months from HR meta', () => {
-    expect([...lockedMonthsFromMeta(meta)]).toEqual(['2026-09'])
+  it('nothing changed → nothing sent', () => {
+    expect(diffSheet(W, state(), structuredClone(rows))).toEqual({ ops: [] })
   })
 
-  it('keeps locked-month rows as stored and saves the rest', () => {
-    const before = [
-      { id: 'a', month: '2026-09', netPay: 100 },
-      { id: 'b', month: '2026-10', netPay: 200 },
-    ]
-    const after = [
-      { id: 'a', month: '2026-09', netPay: 999 }, // change inside a locked month
-      { id: 'b', month: '2026-10', netPay: 250 }, // normal change
-    ]
-    const { value, keptMonths } = keepLockedMonths(before, after, meta, false)
-    expect(keptMonths).toEqual(['2026-09'])
-    expect(value).toEqual([
-      { id: 'a', month: '2026-09', netPay: 100 },
-      { id: 'b', month: '2026-10', netPay: 250 },
+  it('key order inside a row does not count as a change (database reorders keys)', () => {
+    const shuffled = rows.map((r) => ({ netPay: r.netPay, month: r.month, id: r.id }))
+    expect(diffSheet(W, state(), shuffled).ops).toEqual([])
+  })
+
+  it('one edited row → one put carrying the version it was based on', () => {
+    const next = structuredClone(rows)
+    next[0].netPay = 150
+    expect(diffSheet(W, state(), next).ops).toEqual([{ op: 'put', sheet: W, id: 'a', base: 3, row: next[0] }])
+  })
+
+  it('removed row → delete with its version; new row → insert (base 0) at the end, no reorder', () => {
+    const next = [rows[0], rows[2], { id: 'd', month: '2026-10', netPay: 50 }]
+    const cs = diffSheet(W, state(), next)
+    expect(cs.ops).toEqual([
+      { op: 'put', sheet: W, id: 'd', base: 0, row: next[2] },
+      { op: 'del', sheet: W, id: 'b', base: 1 },
+    ])
+    expect(cs.order).toBeUndefined()
+  })
+
+  it('moving a row up sends the new order', () => {
+    const next = [rows[1], rows[0], rows[2]]
+    const cs = diffSheet(W, state(), next)
+    expect(cs.ops).toEqual([])
+    expect(cs.order).toEqual({ [W]: ['b', 'a', 'c'] })
+  })
+
+  it('settings: a field left out is NOT deleted (month locks survive partial writes)', () => {
+    const meta = { activeSalariedMonth: '2026-10', monthLocks: { '2026-09': { locked: true } }, deletedEmployeeIds: ['x'] }
+    const st = sheetStateFrom(META_SHEET, meta, { activeSalariedMonth: 2, monthLocks: 5, deletedEmployeeIds: 1 })
+    const cs = diffSheet(META_SHEET, st, { activeSalariedMonth: '2026-11', categories: [] })
+    expect(cs.ops).toEqual([
+      { op: 'put', sheet: META_SHEET, id: 'activeSalariedMonth', base: 2, row: '2026-11' },
+      { op: 'put', sheet: META_SHEET, id: 'categories', base: 0, row: [] },
     ])
   })
 
-  it('a locked month cannot be emptied by a save either', () => {
-    const before = [{ id: 'a', month: '2026-09', netPay: 100 }]
-    expect(changedLockedMonths(before, [], lockedMonthsFromMeta(meta))).toEqual(['2026-09'])
-    expect(keepLockedMonths(before, [], meta, false).value).toEqual(before)
+  it('rows without an id (or with a repeated id) get their own id', () => {
+    const list: Array<Record<string, unknown>> = [{ id: 'x' }, { id: 'x' }, { name: 'no id' }]
+    const { rows: fixed, fixed: n } = ensureRowIds(list)
+    expect(n).toBe(2)
+    expect(new Set(fixed.map((r) => r.id)).size).toBe(3)
+    expect(list[0].id).toBe('x')
   })
 
-  it('HR meta itself (lock / unlock) is never filtered', () => {
-    expect(keepLockedMonths({}, { monthLocks: {} }, meta, true).keptMonths).toEqual([])
+  it('month of a row is read only from a real YYYY-MM value', () => {
+    expect(rowMonth({ month: '2026-10' })).toBe('2026-10')
+    expect(rowMonth({ month: 'October' })).toBeNull()
+    expect(rowMonth({})).toBeNull()
+  })
+})
+
+describe('Salary storage (server)', () => {
+  it('reads locked months from the monthLocks setting', () => {
+    expect([...lockedMonths({ '2026-09': { locked: true }, '2026-10': { locked: false } })]).toEqual(['2026-09'])
+    expect([...lockedMonths(undefined)]).toEqual([])
   })
 
-  it('refuses a save built on an older copy', () => {
-    expect(() => assertFreshVersion('2026-10-19T10:00:00.000Z', '2026-10-19T10:05:00.000Z')).toThrow(PayrollGuardError)
-    expect(() => assertFreshVersion('2026-10-19T10:05:00.000Z', '2026-10-19T10:05:00.000Z')).not.toThrow()
-    expect(() => assertFreshVersion(undefined, '2026-10-19T10:05:00.000Z')).not.toThrow()
+  it('copies an old store into rows, keeping row order and every settings field', () => {
+    const { rows, counts } = storeToRows({
+      sara_payroll_weavers_v6: [{ id: 'w2', month: '2026-10' }, { id: 'w1', month: '2026-10' }],
+      sara_payroll_hr_meta_v1: { monthLocks: { '2026-09': { locked: true } }, activeSalariedMonth: '2026-10' },
+    })
+    const weavers = rows.filter((r) => r.sheet === 'sara_payroll_weavers_v6')
+    expect(weavers.map((r) => [r.id, r.position, r.month])).toEqual([['w2', 0, '2026-10'], ['w1', 1, '2026-10']])
+    expect(counts.sara_payroll_hr_meta_v1).toBe(2)
+    expect(counts.sara_payroll_staff_v6).toBe(0)
+  })
+
+  it('refuses malformed change sets', () => {
+    expect(() => validateChangeSet({ ops: [{ op: 'put', sheet: 'nope', id: 'a', base: 0, row: { id: 'a' } }] })).toThrow()
+    expect(() => validateChangeSet({ ops: [{ op: 'put', sheet: 'sara_payroll_staff_v6', id: 'a', base: 0, row: { id: 'b' } }] })).toThrow()
+    expect(() =>
+      validateChangeSet({
+        ops: [
+          { op: 'del', sheet: 'sara_payroll_staff_v6', id: 'a', base: 1 },
+          { op: 'del', sheet: 'sara_payroll_staff_v6', id: 'a', base: 1 },
+        ],
+      })
+    ).toThrow()
+    expect(validateChangeSet({ ops: [{ op: 'del', sheet: 'sara_payroll_staff_v6', id: 'a', base: 1 }] }).ops).toHaveLength(1)
   })
 })
 

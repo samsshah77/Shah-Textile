@@ -196,7 +196,24 @@ export function applySalariedMonthGenerateToStore(
         ...new Set(allEff.map((r) => r.month).filter(Boolean) as string[]),
       ].sort()
       const sourceMonth = priorMonths[priorMonths.length - 1]
-      const template = sourceMonth ? allEff.filter((r) => r.month === sourceMonth) : []
+      // Carry over only people who still work this month (not resigned / deleted /
+      // switched off) — the old load-time repairs used to remove them afterwards.
+      const roster = (() => {
+        try {
+          return JSON.parse(memoryStore.get(STORAGE_KEYS.EMPLOYEES) || '[]') as EmployeeProfile[]
+        } catch {
+          return [] as EmployeeProfile[]
+        }
+      })()
+      const meta = rawMeta as { deletedEmployeeIds?: string[] }
+      const deleted = new Set(meta.deletedEmployeeIds || [])
+      const stillHere = (r: EfficiencyIncentiveRecord) => {
+        if (r.employeeId && deleted.has(r.employeeId)) return false
+        const emp = roster.find((e) => (r.employeeId ? e.id === r.employeeId : e.name.trim().toLowerCase() === (r.name || '').trim().toLowerCase()))
+        if (!emp) return true
+        return emp.efficiencyEligible !== false && employeeBelongsInMonth(emp, m)
+      }
+      const template = sourceMonth ? allEff.filter((r) => r.month === sourceMonth).filter(stillHere) : []
       if (template.length > 0) {
         const seeded = template.map((r, i) =>
           calculateEfficiencyRow({

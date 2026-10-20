@@ -7,8 +7,6 @@ import {
 } from '@/services/payroll/contractorPlan'
 import {
   EmployeeProfile,
-  WeaverWageRecord,
-  HelperWageRecord,
   ContractorPaymentRecord,
   EfficiencyIncentiveRecord,
 } from '@/types/payroll'
@@ -18,16 +16,13 @@ import {
   INITIAL_WEAVERS_WAGES,
   INITIAL_CONTRACT_SALARIES,
   INITIAL_CONTRACTORS,
-  INITIAL_EMPLOYEES,
   INITIAL_EFFICIENCY_INCENTIVES,
 } from '@/data/payrollSeeds'
 import { STORAGE_KEYS } from '@/services/payroll/payrollConstants'
 import { hydrated, isTombstonedEmployee, isMonthLocked, writeStore } from '@/services/payroll/payrollStorage'
 import {
   daysInCalendarMonth,
-  parseResignationDateFromRemarks,
   employeeBelongsInMonth,
-  normalizeName,
   namesMatch,
   inferEmployeeCategory,
   weaverSheetFields,
@@ -36,152 +31,6 @@ import {
 import type { PayrollService } from '@/services/payrollService'
 
 export const rosterPlacementMethods = {
-  /**
-   * Merge resigned General Wages people and missing weaver/helper profiles.
-   * Used by GET /api/payroll/store so the roster is saved in Postgres, not only in the browser.
-   */
-  integrateEmployeeRoster(
-    this: PayrollService,
-    employees: unknown,
-    weavers: unknown,
-    helpers: unknown
-  ): { list: EmployeeProfile[]; changed: boolean } {
-    const list =
-      Array.isArray(employees) && employees.length > 0
-        ? (employees as EmployeeProfile[])
-        : INITIAL_EMPLOYEES
-    const weaverRows = Array.isArray(weavers)
-      ? (weavers as WeaverWageRecord[])
-      : this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
-    const helperRows = Array.isArray(helpers)
-      ? (helpers as HelperWageRecord[])
-      : this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
-    return this.repairRoster(list, weaverRows, helperRows)
-  },
-
-  /**
-   * Persisted roster can predate the Excel import:
-   * - General Wages remarks like "Resignation …" stay Active, so Resigned count is 0
-   * - Weavers / Helpers live on their wage sheets but were never copied onto HR
-   */
-  repairRoster(
-    this: PayrollService,
-    list: EmployeeProfile[],
-    weaverRows?: WeaverWageRecord[],
-    helperRows?: HelperWageRecord[]
-  ): { list: EmployeeProfile[]; changed: boolean } {
-    let changed = false
-    let next = list.map((e) => {
-      const remarks = e.remarks || ''
-      const looksResigned = /resign/i.test(remarks) || (e.status || '').toLowerCase() === 'resigned'
-      if (!looksResigned) return e
-      const resignedAt = (e.resignedAt || '').trim() || parseResignationDateFromRemarks(remarks) || ''
-      if ((e.status || 'Active') === 'Resigned' && ((e.resignedAt || '').trim() === resignedAt || !resignedAt)) {
-        return e
-      }
-      changed = true
-      return {
-        ...e,
-        status: 'Resigned' as const,
-        resignedAt: resignedAt || e.resignedAt,
-      }
-    })
-
-    const names = () => new Set(next.map((e) => normalizeName(e.name)))
-    let known = names()
-
-    const pushMissing = (src: EmployeeProfile) => {
-      const key = normalizeName(src.name)
-      if (isTombstonedEmployee(src.id, src.name)) return
-      if (next.some((e) => e.id === src.id)) return
-      // Same-name new hires (emp-sep-*) may share a display name with a resigned person.
-      if (!src.id?.startsWith('emp-sep-') && key && known.has(key)) return
-      const remarks = src.remarks || ''
-      const looksResigned = /resign/i.test(remarks) || (src.status || '').toLowerCase() === 'resigned'
-      next.push({
-        ...src,
-        status: looksResigned ? 'Resigned' : src.status || 'Active',
-        resignedAt: looksResigned
-          ? src.resignedAt || parseResignationDateFromRemarks(remarks) || ''
-          : src.resignedAt,
-      })
-      known.add(key)
-      changed = true
-    }
-
-
-
-    const skipName = (name?: string) => {
-      const n = (name || '').trim().toLowerCase()
-      return !n || n.startsWith('new ')
-    }
-
-    let serial = next.reduce((max, e) => Math.max(max, e.serialNo || 0), 0)
-    const weaverSource = weaverRows ?? this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
-    for (const w of weaverSource) {
-      if (skipName(w.employeeName) || known.has(normalizeName(w.employeeName))) continue
-      const isSpare = (w.designation || '').toLowerCase().includes('spare')
-      const daily = Number(w.wagePerDay) || (isSpare ? 1800 : 1450)
-      serial += 1
-      pushMissing({
-        id: `emp-w-${normalizeName(w.employeeName).replace(/\s+/g, '-')}`,
-        serialNo: serial,
-        name: w.employeeName,
-        fatherName: '',
-        cnic: '',
-        phone: '',
-        address: '',
-        designation: isSpare ? 'Spare Weaver' : 'Weaver',
-        department: 'Weaving Floor',
-        employeeCategory: 'Weaver',
-        dutyHrs: 12,
-        shiftFromTo: '8 to 8',
-        salary: daily * 30,
-        ratePerDay31: daily,
-        ratePerDay30: daily,
-        ratePerHr30: Math.round((daily / 12) * 100) / 100,
-        ratePerDay28: daily,
-        doj: '',
-        contractStatus: 'Daily Wage',
-        status: 'Active',
-      })
-    }
-
-    const helperSource = helperRows ?? this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
-    for (const h of helperSource) {
-      if (skipName(h.employeeName) || known.has(normalizeName(h.employeeName))) continue
-      const daily = Number(h.wagePerDay) || 1050
-      serial += 1
-      pushMissing({
-        id: `emp-h-${normalizeName(h.employeeName).replace(/\s+/g, '-')}`,
-        serialNo: serial,
-        name: h.employeeName,
-        fatherName: '',
-        cnic: '',
-        phone: '',
-        address: '',
-        designation: 'Helper',
-        department: 'Weaving Floor',
-        employeeCategory: 'Helper',
-        dutyHrs: 12,
-        shiftFromTo: '8 to 8',
-        salary: daily * 30,
-        ratePerDay31: daily,
-        ratePerDay30: daily,
-        ratePerHr30: Math.round((daily / 12) * 100) / 100,
-        ratePerDay28: daily,
-        doj: '',
-        contractStatus: 'Daily Wage',
-        status: 'Active',
-      })
-    }
-
-    if (changed) {
-      next = next.map((e, i) => ({ ...e, serialNo: i + 1 }))
-    }
-    return { list: next, changed }
-  },
-
   /** Weaver / Spare Weaver / Helper belong on their wage sheets, not General Wages. */
   placeOnDailyWageSheets(this: PayrollService, emp: EmployeeProfile, month = '2026-08'): void {
     const cat = inferEmployeeCategory(emp)

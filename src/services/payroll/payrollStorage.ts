@@ -1,11 +1,37 @@
 // src/services/payroll/payrollStorage.ts
+/**
+ * Browser copy of the salary data, and how changes reach the server.
+ *
+ * - The server (Postgres, table payroll_rows) is the only source of truth. Nothing is kept
+ *   in localStorage any more: an old copy on some computer can never bring back old data.
+ * - Screens keep reading/writing whole sheets (readStore / writeStore). Each write is
+ *   compared with the last copy the server confirmed, and only the changed rows are sent
+ *   (src/lib/payroll/sync.ts). Writes made together are sent together, in one transaction.
+ * - If someone else changed the same rows meanwhile, the server refuses the save; the
+ *   browser then reloads the fresh data and shows a red message.
+ * - Nothing is written before the data has loaded, and opening a page never writes.
+ */
 import { STORAGE_KEYS, NAME_ALIASES } from './payrollConstants'
 import type { EmployeeProfile, MonthLockInfo } from '@/types/payroll'
+import { stableJson } from '@/server/stableJson'
+import {
+  ALL_SHEETS,
+  META_SHEET,
+  diffSheet,
+  isEmptyChange,
+  mergeChangeSets,
+  sheetStateFrom,
+  type ApplyResult,
+  type ChangeSet,
+  type PayrollRow,
+  type SheetState,
+} from '@/lib/payroll/sync'
 
-/** In-memory cache hydrated from PostgreSQL via /api/payroll/store. */
+/** In-memory copy of the salary data (JSON per storage key). */
 export const memoryStore = new Map<string, string>()
 export let hydrated = false
 export let hydratePromise: Promise<void> | null = null
+/** Server-side helpers (month generation) may write into memoryStore while this is on. */
 export let allowServerSheetWrite = false
 
 export function setAllowServerSheetWrite(val: boolean): void {
@@ -16,191 +42,36 @@ export function setHydrated(val: boolean): void {
   hydrated = val
 }
 
-/** Writes that happened before hydrate finished — must not be wiped by DB snapshot. */
-export const pendingPersists = new Map<string, unknown>()
-
-export const LOCAL_MIRROR_KEYS = new Set<string>([
-  STORAGE_KEYS.EMPLOYEES,
-  STORAGE_KEYS.STAFF,
-  STORAGE_KEYS.CONTRACT,
-  STORAGE_KEYS.HR_META,
-  STORAGE_KEYS.ADVANCES,
-  STORAGE_KEYS.EFFICIENCY,
-  STORAGE_KEYS.WEAVERS,
-  STORAGE_KEYS.HELPERS,
-  STORAGE_KEYS.CONTRACTORS,
-  STORAGE_KEYS.PETTY_CASH,
-])
-
-export const ARRAY_MERGE_KEYS = new Set<string>([
-  STORAGE_KEYS.STAFF,
-  STORAGE_KEYS.CONTRACT,
-  STORAGE_KEYS.ADVANCES,
-  STORAGE_KEYS.EFFICIENCY,
-  STORAGE_KEYS.WEAVERS,
-  STORAGE_KEYS.HELPERS,
-  STORAGE_KEYS.CONTRACTORS,
-  STORAGE_KEYS.PETTY_CASH,
-])
-
 export function isPayrollHydrated(): boolean {
   return hydrated
-}
-
-/** Force next hydratePayrollFromDb() to re-fetch from Postgres. */
-export function resetPayrollHydration(): void {
-  hydrated = false
-  hydratePromise = null
-}
-
-export function localMirrorKey(key: string): string {
-  return `sara_payroll_mirror_${key}`
 }
 
 export function isPayrollClient(): boolean {
   return typeof window !== 'undefined'
 }
 
-export function writeLocalMirror(key: string, value: unknown): void {
-  if (!isPayrollClient() || !LOCAL_MIRROR_KEYS.has(key)) return
-  try {
-    localStorage.setItem(localMirrorKey(key), JSON.stringify(value))
-    // Marks the browser copy as "not yet confirmed by the server" (cleared on a good save).
-    localStorage.setItem(mirrorDirtyKey(key), String(Date.now()))
-  } catch {
-    // ignore quota / private mode
-  }
-}
-
-function mirrorDirtyKey(key: string): string {
-  return `sara_payroll_mirror_dirty_${key}`
-}
-
-function markMirrorSynced(key: string): void {
-  if (!isPayrollClient()) return
-  try {
-    localStorage.removeItem(mirrorDirtyKey(key))
-  } catch {
-    // ignore
-  }
-}
-
-/** Time (ms) the browser copy was changed without a confirmed server save, else null. */
-function mirrorDirtySince(key: string): number | null {
-  if (!isPayrollClient()) return null
-  try {
-    const raw = localStorage.getItem(mirrorDirtyKey(key))
-    const n = raw ? Number(raw) : NaN
-    return Number.isFinite(n) ? n : null
-  } catch {
-    return null
-  }
-}
-
-/** Server version (last change time) of each key, as loaded / last saved by this tab. */
-export const serverVersions = new Map<string, string>()
+export const PAYROLL_SAVE_PROBLEM_EVENT = 'payroll:save-problem'
+export const PAYROLL_LOAD_EVENT = 'payroll:load-state'
 
 function notifyPayrollSaveProblem(message: string, status: number): void {
   if (!isPayrollClient()) return
   try {
-    window.dispatchEvent(new CustomEvent('payroll:save-problem', { detail: { status, message } }))
+    window.dispatchEvent(new CustomEvent(PAYROLL_SAVE_PROBLEM_EVENT, { detail: { status, message } }))
   } catch {
     // ignore
   }
 }
 
-export function readLocalMirror(key: string): unknown | null {
-  if (!isPayrollClient() || !LOCAL_MIRROR_KEYS.has(key)) return null
+function emit(name: string, detail?: unknown): void {
+  if (!isPayrollClient()) return
   try {
-    const raw = localStorage.getItem(localMirrorKey(key))
-    if (!raw) return null
-    return JSON.parse(raw)
+    window.dispatchEvent(new CustomEvent(name, { detail }))
   } catch {
-    return null
+    // ignore
   }
 }
 
-const lastPersistedValue = new Map<string, string>()
-/** Saves of one key run one after another, so each carries the version the previous one got. */
-const persistChains = new Map<string, Promise<boolean>>()
-
-export function persistPayrollKey(key: string, value: unknown): Promise<boolean> {
-  if (!isPayrollClient()) return Promise.resolve(false)
-  const prev = persistChains.get(key) || Promise.resolve(true)
-  const next = prev.catch(() => false).then(() => persistPayrollKeyNow(key, value))
-  persistChains.set(key, next)
-  return next
-}
-
-async function persistPayrollKeyNow(key: string, value: unknown): Promise<boolean> {
-  if (!isPayrollClient()) return false
-  writeLocalMirror(key, value)
-  let serialized = ''
-  try {
-    serialized = JSON.stringify(value)
-  } catch {
-    serialized = ''
-  }
-
-  // Deduplicate identical saves: don't flood PUT /api/payroll/store if the database already has this exact value
-  if (serialized && lastPersistedValue.get(key) === serialized) {
-    return true
-  }
-
-  try {
-    const res = await fetch('/api/payroll/store', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ key, value, baseVersion: serverVersions.get(key) }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      console.error('[payroll] persist rejected', key, res.status, body)
-      if (res.status === 409 || res.status === 423 || res.status === 403) {
-        notifyPayrollSaveProblem(String(body?.error || 'Save nahi hua.'), res.status)
-      }
-      return false
-    }
-    if (typeof body?.version === 'string') serverVersions.set(key, body.version)
-    if (body?.lockedNote) notifyPayrollSaveProblem(String(body.lockedNote), 200)
-    markMirrorSynced(key)
-    if (serialized) {
-      lastPersistedValue.set(key, serialized)
-    }
-    return true
-  } catch (err) {
-    console.error('[payroll] persist failed', key, err)
-    return false
-  }
-}
-
-/**
- * HR_META writes in many places build a fresh object (active month, fortnight,
- * petty cash...) and used to DROP deletedEmployeeIds/Names + monthLocks.
- * That wiped delete-tombstones → deleted weavers/helpers came back after refresh.
- * Any field the caller did not send is kept from the current meta.
- */
-function preserveHrMetaFields(key: string, value: unknown): unknown {
-  if (key !== STORAGE_KEYS.HR_META || !value || typeof value !== 'object') return value
-  const incoming = value as HrMetaShape
-  let current: HrMetaShape = {}
-  try {
-    const raw = memoryStore.get(STORAGE_KEYS.HR_META)
-    if (raw) current = JSON.parse(raw) as HrMetaShape
-    else if (isPayrollClient()) current = (readLocalMirror(STORAGE_KEYS.HR_META) as HrMetaShape) || {}
-  } catch {
-    current = {}
-  }
-  return {
-    ...current,
-    ...incoming,
-    monthLocks: incoming.monthLocks ?? current.monthLocks,
-    pettyCashInflowOverrides: incoming.pettyCashInflowOverrides ?? current.pettyCashInflowOverrides,
-    deletedEmployeeIds: incoming.deletedEmployeeIds ?? current.deletedEmployeeIds,
-    deletedEmployeeNames: incoming.deletedEmployeeNames ?? current.deletedEmployeeNames,
-  }
-}
+// ---------------------------------------------------------------- read / write
 
 export function readStore<T>(key: string, fallback: T): T {
   try {
@@ -209,202 +80,371 @@ export function readStore<T>(key: string, fallback: T): T {
   } catch {
     // ignore
   }
-  if (isPayrollClient()) {
-    try {
-      const legacy = localStorage.getItem(key)
-      if (legacy) {
-        localStorage.removeItem(key)
-        memoryStore.set(key, legacy)
-        const parsed = JSON.parse(legacy) as T
-        void persistPayrollKey(key, parsed)
-        return parsed
-      }
-    } catch {
-      // ignore
-    }
-    const mirrored = readLocalMirror(key)
-    if (mirrored != null) {
-      return mirrored as T
-    }
-  }
   return fallback
 }
 
-export function writeStore(key: string, value: unknown): void {
-  value = preserveHrMetaFields(key, value)
+/** Settings writes: a field that is left out (or undefined) keeps its current value. */
+function mergeMeta(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  let current: Record<string, unknown> = {}
   try {
-    memoryStore.set(key, JSON.stringify(value))
+    current = JSON.parse(memoryStore.get(META_SHEET) || '{}') as Record<string, unknown>
   } catch {
-    // ignore
+    current = {}
   }
-  writeLocalMirror(key, value)
-  // Wait until the DB snapshot is loaded, otherwise a first paint can overwrite Postgres.
-  if (!hydrated) {
-    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-      const prev = pendingPersists.get(key)
-      if (Array.isArray(prev)) {
-        pendingPersists.set(
-          key,
-          mergeRowsById(prev as { id?: string }[], value as { id?: string }[])
-        )
-      } else {
-        pendingPersists.set(key, value)
-      }
-    } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-      const prev = pendingPersists.get(key)
-      const prevObj =
-        prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
-      const incoming = value as {
-        pettyCashInflowOverrides?: Record<string, number>
-        monthLocks?: Record<string, MonthLockInfo>
-      }
-      const prevOverrides =
-        prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
-          ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
-          : {}
-      const prevLocks =
-        prevObj.monthLocks && typeof prevObj.monthLocks === 'object'
-          ? (prevObj.monthLocks as Record<string, MonthLockInfo>)
-          : {}
-      pendingPersists.set(key, {
-        ...prevObj,
-        ...incoming,
-        pettyCashInflowOverrides: {
-          ...prevOverrides,
-          ...(incoming.pettyCashInflowOverrides || {}),
-        },
-        monthLocks: {
-          ...prevLocks,
-          ...(incoming.monthLocks || {}),
-        },
-      })
-    } else {
-      pendingPersists.set(key, value)
-    }
+  const merged: Record<string, unknown> = { ...current }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v !== undefined) merged[k] = v
+  }
+  return merged
+}
+
+export function writeStore(key: string, value: unknown): void {
+  if (key === META_SHEET) value = mergeMeta(value)
+  if (!isPayrollClient()) {
+    // Server-side helpers work on a private in-memory copy and return a patch.
+    memoryStore.set(key, JSON.stringify(value))
     return
   }
-  void persistPayrollKey(key, value)
+  if (!hydrated) {
+    // Never save anything built before the real data arrived (it would be seed data).
+    console.warn('[payroll] write ignored — data not loaded yet', key)
+    return
+  }
+  memoryStore.set(key, JSON.stringify(value))
+  dirty.add(key)
+  scheduleFlush()
 }
 
 export async function writeStoreAndWait(key: string, value: unknown): Promise<boolean> {
-  value = preserveHrMetaFields(key, value)
-  try {
-    memoryStore.set(key, JSON.stringify(value))
-  } catch {
-    // ignore
+  if (!isPayrollClient()) {
+    writeStore(key, value)
+    return false
   }
-  writeLocalMirror(key, value)
-  if (!hydrated) {
-    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-      const prev = pendingPersists.get(key)
-      pendingPersists.set(
-        key,
-        Array.isArray(prev)
-          ? mergeRowsById(prev as { id?: string }[], value as { id?: string }[])
-          : value
-      )
-    } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-      const prev = pendingPersists.get(key)
-      const prevObj =
-        prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {}
-      const incoming = value as {
-        pettyCashInflowOverrides?: Record<string, number>
-        monthLocks?: Record<string, MonthLockInfo>
-      }
-      const prevOverrides =
-        prevObj.pettyCashInflowOverrides && typeof prevObj.pettyCashInflowOverrides === 'object'
-          ? (prevObj.pettyCashInflowOverrides as Record<string, number>)
-          : {}
-      const prevLocks =
-        prevObj.monthLocks && typeof prevObj.monthLocks === 'object'
-          ? (prevObj.monthLocks as Record<string, MonthLockInfo>)
-          : {}
-      pendingPersists.set(key, {
-        ...prevObj,
-        ...incoming,
-        pettyCashInflowOverrides: {
-          ...prevOverrides,
-          ...(incoming.pettyCashInflowOverrides || {}),
-        },
-        monthLocks: {
-          ...prevLocks,
-          ...(incoming.monthLocks || {}),
-        },
-      })
-    } else {
-      pendingPersists.set(key, value)
-    }
-    await hydratePayrollFromDb()
-    // After hydrate, memory has DB+mirrors; still force-write our value merged in
-    if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-      let current: { id?: string }[] = []
-      try {
-        current = JSON.parse(memoryStore.get(key) || '[]')
-      } catch {
-        current = []
-      }
-      const merged = mergeRowsById(current, value as { id?: string }[])
-      memoryStore.set(key, JSON.stringify(merged))
-      writeLocalMirror(key, merged)
-      return persistPayrollKey(key, merged)
-    }
-    if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-      let current: Record<string, unknown> = {}
-      try {
-        current = JSON.parse(memoryStore.get(key) || '{}')
-      } catch {
-        current = {}
-      }
-      const incoming = value as {
-        pettyCashInflowOverrides?: Record<string, number>
-        monthLocks?: Record<string, MonthLockInfo>
-      }
-      const curOverrides =
-        current.pettyCashInflowOverrides && typeof current.pettyCashInflowOverrides === 'object'
-          ? (current.pettyCashInflowOverrides as Record<string, number>)
-          : {}
-      const curLocks =
-        current.monthLocks && typeof current.monthLocks === 'object'
-          ? (current.monthLocks as Record<string, MonthLockInfo>)
-          : {}
-      const merged = {
-        ...current,
-        ...incoming,
-        pettyCashInflowOverrides: {
-          ...curOverrides,
-          ...(incoming.pettyCashInflowOverrides || {}),
-        },
-        monthLocks: {
-          ...curLocks,
-          ...(incoming.monthLocks || {}),
-        },
-      }
-      memoryStore.set(key, JSON.stringify(merged))
-      writeLocalMirror(key, merged)
-      return persistPayrollKey(key, merged)
-    }
-  }
-  return persistPayrollKey(key, value)
+  if (!hydrated) await hydratePayrollFromDb()
+  if (!hydrated) return false
+  const done = nextFlushResult()
+  writeStore(key, value)
+  return done
 }
 
-/** Prefer DB rows for periods already saved; only add mirror rows for brand-new month/fortnight.
- *  Also keep mirror-only ids in an existing period (e.g. new advance saved before DB persist). */
-export function mergeMirrorPreferDbPeriods<
-  T extends { id?: string; month?: string; fortnight?: string },
->(dbRows: T[], mirrorRows: T[]): T[] {
-  const db = Array.isArray(dbRows) ? dbRows : []
-  const mirror = Array.isArray(mirrorRows) ? mirrorRows : []
-  if (db.length === 0) return mergeRowsById(db, mirror)
-  const periodsInDb = new Set(
-    db.map((r) => `${r.month || ''}|${r.fortnight || ''}`)
-  )
-  const dbIds = new Set(db.map((r) => r.id).filter(Boolean) as string[])
-  const extras = mirror.filter((r) => {
-    if (r.id && !dbIds.has(r.id)) return true
-    return !periodsInDb.has(`${r.month || ''}|${r.fortnight || ''}`)
-  })
-  return extras.length ? mergeRowsById(db, extras) : [...db]
+/** Resolves when every change made so far has reached the server (true) or failed (false). */
+export function flushPayrollSaves(): Promise<boolean> {
+  if (!isPayrollClient() || (!dirty.size && !inFlight)) return Promise.resolve(true)
+  const done = nextFlushResult()
+  scheduleFlush()
+  return done
 }
+
+export function hasUnsavedPayrollChanges(): boolean {
+  return dirty.size > 0 || inFlight
+}
+
+// ---------------------------------------------------------------- save engine
+
+/** What the server last confirmed, per storage key. */
+const confirmed = new Map<string, SheetState>()
+const dirty = new Set<string>()
+let inFlight = false
+let flushQueued = false
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let retryDelay = 0
+let failedRequest: { id: string; body: string } | null = null
+let waiters: Array<(ok: boolean) => void> = []
+
+function nextFlushResult(): Promise<boolean> {
+  return new Promise((resolve) => waiters.push(resolve))
+}
+
+function scheduleFlush(): void {
+  if (flushQueued) return
+  flushQueued = true
+  // Let one user action finish all its writes, then send them as one change set.
+  setTimeout(() => {
+    flushQueued = false
+    void flush()
+  }, 0)
+}
+
+function requestId(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+}
+
+type Snapshot = { key: string; value: unknown }
+
+async function flush(): Promise<void> {
+  if (inFlight || !hydrated) return
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  const keys = [...dirty]
+  dirty.clear()
+  const myWaiters = waiters
+  waiters = []
+  const settle = (ok: boolean) => myWaiters.forEach((w) => w(ok))
+
+  const snapshots: Snapshot[] = []
+  const sets: ChangeSet[] = []
+  for (const key of keys) {
+    let value: unknown
+    try {
+      value = JSON.parse(memoryStore.get(key) || 'null')
+    } catch {
+      continue
+    }
+    const state = confirmed.get(key) || sheetStateFrom(key, key === META_SHEET ? {} : [], {})
+    const cs = diffSheet(key, state, value)
+    // ids may have been added to rows that had none — keep memory in step.
+    memoryStore.set(key, JSON.stringify(value))
+    snapshots.push({ key, value })
+    sets.push(cs)
+  }
+  const cs = mergeChangeSets(sets)
+  if (isEmptyChange(cs)) {
+    settle(true)
+    return
+  }
+
+  inFlight = true
+  const body = JSON.stringify({ ops: cs.ops, order: cs.order })
+  const id = failedRequest && failedRequest.body === body ? failedRequest.id : requestId()
+  let status = 0
+  let reply: (Partial<ApplyResult> & { error?: string; lockedNote?: string }) | null = null
+  try {
+    const res = await fetch('/api/payroll/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ requestId: id, ops: cs.ops, order: cs.order }),
+    })
+    status = res.status
+    reply = await res.json().catch(() => null)
+  } catch (err) {
+    console.error('[payroll] save failed (network)', err)
+  }
+  inFlight = false
+
+  if (status === 200 && reply) {
+    failedRequest = null
+    retryDelay = 0
+    confirmSaved(snapshots, cs, reply as ApplyResult)
+    if (reply.kept?.length) {
+      putBackKeptRows(reply.kept)
+      emit('payroll_synced', { lockedRowsKept: true })
+    }
+    if (reply.lockedNote) notifyPayrollSaveProblem(reply.lockedNote, 200)
+    settle(true)
+  } else if (status === 0 || status >= 500) {
+    // Server not reached / failed: keep the changes and try again.
+    for (const s of snapshots) dirty.add(s.key)
+    failedRequest = { id, body }
+    retryDelay = Math.min(retryDelay ? retryDelay * 2 : 3000, 30000)
+    notifyPayrollSaveProblem(
+      'Salary save nahi hua — internet / server check karein. Dobara koshish ho rahi hai; page band na karein.',
+      status || 503
+    )
+    retryTimer = setTimeout(() => void flush(), retryDelay)
+    settle(false)
+    return
+  } else {
+    // Refused (stale data, no permission, bad input): load the server's data again so
+    // the screen never shows something that is not saved.
+    failedRequest = null
+    notifyPayrollSaveProblem(String(reply?.error || 'Save nahi hua.'), status)
+    settle(false)
+    await reloadFromServer()
+    releaseWaiters(false)
+    return
+  }
+  if (dirty.size) scheduleFlush()
+  else releaseWaiters(true)
+}
+
+function releaseWaiters(ok: boolean): void {
+  const w = waiters
+  waiters = []
+  w.forEach((f) => f(ok))
+}
+
+function confirmSaved(snapshots: Snapshot[], cs: ChangeSet, reply: ApplyResult): void {
+  const versions = reply.versions || {}
+  const keptIds = new Set((reply.kept || []).map((k) => `${k.sheet}\u0000${k.id}`))
+  for (const { key, value } of snapshots) {
+    const before = confirmed.get(key) || sheetStateFrom(key, key === META_SHEET ? {} : [], {})
+    const v = versions[key] || {}
+    const next: SheetState = { rows: new Map(), order: [] }
+    if (key === META_SHEET) {
+      for (const [field, had] of before.rows) next.rows.set(field, had)
+      for (const [field, fieldValue] of Object.entries((value || {}) as Record<string, unknown>)) {
+        if (fieldValue === undefined || keptIds.has(`${key}\u0000${field}`)) continue
+        const ver = v[field]
+        if (typeof ver === 'number') next.rows.set(field, { json: stableJson(fieldValue), version: ver })
+      }
+    } else {
+      for (const row of (Array.isArray(value) ? value : []) as PayrollRow[]) {
+        const id = String(row.id)
+        if (keptIds.has(`${key}\u0000${id}`)) {
+          const had = before.rows.get(id)
+          if (had) {
+            next.rows.set(id, had)
+            next.order.push(id)
+          }
+          continue
+        }
+        const ver = v[id]
+        const had = before.rows.get(id)
+        if (typeof ver === 'number') next.rows.set(id, { json: stableJson(row), version: ver })
+        else if (had) next.rows.set(id, had)
+        else continue
+        next.order.push(id)
+      }
+      // Rows the server kept (locked month) that this browser had removed stay confirmed.
+      for (const [id, had] of before.rows) {
+        if (!next.rows.has(id) && keptIds.has(`${key}\u0000${id}`)) {
+          next.rows.set(id, had)
+          next.order.push(id)
+        }
+      }
+    }
+    confirmed.set(key, next)
+  }
+  void cs
+}
+
+/** Locked-month rows the server did not change: show the stored version again. */
+function putBackKeptRows(kept: ApplyResult['kept']): void {
+  const bySheet = new Map<string, ApplyResult['kept']>()
+  for (const k of kept) bySheet.set(k.sheet, [...(bySheet.get(k.sheet) || []), k])
+  for (const [sheet, list] of bySheet) {
+    const state = confirmed.get(sheet) || sheetStateFrom(sheet, sheet === META_SHEET ? {} : [], {})
+    if (sheet === META_SHEET) {
+      const meta = readStore<Record<string, unknown>>(sheet, {})
+      for (const k of list) {
+        if (k.row == null) delete meta[k.id]
+        else meta[k.id] = k.row
+        if (k.row == null) state.rows.delete(k.id)
+        else state.rows.set(k.id, { json: stableJson(k.row), version: k.version })
+      }
+      memoryStore.set(sheet, JSON.stringify(meta))
+    } else {
+      let rows = readStore<PayrollRow[]>(sheet, [])
+      for (const k of list) {
+        const at = rows.findIndex((r) => r?.id === k.id)
+        if (k.row == null) {
+          if (at >= 0) rows = rows.filter((_, i) => i !== at)
+          state.rows.delete(k.id)
+          state.order = state.order.filter((x) => x !== k.id)
+        } else {
+          if (at >= 0) rows[at] = k.row as PayrollRow
+          else rows.push(k.row as PayrollRow)
+          state.rows.set(k.id, { json: stableJson(k.row), version: k.version })
+          if (!state.order.includes(k.id)) state.order.push(k.id)
+        }
+      }
+      memoryStore.set(sheet, JSON.stringify(rows))
+    }
+    confirmed.set(sheet, state)
+  }
+}
+
+async function reloadFromServer(): Promise<void> {
+  resetPayrollHydration()
+  await hydratePayrollFromDb()
+  emit('payroll_synced', { reloaded: true })
+}
+
+// ---------------------------------------------------------------- load
+
+/** Force the next hydratePayrollFromDb() to fetch from the server again. */
+export function resetPayrollHydration(): void {
+  hydrated = false
+  hydratePromise = null
+}
+
+let unloadGuardAdded = false
+function addUnloadGuard(): void {
+  if (unloadGuardAdded || !isPayrollClient()) return
+  unloadGuardAdded = true
+  window.addEventListener('beforeunload', (e) => {
+    if (!hasUnsavedPayrollChanges()) return
+    e.preventDefault()
+    e.returnValue = ''
+  })
+}
+
+/** Salary data used to be copied into every browser; remove those old copies. */
+function clearOldBrowserCopies(): void {
+  try {
+    const drop: string[] = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i) || ''
+      if (k.startsWith('sara_payroll_mirror_') || (ALL_SHEETS as readonly string[]).includes(k)) drop.push(k)
+    }
+    for (const k of drop) localStorage.removeItem(k)
+  } catch {
+    // ignore (private mode)
+  }
+}
+
+export type PayrollLoadState = { status: 'loading' | 'ready' | 'error'; message?: string }
+let loadState: PayrollLoadState = { status: 'loading' }
+export function getPayrollLoadState(): PayrollLoadState {
+  return loadState
+}
+function setLoadState(s: PayrollLoadState): void {
+  loadState = s
+  emit(PAYROLL_LOAD_EVENT, s)
+}
+
+/** Load the salary data from the server (once; again after resetPayrollHydration). */
+export async function hydratePayrollFromDb(): Promise<void> {
+  if (!isPayrollClient()) return
+  if (hydrated) return
+  if (hydratePromise) return hydratePromise
+
+  hydratePromise = (async () => {
+    // Finish sending what is already queued before replacing the local copy.
+    while (inFlight) await new Promise((r) => setTimeout(r, 50))
+    if (!hydrated && loadState.status !== 'ready') setLoadState({ status: 'loading' })
+    try {
+      const res = await fetch('/api/payroll/data', { method: 'GET', cache: 'no-store', credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean
+        error?: string
+        store?: Record<string, unknown>
+        versions?: Record<string, Record<string, number>>
+      } | null
+      if (!res.ok || !data?.ok || !data.store) {
+        throw new Error(data?.error || `Salary data load nahi hua (${res.status}).`)
+      }
+      memoryStore.clear()
+      confirmed.clear()
+      dirty.clear()
+      for (const key of ALL_SHEETS) {
+        const value = data.store[key] ?? (key === META_SHEET ? {} : [])
+        memoryStore.set(key, JSON.stringify(value))
+        confirmed.set(key, sheetStateFrom(key, value, data.versions?.[key]))
+      }
+      hydrated = true
+      setLoadState({ status: 'ready' })
+      clearOldBrowserCopies()
+      addUnloadGuard()
+    } catch (err) {
+      console.error('[payroll] load failed', err)
+      hydratePromise = null
+      setLoadState({ status: 'error', message: err instanceof Error ? err.message : 'Salary data load nahi hua.' })
+    }
+  })()
+
+  return hydratePromise
+}
+
+// ---------------------------------------------------------------- shared helpers
 
 /** Union salary-sheet rows by id so that a local September isn't lost, with overrides taking precedence over base rows. */
 export function mergeRowsById<T extends { id?: string }>(baseRows: T[], overrides: T[]): T[] {
@@ -563,24 +603,6 @@ export function readHrMetaRaw(): HrMetaShape {
   } catch {
     // ignore
   }
-  if (isPayrollClient()) {
-    try {
-      const legacy = localStorage.getItem(STORAGE_KEYS.HR_META)
-      if (legacy) {
-        localStorage.removeItem(STORAGE_KEYS.HR_META)
-        memoryStore.set(STORAGE_KEYS.HR_META, legacy)
-        const parsed = JSON.parse(legacy)
-        void persistPayrollKey(STORAGE_KEYS.HR_META, parsed)
-        return parsed
-      }
-    } catch {
-      // ignore
-    }
-    const mirrored = readLocalMirror(STORAGE_KEYS.HR_META)
-    if (mirrored && typeof mirrored === 'object') {
-      return mirrored as HrMetaShape
-    }
-  }
   return {}
 }
 
@@ -630,226 +652,6 @@ export function clearDeletedEmployeeTombstone(id?: string, name?: string): void 
     deletedEmployeeIds: [...ids],
     deletedEmployeeNames: [...names],
   })
-}
-
-let postHydrateHook: (() => void) | null = null
-
-export function registerPostHydrateHook(fn: () => void): void {
-  postHydrateHook = fn
-}
-
-/** Load payroll store from DB (seeds DB if empty). Call once when entering Payroll module. */
-export async function hydratePayrollFromDb(): Promise<void> {
-  if (!isPayrollClient()) return
-  if (hydrated) return
-  if (hydratePromise) return hydratePromise
-
-  hydratePromise = (async () => {
-    try {
-      const res = await fetch('/api/payroll/store', { method: 'GET', cache: 'no-store' })
-      const data = await res.json()
-      if (data?.ok && data.store && typeof data.store === 'object') {
-        Object.entries(data.store as Record<string, unknown>).forEach(([key, value]) => {
-          const raw = JSON.stringify(value)
-          memoryStore.set(key, raw)
-          lastPersistedValue.set(key, raw)
-        })
-      }
-      const dbVersions: Record<string, string> =
-        data?.ok && data.versions && typeof data.versions === 'object' ? data.versions : {}
-      for (const [key, v] of Object.entries(dbVersions)) serverVersions.set(key, v)
-
-      // Merge local mirrors (e.g. September generated before PUT finished / offline) —
-      // only browser changes the server never confirmed, and only if the server has not
-      // changed since. An old copy on another computer must not bring deleted rows back.
-      for (const key of LOCAL_MIRROR_KEYS) {
-        const dirtySince = mirrorDirtySince(key)
-        if (dirtySince == null) continue
-        const dbChanged = dbVersions[key] ? Date.parse(dbVersions[key]) : 0
-        if (dbChanged && dbChanged > dirtySince + 2 * 60_000) {
-          markMirrorSynced(key)
-          notifyPayrollSaveProblem(
-            'Is browser ki purani unsaved copy chhod di gayi — server par naya data hai (kisi aur computer se save hua).',
-            409
-          )
-          continue
-        }
-        const mirrored = readLocalMirror(key)
-        if (mirrored == null) continue
-        if (key === STORAGE_KEYS.HR_META && typeof mirrored === 'object') {
-          const dbMeta = (() => {
-            try {
-              return JSON.parse(memoryStore.get(key) || '{}')
-            } catch {
-              return {}
-            }
-          })() as HrMetaShape
-          const localMeta = mirrored as HrMetaShape
-          const merged = {
-            categories: localMeta.categories?.length ? localMeta.categories : dbMeta.categories || [],
-            designations: localMeta.designations?.length
-              ? localMeta.designations
-              : dbMeta.designations || [],
-            activeSalariedMonth: (() => {
-              const local = localMeta.activeSalariedMonth || ''
-              const db = dbMeta.activeSalariedMonth || ''
-              if (local && db) return local >= db ? local : db
-              return local || db || undefined
-            })(),
-            activeFortnightMonth:
-              localMeta.activeFortnightMonth || dbMeta.activeFortnightMonth || undefined,
-            activeFortnight: localMeta.activeFortnight || dbMeta.activeFortnight || undefined,
-            pettyCashInflowOverrides: {
-              ...(dbMeta.pettyCashInflowOverrides || {}),
-              ...(localMeta.pettyCashInflowOverrides || {}),
-            },
-            monthLocks: {
-              ...(dbMeta.monthLocks || {}),
-              ...(localMeta.monthLocks || {}),
-            },
-            deletedEmployeeIds: [
-              ...new Set([
-                ...(dbMeta.deletedEmployeeIds || []),
-                ...(localMeta.deletedEmployeeIds || []),
-              ]),
-            ],
-            deletedEmployeeNames: [
-              ...new Set([
-                ...(dbMeta.deletedEmployeeNames || []),
-                ...(localMeta.deletedEmployeeNames || []),
-              ]),
-            ],
-          }
-          memoryStore.set(key, JSON.stringify(merged))
-          pendingPersists.set(key, merged)
-          continue
-        }
-        if (Array.isArray(mirrored)) {
-          let dbRows: { id?: string; month?: string; fortnight?: string }[] = []
-          try {
-            dbRows = JSON.parse(memoryStore.get(key) || '[]')
-          } catch {
-            dbRows = []
-          }
-          const merged =
-            key === STORAGE_KEYS.EMPLOYEES && dbRows.length > 0
-              ? [...dbRows]
-              : key === STORAGE_KEYS.ADVANCES
-                ? // Always union advances by id so a just-saved Dawood isn't dropped
-                  // when DB already has that month/period from an earlier snapshot.
-                  mergeRowsById(
-                    dbRows,
-                    mirrored as { id?: string; month?: string; fortnight?: string }[]
-                  )
-                : mergeMirrorPreferDbPeriods(
-                    dbRows,
-                    mirrored as { id?: string; month?: string; fortnight?: string }[]
-                  )
-          memoryStore.set(key, JSON.stringify(merged))
-          if (JSON.stringify(merged) !== JSON.stringify(dbRows)) {
-            pendingPersists.set(key, merged)
-          }
-        }
-      }
-
-      // Merge any in-flight pending writes into memory
-      for (const [key, value] of pendingPersists) {
-        if (key === STORAGE_KEYS.EMPLOYEES && Array.isArray(value)) {
-          memoryStore.set(key, JSON.stringify(value))
-          writeLocalMirror(key, value)
-        } else if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-          let current: { id?: string }[] = []
-          try {
-            current = JSON.parse(memoryStore.get(key) || '[]')
-          } catch {
-            current = []
-          }
-          const merged = mergeRowsById(current, value as { id?: string }[])
-          memoryStore.set(key, JSON.stringify(merged))
-          pendingPersists.set(key, merged)
-          writeLocalMirror(key, merged)
-        } else if (key === STORAGE_KEYS.HR_META && value && typeof value === 'object') {
-          let current: Record<string, unknown> = {}
-          try {
-            current = JSON.parse(memoryStore.get(key) || '{}')
-          } catch {
-            current = {}
-          }
-          const incoming = value as { pettyCashInflowOverrides?: Record<string, number> }
-          const curOverrides =
-            current.pettyCashInflowOverrides &&
-            typeof current.pettyCashInflowOverrides === 'object'
-              ? (current.pettyCashInflowOverrides as Record<string, number>)
-              : {}
-          const merged = {
-            ...current,
-            ...incoming,
-            pettyCashInflowOverrides: {
-              ...curOverrides,
-              ...(incoming.pettyCashInflowOverrides || {}),
-            },
-            // Never lose delete-tombstones while merging pending writes.
-            deletedEmployeeIds: [
-              ...new Set([
-                ...(((current as HrMetaShape).deletedEmployeeIds) || []),
-                ...(((incoming as HrMetaShape).deletedEmployeeIds) || []),
-              ]),
-            ],
-            deletedEmployeeNames: [
-              ...new Set([
-                ...(((current as HrMetaShape).deletedEmployeeNames) || []),
-                ...(((incoming as HrMetaShape).deletedEmployeeNames) || []),
-              ]),
-            ],
-          }
-          memoryStore.set(key, JSON.stringify(merged))
-          pendingPersists.set(key, merged)
-          writeLocalMirror(key, merged)
-        }
-      }
-
-      hydrated = true
-
-      const toFlush = [...pendingPersists.entries()]
-      pendingPersists.clear()
-      await Promise.all(
-        toFlush.map(async ([key, value]) => {
-          if (key === STORAGE_KEYS.EMPLOYEES && Array.isArray(value)) {
-            memoryStore.set(key, JSON.stringify(value))
-            writeLocalMirror(key, value)
-            return persistPayrollKey(key, value)
-          } else if (ARRAY_MERGE_KEYS.has(key) && Array.isArray(value)) {
-            let current: { id?: string }[] = []
-            try {
-              current = JSON.parse(memoryStore.get(key) || '[]')
-            } catch {
-              current = []
-            }
-            const merged = mergeRowsById(current, value as { id?: string }[])
-            memoryStore.set(key, JSON.stringify(merged))
-            writeLocalMirror(key, merged)
-            return persistPayrollKey(key, merged)
-          }
-          return persistPayrollKey(key, value)
-        })
-      )
-
-      // Post-hydrate self-healing callbacks (repairs corrupted historical rates, duplicates, etc.)
-      try {
-        postHydrateHook?.()
-      } catch (hookErr) {
-        console.error('[payroll] post-hydrate hook error', hookErr)
-      }
-    } catch (err) {
-      console.error('[payroll] hydrate failed — falling back to seed/local', err)
-      hydrated = true
-      const toFlush = [...pendingPersists.entries()]
-      pendingPersists.clear()
-      await Promise.all(toFlush.map(([key, value]) => persistPayrollKey(key, value)))
-    }
-  })()
-
-  return hydratePromise
 }
 
 export function readMonthLock(month: string): MonthLockInfo | null {

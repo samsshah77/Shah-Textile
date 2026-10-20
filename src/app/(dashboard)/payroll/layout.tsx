@@ -12,8 +12,9 @@ export default async function PayrollLayout({ children }: { children: React.Reac
   return (
     <PayrollDirtyProvider>
       <div className="sara-module-content sara-payroll">
-        <PayrollHydrate />
-        <FinanceReadonly>{children}</FinanceReadonly>
+        <PayrollHydrate>
+          <FinanceReadonly>{children}</FinanceReadonly>
+        </PayrollHydrate>
         {/* Red banner when the server refuses a salary save (old tab / locked month). */}
         <FloorSaveAlerts eventName="payroll:save-problem" />
       </div>
