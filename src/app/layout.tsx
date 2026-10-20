@@ -1,21 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { Source_Sans_3, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { AppLayout } from '@/components/shared/AppLayout'
-
-const sourceSans = Source_Sans_3({
-  subsets: ['latin'],
-  variable: '--font-sans',
-  display: 'swap',
-  weight: ['300', '400', '500', '600', '700'],
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  weight: ['400', '500', '600', '700'],
-  display: 'swap',
-})
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -44,10 +29,15 @@ export default function RootLayout({
       lang="en"
       data-bs-theme="light"
       data-lte-color-mode="off"
-      className={`${sourceSans.variable} ${jetbrainsMono.variable}`}
       style={{ colorScheme: 'light' }}
     >
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap"
+        />
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css"

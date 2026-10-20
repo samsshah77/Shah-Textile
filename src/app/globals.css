@@ -55,6 +55,8 @@
 
 /* Light Mode — AdminLTE default (Bootstrap primary #0d6efd) */
 :root {
+  --font-sans: 'Source Sans 3', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --background: #f8f9fa;
   --foreground: #212529;
   --card: #ffffff;
