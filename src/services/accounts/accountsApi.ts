@@ -25,6 +25,7 @@ import type {
   PayablesReport,
   CostBucket,
 } from '@/lib/accounts/types'
+import type { MonthImportPreview, MonthImportResult } from '@/server/accounts/monthImport'
 
 export const ACCOUNTS_PROBLEM_EVENT = 'accounts:save-problem'
 export const ACCOUNTS_CHANGED_EVENT = 'accounts:changed'
@@ -130,6 +131,9 @@ export const accountsApi = {
     reference?: string
     remarks?: string
   }) => call<{ payment: Payment }>('POST', '/api/accounts/payments', input).then((r) => r.payment),
+  monthImportPreview: (month: string) =>
+    call<{ preview: MonthImportPreview }>('GET', `/api/accounts/import${q({ month })}`).then((r) => r.preview),
+  monthImport: (month: string) => call<{ result: MonthImportResult }>('POST', '/api/accounts/import', { month }).then((r) => r.result),
   payables: (asOf: string) => call<{ report: PayablesReport }>('GET', `/api/accounts/payables${q({ asOf })}`).then((r) => r.report),
   deletePayment: (id: string, version: number) => call<{ deleted: string }>('DELETE', `/api/accounts/payments/${id}${q({ version })}`),
 

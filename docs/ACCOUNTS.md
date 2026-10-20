@@ -80,3 +80,17 @@ Sara or FOI. In the ERP:
 - `balance = opening + bills − paid − adjustments`; negative = advance / we are owed.
 - `/accounts/payables?asOf=` computes the Synopsis for any date (`payablesReport` in
   `src/server/accounts/reports.ts`, API `GET /api/accounts/payables?asOf=YYYY-MM-DD`).
+
+## Importing a month kept in Excel (`/accounts/import?month=2026-09`)
+
+September 2026 was kept in Excel (Daily Expense: bills + petty cash). The file's rows are
+in `src/data/accountsImports/2026-09.json` (made from the Excel, no hand typing). The page:
+
+- shows first what would be added — nothing is written by opening it;
+- adds only what the ERP does not have: a bill with the same party + bill no., or the same
+  party + date + total, or all of whose lines are present, counts as present; a bill whose
+  number exists with different lines is listed as "mukhtalif" and not added;
+- petty cash: "Balance b/f" is never imported; an entry with the same side and amount
+  dated within 5 days of an ERP entry counts as present (each ERP entry once);
+- never changes or deletes anything, refuses a locked month, runs once (`acc_import_log`
+  source `file:2026-09`), all in one transaction, Tufail only; written to the audit log.

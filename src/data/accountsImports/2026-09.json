@@ -1,0 +1,651 @@
+{
+ "month": "2026-09",
+ "source": "09_Daily_Expense_Record_Sara_Textile_September-26.xlsx",
+ "expected": {
+  "billsTotal": 573130,
+  "pettyOpening": 4635,
+  "pettyClosing": 17936
+ },
+ "partyAliases": {
+  "Marhaba Engineering": "Marhaba Engineering Works",
+  "JAB Electronic": "JAB Electronics"
+ },
+ "bills": [
+  {
+   "date": "2026-09-01",
+   "billNo": "702",
+   "inwardNo": "7654",
+   "partyName": "Textile Traders",
+   "lines": [
+    {
+     "description": "Servo Motor",
+     "machine": "G-6200",
+     "quantity": 3,
+     "rate": 42000
+    },
+    {
+     "description": "Clutch Cover",
+     "machine": "G-6200",
+     "quantity": 1,
+     "rate": 2000
+    },
+    {
+     "description": "Pick Finding Complete",
+     "machine": "G-6200",
+     "quantity": 1,
+     "rate": 95000
+    },
+    {
+     "description": "Frame 13''",
+     "machine": "G-6200",
+     "quantity": 12,
+     "rate": 13000
+    },
+    {
+     "description": "Shaft Wheel With Bracket",
+     "machine": "G-6200",
+     "quantity": 2,
+     "rate": 7500
+    },
+    {
+     "description": "Nozzle",
+     "machine": "G-6200",
+     "quantity": 7,
+     "rate": 300
+    }
+   ]
+  },
+  {
+   "date": "2026-09-01",
+   "billNo": "608",
+   "inwardNo": "7655",
+   "partyName": "A.A.I Engineering",
+   "lines": [
+    {
+     "description": "Salvage Cutter Tip",
+     "machine": "G-6200",
+     "quantity": 30,
+     "rate": 250
+    }
+   ]
+  },
+  {
+   "date": "2026-09-02",
+   "billNo": "1022",
+   "inwardNo": "7656",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Weft Cutter Blade Repaired",
+     "machine": "G-6200",
+     "quantity": 11,
+     "rate": 250
+    }
+   ]
+  },
+  {
+   "date": "2026-09-02",
+   "billNo": "3543",
+   "inwardNo": "7657",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Module New",
+     "machine": "G-6200",
+     "quantity": 9,
+     "rate": 2200
+    },
+    {
+     "description": "Module Cycle",
+     "machine": "PU",
+     "quantity": 104,
+     "rate": 110
+    }
+   ]
+  },
+  {
+   "date": "2026-09-02",
+   "billNo": "26",
+   "inwardNo": "7658",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "RAM TC551001 Dip",
+     "machine": "Electronic",
+     "quantity": 2,
+     "rate": 1500
+    },
+    {
+     "description": "IC 75179 Dip",
+     "machine": "Electronic",
+     "quantity": 6,
+     "rate": 250
+    }
+   ]
+  },
+  {
+   "date": "2026-09-09",
+   "billNo": "243",
+   "inwardNo": "7659",
+   "partyName": "Marhaba Engineering",
+   "lines": [
+    {
+     "description": "Break Bend Joined",
+     "machine": "PU",
+     "quantity": 3,
+     "rate": 500
+    },
+    {
+     "description": "Shuttle Gripper Repaired",
+     "machine": "PU",
+     "quantity": 6,
+     "rate": 100
+    }
+   ]
+  },
+  {
+   "date": "2026-09-11",
+   "billNo": "543",
+   "inwardNo": "7660",
+   "partyName": "JAB Electronic",
+   "lines": [
+    {
+     "description": "Wall Fan Motor Winding",
+     "machine": "Electronic",
+     "quantity": 1,
+     "rate": 3500
+    }
+   ]
+  },
+  {
+   "date": "2026-09-12",
+   "billNo": "3569",
+   "inwardNo": "7661",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Spring Jala 13\"",
+     "machine": "",
+     "quantity": 160,
+     "rate": 45
+    },
+    {
+     "description": "Comber Board",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1000
+    }
+   ]
+  },
+  {
+   "date": "2026-09-14",
+   "billNo": "3528",
+   "inwardNo": "7662",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "G6200 Gripper Set",
+     "machine": "G-6200",
+     "quantity": 1,
+     "rate": 19500
+    }
+   ]
+  },
+  {
+   "date": "2026-09-21",
+   "billNo": "244",
+   "inwardNo": "7663",
+   "partyName": "Marhaba Engineering",
+   "lines": [
+    {
+     "description": "Trator Liver Dobby K.R",
+     "machine": "PU",
+     "quantity": 5,
+     "rate": 3500
+    },
+    {
+     "description": "Point",
+     "machine": "PU",
+     "quantity": 6,
+     "rate": 300
+    },
+    {
+     "description": "Dobby Box New",
+     "machine": "PU",
+     "quantity": 1,
+     "rate": 1000
+    }
+   ]
+  },
+  {
+   "date": "2026-09-21",
+   "billNo": "245",
+   "inwardNo": "7664",
+   "partyName": "Marhaba Engineering",
+   "lines": [
+    {
+     "description": "Jeck Shaft Rep",
+     "machine": "G-6200",
+     "quantity": 2,
+     "rate": 500
+    },
+    {
+     "description": "Catter Pin New",
+     "machine": "G-6200",
+     "quantity": 2,
+     "rate": 150
+    },
+    {
+     "description": "Catter Bush Rep",
+     "machine": "G-6200",
+     "quantity": 2,
+     "rate": 500
+    },
+    {
+     "description": "Bearing Lock",
+     "machine": "G-6200",
+     "quantity": 1,
+     "rate": 500
+    },
+    {
+     "description": "Bearing Fitting",
+     "machine": "G-6200",
+     "quantity": 1,
+     "rate": 800
+    }
+   ]
+  },
+  {
+   "date": "2026-09-19",
+   "billNo": "3587",
+   "inwardNo": "7665",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Leno 330+380",
+     "machine": "",
+     "quantity": 20,
+     "rate": 115
+    },
+    {
+     "description": "Opner Patti G-6300",
+     "machine": "G-6300",
+     "quantity": 5,
+     "rate": 800
+    },
+    {
+     "description": "Module Cycle",
+     "machine": "",
+     "quantity": 48,
+     "rate": 110
+    },
+    {
+     "description": "CL Card",
+     "machine": "",
+     "quantity": 10,
+     "rate": 650
+    },
+    {
+     "description": "EGS Oil Pump Seal",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1000
+    },
+    {
+     "description": "EGS Oil Pump Seal Cap",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1800
+    }
+   ]
+  },
+  {
+   "date": "2026-09-23",
+   "billNo": "12",
+   "inwardNo": "7666",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "Solding Wire",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    },
+    {
+     "description": "Cap 470/450V",
+     "machine": "",
+     "quantity": 2,
+     "rate": 450
+    },
+    {
+     "description": "10N40 TR",
+     "machine": "",
+     "quantity": 6,
+     "rate": 100
+    },
+    {
+     "description": "IRFP250 TR",
+     "machine": "",
+     "quantity": 10,
+     "rate": 300
+    },
+    {
+     "description": "Battery 9V",
+     "machine": "",
+     "quantity": 2,
+     "rate": 150
+    },
+    {
+     "description": "Lithium Battery 3.6V",
+     "machine": "",
+     "quantity": 2,
+     "rate": 1500
+    },
+    {
+     "description": "25N120 IGBT",
+     "machine": "",
+     "quantity": 6,
+     "rate": 300
+    },
+    {
+     "description": "4N65 Plastic",
+     "machine": "",
+     "quantity": 2,
+     "rate": 100
+    }
+   ]
+  },
+  {
+   "date": "2026-09-22",
+   "billNo": "3616",
+   "inwardNo": "7667",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Jeckquard Jala Pipe",
+     "machine": "",
+     "quantity": 200,
+     "rate": 6
+    },
+    {
+     "description": "Star G2 Card",
+     "machine": "",
+     "quantity": 1,
+     "rate": 6000
+    },
+    {
+     "description": "DP 15 Connector",
+     "machine": "",
+     "quantity": 8,
+     "rate": 300
+    }
+   ]
+  },
+  {
+   "date": "2026-09-26",
+   "billNo": "2433",
+   "inwardNo": "7668",
+   "partyName": "Fahad Traders",
+   "lines": [
+    {
+     "description": "Belt 545",
+     "machine": "",
+     "quantity": 10,
+     "rate": 850
+    },
+    {
+     "description": "Belt 690",
+     "machine": "",
+     "quantity": 10,
+     "rate": 750
+    },
+    {
+     "description": "Belt 630",
+     "machine": "",
+     "quantity": 10,
+     "rate": 750
+    }
+   ]
+  },
+  {
+   "date": "2026-09-28",
+   "billNo": "3634",
+   "inwardNo": "7669",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "KR1 Dobby Needle Patti",
+     "machine": "",
+     "quantity": 1,
+     "rate": 3000
+    },
+    {
+     "description": "Jeckquard Jala Pipe",
+     "machine": "",
+     "quantity": 100,
+     "rate": 5
+    },
+    {
+     "description": "Iron Huk",
+     "machine": "",
+     "quantity": 30,
+     "rate": 22
+    },
+    {
+     "description": "EGS Oil Pump Seal",
+     "machine": "",
+     "quantity": 2,
+     "rate": 1000
+    }
+   ]
+  },
+  {
+   "date": "2026-09-30",
+   "billNo": "6062",
+   "inwardNo": "7670",
+   "partyName": "Muhammad Ali",
+   "lines": [
+    {
+     "description": "Beem Spring",
+     "machine": "",
+     "quantity": 3,
+     "rate": 600
+    },
+    {
+     "description": "Upper Lower Screw",
+     "machine": "",
+     "quantity": 6,
+     "rate": 100
+    }
+   ]
+  }
+ ],
+ "petty": [
+  {
+   "date": "2026-09-05",
+   "description": "Cash Recceived for Petty Cash",
+   "kind": "CASH_IN",
+   "amount": 86570
+  },
+  {
+   "date": "2026-09-05",
+   "description": "Cash Recceived for Salary, Wages and Contractor Payment",
+   "kind": "CASH_IN",
+   "amount": 1473430
+  },
+  {
+   "date": "2026-09-05",
+   "description": "Paid Salaries and Contracters amount",
+   "kind": "SALARY",
+   "amount": 1473430
+  },
+  {
+   "date": "2026-09-02",
+   "description": "Emery 5Ft,Loom Frame Rep,Jeck LCD Rep,Petrol KGA-6065",
+   "kind": "EXPENSE",
+   "amount": 3950
+  },
+  {
+   "date": "2026-09-02",
+   "description": "Helper Usman Bandage Change",
+   "kind": "EXPENSE",
+   "amount": 2450
+  },
+  {
+   "date": "2026-09-05",
+   "description": "Electronic Componant",
+   "kind": "EXPENSE",
+   "amount": 3045
+  },
+  {
+   "date": "2026-09-09",
+   "description": "Oil Seal 14*24*7,Moti 4mm,LDR Oil For PU",
+   "kind": "EXPENSE",
+   "amount": 4900
+  },
+  {
+   "date": "2026-09-11",
+   "description": "EWA Card For G-6200",
+   "kind": "EXPENSE",
+   "amount": 16000
+  },
+  {
+   "date": "2026-09-12",
+   "description": "Solar Panel Cleaning",
+   "kind": "EXPENSE",
+   "amount": 12000
+  },
+  {
+   "date": "2026-09-12",
+   "description": "Suzuki Rent For Frame,Jeck LCD Repaired",
+   "kind": "EXPENSE",
+   "amount": 3000
+  },
+  {
+   "date": "2026-09-14",
+   "description": "LED Light 45W 5pcs,Jeck LCD Repaired,Petrol For Module Cleaning",
+   "kind": "EXPENSE",
+   "amount": 6000
+  },
+  {
+   "date": "2026-09-14",
+   "description": "Acid 1 Can,Broom 8pcs,Surf 4Kg",
+   "kind": "EXPENSE",
+   "amount": 4700
+  },
+  {
+   "date": "2026-09-15",
+   "description": "PTCL Bill Paid",
+   "kind": "EXPENSE",
+   "amount": 8070
+  },
+  {
+   "date": "2026-09-15",
+   "description": "PU Let Off Repaired (L#26)",
+   "kind": "EXPENSE",
+   "amount": 7500
+  },
+  {
+   "date": "2026-09-15",
+   "description": "G-6200 Opner Patti 20pcs, Motor Belt 2pcs",
+   "kind": "EXPENSE",
+   "amount": 9700
+  },
+  {
+   "date": "2026-09-20",
+   "description": "Cash Recceived for Petty Cash",
+   "kind": "CASH_IN",
+   "amount": 76916
+  },
+  {
+   "date": "2026-09-20",
+   "description": "Cash Recceived for Salary, Wages and Contractor Payment",
+   "kind": "CASH_IN",
+   "amount": 993084
+  },
+  {
+   "date": "2026-09-20",
+   "description": "Paid Salaries and Contracters amount",
+   "kind": "SALARY",
+   "amount": 993084
+  },
+  {
+   "date": "2026-09-17",
+   "description": "Petrol KGA-6065",
+   "kind": "EXPENSE",
+   "amount": 2000
+  },
+  {
+   "date": "2026-09-19",
+   "description": "Leno Con Winding",
+   "kind": "EXPENSE",
+   "amount": 3000
+  },
+  {
+   "date": "2026-09-23",
+   "description": "Moti 50pcs,Electric Board & Botton,Knotter 100pcs Box,Polish Paper 10pcs",
+   "kind": "EXPENSE",
+   "amount": 4000
+  },
+  {
+   "date": "2026-09-23",
+   "description": "LN Bolt 10mm 3pcs,3mm 200pcs,LDR Oil 100 5 Litter",
+   "kind": "EXPENSE",
+   "amount": 5570
+  },
+  {
+   "date": "2026-09-26",
+   "description": "Ufone Blaz Pkg,KGA-6065 Petrol,KDJ-4629 Tuning",
+   "kind": "EXPENSE",
+   "amount": 5000
+  },
+  {
+   "date": "2026-09-26",
+   "description": "Belt 1100H 2pcs,Belt 1600H 1pcs",
+   "kind": "EXPENSE",
+   "amount": 10200
+  },
+  {
+   "date": "2026-09-28",
+   "description": "TP Link Wifi Card For Admin Office System & Software Installation",
+   "kind": "EXPENSE",
+   "amount": 3600
+  },
+  {
+   "date": "2026-09-29",
+   "description": "TP Link Router Archer C6 For Fiber Net & 5M Cat 6 Cable",
+   "kind": "EXPENSE",
+   "amount": 10250
+  },
+  {
+   "date": "2026-09-30",
+   "description": "Bolt,Nut,Washer For Jeck , Goti 36'' For PU",
+   "kind": "EXPENSE",
+   "amount": 2090
+  },
+  {
+   "date": "2026-09-30",
+   "description": "LED Light 20W 2pcs,LED Light 45W 6pcs,4M 40/76 Wire,Bed Switch 1pcs",
+   "kind": "EXPENSE",
+   "amount": 7510
+  },
+  {
+   "date": "2026-09-30",
+   "description": "Solar Panel Cleaning (Cleaning Date 25/9/2026)",
+   "kind": "EXPENSE",
+   "amount": 12000
+  },
+  {
+   "date": "2026-09-30",
+   "description": "Electric Board Complete,LN Bolt 10 L-key 10pcs,Scissor Repaired",
+   "kind": "EXPENSE",
+   "amount": 1580
+  },
+  {
+   "date": "2026-09-30",
+   "description": "Chair Base,Petrol For Module Cleaning,Plug For Router",
+   "kind": "EXPENSE",
+   "amount": 2070
+  }
+ ]
+}

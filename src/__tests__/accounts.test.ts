@@ -205,3 +205,20 @@ describe('copying odd old data never throws', () => {
     expect(sepCost.storeInventory).toEqual([{ name: 'Belt', amount: 7 }])
   })
 })
+
+describe('September 2026 import file', () => {
+  it('matches the Excel totals and the party names already in the ERP', async () => {
+    const { MONTH_FILES, partyKey } = await import('@/server/accounts/monthImport')
+    const f = MONTH_FILES['2026-09']
+    const total = f.bills.reduce((t, b) => t + b.lines.reduce((s, l) => s + Math.round(l.quantity * l.rate), 0), 0)
+    expect(total).toBe(573130)
+    expect(f.expected.billsTotal).toBe(573130)
+    let bal = f.expected.pettyOpening ?? 0
+    for (const e of f.petty) bal += e.kind === 'CASH_IN' ? e.amount : -e.amount
+    expect(bal).toBe(f.expected.pettyClosing)
+    expect(f.petty.some((e) => /balance\s*b/i.test(e.description))).toBe(false)
+    expect(partyKey('Marhaba Engineering')).toBe(partyKey('Marhaba Engineering Works'))
+    expect(partyKey('JAB Electronic')).toBe(partyKey('JAB Electronics'))
+    expect(partyKey('Textile Traders')).not.toBe(partyKey('Textile Engineering'))
+  })
+})
