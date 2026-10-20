@@ -116,6 +116,13 @@ function ProductionWorkspaceContent() {
     loading,
   } = useProductionGrid()
 
+  // ?date=YYYY-MM-DD (e.g. from the Data Check page) opens that day once.
+  const dateParam = searchParams.get('date')
+  useEffect(() => {
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) setSelectedDate(dateParam)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateParam])
+
   // A locked production month is view-only for everyone (the server refuses changes too).
   const monthLocked = useFloorMonthLocked(selectedDate.slice(0, 7))
   const canEditDay = canEditProduction && !monthLocked

@@ -106,6 +106,8 @@ export function EmployeeProfileForm({
   const [paidMidMonth, setPaidMidMonth] = useState(false)
   const [efficiencyEligible, setEfficiencyEligible] = useState(false)
   const [remarks, setRemarks] = useState('')
+  /** The chosen month shows an earlier job (e.g. Contractor in Sep, Weaver from Oct). */
+  const [pastJob, setPastJob] = useState<{ sheet: string; was: string; now: string } | null>(null)
 
   const loadCreateDefaults = () => {
     setEditingEmployee(null)
@@ -134,8 +136,17 @@ export function EmployeeProfileForm({
     setRemarks('')
   }
 
-  const loadEmployee = (emp: EmployeeProfile, month: string) => {
-    setEditingEmployee(emp)
+  const loadEmployee = (current: EmployeeProfile, month: string) => {
+    setEditingEmployee(current)
+    // Show the person as the chosen month's sheets have them (the job can change by month).
+    const asOf = payrollService.employeeAsOfMonth(current, month)
+    const emp = asOf.view
+    setPastJob(
+      asOf.differs
+        ? { sheet: asOf.sheet || '', was: inferEmployeeCategory(emp), now: inferEmployeeCategory(current) }
+        : null
+    )
+    if (asOf.differs) setIsFormEditing(false)
     const kind = formKindFromEmployee(emp)
     setFormKind(kind)
     setName(emp.name || '')
@@ -278,6 +289,10 @@ export function EmployeeProfileForm({
     setMessage('')
     if (!canEditAccounts) {
       setError('Enable editing to save profiles.')
+      return
+    }
+    if (pastJob) {
+      setError('Ye purane mahine ka record hai — profile badalne ke liye mojooda mahina chunein.')
       return
     }
     if (!name || !designation) {
@@ -469,7 +484,7 @@ export function EmployeeProfileForm({
               Salary History & Slips
             </button>
           )}
-          {mode === 'edit' && canEditAccounts && !isFormEditing && (
+          {mode === 'edit' && canEditAccounts && !isFormEditing && !pastJob && (
             <button
               type="button"
               onClick={() => {
@@ -500,6 +515,13 @@ export function EmployeeProfileForm({
         </div>
       </div>
 
+      {pastJob && (
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          {formatPayrollMonthLabel(activeMonth)} mein ye <b>{pastJob.was}</b> the ({pastJob.sheet} sheet ke mutabiq) — ab
+          profile <b>{pastJob.now}</b> hai. Ye us mahine ka record hai, is liye yahan edit band hai. Profile badalne ke liye
+          upar se mojooda (ya baad ka) mahina chunein.
+        </div>
+      )}
       {error && (
         <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{error}</div>
       )}

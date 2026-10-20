@@ -110,6 +110,15 @@ in Accounts (read-only). Locked salary months keep the value they had.
 person on two pay sheets in a month, a row named after a namesake, rows outside joining /
 resign dates, rows whose profile is gone). It only shows; it never changes data.
 
+## Profile page by month
+
+A profile holds the current job only. When someone changes job (e.g. Contractor in
+September → Weaver from October), the sheets keep September as Contractor. The profile
+page shows the chosen month as the sheets have it (`employeeAsOfMonth` in
+`src/services/payroll/service/employeeSync.ts`): choosing September shows "Contractor"
+with a note, and editing is off for that month (saving there would change the current job
+back). Choose the current month to edit the profile.
+
 ## Old browser tabs during the update
 `/api/payroll/store` is kept only for tabs opened before the update: reading works, saving is
 refused with "page refresh karein". Refresh every open salary tab after the deploy.

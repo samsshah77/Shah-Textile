@@ -185,3 +185,12 @@ locked (423) or a guard refuses, **nothing** is saved and the screen reloads wha
 really stored — a half-written quality pose can no longer be left behind. The methods
 saved this way are listed in `BATCHED_METHODS` (`src/services/productionMastersService.ts`).
 If the network fails, the edits are kept and sent again list by list / day by day.
+
+## Production Data Check (`/floor/reports/check`)
+
+Read-only page (sidebar "Data Check") listing, for a month: rows with "loss" on a loom that
+had no quality and no meters (false loss in reports), rows whose total / efficiency do not
+match their meters, rows with meters but no quality name, past days with meters that were
+never approved, plus the report checks (unknown quality names, rows outside a quality's
+run, report vs sheet totals). Logic: `src/lib/floor/dataCheck.ts`; API
+`GET /api/floor/data-check?from&to`. Nothing is changed by it.

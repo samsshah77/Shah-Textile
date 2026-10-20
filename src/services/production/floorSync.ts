@@ -404,6 +404,11 @@ export function beginFloorBatch() {
   if (!batchKeys) batchKeys = new Set()
 }
 
+/** True while a multi-list change is being collected. */
+export function isFloorBatchOpen(): boolean {
+  return batchKeys !== null
+}
+
 /** Send everything collected since `beginFloorBatch()` as one change. */
 export function endFloorBatch(): Promise<boolean> {
   if (!isClient() || batchDepth === 0) return Promise.resolve(true)

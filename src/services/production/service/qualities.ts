@@ -49,6 +49,7 @@ import {
   memoryStore,
   notifyFloorSaveProblem,
   applyServerSync,
+  isFloorBatchOpen,
 } from '@/services/production/floorSync'
 import {
   KEY_LOOMS,
@@ -375,7 +376,13 @@ export const qualitiesMethods = {
             cursor = shiftProductionDate(cursor, 1)
           }
         }
-        if (allowWipe) {
+        if (allowWipe && isFloorBatchOpen()) {
+          // Confirmed wipe of later production, saved as one change: the server stores the
+          // ENDED status first and then the zeroed days, in the same transaction.
+          this.saveQualities(qualities)
+          runEndWipe()
+          if (isClient()) window.dispatchEvent(new CustomEvent('floor:sheets-changed'))
+        } else if (allowWipe) {
           // Confirmed wipe of later production: the server accepts those zeros only once it
           // knows the quality is ENDED, so store the status first, then write the days.
           this.saveQualities(qualities)

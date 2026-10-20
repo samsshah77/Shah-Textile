@@ -114,3 +114,24 @@ describe('One day builder for browser and server', () => {
     expect(rows.every((e) => e.shiftAMeters === 0 && e.shiftBMeters === 0)).toBe(true)
   })
 })
+
+describe('Production data check', () => {
+  it('finds false loss, wrong figures, meters without quality and unapproved days', async () => {
+    const { findFloorProblems } = await import('@/lib/floor/dataCheck')
+    const { withRowMetrics } = await import('@/lib/floor/rowMetrics')
+    const good = withRowMetrics({ loomNumber: 2, rpm: 340, pick: 60, rollerHours: 24, shiftAMeters: 100, shiftBMeters: 100, qualityName: 'Parco', approvalStatus: 'APPROVED' } as Parameters<typeof withRowMetrics>[0])
+    const rows = [
+      { loomNumber: 1, qualityName: 'Parco', remarks: 'Quality Ended', pick: 0, shiftAMeters: 0, shiftBMeters: 0, loss24h: 205 },
+      good,
+      { ...good, loomNumber: 3, totalMeters: 999 },
+      { ...good, loomNumber: 4, qualityName: '—' },
+    ]
+    const p = findFloorProblems([{ date: '2026-10-13', rows: rows as never }, { date: '2026-10-14', rows: [{ ...good, approvalStatus: 'DRAFT' }] as never }], '2026-10-21')
+    expect(p.map((x) => `${x.date}:${x.loomNumber ?? '-'}:${x.kind}`)).toEqual([
+      '2026-10-13:1:false-loss',
+      '2026-10-13:3:figures',
+      '2026-10-13:4:meters-no-quality',
+      '2026-10-14:-:not-approved',
+    ])
+  })
+})

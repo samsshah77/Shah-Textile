@@ -75,7 +75,13 @@ const FLOOR_ITEMS: NavLeaf[] = [
     title: 'Tracking',
     href: '/floor/reports/total',
     icon: 'bi-grid-3x3-gap',
-    activeCheck: (p) => p.startsWith('/floor/reports'),
+    activeCheck: (p) => p.startsWith('/floor/reports') && !p.startsWith('/floor/reports/check'),
+  },
+  {
+    title: 'Data Check',
+    href: '/floor/reports/check',
+    icon: 'bi-clipboard-check',
+    activeCheck: (p) => p.startsWith('/floor/reports/check'),
   },
   {
     title: 'Fabric Fault',
