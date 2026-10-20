@@ -826,8 +826,6 @@ export default function SalaryAdvancesPage() {
           </div>
         </div>
       </div>
-
-      {modals}
     </div>
   )
 }

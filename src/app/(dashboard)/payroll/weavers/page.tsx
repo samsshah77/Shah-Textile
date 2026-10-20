@@ -36,6 +36,7 @@ import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 
 const DEFAULT_WEAVER_WAGES_WIDTHS = {
   serialNo: 56,
@@ -332,34 +333,11 @@ function WeaversPayrollContent() {
     if (!row) return
     const empName = row.employeeName || 'Weaver'
     askConfirm({
-      title: 'Delete Weaver Row?',
-      danger: true,
-      confirmText: 'Delete Row',
-      cancelText: 'Cancel',
-      message: (
-        <div className="space-y-2 text-xs text-slate-600 text-left">
-          <p>
-            Kya aap waqai <strong>{empName}</strong> ko is weavers sheet se delete karna chahte hain?
-          </p>
-          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
-          </div>
-        </div>
-      ),
+      ...removeRowConfirm(empName, 'is Weavers table'),
       onConfirm: () => {
-        // Tombstone + purge all sheets so hydrate/repair cannot put them back at table end.
-        payrollService.deleteWageSheetPerson('weaver', row)
+        // Only this row of this table — the profile and other periods stay.
         const filtered = weaversList
           .filter((w) => w.id !== id)
-          .filter(
-            (w) =>
-              !(
-                (row.employeeId && w.employeeId === row.employeeId) ||
-                (row.employeeName &&
-                  w.employeeName &&
-                  w.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
-              )
-          )
           .map((item, i) => ({ ...item, serialNo: i + 1 }))
         setWeaversList(filtered)
       },
@@ -618,8 +596,6 @@ function WeaversPayrollContent() {
         onSave={handleSave}
         onDiscard={handleDiscard}
       />
-
-      {modals}
 
       {/* VIEW 1: Weavers Wages (Sheets 8 & 15) */}
       {activeTab === 'wages' && (
@@ -951,6 +927,7 @@ function WeaversPayrollContent() {
                         </button>
                         <button
                           onClick={() => handleDeleteRow(w.id)}
+                          title={REMOVE_ROW_TITLE}
                           disabled={!isEditable}
                           className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                         >
@@ -1202,6 +1179,7 @@ function WeaversPayrollContent() {
                         </Link>
                         <button
                           onClick={() => handleDeleteRow(w.id)}
+                          title={REMOVE_ROW_TITLE}
                           disabled={!canEditAccounts}
                           className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                         >
@@ -1560,6 +1538,7 @@ function WeaversPayrollContent() {
                         </button>
                         <button
                           onClick={() => handleDeleteRow(w.id)}
+                          title={REMOVE_ROW_TITLE}
                           disabled={!isEditable}
                           className="text-slate-400 hover:text-red-600 p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                         >

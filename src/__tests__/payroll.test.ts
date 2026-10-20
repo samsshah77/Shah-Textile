@@ -24,6 +24,10 @@ import {
   isMonthEndContractorRow,
 } from '@/services/payroll/contractorPlan'
 import type { EmployeeProfile } from '@/types/payroll'
+import { canViewFinance, isAccountsController } from '@/lib/accountsAccess'
+import { rowIsPerson, rowHasEntries } from '@/services/payroll/service/personSheets'
+import { findDataProblems } from '@/lib/payroll/dataCheck'
+import { planPayrollPettyCopy } from '@/server/accounts/payrollPetty'
 
 describe('Staff salary (Excel rules)', () => {
   it('full 30-day attendance pays the full salary', () => {
@@ -257,5 +261,79 @@ describe('Contractor row checks ignore the automatic advance', () => {
     const row = { id: 'r', serialNo: 1, name: 'Amir', contractType: '', contractualAmount: 0, extraIncentive: 0,
       totalAmount: 0, lessAdvance: 30000, netPayment: -30000, remarks: '', fortnight: '1-15' as const, month: '2026-10' }
     expect(contractorRowUntouched(row, emp, '1-15')).toBe(true)
+  })
+})
+
+describe('Who may see / change Accounts and Salary', () => {
+  const tufail = { id: 'usr_acc_tufail', email: 'tufail@saratextile.com', name: 'Tufail', role: 'accountant' }
+  const javed = { id: 'usr_admin_javed', email: 'javed@saratextile.com', name: 'Javed', role: 'admin' }
+  const ahmer = { id: 'usr_qc_ahmer', email: 'ahmer@saratextile.com', name: 'Ahmer', role: 'quality_controller' }
+  it('Tufail edits', () => {
+    expect(isAccountsController(tufail)).toBe(true)
+    expect(canViewFinance(tufail)).toBe(true)
+  })
+  it('Javed only views', () => {
+    expect(isAccountsController(javed)).toBe(false)
+    expect(canViewFinance(javed)).toBe(true)
+  })
+  it('Ahmer (Production) sees neither', () => {
+    expect(isAccountsController(ahmer)).toBe(false)
+    expect(canViewFinance(ahmer)).toBe(false)
+    expect(canViewFinance(null)).toBe(false)
+  })
+})
+
+describe('One name, two people', () => {
+  const W = { id: 'emp-52', name: 'FAISAL', designation: 'Weaver', employeeCategory: 'Weaver' } as EmployeeProfile
+  const C = { id: 'emp-30', name: 'Faisal', designation: 'Asst Technician', employeeCategory: 'Contract', status: 'Resigned' } as EmployeeProfile
+  it('a row with an id belongs only to that id', () => {
+    const row = { id: 'r', month: '2026-10', employeeId: 'emp-30', employeeName: 'Faisal' }
+    expect(rowIsPerson(row, C, [W, C])).toBe(true)
+    expect(rowIsPerson(row, W, [W, C])).toBe(false)
+  })
+  it('the data check points at a row named after the other person', () => {
+    const problems = findDataProblems({
+      sara_payroll_employees_v9: [W, C],
+      sara_payroll_contract_v7: [{ id: 'x', month: '2026-10', employeeId: 'emp-52', employeeName: 'Faisal' }],
+      sara_payroll_weavers_v6: [{ id: 'y', month: '2026-10', fortnight: '1-15', employeeId: 'emp-52', employeeName: 'FAISAL' }],
+    })
+    expect(problems.map((p) => p.kind).sort()).toEqual(['two-sheets'])
+  })
+  it('a contractor with an old 16-31 row and a 1-31 row in one month is a duplicate', () => {
+    const B = { id: 'emp-9', name: 'Basit (Electronics)', designation: 'Electrician', employeeCategory: 'Contractor' } as EmployeeProfile
+    const problems = findDataProblems({
+      sara_payroll_employees_v9: [B],
+      sara_payroll_contractors_v6: [
+        { id: 'a', month: '2026-09', fortnight: '1-31', employeeId: 'emp-9', name: 'Basit (Electronics)' },
+        { id: 'b', month: '2026-09', fortnight: '16-31', employeeId: 'emp-9', name: 'Basit (Electronics)' },
+        { id: 'c', month: '2026-09', fortnight: '1-15', employeeId: 'emp-9', name: 'Basit (Electronics)' },
+      ],
+    })
+    expect(problems.filter((p) => p.kind === 'duplicate').map((p) => p.detail)).toEqual(['2026-09 month end mein ye shakhs do dafa hai.'])
+  })
+})
+
+describe('Rows with typed data are never removed on their own', () => {
+  it('knows when something was entered', () => {
+    expect(rowHasEntries('sara_payroll_weavers_v6', { id: 'a', month: '2026-10', attendanceDays: 0 } as never)).toBe(false)
+    expect(rowHasEntries('sara_payroll_weavers_v6', { id: 'a', month: '2026-10', attendanceDays: 4 } as never)).toBe(true)
+    expect(rowHasEntries('sara_payroll_staff_v6', { id: 'a', month: '2026-10', otHours: 2 } as never)).toBe(true)
+  })
+})
+
+describe('Salary petty cash moves to Accounts', () => {
+  it('Dr = cash in, Cr = expense (salary when it says so); balance b/f is not copied', () => {
+    const { items, skipped } = planPayrollPettyCopy([
+      { description: 'Balance b/f', drAmount: 0, crAmount: 0, month: '2026-10', fortnight: '1-15' },
+      { date: '2026-10-03', description: 'Cash from bank', drAmount: 50000, month: '2026-10', fortnight: '1-15' },
+      { date: '2026-10-05', description: 'Tea', crAmount: 300, month: '2026-10', fortnight: '1-15' },
+      { date: 'bad', description: 'Paid salaries', crAmount: 9000, month: '2026-10', fortnight: '16-31' },
+    ])
+    expect(items).toEqual([
+      { date: '2026-10-03', description: 'Cash from bank', kind: 'CASH_IN', amount: 50000 },
+      { date: '2026-10-05', description: 'Tea', kind: 'EXPENSE', amount: 300 },
+      { date: '2026-10-16', description: 'Paid salaries', kind: 'SALARY', amount: 9000 },
+    ])
+    expect(skipped).toHaveLength(1)
   })
 })

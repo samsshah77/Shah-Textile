@@ -34,6 +34,7 @@ import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
   serial: 56,
@@ -195,22 +196,10 @@ export default function StaffSalariesPage() {
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
     const row = staffList.find((item) => item.id === id)
+    if (!row) return
     const empName = row?.employeeName || 'Staff Member'
     askConfirm({
-      title: 'Delete Staff Row?',
-      danger: true,
-      confirmText: 'Delete Row',
-      cancelText: 'Cancel',
-      message: (
-        <div className="space-y-2 text-xs text-slate-600 text-left">
-          <p>
-            Kya aap waqai <strong>{empName}</strong> ko is sheet se delete karna chahte hain?
-          </p>
-          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
-          </div>
-        </div>
-      ),
+      ...removeRowConfirm(empName, 'is mahine ki Staff sheet'),
       onConfirm: () => {
         const updated = staffList
           .filter((item) => item.id !== id)
@@ -797,7 +786,7 @@ export default function StaffSalariesPage() {
                       <button
                         onClick={() => handleDeleteRow(st.id)}
                         disabled={!isEditable}
-                        title="Delete row"
+                        title={REMOVE_ROW_TITLE}
                         className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <Trash2 className="size-3.5" />

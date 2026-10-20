@@ -28,6 +28,7 @@ import { usePayrollModals } from '@/hooks/usePayrollModals'
 import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
+import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 
 const DEFAULT_EFFICIENCY_WIDTHS = {
   serialNo: 56,
@@ -167,22 +168,10 @@ export default function TechnicalEfficiencyPage() {
   const handleDeleteRow = (id: string) => {
     if (!canEditAccounts) return
     const row = incentiveList.find((item) => item.id === id)
+    if (!row) return
     const empName = row?.name || 'this entry'
     askConfirm({
-      title: 'Delete Efficiency Row?',
-      danger: true,
-      confirmText: 'Delete Row',
-      cancelText: 'Cancel',
-      message: (
-        <div className="space-y-2 text-xs text-slate-600 text-left">
-          <p>
-            Kya aap waqai <strong>{empName}</strong> ko is efficiency sheet se delete karna chahte hain?
-          </p>
-          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
-          </div>
-        </div>
-      ),
+      ...removeRowConfirm(empName, 'is mahine ki Efficiency sheet', { comesBack: true }),
       onConfirm: () => {
         const updated = incentiveList
           .filter((item) => item.id !== id)
@@ -576,7 +565,7 @@ export default function TechnicalEfficiencyPage() {
                     <button
                       onClick={() => handleDeleteRow(e.id)}
                       disabled={!canEditAccounts}
-                      title={canEditAccounts ? 'Delete row' : 'Enable Editing to delete'}
+                      title={canEditAccounts ? REMOVE_ROW_TITLE : 'Enable Editing to remove'}
                       className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       <Trash2 className="size-3.5" />

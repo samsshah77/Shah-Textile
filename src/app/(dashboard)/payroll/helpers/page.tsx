@@ -32,6 +32,7 @@ import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 
 const DEFAULT_HELPER_WIDTHS = {
   serialNo: 56,
@@ -197,33 +198,11 @@ function HelpersPayrollContent() {
     if (!row) return
     const empName = row.employeeName || 'Helper'
     askConfirm({
-      title: 'Delete Helper Row?',
-      danger: true,
-      confirmText: 'Delete Row',
-      cancelText: 'Cancel',
-      message: (
-        <div className="space-y-2 text-xs text-slate-600 text-left">
-          <p>
-            Kya aap waqai <strong>{empName}</strong> ko is helper sheet se delete karna chahte hain?
-          </p>
-          <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
-          </div>
-        </div>
-      ),
+      ...removeRowConfirm(empName, 'is Helpers table'),
       onConfirm: () => {
-        payrollService.deleteWageSheetPerson('helper', row)
+        // Only this row of this table — the profile and other periods stay.
         const filtered = helpersList
           .filter((h) => h.id !== id)
-          .filter(
-            (h) =>
-              !(
-                (row.employeeId && h.employeeId === row.employeeId) ||
-                (row.employeeName &&
-                  h.employeeName &&
-                  h.employeeName.trim().toLowerCase() === row.employeeName.trim().toLowerCase())
-              )
-          )
           .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
         setHelpersList(filtered)
       },
@@ -640,7 +619,7 @@ function HelpersPayrollContent() {
                       <button
                         onClick={() => handleDeleteRow(h.id)}
                         disabled={!canEditAccounts}
-                        title={canEditAccounts ? 'Delete row' : 'Enable Editing to delete'}
+                        title={canEditAccounts ? REMOVE_ROW_TITLE : 'Enable Editing to remove'}
                         className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <Trash2 className="size-3.5" />
