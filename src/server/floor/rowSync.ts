@@ -3,6 +3,7 @@
  * Every save runs in one transaction holding a per-list (or per-day) lock, checks the
  * hash each changed row started from, and either applies all rows or none.
  */
+import { withRowMetrics } from '@/lib/floor/rowMetrics'
 import { createHash } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
@@ -289,6 +290,10 @@ export async function applySheetRows(
         if (p.lastEditedAt !== undefined) e.lastEditedAt = p.lastEditedAt
         else delete e.lastEditedAt
       }
+      // A hand edit: theoretical meters, total, efficiency and loss are worked out here
+      // (same sum as the screen), never taken from the browser. Rows of a rebuilt day keep
+      // the figures the day was built with (e.g. 0 for a loom whose quality ended).
+      if (ch.explicit) e = withRowMetrics(e)
       finals.push(e)
       if (!ch.explicit) rebuilt.push(ch.clearQuality ? ({ ...e, _clearQuality: true } as DailyLoomProductionEntry) : e)
     }

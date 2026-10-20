@@ -82,3 +82,18 @@ describe('floor API input checks', () => {
     expect(loomRowSchema.safeParse({ loomNumber: 0, name: 'x', model: 'y' }).success).toBe(false)
   })
 })
+
+describe('Row figures are worked out from what was typed', () => {
+  it('ignores figures sent by the browser and recomputes them', async () => {
+    const { withRowMetrics } = await import('@/lib/floor/rowMetrics')
+    const { calculateProductionMetrics } = await import('@/types/production')
+    const row = withRowMetrics({ loomNumber: 5, rpm: 340, pick: 60, rollerHours: 24, shiftAMeters: 300, shiftBMeters: 310, efficiencyPercentage: 999, totalMeters: 1 })
+    const m = calculateProductionMetrics({ rpm: 340, pick: 60, runningHours: 24, shiftAMeters: 300, shiftBMeters: 310, loomNumber: 5 })
+    expect(row.totalMeters).toBe(610)
+    expect(row.efficiencyPercentage).toBe(m.efficiencyPercentage)
+    expect(row.runningHours).toBe(24)
+    const empty = withRowMetrics({ loomNumber: 1 })
+    expect(Number.isNaN(empty.efficiencyPercentage)).toBe(false)
+    expect(empty.totalMeters).toBe(0)
+  })
+})

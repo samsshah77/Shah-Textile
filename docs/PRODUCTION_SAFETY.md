@@ -138,3 +138,27 @@ WHERE date BETWEEN '2026-10-01' AND '2026-10-31' GROUP BY 1,2 ORDER BY 3 DESC;
 2. Never run scripts against the live database. Test on a copy.
 3. Run `npm run typecheck && npm test` before every push.
 4. Big floor changes: take an admin snapshot first.
+
+## Code layout of the floor service (Oct 2026)
+
+`src/services/productionMastersService.ts` used to be one 3,300-line file. It is now split
+by subject — callers still use `productionMastersService.X()` exactly as before:
+
+| File | What |
+|---|---|
+| `src/services/production/floorStore.ts` | in-memory copy of the server data, loading (hydrate / preload), targeted saves, month locks |
+| `src/services/production/service/looms.ts` | loom master, quality pose on a loom |
+| `src/services/production/service/beams.ts` | beams: mount / unmount, sizing, beam end, beam track |
+| `src/services/production/service/yarn.ts` | yarn actions (stock = movements, worked out on the server) |
+| `src/services/production/service/qualities.ts` | quality master: create, edit, end, reuse |
+| `src/services/production/service/sheets.ts` | daily sheet: building a day, editing rows, approval |
+| `src/services/production/service/matrix.ts` | monthly matrix report |
+
+## Row figures are worked out on the server
+
+For every hand-edited day row the server works out theoretical meters, total meters,
+efficiency and loss itself (`src/lib/floor/rowMetrics.ts`) from roller hours, RPM, pick and
+shift A / B meters — figures sent by a browser are never stored as they are. The Daily
+Entry screen uses the same function, so the screen and the server always agree. A row
+with no pick and no meters (e.g. a loom whose quality ended) has no theoretical output, so
+it adds no false "loss" to the reports. Rows nobody edits keep their stored figures.
