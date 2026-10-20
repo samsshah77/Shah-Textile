@@ -41,7 +41,7 @@ You do **not** need extra VPS settings beyond the existing server `DATABASE_URL`
 * **No internet / server down:** the change stays in the browser, a red message is shown,
   and it is retried automatically (3 s → 30 s). Closing the page while something is unsaved
   shows the browser's "leave page?" warning. A repeated request (lost answer) is applied once.
-* Only salary controllers (Tufail / admin — `isAccountsController`) may write (403 otherwise).
+* Only Tufail may write; Javed may read; nobody else may read (see below).
 
 ## Loading
 * `GET /api/payroll/data` returns every sheet plus each row's version. It never writes.
@@ -69,6 +69,46 @@ without the month locks and delete-markers, so locks silently disappeared.
 These now happen only when a person does them on purpose (saving a profile still places the
 person on the right sheets of the chosen month and removes them from months before joining /
 after resigning — locked months excepted).
+
+## Who can do what (Salary and Accounts)
+`src/lib/accountsAccess.ts` is the single rule, used by pages, menus and every API:
+* **Tufail** (Accountant) — sees and changes Salary and Accounts.
+* **Javed** (Admin) — sees both, cannot change anything ("View only").
+* **Everyone else** (e.g. Ahmer, Quality Controller) — no Salary / Accounts at all (menus
+  hidden, pages closed, APIs answer 403). Production only.
+
+## Profile changes and months
+Rules (`src/services/payroll/service/personSheets.ts → applyProfileToSheets`), used by Add
+profile, Edit profile, Resign / Rejoin and the General Wages save:
+1. A sheet row belongs to a person by **employeeId** only. Two people with the same name stay
+   two people (names are used only for very old rows without an id).
+2. A change made while working in month M applies to M and later months. Earlier months keep
+   their name, designation, pay and category. Later months take a new pay only when they
+   still had the same pay as M.
+3. **Dates decide membership** in every month: joining date moved to September while working
+   in October → the person is added to September's sheets (unlocked months); a later joining
+   date or a resign date takes them off months they no longer belong to.
+4. **Category change** (Weaver → Staff in October): moved from October on; September stays on
+   the Weavers sheet.
+5. Rows where something was already entered are never removed automatically — they are kept
+   and a message names them. Locked months are never touched.
+
+Deleting a resigned profile hides only that person (by id); another person with the same
+name is not affected.
+
+## Petty cash
+Petty cash is kept in **Accounts › Petty Cash** only. The salary module's old petty-cash
+register is copied there once (`src/server/accounts/payrollPetty.ts`: Dr → Cash in, Cr →
+Expense / Salary, "Balance b/f" not copied, existing entries skipped; logged in
+`acc_import_log` as `payroll:petty-cash`). The old salary rows stay in the database.
+
+The Synopsis "Petty Cash Transfer Inflow" is the total of that fortnight's **Cash in** entries
+in Accounts (read-only). Locked salary months keep the value they had.
+
+## Data Check
+`/payroll/data-check` lists old rows that look wrong (same person twice in a period, one
+person on two pay sheets in a month, a row named after a namesake, rows outside joining /
+resign dates, rows whose profile is gone). It only shows; it never changes data.
 
 ## Old browser tabs during the update
 `/api/payroll/store` is kept only for tabs opened before the update: reading works, saving is

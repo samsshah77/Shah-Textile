@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { SESSION_COOKIE, verifySession } from '@/lib/session'
+import { currentUser } from '@/server/current-user'
+import { canViewFinance } from '@/lib/accountsAccess'
 import { dbAccountsGetAll } from '@/server/accountsDb'
 import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
 
 export const runtime = 'nodejs'
 
-async function requireSession(req: NextRequest) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value
-  return token ? await verifySession(token) : null
-}
-
 export async function GET(req: NextRequest) {
   try {
-    if (process.env.NODE_ENV === 'production' && !(await requireSession(req))) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
-    }
+    const actor = await currentUser(req)
+    if (!actor) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+    if (!canViewFinance({ ...actor, role: actor.roleKey }))
+      return NextResponse.json({ ok: false, error: 'Accounts sirf Tufail aur Javed sahab dekh sakte hain.' }, { status: 403 })
     await ensureFloorPayrollTables()
     const store = await dbAccountsGetAll()
     return NextResponse.json({ ok: true, store })

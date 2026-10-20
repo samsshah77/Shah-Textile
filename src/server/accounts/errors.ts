@@ -17,4 +17,4 @@ export const staleError = () =>
   )
 
 export const lockedError = (month: string) =>
-  new AccountsError(423, `${month} lock hai — pehle unlock karein (Admin / Accountant).`, 'LOCKED')
+  new AccountsError(423, `${month} lock hai — pehle Tufail unlock karein.`, 'LOCKED')

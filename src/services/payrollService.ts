@@ -72,10 +72,7 @@ import {
   monthGenerationMethods,
   type MonthGenerationMethods,
 } from '@/services/payroll/service/monthGeneration'
-import {
-  rosterRepairMethods,
-  type RosterRepairMethods,
-} from '@/services/payroll/service/rosterRepairs'
+import { personSheetMethods, type PersonSheetMethods } from '@/services/payroll/service/personSheets'
 import {
   employeeEditMethods,
   type EmployeeEditMethods,
@@ -93,9 +90,6 @@ import { lockSlipMethods, type LockSlipMethods } from '@/services/payroll/servic
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- methods are attached below (see end of file)
 export class PayrollService {
-  /** Previous name, so a renamed person still matches their wage-sheet row. */
-  profileAliases = new Map<string, string>()
-
   isClient(): boolean {
     return isPayrollClient()
   }
@@ -477,21 +471,31 @@ export class PayrollService {
     )
   }
 
+  /**
+   * Is this sheet row the person `employeeIdOrName`? Pass an id whenever there is one:
+   * rows that carry an id match by id only, so two people with one name stay apart.
+   */
   rowMatchesPerson(
-    employeeNameOrId: string,
+    employeeIdOrName: string,
     rowName?: string,
     rowDesignation?: string,
     rowEmployeeId?: string,
     roster?: EmployeeProfile[]
   ): boolean {
-    if (rowEmployeeId && rowEmployeeId === employeeNameOrId) return true
-    if (namesMatch(rowName, employeeNameOrId)) return true
+    if (!employeeIdOrName) return false
     const employees = roster || this.getEmployees()
-    const emp =
-      employees.find((e) => e.id === employeeNameOrId) ||
-      findLinkedEmployee(employees, employeeNameOrId, rowDesignation)
-    if (!emp) return false
-    return Boolean(findLinkedEmployee([emp], rowName, rowDesignation, rowEmployeeId))
+    const byId = employees.find((e) => e.id === employeeIdOrName)
+    if (byId || /^emp-/.test(employeeIdOrName)) {
+      if (rowEmployeeId) return rowEmployeeId === employeeIdOrName
+      const linked = findLinkedEmployee(employees, rowName, rowDesignation)
+      return Boolean(linked && linked.id === employeeIdOrName)
+    }
+    // Old callers that only know a name.
+    if (rowEmployeeId) {
+      const owner = findLinkedEmployee(employees, employeeIdOrName, rowDesignation)
+      return Boolean(owner && owner.id === rowEmployeeId)
+    }
+    return namesMatch(rowName, employeeIdOrName)
   }
 
   mergeMonthOrFortnightRows<T extends { month?: string; fortnight?: string }>(
@@ -515,7 +519,7 @@ export class PayrollService {
 
 // Methods live in ./payroll/service/* and are attached here, so callers keep using payrollService.X().
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
-export interface PayrollService extends RosterPlacementMethods, MonthGenerationMethods, RosterRepairMethods, EmployeeEditMethods, EmployeeSyncMethods, SheetStoreMethods, PettyCashSynopsisMethods, LockSlipMethods {}
-Object.assign(PayrollService.prototype, rosterPlacementMethods, monthGenerationMethods, rosterRepairMethods, employeeEditMethods, employeeSyncMethods, sheetStoreMethods, pettyCashSynopsisMethods, lockSlipMethods)
+export interface PayrollService extends RosterPlacementMethods, MonthGenerationMethods, PersonSheetMethods, EmployeeEditMethods, EmployeeSyncMethods, SheetStoreMethods, PettyCashSynopsisMethods, LockSlipMethods {}
+Object.assign(PayrollService.prototype, rosterPlacementMethods, monthGenerationMethods, personSheetMethods, employeeEditMethods, employeeSyncMethods, sheetStoreMethods, pettyCashSynopsisMethods, lockSlipMethods)
 
 export const payrollService = new PayrollService()

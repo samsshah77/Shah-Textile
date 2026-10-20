@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ZodError, type ZodType } from 'zod'
 import { currentUser } from '@/server/current-user'
-import { isAccountsController } from '@/lib/accountsAccess'
+import { canViewFinance, isAccountsController } from '@/lib/accountsAccess'
 import { writeAudit } from '@/server/auditLog'
 import { dbAccountsGetAll } from '@/server/accountsDb'
 import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
 import { AccountsError } from '@/server/accounts/errors'
 import { applyImport, planImport, type ImportResult } from '@/server/accounts/migrate'
 import { inTx } from '@/server/accounts/repo'
+import { copyPayrollPettyCash } from '@/server/accounts/payrollPetty'
+import { ensureSalaryDataReady } from '@/server/payroll/api'
 
 export type Actor = NonNullable<Awaited<ReturnType<typeof currentUser>>>
 
@@ -22,11 +24,14 @@ export function ensureImported(): Promise<ImportResult | null> {
   if (!imported) {
     imported = (async () => {
       await ensureFloorPayrollTables()
+      // Salary data must be in its tables first: its old petty cash entries move to Accounts.
+      await ensureSalaryDataReady()
       const store = await dbAccountsGetAll()
       return inTx(async (db) => {
         await db.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7712001)`)
         const res = await applyImport(db, planImport(store))
         if (res.ran) console.log('[accounts] copied old data into new tables', JSON.stringify(res))
+        await copyPayrollPettyCash(db)
         return res
       })
     })().catch((err) => {
@@ -51,7 +56,7 @@ export function resetImportGate(): void {
 type Ctx = { req: NextRequest; actor: Actor; params: Record<string, string> }
 
 /**
- * Wraps an accounts API handler: login required, writes only for Admin / Accountant,
+ * Wraps an accounts API handler: login required, reading for Tufail + Javed, writing for Tufail only,
  * old data copied first, and expected refusals turned into clear JSON errors.
  */
 export function accountsHandler(
@@ -62,8 +67,11 @@ export function accountsHandler(
     try {
       const actor = await currentUser(req)
       if (!actor) return NextResponse.json({ ok: false, error: 'Login required.' }, { status: 401 })
-      if (opts.write && !isAccountsController({ ...actor, role: actor.roleKey }))
-        return NextResponse.json({ ok: false, error: 'Accounts mein tabdeeli sirf Admin / Accountant kar sakte hain.' }, { status: 403 })
+      const who = { ...actor, role: actor.roleKey }
+      if (!canViewFinance(who))
+        return NextResponse.json({ ok: false, error: 'Accounts sirf Tufail aur Javed sahab dekh sakte hain.' }, { status: 403 })
+      if (opts.write && !isAccountsController(who))
+        return NextResponse.json({ ok: false, error: 'Accounts mein tabdeeli sirf Tufail kar sakte hain (baqi ke liye view only).' }, { status: 403 })
       await ensureImported()
       const params = (await route?.params) || {}
       const data = await fn({ req, actor, params })

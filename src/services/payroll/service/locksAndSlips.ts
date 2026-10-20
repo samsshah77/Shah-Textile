@@ -28,6 +28,7 @@ export const lockSlipMethods = {
     actorName: string,
     notes?: string
   ): Promise<{ ok: boolean; summary?: MonthLockInfo['disbursalSummary'] }> {
+    await this.loadPettyCashInflow(month, true)
     const grand = this.getMonthlyGrandSummary(month)
     const staff = this.getStaffSalaries(month)
     const weavers = this.getWeaversWages(month)

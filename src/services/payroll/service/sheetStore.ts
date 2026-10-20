@@ -329,9 +329,7 @@ export const sheetStoreMethods = {
     let changed = false
     const updated = efficiency.map((eff) => {
       const contractRow = activeRows.find(
-        (ct) =>
-          (eff.employeeId && ct.employeeId === eff.employeeId) ||
-          namesMatch(ct.employeeName, eff.name)
+        (ct) => (eff.employeeId ? ct.employeeId === eff.employeeId : namesMatch(ct.employeeName, eff.name))
       )
       if (!contractRow) return eff
       const next = this.calculateEfficiencyRow({
@@ -371,7 +369,7 @@ export const sheetStoreMethods = {
     writeStore(STORAGE_KEYS.EFFICIENCY, [...kept, ...list])
     if (triggerCascade) {
       list.forEach((eff) => {
-        this.syncEfficiencyToSalaries(eff.name, eff.month || '2026-08', eff.amount || 0, false)
+        this.syncEfficiencyToSalaries(eff.employeeId || eff.name, eff.month || '2026-08', eff.amount || 0, false)
       })
       this.notifyDataChanged()
     }

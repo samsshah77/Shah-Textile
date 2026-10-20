@@ -99,13 +99,6 @@ export const SALARY_EXCEL_SHEETS: SheetTabInfo[] = [
       p === '/payroll/contractors' && sp.get('fortnight') !== '16-31',
   },
   {
-    sheetNumber: 13,
-    name: 'Petty Cash 1 to 15',
-    href: '/payroll/petty-cash?fortnight=1-15',
-    activeCheck: (p, sp) =>
-      p === '/payroll/petty-cash' && sp.get('fortnight') !== '16-31',
-  },
-  {
     sheetNumber: 14,
     name: 'Synopsis 1 to 15',
     href: '/payroll/synopsis?fortnight=1-15',
@@ -152,13 +145,6 @@ export const SALARY_EXCEL_SHEETS: SheetTabInfo[] = [
     href: '/payroll/contractors?fortnight=16-31',
     activeCheck: (p, sp) =>
       p === '/payroll/contractors' && sp.get('fortnight') === '16-31',
-  },
-  {
-    sheetNumber: 20,
-    name: 'Petty Cash 16 to 31',
-    href: '/payroll/petty-cash?fortnight=16-31',
-    activeCheck: (p, sp) =>
-      p === '/payroll/petty-cash' && sp.get('fortnight') === '16-31',
   },
   {
     sheetNumber: 21,

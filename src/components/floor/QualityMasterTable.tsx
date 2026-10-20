@@ -19,6 +19,8 @@ import {
   qualityHistoryOnActivePastDay,
   findLiveQualityByName,
   productionMastersService,
+  qualityIdOnLoomForDate,
+  normalizeQualityStatus,
 } from '@/services/productionMastersService'
 import { PRODUCTION_TODAY, getProductionToday } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -310,6 +312,43 @@ export function QualityMasterTable({
     }
     return map
   }, [dayRows, qualities, sheetDate, looms])
+
+  const availableLooms = useMemo(() => {
+    const dayKey = String(sheetDate || '').slice(0, 10)
+    const isToday = !dayKey || dayKey === getProductionToday()
+
+    const allLoomNumbers =
+      looms.length > 0
+        ? [...looms].map((l) => l.loomNumber).sort((a, b) => a - b)
+        : Array.from({ length: 34 }, (_, i) => i + 1)
+
+    const busyLooms = new Set<number>()
+
+    for (const q of qualities) {
+      const status = q.status ?? 'ACTIVE'
+      const isActive = isToday
+        ? status === 'ACTIVE'
+        : qualityActiveOnSheetDate(q, dayKey, dayRows, qualities)
+      if (!isActive) continue
+
+      const assigned = assignedByQuality.get(q.id) || []
+      for (const num of assigned) {
+        busyLooms.add(num)
+      }
+    }
+
+    for (const l of looms) {
+      const qId = qualityIdOnLoomForDate(l, qualities, dayRows, sheetDate)
+      if (qId) {
+        const q = qualities.find((item) => item.id === qId)
+        if (q && normalizeQualityStatus(q.status) === 'ACTIVE') {
+          busyLooms.add(l.loomNumber)
+        }
+      }
+    }
+
+    return allLoomNumbers.filter((n) => !busyLooms.has(n))
+  }, [looms, qualities, dayRows, sheetDate, assignedByQuality])
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, number> = {}
@@ -1615,6 +1654,49 @@ export function QualityMasterTable({
           </table>
         </TablePanScroll>
       )}
+
+      {/* Available Looms Footer Bar */}
+      <div className="card-footer bg-light-subtle border-top py-2 px-3">
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <span
+              className="small fw-semibold text-secondary text-uppercase d-inline-flex align-items-center gap-1.5"
+              style={{ fontSize: '0.75rem', letterSpacing: '0.5px' }}
+            >
+              <i className="bi bi-grid-3x3-gap-fill text-success" />
+              Available Looms ({availableLooms.length}):
+            </span>
+            {availableLooms.length === 0 ? (
+              <span className="small text-muted fst-italic">None (All looms assigned)</span>
+            ) : (
+              <div className="d-flex flex-wrap align-items-center gap-1">
+                {availableLooms.map((loomNum) => {
+                  const loomObj = looms.find((l) => l.loomNumber === loomNum)
+                  const modelLabel = loomObj?.model || loomObj?.category
+                  const tooltipText = modelLabel
+                    ? `Loom #${loomNum} (${modelLabel}) • Available`
+                    : `Loom #${loomNum} • Available`
+
+                  return (
+                    <span
+                      key={loomNum}
+                      className="sara-available-loom-chip d-inline-flex align-items-center justify-content-center text-center font-monospace"
+                      title={tooltipText}
+                    >
+                      {loomNum}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+          {availableLooms.length > 0 && (
+            <span className="small text-muted font-monospace" style={{ fontSize: '0.7rem' }}>
+              {availableLooms.length} of {looms.length || 34} Free
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Add Quality Modal Dialog */}
       {isAddModalOpen && (

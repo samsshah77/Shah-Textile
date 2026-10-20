@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@/server/current-user'
-import { isAccountsController } from '@/lib/accountsAccess'
+import { canViewFinance, isAccountsController } from '@/lib/accountsAccess'
 import { writeAudit } from '@/server/auditLog'
 import { getPayrollSeedStore } from '@/data/payrollSeeds'
 import type { ChangeSet } from '@/lib/payroll/sync'
@@ -29,7 +29,7 @@ export async function loadSalaryStore(): Promise<Record<string, unknown>> {
 type Ctx = { req: NextRequest; actor: PayrollActor }
 
 /**
- * Login required; writes only for the salary controllers (Tufail / admin); old data
+ * Login required; reading for Tufail + Javed, writing for Tufail only; old data
  * copied first; refusals become clear JSON errors.
  */
 export function payrollHandler(fn: (ctx: Ctx) => Promise<unknown>, opts: { write?: boolean } = {}) {
@@ -37,8 +37,11 @@ export function payrollHandler(fn: (ctx: Ctx) => Promise<unknown>, opts: { write
     try {
       const actor = await currentUser(req)
       if (!actor) return NextResponse.json({ ok: false, error: 'Login required.' }, { status: 401 })
-      if (opts.write && !isAccountsController({ ...actor, role: actor.roleKey }))
-        return NextResponse.json({ ok: false, error: 'Salary changes are limited to Tufail.' }, { status: 403 })
+      const who = { ...actor, role: actor.roleKey }
+      if (!canViewFinance(who))
+        return NextResponse.json({ ok: false, error: 'Salary sirf Tufail aur Javed sahab dekh sakte hain.' }, { status: 403 })
+      if (opts.write && !isAccountsController(who))
+        return NextResponse.json({ ok: false, error: 'Salary mein tabdeeli sirf Tufail kar sakte hain (baqi ke liye view only).' }, { status: 403 })
       await ensureSalaryDataReady()
       const data = await fn({ req, actor })
       return NextResponse.json({ ok: true, ...(data as object) })

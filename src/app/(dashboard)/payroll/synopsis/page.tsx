@@ -1,33 +1,23 @@
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
 import { FortnightSynopsis, MonthlyGrandSalarySynopsis } from '@/types/payroll'
-import { useAuth } from '@/context/AuthContext'
 import { cn, formatCurrency, formatNumber, numberToWordsPKR } from '@/lib/utils'
 import {
-  FileSpreadsheet,
   Printer,
-  DollarSign,
-  Building,
-  CheckCircle2,
-  Layers,
-  Banknote,
   RotateCcw,
-  Save,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
-import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
-import { FortnightSelect, fortnightDisplayLabel, secondHalfLabel } from '@/components/payroll/FortnightSelect'
+import { fortnightDisplayLabel, secondHalfLabel } from '@/components/payroll/FortnightSelect'
 import { MonthLockButton } from '@/components/payroll/MonthLockBanner'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 
 function DisbursementSynopsisContent() {
-  const { canEditAccounts } = useAuth()
-  const { showSuccess, showError, modals } = usePayrollModals()
+  const { modals } = usePayrollModals()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -41,9 +31,6 @@ function DisbursementSynopsisContent() {
   const [f1, setF1] = useState<FortnightSynopsis | null>(null)
   const [f2, setF2] = useState<FortnightSynopsis | null>(null)
   const [grand, setGrand] = useState<MonthlyGrandSalarySynopsis | null>(null)
-  const [savingInflow, setSavingInflow] = useState(false)
-  const draftInflowRef = useRef<Partial<Record<'1-15' | '16-31', number>>>({})
-  const skipSyncReloadRef = useRef(false)
 
   const pushView = (tab: 'grand' | 'f1' | 'f2') => {
     const params = new URLSearchParams(searchParams.toString())
@@ -65,61 +52,22 @@ function DisbursementSynopsisContent() {
     setGrand(payrollService.getMonthlyGrandSummary(selectedMonth))
   }
 
-  const applyLocalInflow = (fortnight: '1-15' | '16-31', amount: number) => {
-    const n = Math.max(0, Math.round(Number(amount) || 0))
-    draftInflowRef.current[fortnight] = n
-    if (fortnight === '1-15') {
-      setF1((prev) =>
-        prev
-          ? { ...prev, pettyCashInflow: n, totalBankCheque: prev.totalPayrollCash + n }
-          : prev
-      )
-    } else {
-      setF2((prev) =>
-        prev
-          ? { ...prev, pettyCashInflow: n, totalBankCheque: prev.totalPayrollCash + n }
-          : prev
-      )
-    }
-  }
-
-  const savePettyInflow = async (fortnight: '1-15' | '16-31') => {
-    if (!canEditAccounts) return false
-    const source =
-      draftInflowRef.current[fortnight] ??
-      (fortnight === '1-15' ? f1?.pettyCashInflow : f2?.pettyCashInflow) ??
-      0
-    const n = Math.max(0, Math.round(Number(source) || 0))
-    setSavingInflow(true)
-    skipSyncReloadRef.current = true
-    try {
-      const ok = await payrollService.setPettyCashInflowAsync(selectedMonth, fortnight, n)
-      delete draftInflowRef.current[fortnight]
-      reloadData()
-      if (ok) {
-        showSuccess(
-          'Saved',
-          `Petty cash inflow ${formatNumber(n, 0)} — ${fortnightDisplayLabel(selectedMonth, fortnight)}`
-        )
-      } else {
-        showError('Save failed', 'DB me save nahi hua. Dobara Save dabayein.')
-      }
-      return ok
-    } finally {
-      setSavingInflow(false)
-      skipSyncReloadRef.current = false
-    }
-  }
-
   useEffect(() => {
     reloadData()
+    // Petty cash comes from Accounts › Petty Cash ("Cash in" of each fortnight).
+    let alive = true
+    void payrollService.loadPettyCashInflow(selectedMonth, true).then(() => {
+      if (alive) reloadData()
+    })
     const handleSync = () => {
-      if (skipSyncReloadRef.current) return
       // Keep user's month + view (1–15 / 16–xx / Monthly); only refresh totals.
       reloadData()
     }
     window.addEventListener('payroll_synced', handleSync)
-    return () => window.removeEventListener('payroll_synced', handleSync)
+    return () => {
+      alive = false
+      window.removeEventListener('payroll_synced', handleSync)
+    }
   }, [selectedMonth])
 
   const handlePrint = () => {
@@ -179,19 +127,6 @@ function DisbursementSynopsisContent() {
                   <RotateCcw className="size-3.5" />
                   <span>Recalculate</span>
                 </button>
-                {canEditAccounts && (activeTab === 'f1' || activeTab === 'f2') && (
-                  <button
-                    type="button"
-                    disabled={savingInflow}
-                    onClick={() =>
-                      void savePettyInflow(activeTab === 'f1' ? '1-15' : '16-31')
-                    }
-                    className="erp-btn-success text-xs !min-h-9 !h-9"
-                  >
-                    <Save className="size-3.5" />
-                    <span>{savingInflow ? 'Saving…' : 'Save'}</span>
-                  </button>
-                )}
                 <MonthLockButton month={selectedMonth} onStatusChange={reloadData} />
                 <button
                   type="button"
@@ -361,19 +296,13 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
-                    + Petty Cash Transfer Inflow (Factory Floor Operational):
+                    + Petty Cash Transfer Inflow (Accounts › Petty Cash, Cash in):
                   </td>
                   <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
-                    {canEditAccounts ? (
-                      <NumericCellInput
-                        value={f1.pettyCashInflow}
-                        disabled={!canEditAccounts || savingInflow}
-                        onValueChange={(v) => applyLocalInflow('1-15', v)}
-                        className="w-full text-right bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-semibold text-slate-900 focus:bg-white focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono print:border-0 print:bg-transparent"
-                      />
-                    ) : (
-                      formatNumber(f1.pettyCashInflow, 0)
-                    )}
+                    {formatNumber(f1.pettyCashInflow, 0)}
+                    <a href="/accounts/petty-cash" className="ml-2 text-[10px] font-normal text-[#0066cc] underline print:hidden" title="Accounts › Petty Cash ki 'Cash in' entries se">
+                      Accounts se
+                    </a>
                   </td>
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">
@@ -446,19 +375,13 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
-                    + Petty Cash Transfer Inflow (Factory Floor Operational):
+                    + Petty Cash Transfer Inflow (Accounts › Petty Cash, Cash in):
                   </td>
                   <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
-                    {canEditAccounts ? (
-                      <NumericCellInput
-                        value={f2.pettyCashInflow}
-                        disabled={!canEditAccounts || savingInflow}
-                        onValueChange={(v) => applyLocalInflow('16-31', v)}
-                        className="w-full text-right bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-semibold text-slate-900 focus:bg-white focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono print:border-0 print:bg-transparent"
-                      />
-                    ) : (
-                      formatNumber(f2.pettyCashInflow, 0)
-                    )}
+                    {formatNumber(f2.pettyCashInflow, 0)}
+                    <a href="/accounts/petty-cash" className="ml-2 text-[10px] font-normal text-[#0066cc] underline print:hidden" title="Accounts › Petty Cash ki 'Cash in' entries se">
+                      Accounts se
+                    </a>
                   </td>
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">

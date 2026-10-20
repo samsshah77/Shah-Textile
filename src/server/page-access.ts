@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { resolvePermission } from "@/server/permissions";
+import { canViewFinance } from "@/lib/accountsAccess";
 
 export async function requirePagePermission(moduleKey: string, resourceKey: string) {
   try {
@@ -53,4 +54,18 @@ export async function requirePagePermission(moduleKey: string, resourceKey: stri
     console.error("[requirePagePermission]", moduleKey, resourceKey, err);
     redirect("/forbidden");
   }
+}
+
+/**
+ * Accounts / Salary pages: on top of the module permission, only Tufail (edit) and
+ * Javed (view) may open them — everyone else is sent to /forbidden.
+ */
+export async function requireFinancePage(moduleKey: "accounts" | "payroll", resourceKey: string) {
+  const user = await requirePagePermission(moduleKey, resourceKey);
+  const full = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { id: true, email: true, name: true, roleKey: true },
+  });
+  if (!canViewFinance(full ? { ...full, role: full.roleKey } : null)) redirect("/forbidden");
+  return user;
 }

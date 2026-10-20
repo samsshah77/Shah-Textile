@@ -606,13 +606,15 @@ export function readHrMetaRaw(): HrMetaShape {
   return {}
 }
 
+/**
+ * Permanently deleted? By id when known — deleting one "Dawood" must never hide another
+ * person who has the same name. The name list only covers very old rows without an id.
+ */
 export function isTombstonedEmployee(id?: string, name?: string): boolean {
   const raw = readHrMetaRaw()
-  const ids = raw.deletedEmployeeIds || []
-  const names = raw.deletedEmployeeNames || []
-  if (id && ids.includes(id)) return true
+  if (id) return (raw.deletedEmployeeIds || []).includes(id)
   const key = normalizeNameLocal(name)
-  return Boolean(key && names.includes(key))
+  return Boolean(key && (raw.deletedEmployeeNames || []).includes(key))
 }
 
 export function rememberDeletedEmployee(emp: EmployeeProfile): void {

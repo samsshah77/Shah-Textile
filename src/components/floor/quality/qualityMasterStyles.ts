@@ -67,4 +67,25 @@ export const QUALITY_MASTER_CSS = `
         tr.sara-quality-ended-history > td {
           background-color: rgba(108, 117, 125, 0.16) !important;
         }
+        /* Available Looms small boxes */
+        .sara-available-loom-chip {
+          min-width: 28px;
+          height: 24px;
+          padding: 0 5px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          border-radius: 4px;
+          background-color: var(--bs-card-bg, #ffffff);
+          border: 1px solid var(--bs-border-color, #dee2e6);
+          color: var(--bs-body-color, #212529);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+          transition: all 0.15s ease-in-out;
+          cursor: default;
+          user-select: none;
+        }
+        .sara-available-loom-chip:hover {
+          border-color: var(--bs-success, #198754) !important;
+          background-color: var(--bs-success-bg-subtle, #d1e7dd) !important;
+          color: var(--bs-success-emphasis, #0a3622) !important;
+        }
 `

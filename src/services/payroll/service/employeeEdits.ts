@@ -13,6 +13,7 @@ import {
 import { STORAGE_KEYS } from '@/services/payroll/payrollConstants'
 import {
   hydrated,
+  flushPayrollSaves,
   writeStore,
   writeStoreAndWait,
   readHrMetaRaw,
@@ -22,8 +23,6 @@ import {
 } from '@/services/payroll/payrollStorage'
 import {
   parseResignationDateFromRemarks,
-  joiningMonth,
-  employeeBelongsInMonth,
   todayIsoDate,
   namesMatch,
   inferEmployeeCategory,
@@ -35,59 +34,38 @@ import {
 import type { PayrollService } from '@/services/payrollService'
 
 export const employeeEditMethods = {
+  /**
+   * Save the whole roster (General Wages page). People whose profile changed are carried
+   * onto the sheets from the active salary month on (earlier months stay as they were).
+   */
   saveEmployees(this: PayrollService, list: EmployeeProfile[], triggerSync: boolean = true): void {
     if (!this.isClient()) return
-
+    const before = new Map(this.getEmployees().map((e) => [e.id, e]))
     writeStore(STORAGE_KEYS.EMPLOYEES, list)
-
     if (triggerSync) {
-      this.syncMasterRoster(list, this.getActiveSalariedMonth())
-    } else {
-      this.notifyDataChanged()
+      const month = this.getActiveSalariedMonth()
+      const strip = (e: EmployeeProfile) => JSON.stringify({ ...e, serialNo: 0 })
+      const notes: string[] = []
+      for (const emp of list) {
+        const old = before.get(emp.id)
+        if (old && strip(old) === strip(emp)) continue
+        notes.push(...this.applyProfileToSheets(old || null, emp, month).warnings)
+      }
+      this.showProfileNotes(notes)
     }
+    this.notifyDataChanged()
   },
 
   addEmployee(
     this: PayrollService,
     emp: Omit<EmployeeProfile, 'id' | 'serialNo' | 'ratePerDay31' | 'ratePerDay30' | 'ratePerHr30' | 'ratePerDay28'>,
-    targetIndex?: number
+    targetIndex?: number,
+    targetMonth?: string
   ): EmployeeProfile {
-    // Re-hire after permanent delete — clear name tombstone so one fresh profile shows.
-    clearDeletedEmployeeTombstone(undefined, emp.name)
-    const list = this.getEmployees()
-    const ratePerDay31 = Math.round((emp.salary / 31) * 100) / 100
-    const ratePerDay30 = Math.round((emp.salary / 30) * 100) / 100
-    const ratePerHr30 = Math.round((emp.salary / (30 * (emp.dutyHrs || 8))) * 100) / 100
-    const ratePerDay28 = Math.round((emp.salary / 28) * 100) / 100
-    const employeeCategory = inferEmployeeCategory(emp)
-
-    const newEmp: EmployeeProfile = {
-      ...emp,
-      id: `emp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      serialNo: 0,
-      ratePerDay31,
-      ratePerDay30,
-      ratePerHr30,
-      ratePerDay28,
-      status: emp.status || 'Active',
-      employeeCategory,
-    }
-
-    const insertIdx =
-      targetIndex !== undefined
-        ? Math.max(0, Math.min(targetIndex, list.length))
-        : findSmartInsertionIndex(list, emp.designation, employeeCategory)
-
-    list.splice(insertIdx, 0, newEmp)
-    const renumbered = list.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    this.saveEmployees(renumbered, false)
-    const saved = renumbered[insertIdx]
-    const activeMonth = this.getActiveSalariedMonth()
-    this.placeOnDailyWageSheets(saved, activeMonth)
-    this.placeOnSalariedSheets(saved, activeMonth)
-    this.alignEfficiencyToProfiles(activeMonth, [saved], true)
-    this.purgeJoinerFromPastMonths(saved)
-    this.notifyDataChanged()
+    const month = targetMonth || this.getActiveSalariedMonth()
+    const saved = this.insertNewProfile(emp, targetIndex, month)
+    this.showProfileNotes(this.applyProfileToSheets(null, saved, month).warnings)
+    this.notifyDataChanged(month)
     return saved
   },
 
@@ -97,49 +75,98 @@ export const employeeEditMethods = {
     targetIndex?: number,
     targetMonth?: string
   ): Promise<EmployeeProfile> {
+    await hydratePayrollFromDb()
+    const saved = this.addEmployee(emp, targetIndex, targetMonth)
+    await flushPayrollSaves()
+    return saved
+  },
+
+  /** Put a new profile into the roster (DOJ defaults to the 1st of the month it is added in). */
+  insertNewProfile(
+    this: PayrollService,
+    emp: Omit<EmployeeProfile, 'id' | 'serialNo' | 'ratePerDay31' | 'ratePerDay30' | 'ratePerHr30' | 'ratePerDay28'>,
+    targetIndex: number | undefined,
+    month: string
+  ): EmployeeProfile {
+    // Re-hire after a permanent delete of the same name: allow the name again.
     clearDeletedEmployeeTombstone(undefined, emp.name)
     const list = this.getEmployees()
-    const ratePerDay31 = Math.round((emp.salary / 31) * 100) / 100
-    const ratePerDay30 = Math.round((emp.salary / 30) * 100) / 100
-    const ratePerHr30 = Math.round((emp.salary / (30 * (emp.dutyHrs || 8))) * 100) / 100
-    const ratePerDay28 = Math.round((emp.salary / 28) * 100) / 100
+    const r2 = (n: number) => Math.round(n * 100) / 100
     const employeeCategory = inferEmployeeCategory(emp)
-
-    // If registering for a target month without DOJ, pin DOJ to that month so past sheets stay clean.
-    const pinnedDoj =
-      emp.doj ||
-      (targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) ? `${targetMonth}-01` : '') ||
-      todayIsoDate()
-
     const newEmp: EmployeeProfile = {
       ...emp,
-      id: `emp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: `emp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       serialNo: 0,
-      ratePerDay31,
-      ratePerDay30,
-      ratePerHr30,
-      ratePerDay28,
-      doj: pinnedDoj,
+      ratePerDay31: r2(emp.salary / 31),
+      ratePerDay30: r2(emp.salary / 30),
+      ratePerHr30: r2(emp.salary / (30 * (emp.dutyHrs || 8))),
+      ratePerDay28: r2(emp.salary / 28),
+      doj: emp.doj || (/^\d{4}-\d{2}$/.test(month) ? `${month}-01` : todayIsoDate()),
       status: emp.status || 'Active',
       employeeCategory,
     }
-
     const insertIdx =
       targetIndex !== undefined
         ? Math.max(0, Math.min(targetIndex, list.length))
         : findSmartInsertionIndex(list, emp.designation, employeeCategory)
-
     list.splice(insertIdx, 0, newEmp)
     const renumbered = list.map((item, idx) => ({ ...item, serialNo: idx + 1 }))
-    await writeStoreAndWait(STORAGE_KEYS.EMPLOYEES, renumbered)
-    const saved = renumbered[insertIdx]
-    const activeMonth = targetMonth || this.getActiveSalariedMonth()
-    this.placeOnDailyWageSheets(saved, activeMonth)
-    this.placeOnSalariedSheets(saved, activeMonth)
-    this.alignEfficiencyToProfiles(activeMonth, [saved], true)
-    this.purgeJoinerFromPastMonths(saved)
-    this.notifyDataChanged(targetMonth)
-    return saved
+    writeStore(STORAGE_KEYS.EMPLOYEES, renumbered)
+    return renumbered[insertIdx]
+  },
+
+  /**
+   * Profile values after an edit, and the person as the sheets of `targetMonth` should see
+   * them. Editing an older month changes that month's pay on the sheets but keeps the
+   * profile's current pay.
+   */
+  mergeProfileEdit(
+    this: PayrollService,
+    current: EmployeeProfile,
+    updatedFields: Partial<EmployeeProfile>,
+    targetMonth?: string
+  ): { merged: EmployeeProfile; sheetEmp: EmployeeProfile } {
+    const writePayToProfile = this.shouldWritePayOntoProfile(targetMonth)
+    const r2 = (n: number) => Math.round(n * 100) / 100
+    const salary = updatedFields.salary !== undefined && writePayToProfile ? Number(updatedFields.salary) : current.salary
+    const dutyHrs = updatedFields.dutyHrs !== undefined ? Number(updatedFields.dutyHrs) : current.dutyHrs
+    const explicitDaily =
+      writePayToProfile && updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0
+        ? Number(updatedFields.ratePerDay30)
+        : null
+
+    const nextStatus = updatedFields.status ?? current.status ?? 'Active'
+    let resignedAt = updatedFields.resignedAt !== undefined ? updatedFields.resignedAt : current.resignedAt
+    if (nextStatus === 'Resigned') {
+      resignedAt = resignedAt || parseResignationDateFromRemarks(updatedFields.remarks ?? current.remarks) || todayIsoDate()
+    } else if (updatedFields.status && updatedFields.status !== 'Resigned') {
+      resignedAt = undefined
+    }
+
+    const merged: EmployeeProfile = {
+      ...current,
+      ...updatedFields,
+      salary,
+      dutyHrs,
+      ratePerDay31: writePayToProfile ? (explicitDaily ?? r2(salary / 31)) : current.ratePerDay31,
+      ratePerDay30: writePayToProfile ? (explicitDaily ?? r2(salary / 30)) : current.ratePerDay30,
+      ratePerHr30: writePayToProfile ? r2(salary / (30 * (dutyHrs || 8))) : current.ratePerHr30,
+      ratePerDay28: writePayToProfile ? (explicitDaily ?? r2(salary / 28)) : current.ratePerDay28,
+      status: nextStatus,
+      resignedAt,
+    }
+    merged.employeeCategory = inferEmployeeCategory(merged)
+
+    const sheetDaily =
+      updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0 ? Number(updatedFields.ratePerDay30) : null
+    const sheetEmp: EmployeeProfile = {
+      ...merged,
+      salary: updatedFields.salary !== undefined ? Number(updatedFields.salary) : current.salary,
+      ratePerDay30: sheetDaily ?? merged.ratePerDay30,
+      ratePerDay31: sheetDaily ?? merged.ratePerDay31,
+      ratePerDay28: sheetDaily ?? merged.ratePerDay28,
+    }
+    return { merged, sheetEmp }
   },
 
   updateEmployee(
@@ -151,97 +178,12 @@ export const employeeEditMethods = {
     const list = this.getEmployees()
     const idx = list.findIndex((e) => e.id === id)
     if (idx === -1) return null
-
     const current = list[idx]
-    const writePayToProfile = this.shouldWritePayOntoProfile(targetMonth)
-    const salary =
-      updatedFields.salary !== undefined && writePayToProfile
-        ? Number(updatedFields.salary)
-        : current.salary
-    const dutyHrs = updatedFields.dutyHrs !== undefined ? Number(updatedFields.dutyHrs) : current.dutyHrs
-
-    const explicitDaily =
-      writePayToProfile &&
-      updatedFields.ratePerDay30 != null &&
-      Number(updatedFields.ratePerDay30) > 0
-        ? Number(updatedFields.ratePerDay30)
-        : null
-    const ratePerDay31 = writePayToProfile
-      ? (explicitDaily ?? Math.round((salary / 31) * 100) / 100)
-      : current.ratePerDay31
-    const ratePerDay30 = writePayToProfile
-      ? (explicitDaily ?? Math.round((salary / 30) * 100) / 100)
-      : current.ratePerDay30
-    const ratePerHr30 = writePayToProfile
-      ? Math.round((salary / (30 * (dutyHrs || 8))) * 100) / 100
-      : current.ratePerHr30
-    const ratePerDay28 = writePayToProfile
-      ? (explicitDaily ?? Math.round((salary / 28) * 100) / 100)
-      : current.ratePerDay28
-
-    const nextStatus = updatedFields.status ?? current.status ?? 'Active'
-    let resignedAt = updatedFields.resignedAt !== undefined ? updatedFields.resignedAt : current.resignedAt
-    if (nextStatus === 'Resigned') {
-      resignedAt =
-        resignedAt ||
-        parseResignationDateFromRemarks(updatedFields.remarks ?? current.remarks) ||
-        todayIsoDate()
-    } else if (updatedFields.status && updatedFields.status !== 'Resigned') {
-      resignedAt = undefined
-    }
-
-    // Sheet sync always sees the pay values intended for targetMonth (even if profile keeps current rate).
-    const sheetPaySalary =
-      updatedFields.salary !== undefined ? Number(updatedFields.salary) : current.salary
-    const sheetPayDaily =
-      updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0
-        ? Number(updatedFields.ratePerDay30)
-        : null
-
-    const merged: EmployeeProfile = {
-      ...current,
-      ...updatedFields,
-      salary,
-      dutyHrs,
-      ratePerDay31,
-      ratePerDay30,
-      ratePerHr30,
-      ratePerDay28,
-      status: nextStatus,
-      resignedAt,
-    }
-    merged.employeeCategory = inferEmployeeCategory(merged)
-
-    const syncEmp: EmployeeProfile = {
-      ...merged,
-      salary: sheetPaySalary,
-      ratePerDay30: sheetPayDaily ?? merged.ratePerDay30,
-      ratePerDay31: sheetPayDaily ?? merged.ratePerDay31,
-      ratePerDay28: sheetPayDaily ?? merged.ratePerDay28,
-      overtimeRate: updatedFields.overtimeRate ?? merged.overtimeRate,
-      overtimeShifts: updatedFields.overtimeShifts ?? merged.overtimeShifts,
-    }
-
+    const { merged, sheetEmp } = this.mergeProfileEdit(current, updatedFields, targetMonth)
     list[idx] = merged
-    this.profileAliases.set(id, current.name)
     writeStore(STORAGE_KEYS.EMPLOYEES, list)
-    this.syncSingleEmployeeAcrossSheets(current, syncEmp, targetMonth)
-    this.profileAliases.delete(id)
-
-    if (nextStatus === 'Resigned') {
-      this.purgeResignedFromFutureMonths(merged)
-    }
-    // User edits DOJ on profile → drop from earlier month tables, keep on join month onward.
-    if (joiningMonth(merged)) {
-      this.purgeJoinerFromPastMonths(merged)
-    }
-    const placeMonth = targetMonth || this.getActiveSalariedMonth()
-    if (employeeBelongsInMonth(merged, placeMonth)) {
-      this.placeOnDailyWageSheets(merged, placeMonth)
-      this.placeContractorOnCycle(merged)
-      this.placeOnSalariedSheets(merged, placeMonth)
-      this.alignEfficiencyToProfiles(placeMonth, [merged], true)
-    }
+    const month = targetMonth || this.getActiveSalariedMonth()
+    this.showProfileNotes(this.applyProfileToSheets(current, sheetEmp, month).warnings)
     this.notifyDataChanged(targetMonth)
     return merged
   },
@@ -252,101 +194,26 @@ export const employeeEditMethods = {
     updatedFields: Partial<EmployeeProfile>,
     targetMonth?: string
   ): Promise<EmployeeProfile | null> {
-    const list = this.getEmployees()
-    const idx = list.findIndex((e) => e.id === id)
-    if (idx === -1) return null
-
-    const current = list[idx]
-    const writePayToProfile = this.shouldWritePayOntoProfile(targetMonth)
-    const salary =
-      updatedFields.salary !== undefined && writePayToProfile
-        ? Number(updatedFields.salary)
-        : current.salary
-    const dutyHrs = updatedFields.dutyHrs !== undefined ? Number(updatedFields.dutyHrs) : current.dutyHrs
-
-    const explicitDaily =
-      writePayToProfile &&
-      updatedFields.ratePerDay30 != null &&
-      Number(updatedFields.ratePerDay30) > 0
-        ? Number(updatedFields.ratePerDay30)
-        : null
-    const ratePerDay31 = writePayToProfile
-      ? (explicitDaily ?? Math.round((salary / 31) * 100) / 100)
-      : current.ratePerDay31
-    const ratePerDay30 = writePayToProfile
-      ? (explicitDaily ?? Math.round((salary / 30) * 100) / 100)
-      : current.ratePerDay30
-    const ratePerHr30 = writePayToProfile
-      ? Math.round((salary / (30 * (dutyHrs || 8))) * 100) / 100
-      : current.ratePerHr30
-    const ratePerDay28 = writePayToProfile
-      ? (explicitDaily ?? Math.round((salary / 28) * 100) / 100)
-      : current.ratePerDay28
-
-    const nextStatus = updatedFields.status ?? current.status ?? 'Active'
-    let resignedAt = updatedFields.resignedAt !== undefined ? updatedFields.resignedAt : current.resignedAt
-    if (nextStatus === 'Resigned') {
-      resignedAt =
-        resignedAt ||
-        parseResignationDateFromRemarks(updatedFields.remarks ?? current.remarks) ||
-        todayIsoDate()
-    } else if (updatedFields.status && updatedFields.status !== 'Resigned') {
-      resignedAt = undefined
-    }
-
-    const sheetPaySalary =
-      updatedFields.salary !== undefined ? Number(updatedFields.salary) : current.salary
-    const sheetPayDaily =
-      updatedFields.ratePerDay30 != null && Number(updatedFields.ratePerDay30) > 0
-        ? Number(updatedFields.ratePerDay30)
-        : null
-
-    const merged: EmployeeProfile = {
-      ...current,
-      ...updatedFields,
-      salary,
-      dutyHrs,
-      ratePerDay31,
-      ratePerDay30,
-      ratePerHr30,
-      ratePerDay28,
-      status: nextStatus,
-      resignedAt,
-    }
-    merged.employeeCategory = inferEmployeeCategory(merged)
-
-    const syncEmp: EmployeeProfile = {
-      ...merged,
-      salary: sheetPaySalary,
-      ratePerDay30: sheetPayDaily ?? merged.ratePerDay30,
-      ratePerDay31: sheetPayDaily ?? merged.ratePerDay31,
-      ratePerDay28: sheetPayDaily ?? merged.ratePerDay28,
-      overtimeRate: updatedFields.overtimeRate ?? merged.overtimeRate,
-      overtimeShifts: updatedFields.overtimeShifts ?? merged.overtimeShifts,
-    }
-
-    list[idx] = merged
-    this.profileAliases.set(id, current.name)
-    await writeStoreAndWait(STORAGE_KEYS.EMPLOYEES, list)
-    await this.syncSingleEmployeeAcrossSheetsAsync(current, syncEmp, targetMonth)
-    this.profileAliases.delete(id)
-
-    if (nextStatus === 'Resigned') {
-      this.purgeResignedFromFutureMonths(merged)
-    }
-    // User edits DOJ on profile → drop from earlier month tables, keep on join month onward.
-    if (joiningMonth(merged)) {
-      this.purgeJoinerFromPastMonths(merged)
-    }
-    const placeMonth = targetMonth || this.getActiveSalariedMonth()
-    if (employeeBelongsInMonth(merged, placeMonth)) {
-      this.placeOnDailyWageSheets(merged, placeMonth)
-      this.placeContractorOnCycle(merged)
-      this.placeOnSalariedSheets(merged, placeMonth)
-      this.alignEfficiencyToProfiles(placeMonth, [merged], true)
-    }
-    this.notifyDataChanged(targetMonth)
+    await hydratePayrollFromDb()
+    const merged = this.updateEmployee(id, updatedFields, targetMonth)
+    // Profile + every sheet change go to the server together, in one save.
+    await flushPayrollSaves()
     return merged
+  },
+
+  /** Tell the user about rows that were kept on purpose (data already entered). */
+  showProfileNotes(this: PayrollService, notes: string[]): void {
+    const unique = [...new Set(notes)]
+    if (!unique.length || !this.isClient()) return
+    try {
+      window.dispatchEvent(
+        new CustomEvent('payroll:save-problem', {
+          detail: { status: 200, message: unique.slice(0, 4).join(' ') + (unique.length > 4 ? ` (+${unique.length - 4} aur)` : '') },
+        })
+      )
+    } catch {
+      // ignore
+    }
   },
 
   rejoinEmployee(this: PayrollService, id: string, newDoj?: string): EmployeeProfile | null {
@@ -476,7 +343,7 @@ export const employeeEditMethods = {
     const roster = this.getEmployees()
     const linked =
       findLinkedEmployee(roster, row.employeeName, row.designation, row.employeeId) ||
-      (row.employeeName
+      (!row.employeeId && row.employeeName
         ? roster.find((e) => namesMatch(e.name, row.employeeName))
         : undefined)
 
@@ -520,14 +387,6 @@ export const employeeEditMethods = {
         this.readStore(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES)
       )
     }
-  },
-
-  // Sheet 1 master → every sheet that already has the same person
-  syncEmployeeProfileUpdate(this: PayrollService, emp: EmployeeProfile, month?: string): void {
-    this.syncMasterRoster(
-      this.getEmployees().map((row) => (row.id === emp.id ? emp : row)),
-      month || this.getActiveSalariedMonth()
-    )
   },
 
   removeLinkedPayrollRows(this: PayrollService, emp: EmployeeProfile): void {

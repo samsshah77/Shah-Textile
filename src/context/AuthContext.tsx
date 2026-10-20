@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { User, UserRole } from '@/types/auth'
-import { isAccountsController } from '@/lib/accountsAccess'
+import { canViewFinance, isAccountsController } from '@/lib/accountsAccess'
 
 export type AuthUser = {
   id: string
@@ -170,7 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.role === 'admin'
   const isAccountant = user?.role?.toLowerCase() === 'accountant'
   const isQualityController = user?.role?.toLowerCase() === 'quality_controller'
-  const canViewAccounts = isAdmin || isAccountant
+  // Accounts + Salary: Tufail edits, Javed (admin) views, nobody else (see accountsAccess.ts)
+  const canViewAccounts = canViewFinance(user)
   const canEditAccounts = isAccountsController(user)
   const canViewProduction = true
   const canEditProduction = isAdmin || isQualityController

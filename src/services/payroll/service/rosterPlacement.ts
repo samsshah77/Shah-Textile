@@ -11,205 +11,19 @@ import {
   EfficiencyIncentiveRecord,
 } from '@/types/payroll'
 import {
-  INITIAL_STAFF_SALARIES,
-  INITIAL_HELPERS_WAGES,
-  INITIAL_WEAVERS_WAGES,
-  INITIAL_CONTRACT_SALARIES,
   INITIAL_CONTRACTORS,
   INITIAL_EFFICIENCY_INCENTIVES,
 } from '@/data/payrollSeeds'
 import { STORAGE_KEYS } from '@/services/payroll/payrollConstants'
 import { hydrated, isTombstonedEmployee, isMonthLocked, writeStore } from '@/services/payroll/payrollStorage'
 import {
-  daysInCalendarMonth,
   employeeBelongsInMonth,
   namesMatch,
   inferEmployeeCategory,
-  weaverSheetFields,
-  helperSheetFields,
 } from '@/services/payroll/payrollCalculations'
 import type { PayrollService } from '@/services/payrollService'
 
 export const rosterPlacementMethods = {
-  /** Weaver / Spare Weaver / Helper belong on their wage sheets, not General Wages. */
-  placeOnDailyWageSheets(this: PayrollService, emp: EmployeeProfile, month = '2026-08'): void {
-    const cat = inferEmployeeCategory(emp)
-    if (cat !== 'Weaver' && cat !== 'Helper') return
-    if ((emp.status || 'Active') === 'Resigned') return
-    if (isTombstonedEmployee(emp.id, emp.name)) return
-    if (!employeeBelongsInMonth(emp, month)) return
-
-    const monthsOf = (_rows?: { month?: string }[]) => [month]
-
-    if (cat === 'Weaver') {
-      const all = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
-      const pay = weaverSheetFields(emp)
-      const previousName = this.profileAliases.get(emp.id)
-      let changed = false
-      const next = [...all]
-      for (const m of monthsOf(all)) {
-        for (const fortnight of ['1-15', '16-31'] as const) {
-          if (!employeeBelongsInMonth(emp, m, fortnight)) {
-            const idx = next.findIndex(
-              (w) =>
-                w.month === m &&
-                w.fortnight === fortnight &&
-                (w.employeeId === emp.id ||
-                  namesMatch(w.employeeName, emp.name) ||
-                  namesMatch(w.employeeName, previousName))
-            )
-            if (idx >= 0) {
-              next.splice(idx, 1)
-              changed = true
-            }
-            continue
-          }
-
-          const idx = next.findIndex(
-            (w) =>
-              w.month === m &&
-              w.fortnight === fortnight &&
-              (w.employeeId === emp.id ||
-                namesMatch(w.employeeName, emp.name) ||
-                namesMatch(w.employeeName, previousName))
-          )
-          if (idx >= 0) {
-            const row = next[idx]
-            // holidayAttendance is sheet-owned (editable on Weavers OT) — do not overwrite from profile.
-            if (
-              row.employeeId === emp.id &&
-              row.employeeName === emp.name &&
-              row.designation === pay.designation &&
-              row.wagePerDay === pay.wagePerDay &&
-              row.holidayRate === pay.holidayRate
-            ) {
-              continue
-            }
-            next[idx] = this.calculateWeaverWageRow({
-              ...row,
-              employeeId: emp.id,
-              employeeName: emp.name,
-              designation: pay.designation,
-              wagePerDay: pay.wagePerDay,
-              holidayRate: pay.holidayRate,
-              holidayAttendance: row.holidayAttendance,
-            })
-            changed = true
-            continue
-          }
-          const peers = next.filter((w) => w.month === m && w.fortnight === fortnight)
-          next.push(
-            this.calculateWeaverWageRow({
-              id: `w-${m}-${fortnight}-${emp.id}`,
-              serialNo: peers.length + 1,
-              employeeId: emp.id,
-              employeeName: emp.name,
-              designation: pay.designation,
-              wagePerDay: pay.wagePerDay,
-              attendanceDays: 0,
-              rateLoom: 150,
-              extraLooms: 0,
-              holidayAttendance: Number(emp.overtimeShifts) || 0,
-              holidayRate: pay.holidayRate,
-              efficiencyAmount: 0,
-              fortnight,
-              month: m,
-            })
-          )
-          changed = true
-        }
-      }
-      if (changed) this.saveWeaversWages(next, false)
-      return
-    }
-
-    const all = this.readStore(STORAGE_KEYS.HELPERS, INITIAL_HELPERS_WAGES)
-    const pay = helperSheetFields(emp)
-    const previousName = this.profileAliases.get(emp.id)
-    let changed = false
-    const next = [...all]
-    for (const m of monthsOf(all)) {
-      for (const fortnight of ['1-15', '16-31'] as const) {
-        if (!employeeBelongsInMonth(emp, m, fortnight)) {
-          const idx = next.findIndex(
-            (h) =>
-              h.month === m &&
-              h.fortnight === fortnight &&
-              (h.employeeId === emp.id ||
-                namesMatch(h.employeeName, emp.name) ||
-                namesMatch(h.employeeName, previousName))
-          )
-          if (idx >= 0) {
-            next.splice(idx, 1)
-            changed = true
-          }
-          continue
-        }
-
-        const idx = next.findIndex(
-          (h) =>
-            h.month === m &&
-            h.fortnight === fortnight &&
-            (h.employeeId === emp.id ||
-              namesMatch(h.employeeName, emp.name) ||
-              namesMatch(h.employeeName, previousName))
-        )
-        if (idx >= 0) {
-          const row = next[idx]
-          // holidayAttendance is sheet-owned (editable on Helpers) — do not overwrite from profile.
-          if (
-            row.employeeId === emp.id &&
-            row.employeeName === emp.name &&
-            row.designation === pay.designation &&
-            row.wagePerDay === pay.wagePerDay &&
-            row.otRate === pay.otRate
-          ) {
-            continue
-          }
-          next[idx] = this.calculateHelperWageRow({
-            ...row,
-            employeeId: emp.id,
-            employeeName: emp.name,
-            designation: pay.designation,
-            wagePerDay: pay.wagePerDay,
-            otRate: pay.otRate,
-            holidayAttendance: row.holidayAttendance,
-          })
-          changed = true
-          continue
-        }
-        const peers = next.filter((h) => h.month === m && h.fortnight === fortnight)
-        next.push(
-          this.calculateHelperWageRow({
-            id: `h-${m}-${fortnight}-${emp.id}`,
-            serialNo: peers.length + 1,
-            employeeId: emp.id,
-            employeeName: emp.name,
-            designation: pay.designation,
-            wagePerDay: pay.wagePerDay,
-            attendanceDays: 0,
-            otRate: pay.otRate,
-            holidayAttendance: Number(emp.overtimeShifts) || 0,
-            fortnight,
-            month: m,
-          })
-        )
-        changed = true
-      }
-    }
-    if (changed) this.saveHelpersWages(next, false)
-  },
-
-  /**
-   * After a contractor's profile is saved: put them on the sheet that matches their pay
-   * cycle for the current fortnight month.
-   */
-  placeContractorOnCycle(this: PayrollService, emp: EmployeeProfile): void {
-    const { month } = this.getActiveFortnightPeriod()
-    // Profile was just saved on purpose → its 1–15 setting wins, even over typed amounts.
-    this.alignContractorsToProfiles(month, [emp], true)
-  },
-
   /**
    * Make the Contractors sheets of `month` follow each contractor's profile:
    *  - everyone → one 1–30/31 (month end) row (an old "16-31" row also counts);
@@ -303,7 +117,7 @@ export const rosterPlacementMethods = {
         const drop = mineNow.filter((r) => force || !(Number(r.efficiencyPercent) || 0))
         if (drop.length) {
           next = next.filter((r) => !drop.includes(r))
-          if (drop.some((r) => Number(r.amount) || 0)) zeroed.push(emp.name)
+          if (drop.some((r) => Number(r.amount) || 0)) zeroed.push(emp.id)
           changed = true
         }
         continue
@@ -313,7 +127,7 @@ export const rosterPlacementMethods = {
         .filter((r) => r.month < month && isMine(r))
         .sort((a, b) => b.month.localeCompare(a.month))[0]
       const contractRow = this.getContractSalaries(month).find(
-        (c) => c.employeeId === emp.id || namesMatch(c.employeeName, emp.name)
+        (c) => (c.employeeId ? c.employeeId === emp.id : namesMatch(c.employeeName, emp.name))
       )
       next = [
         ...next,
@@ -333,7 +147,7 @@ export const rosterPlacementMethods = {
     }
     if (!changed) return false
     writeStore(STORAGE_KEYS.EFFICIENCY, this.renumberByMonth(next))
-    for (const name of zeroed) this.syncEfficiencyToSalaries(name, month, 0, false)
+    for (const id of zeroed) this.syncEfficiencyToSalaries(id, month, 0, false)
     this.notifyDataChanged(month)
     return true
   },
@@ -358,140 +172,6 @@ export const rosterPlacementMethods = {
       fortnight: sheet,
       month,
     })
-  },
-
-  /** Staff / Admin → Staff sheet; Company Contract → Contract sheet. Attendance stays local. */
-  placeOnSalariedSheets(this: PayrollService, emp: EmployeeProfile, month = '2026-08'): void {
-    const cat = inferEmployeeCategory(emp)
-    if (cat === 'Weaver' || cat === 'Helper' || cat === 'Contractor') return
-    if ((emp.status || 'Active') === 'Resigned') return
-    if (!employeeBelongsInMonth(emp, month)) return
-
-    const monthsOf = (_rows?: { month?: string }[]) => [month]
-
-    const previousName = this.profileAliases.get(emp.id)
-
-    if (cat === 'Contract') {
-      const all = this.readStore(STORAGE_KEYS.CONTRACT, INITIAL_CONTRACT_SALARIES)
-      let changed = false
-      const next = [...all]
-      for (const m of monthsOf(all)) {
-        const days = daysInCalendarMonth(m)
-        const idx = next.findIndex(
-          (c) =>
-            c.month === m &&
-            (c.employeeId === emp.id ||
-              namesMatch(c.employeeName, emp.name) ||
-              namesMatch(c.employeeName, previousName))
-        )
-        if (idx >= 0) {
-          const row = next[idx]
-          if (
-            row.employeeId === emp.id &&
-            row.employeeName === emp.name &&
-            row.designation === emp.designation &&
-            row.salary === emp.salary
-          ) {
-            continue
-          }
-          next[idx] = this.calculateContractSalaryRow(
-            {
-              ...row,
-              employeeId: emp.id,
-              employeeName: emp.name,
-              designation: emp.designation,
-              salary: emp.salary,
-            },
-            days
-          )
-          changed = true
-          continue
-        }
-        const peers = next.filter((c) => c.month === m)
-        next.push(
-          this.calculateContractSalaryRow(
-            {
-              id: `ct-${m}-${emp.id}`,
-              serialNo: peers.length + 1,
-              employeeId: emp.id,
-              employeeName: emp.name,
-              designation: emp.designation,
-              salary: emp.salary,
-              attendanceDays: 0,
-              otHours: 0,
-              lateHours: 0,
-              efficiencyAmount: 0,
-              advanceDeduction: 0,
-              ticketCharges: 0,
-              month: m,
-            },
-            days
-          )
-        )
-        changed = true
-      }
-      if (changed) this.saveContractSalaries(next, false)
-      return
-    }
-
-    const all = this.readStore(STORAGE_KEYS.STAFF, INITIAL_STAFF_SALARIES)
-    let changed = false
-    const next = [...all]
-    for (const m of monthsOf(all)) {
-      const cal = daysInCalendarMonth(m)
-      const staffDays = cal === 28 ? 28 : 30
-      const idx = next.findIndex(
-        (s) =>
-          s.month === m &&
-          (s.employeeId === emp.id ||
-            namesMatch(s.employeeName, emp.name) ||
-            namesMatch(s.employeeName, previousName))
-      )
-      if (idx >= 0) {
-        const row = next[idx]
-        if (
-          row.employeeId === emp.id &&
-          row.employeeName === emp.name &&
-          row.designation === emp.designation &&
-          row.salary === emp.salary
-        ) {
-          continue
-        }
-        next[idx] = this.calculateStaffSalaryRow(
-          {
-            ...row,
-            employeeId: emp.id,
-            employeeName: emp.name,
-            designation: emp.designation,
-            salary: emp.salary,
-          },
-          staffDays
-        )
-        changed = true
-        continue
-      }
-      const peers = next.filter((s) => s.month === m)
-      next.push(
-        this.calculateStaffSalaryRow(
-          {
-            id: `st-${m}-${emp.id}`,
-            serialNo: peers.length + 1,
-            employeeId: emp.id,
-            employeeName: emp.name,
-            designation: emp.designation,
-            salary: emp.salary,
-            attendanceDays: 0,
-            otHours: 0,
-            lessAdvance: 0,
-            chequeAmount: 0,
-            month: m,
-          },
-          staffDays
-        )
-      )
-      changed = true
-    }
-    if (changed) this.saveStaffSalaries(next, false)
   },
 
 }
