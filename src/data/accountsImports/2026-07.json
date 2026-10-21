@@ -1,0 +1,780 @@
+{
+ "month": "2026-07",
+ "source": "jul.xlsx",
+ "expected": {
+  "billsTotal": 588081,
+  "pettyOpening": 3473,
+  "pettyClosing": 4714
+ },
+ "partyAliases": {
+  "Marhaba Engineering": "Marhaba Engineering Works",
+  "Marha Engineering Works": "Marhaba Engineering Works",
+  "JAB Electronic": "JAB Electronics"
+ },
+ "bills": [
+  {
+   "date": "2026-07-01",
+   "billNo": "3316",
+   "inwardNo": "7599",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Jeckquard Roller With Pin",
+     "machine": "",
+     "quantity": 24,
+     "rate": 600
+    }
+   ]
+  },
+  {
+   "date": "2026-07-01",
+   "billNo": "3313",
+   "inwardNo": "7600",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Belt 1520 Black",
+     "machine": "",
+     "quantity": 12,
+     "rate": 1000
+    },
+    {
+     "description": "Module Cycle",
+     "machine": "",
+     "quantity": 100,
+     "rate": 100
+    },
+    {
+     "description": "Upper Dory",
+     "machine": "",
+     "quantity": 100,
+     "rate": 25
+    },
+    {
+     "description": "CL Card",
+     "machine": "",
+     "quantity": 9,
+     "rate": 650
+    }
+   ]
+  },
+  {
+   "date": "2026-07-02",
+   "billNo": "3320",
+   "inwardNo": "7601",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Opner Patti China",
+     "machine": "",
+     "quantity": 2,
+     "rate": 800
+    },
+    {
+     "description": "Jeckquard Power Supply",
+     "machine": "",
+     "quantity": 2,
+     "rate": 1200
+    },
+    {
+     "description": "Jeckquard Data Cable",
+     "machine": "",
+     "quantity": 2,
+     "rate": 1800
+    },
+    {
+     "description": "JeckQuard Power Cable",
+     "machine": "",
+     "quantity": 2,
+     "rate": 1250
+    }
+   ]
+  },
+  {
+   "date": "2026-07-04",
+   "billNo": "237",
+   "inwardNo": "7602",
+   "partyName": "Marha Engineering Works",
+   "lines": [
+    {
+     "description": "Jeck Pully Bearing Repaired & Fitting",
+     "machine": "G-6300",
+     "quantity": 2,
+     "rate": 500
+    }
+   ]
+  },
+  {
+   "date": "2026-07-01",
+   "billNo": "TY-2626-03",
+   "inwardNo": "7603",
+   "partyName": "Etihad Lube Oil Company",
+   "lines": [
+    {
+     "description": "Geareax EP-220 HVI Plus Oil (01 Drum)",
+     "machine": "",
+     "quantity": 1,
+     "rate": 201926
+    }
+   ]
+  },
+  {
+   "date": "2026-07-09",
+   "billNo": "585",
+   "inwardNo": "7604",
+   "partyName": "A.A.I Engineering",
+   "lines": [
+    {
+     "description": "Jeckquard Timing Pully Set",
+     "machine": "",
+     "quantity": 8,
+     "rate": 13000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-04",
+   "billNo": "1352",
+   "inwardNo": "7605",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Jeckquard Repaired",
+     "machine": "",
+     "quantity": 2,
+     "rate": 1000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-14",
+   "billNo": "1354",
+   "inwardNo": "7606",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Jeckquard & Bolt Repaired",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    }
+   ]
+  },
+  {
+   "date": "2026-07-09",
+   "billNo": "21",
+   "inwardNo": "7607",
+   "partyName": "Alpha Traders",
+   "lines": [
+    {
+     "description": "Jeckquard Repaired Complete",
+     "machine": "",
+     "quantity": 1,
+     "rate": 8000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-13",
+   "billNo": "3357",
+   "inwardNo": "7608",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Spring Jala",
+     "machine": "",
+     "quantity": 72,
+     "rate": 45
+    },
+    {
+     "description": "Module Cycle",
+     "machine": "",
+     "quantity": 104,
+     "rate": 100
+    },
+    {
+     "description": "Silver Piece",
+     "machine": "",
+     "quantity": 1,
+     "rate": 500
+    },
+    {
+     "description": "Double Head Card",
+     "machine": "",
+     "quantity": 1,
+     "rate": 4500
+    }
+   ]
+  },
+  {
+   "date": "2026-07-16",
+   "billNo": "3370",
+   "inwardNo": "7609",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Jeckquard Spring Jala 153''",
+     "machine": "",
+     "quantity": 72,
+     "rate": 45
+    },
+    {
+     "description": "CL Card Single IC",
+     "machine": "",
+     "quantity": 9,
+     "rate": 650
+    },
+    {
+     "description": "Jeckquard Knife Support",
+     "machine": "",
+     "quantity": 15,
+     "rate": 65
+    },
+    {
+     "description": "Jeckquard Knife Orignal",
+     "machine": "",
+     "quantity": 1,
+     "rate": 3500
+    },
+    {
+     "description": "Jeckquard Shaft Bracket",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    }
+   ]
+  },
+  {
+   "date": "2026-07-17",
+   "billNo": "3374",
+   "inwardNo": "7610",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Module Cycle",
+     "machine": "",
+     "quantity": 104,
+     "rate": 100
+    }
+   ]
+  },
+  {
+   "date": "2026-07-08",
+   "billNo": "486",
+   "inwardNo": "7611",
+   "partyName": "JAB Electronics",
+   "lines": [
+    {
+     "description": "3HP Motor Winding",
+     "machine": "Electronic",
+     "quantity": 1,
+     "rate": 8000
+    },
+    {
+     "description": "Bearing 6205",
+     "machine": "Electronic",
+     "quantity": 1,
+     "rate": 1200
+    }
+   ]
+  },
+  {
+   "date": "2026-07-16",
+   "billNo": "489",
+   "inwardNo": "7612",
+   "partyName": "JAB Electronics",
+   "lines": [
+    {
+     "description": "Clutch Coil Winding",
+     "machine": "Electronic",
+     "quantity": 1,
+     "rate": 6000
+    },
+    {
+     "description": "Break Coil Winding",
+     "machine": "Electronic",
+     "quantity": 2,
+     "rate": 6000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-18",
+   "billNo": "1979",
+   "inwardNo": "7613",
+   "partyName": "Fahad Traders",
+   "lines": [
+    {
+     "description": "Gripper 1 Set",
+     "machine": "",
+     "quantity": 1,
+     "rate": 21000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-20",
+   "billNo": "27",
+   "inwardNo": "7614",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "Diode 10A 1000V",
+     "machine": "",
+     "quantity": 10,
+     "rate": 35
+    },
+    {
+     "description": "DC To DC 5+15V",
+     "machine": "",
+     "quantity": 1,
+     "rate": 4800
+    }
+   ]
+  },
+  {
+   "date": "2026-07-21",
+   "billNo": "52",
+   "inwardNo": "7615",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "Gal 16V Dip",
+     "machine": "",
+     "quantity": 6,
+     "rate": 650
+    },
+    {
+     "description": "IC HC573 Dip",
+     "machine": "",
+     "quantity": 10,
+     "rate": 150
+    },
+    {
+     "description": "IC HC 74 Dip",
+     "machine": "",
+     "quantity": 6,
+     "rate": 100
+    },
+    {
+     "description": "IC 7416 Dip",
+     "machine": "",
+     "quantity": 6,
+     "rate": 250
+    },
+    {
+     "description": "80C196",
+     "machine": "",
+     "quantity": 2,
+     "rate": 2500
+    },
+    {
+     "description": "75179",
+     "machine": "",
+     "quantity": 6,
+     "rate": 250
+    },
+    {
+     "description": "272 256 Dip",
+     "machine": "",
+     "quantity": 6,
+     "rate": 700
+    },
+    {
+     "description": "62C51864 Dip",
+     "machine": "",
+     "quantity": 2,
+     "rate": 2000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-23",
+   "billNo": "3388",
+   "inwardNo": "7616",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Jeck Roller With Pin",
+     "machine": "",
+     "quantity": 20,
+     "rate": 550
+    },
+    {
+     "description": "Spring Pipr Jeck",
+     "machine": "",
+     "quantity": 200,
+     "rate": 5
+    }
+   ]
+  },
+  {
+   "date": "2026-07-15",
+   "billNo": "1368",
+   "inwardNo": "7617",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Charkha New",
+     "machine": "",
+     "quantity": 1,
+     "rate": 6000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-29",
+   "billNo": "1376",
+   "inwardNo": "7618",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Dobby Needle",
+     "machine": "",
+     "quantity": 11,
+     "rate": 100
+    }
+   ]
+  },
+  {
+   "date": "2026-07-30",
+   "billNo": "1381",
+   "inwardNo": "7619",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Pressure Plate New",
+     "machine": "",
+     "quantity": 6,
+     "rate": 800
+    },
+    {
+     "description": "Clutch Plate",
+     "machine": "",
+     "quantity": 1,
+     "rate": 800
+    },
+    {
+     "description": "Pressure Plate Funner New",
+     "machine": "",
+     "quantity": 11,
+     "rate": 1200
+    },
+    {
+     "description": "Salvage Jeckquard Arm Rep",
+     "machine": "",
+     "quantity": 3,
+     "rate": 1000
+    },
+    {
+     "description": "Clutch Shim",
+     "machine": "",
+     "quantity": 12,
+     "rate": 600
+    }
+   ]
+  },
+  {
+   "date": "2026-07-30",
+   "billNo": "1383",
+   "inwardNo": "7620",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Pickfinging Gear Box Waram Gear",
+     "machine": "",
+     "quantity": 1,
+     "rate": 8000
+    },
+    {
+     "description": "Pickfinging Gear Box Waram Gear Fitting",
+     "machine": "",
+     "quantity": 1,
+     "rate": 4000
+    },
+    {
+     "description": "Pressure Plate Bolt And Washer (12pcs Set)",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1000
+    }
+   ]
+  },
+  {
+   "date": "2026-07-13",
+   "billNo": "238",
+   "inwardNo": "7621",
+   "partyName": "Marha Engineering Works",
+   "lines": [
+    {
+     "description": "Jeck Wheel Shaft Repaired",
+     "machine": "PU",
+     "quantity": 1,
+     "rate": 1000
+    },
+    {
+     "description": "Conveyor Chain Repaired",
+     "machine": "PU",
+     "quantity": 1,
+     "rate": 2500
+    }
+   ]
+  },
+  {
+   "date": "2026-07-30",
+   "billNo": "240",
+   "inwardNo": "7622",
+   "partyName": "Marha Engineering Works",
+   "lines": [
+    {
+     "description": "Jeck Shaft Repaired",
+     "machine": "G-6200",
+     "quantity": 1,
+     "rate": 1000
+    },
+    {
+     "description": "Bush Size",
+     "machine": "G-6200",
+     "quantity": 1,
+     "rate": 150
+    }
+   ]
+  },
+  {
+   "date": "2026-07-31",
+   "billNo": "241",
+   "inwardNo": "7623",
+   "partyName": "Marha Engineering Works",
+   "lines": [
+    {
+     "description": "Late off Liver",
+     "machine": "PU",
+     "quantity": 2,
+     "rate": 1600
+    },
+    {
+     "description": "Late off Body Bush",
+     "machine": "PU",
+     "quantity": 1,
+     "rate": 1000
+    },
+    {
+     "description": "Late off Disk",
+     "machine": "PU",
+     "quantity": 1,
+     "rate": 3500
+    },
+    {
+     "description": "Late Off Seal",
+     "machine": "PU",
+     "quantity": 1,
+     "rate": 400
+    }
+   ]
+  },
+  {
+   "date": "2026-07-28",
+   "billNo": "3498",
+   "inwardNo": "7624",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Gripper",
+     "machine": "",
+     "quantity": 1,
+     "rate": 5000
+    },
+    {
+     "description": "Belt 1520 Black",
+     "machine": "",
+     "quantity": 10,
+     "rate": 1000
+    },
+    {
+     "description": "Module Cycle",
+     "machine": "",
+     "quantity": 48,
+     "rate": 100
+    }
+   ]
+  },
+  {
+   "date": "2026-07-31",
+   "billNo": "1385",
+   "inwardNo": "7625",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Frame Bolt Repaired",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    }
+   ]
+  }
+ ],
+ "petty": [
+  {
+   "date": "2026-07-06",
+   "description": "Cash Recceived for Petty Cash",
+   "kind": "CASH_IN",
+   "amount": 75206
+  },
+  {
+   "date": "2026-07-06",
+   "description": "Cash Recceived for Salary, Wages and Contractor Payment",
+   "kind": "CASH_IN",
+   "amount": 1374794
+  },
+  {
+   "date": "2026-07-06",
+   "description": "Paid Salaries and Contracters amount",
+   "kind": "SALARY",
+   "amount": 1374794
+  },
+  {
+   "date": "2026-07-02",
+   "description": "Jeckquard LCD Repaired,Petrol KGA-6065",
+   "kind": "EXPENSE",
+   "amount": 3300
+  },
+  {
+   "date": "2026-07-07",
+   "description": "Reed New 88\"*66\" 2pcs For PU",
+   "kind": "EXPENSE",
+   "amount": 18700
+  },
+  {
+   "date": "2026-07-08",
+   "description": "Grander+Cutting Disk 20pcs",
+   "kind": "EXPENSE",
+   "amount": 6900
+  },
+  {
+   "date": "2026-07-08",
+   "description": "Jeckquard Technician Hasnain Bandage",
+   "kind": "EXPENSE",
+   "amount": 390
+  },
+  {
+   "date": "2026-07-08",
+   "description": "PU Frame Patti Repaired",
+   "kind": "EXPENSE",
+   "amount": 1000
+  },
+  {
+   "date": "2026-07-10",
+   "description": "PU Conveyor Chain 30ft,Salvage Repaired 4pcs,T L-key 3mm,Epoxy Hardner",
+   "kind": "EXPENSE",
+   "amount": 10650
+  },
+  {
+   "date": "2026-07-11",
+   "description": "Color For Godown Gate,Gate Wheel,Welding Holder,Gate Huk,Hammer",
+   "kind": "EXPENSE",
+   "amount": 10740
+  },
+  {
+   "date": "2026-07-12",
+   "description": "Leno Con Winding",
+   "kind": "EXPENSE",
+   "amount": 2000
+  },
+  {
+   "date": "2026-07-13",
+   "description": "Solar Panel Cleaning Charges",
+   "kind": "EXPENSE",
+   "amount": 12000
+  },
+  {
+   "date": "2026-07-14",
+   "description": "Gate Wheel & Bolt,Electronic Componants,Petrol KGA-6065",
+   "kind": "EXPENSE",
+   "amount": 4170
+  },
+  {
+   "date": "2026-07-14",
+   "description": "PTCL Bill Paid",
+   "kind": "EXPENSE",
+   "amount": 8070
+  },
+  {
+   "date": "2026-07-20",
+   "description": "Cash Recceived for Petty Cash",
+   "kind": "CASH_IN",
+   "amount": 77265
+  },
+  {
+   "date": "2026-07-20",
+   "description": "Cash Recceived for Salary, Wages and Contractor Payment",
+   "kind": "CASH_IN",
+   "amount": 1002735
+  },
+  {
+   "date": "2026-07-20",
+   "description": "Paid Salaries and Contracters amount",
+   "kind": "SALARY",
+   "amount": 1002735
+  },
+  {
+   "date": "2026-07-16",
+   "description": "Oil Pipe,Clip,Wire 4M,Switch 2pcs,Lock For Godown,",
+   "kind": "EXPENSE",
+   "amount": 2690
+  },
+  {
+   "date": "2026-07-22",
+   "description": "White Oil 3L For FOI,Suttle Repaired For PU,Door Lock For BacDoor 2pcs",
+   "kind": "EXPENSE",
+   "amount": 3800
+  },
+  {
+   "date": "2026-07-25",
+   "description": "KGA-6065 Engine Repaired",
+   "kind": "EXPENSE",
+   "amount": 6500
+  },
+  {
+   "date": "2026-07-27",
+   "description": "Leno Con Winding",
+   "kind": "EXPENSE",
+   "amount": 2500
+  },
+  {
+   "date": "2026-07-27",
+   "description": "Jeckquard LCD Display Change,Ribbon Cable 6+1 6pcs",
+   "kind": "EXPENSE",
+   "amount": 10200
+  },
+  {
+   "date": "2026-07-28",
+   "description": "Bearing 6304 5pcs,LN Bold 4mm,6mm 230pcs,Jeck Belt 1600H 2pcs",
+   "kind": "EXPENSE",
+   "amount": 14950
+  },
+  {
+   "date": "2026-07-28",
+   "description": "Ufone Blaze Pkg,Folding Comb+Nipple,Petrol KGA-6065",
+   "kind": "EXPENSE",
+   "amount": 6080
+  },
+  {
+   "date": "2026-07-29",
+   "description": "LED Light 45W 4pcs, 20W 1pcs, 10W 1pcs",
+   "kind": "EXPENSE",
+   "amount": 4850
+  },
+  {
+   "date": "2026-07-29",
+   "description": "Bearing VKBC 20005 SKF 1 pcs",
+   "kind": "EXPENSE",
+   "amount": 14000
+  },
+  {
+   "date": "2026-07-31",
+   "description": "Stationary Items,Lock For Store 2pcs,Bearing 6008 SKF 3pcs",
+   "kind": "EXPENSE",
+   "amount": 7740
+  }
+ ]
+}

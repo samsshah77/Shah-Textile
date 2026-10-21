@@ -26,6 +26,7 @@ import type {
   CostBucket,
 } from '@/lib/accounts/types'
 import type { MonthImportPreview, MonthImportResult } from '@/server/accounts/monthImport'
+import type { ResetPreview, ResetResult } from '@/server/accounts/resetFromFiles'
 
 export const ACCOUNTS_PROBLEM_EVENT = 'accounts:save-problem'
 export const ACCOUNTS_CHANGED_EVENT = 'accounts:changed'
@@ -132,6 +133,8 @@ export const accountsApi = {
     reference?: string
     remarks?: string
   }) => call<{ payment: Payment }>('POST', '/api/accounts/payments', input).then((r) => r.payment),
+  resetPreview: () => call<{ preview: ResetPreview }>('GET', '/api/accounts/reset').then((r) => r.preview),
+  reset: () => call<{ result: ResetResult; snapshot: string }>('POST', '/api/accounts/reset', { confirm: 'RESET' }),
   monthImportPreview: (month: string) =>
     call<{ preview: MonthImportPreview }>('GET', `/api/accounts/import${q({ month })}`).then((r) => r.preview),
   monthImport: (month: string) => call<{ result: MonthImportResult }>('POST', '/api/accounts/import', { month }).then((r) => r.result),

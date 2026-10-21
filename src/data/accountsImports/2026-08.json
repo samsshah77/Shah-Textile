@@ -1,0 +1,758 @@
+{
+ "month": "2026-08",
+ "source": "aug.xlsx",
+ "expected": {
+  "billsTotal": 677551,
+  "pettyOpening": 4714,
+  "pettyClosing": 4635
+ },
+ "partyAliases": {
+  "Marhaba Engineering": "Marhaba Engineering Works",
+  "Marha Engineering Works": "Marhaba Engineering Works",
+  "JAB Electronic": "JAB Electronics"
+ },
+ "bills": [
+  {
+   "date": "2026-08-01",
+   "billNo": "5871",
+   "inwardNo": "7626",
+   "partyName": "GQ Fire Services",
+   "lines": [
+    {
+     "description": "Refilling DCP 6kg",
+     "machine": "",
+     "quantity": 8,
+     "rate": 1300
+    },
+    {
+     "description": "Refilling DCP 12kg",
+     "machine": "",
+     "quantity": 1,
+     "rate": 2600
+    },
+    {
+     "description": "Refilling BCP 6kg",
+     "machine": "",
+     "quantity": 18,
+     "rate": 3600
+    },
+    {
+     "description": "New DCP Supplied",
+     "machine": "",
+     "quantity": 2,
+     "rate": 4500
+    },
+    {
+     "description": "New Valve",
+     "machine": "",
+     "quantity": 6,
+     "rate": 950
+    },
+    {
+     "description": "New Huks",
+     "machine": "",
+     "quantity": 12,
+     "rate": 200
+    }
+   ]
+  },
+  {
+   "date": "2026-08-01",
+   "billNo": "3417",
+   "inwardNo": "7627",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Module Cycle",
+     "machine": "",
+     "quantity": 56,
+     "rate": 110
+    },
+    {
+     "description": "LKU Transformer",
+     "machine": "",
+     "quantity": 2,
+     "rate": 1500
+    },
+    {
+     "description": "KR 2 Dobby Needle",
+     "machine": "",
+     "quantity": 12,
+     "rate": 500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-03",
+   "billNo": "6061",
+   "inwardNo": "7628",
+   "partyName": "Muhammad Ali",
+   "lines": [
+    {
+     "description": "Salvage",
+     "machine": "",
+     "quantity": 2,
+     "rate": 5000
+    },
+    {
+     "description": "Late Off Bracket",
+     "machine": "",
+     "quantity": 1,
+     "rate": 2500
+    },
+    {
+     "description": "Late Off Shaft Pin",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1600
+    },
+    {
+     "description": "Memrine Seal",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1200
+    }
+   ]
+  },
+  {
+   "date": "2026-08-03",
+   "billNo": "102",
+   "inwardNo": "7629",
+   "partyName": "VIP Petroleum",
+   "lines": [
+    {
+     "description": "While Oil For FOI",
+     "machine": "",
+     "quantity": 20,
+     "rate": 700
+    }
+   ]
+  },
+  {
+   "date": "2026-08-05",
+   "billNo": "8375",
+   "inwardNo": "7630",
+   "partyName": "Janjoha Brothers",
+   "lines": [
+    {
+     "description": "ELSAY Drive",
+     "machine": "",
+     "quantity": 2,
+     "rate": 70000
+    }
+   ]
+  },
+  {
+   "date": "2026-08-08",
+   "billNo": "3449",
+   "inwardNo": "7631",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Jeck Knife Spot",
+     "machine": "",
+     "quantity": 25,
+     "rate": 65
+    },
+    {
+     "description": "1520 Belt Black",
+     "machine": "",
+     "quantity": 8,
+     "rate": 1000
+    }
+   ]
+  },
+  {
+   "date": "2026-08-13",
+   "billNo": "2172",
+   "inwardNo": "7632",
+   "partyName": "F.T Traders",
+   "lines": [
+    {
+     "description": "Shuttle Body LD",
+     "machine": "",
+     "quantity": 20,
+     "rate": 1850
+    },
+    {
+     "description": "Gripper D12 JS",
+     "machine": "",
+     "quantity": 20,
+     "rate": 600
+    },
+    {
+     "description": "G.Teeth S.S",
+     "machine": "",
+     "quantity": 100,
+     "rate": 33
+    }
+   ]
+  },
+  {
+   "date": "2026-08-13",
+   "billNo": "242",
+   "inwardNo": "7633",
+   "partyName": "Marhaba Engineering",
+   "lines": [
+    {
+     "description": "Scissor Repaired 9pcs",
+     "machine": "PU",
+     "quantity": 1,
+     "rate": 1000
+    },
+    {
+     "description": "Shuttle Fitting",
+     "machine": "PU",
+     "quantity": 20,
+     "rate": 100
+    }
+   ]
+  },
+  {
+   "date": "2026-08-06",
+   "billNo": "200",
+   "inwardNo": "7634",
+   "partyName": "Blue Reed",
+   "lines": [
+    {
+     "description": "100 S / 1729.2 mm TL/3400 dents/0.18*4.00mm",
+     "machine": "",
+     "quantity": 2,
+     "rate": 40356
+    },
+    {
+     "description": "120 S / 1729.2 mm TL/3840 dents/0.16*4.00mm",
+     "machine": "",
+     "quantity": 2,
+     "rate": 46197
+    }
+   ]
+  },
+  {
+   "date": "2026-08-13",
+   "billNo": "77",
+   "inwardNo": "7635",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "LM339 Dip IC",
+     "machine": "",
+     "quantity": 6,
+     "rate": 50
+    },
+    {
+     "description": "LM393 Dip IC",
+     "machine": "",
+     "quantity": 6,
+     "rate": 50
+    },
+    {
+     "description": "Hc14 SMD IC",
+     "machine": "",
+     "quantity": 6,
+     "rate": 60
+    },
+    {
+     "description": "Hc 123 SMD IC",
+     "machine": "",
+     "quantity": 6,
+     "rate": 90
+    },
+    {
+     "description": "IC 40106 Dip",
+     "machine": "",
+     "quantity": 6,
+     "rate": 300
+    },
+    {
+     "description": "IC 4538 Dip",
+     "machine": "",
+     "quantity": 6,
+     "rate": 350
+    },
+    {
+     "description": "IC HC 153 Dip",
+     "machine": "",
+     "quantity": 6,
+     "rate": 150
+    },
+    {
+     "description": "S/Wire 100g",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-17",
+   "billNo": "22",
+   "inwardNo": "7636",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "ATF16v8 Dip IC",
+     "machine": "",
+     "quantity": 10,
+     "rate": 450
+    },
+    {
+     "description": "TQ-95 Iron Bit",
+     "machine": "",
+     "quantity": 2,
+     "rate": 2500
+    },
+    {
+     "description": "TQ-95 Iron Pipe",
+     "machine": "",
+     "quantity": 2,
+     "rate": 900
+    }
+   ]
+  },
+  {
+   "date": "2026-08-19",
+   "billNo": "56",
+   "inwardNo": "7637",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "W27c 010 Dip With Program",
+     "machine": "",
+     "quantity": 2,
+     "rate": 950
+    },
+    {
+     "description": "27c512 Dip With Program",
+     "machine": "",
+     "quantity": 2,
+     "rate": 850
+    }
+   ]
+  },
+  {
+   "date": "2026-08-18",
+   "billNo": "3484",
+   "inwardNo": "7638",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Spring Jala 153''",
+     "machine": "",
+     "quantity": 72,
+     "rate": 45
+    },
+    {
+     "description": "EWA Card",
+     "machine": "",
+     "quantity": 1,
+     "rate": 25000
+    }
+   ]
+  },
+  {
+   "date": "2026-08-18",
+   "billNo": "2176",
+   "inwardNo": "7639",
+   "partyName": "Fahad Traders",
+   "lines": [
+    {
+     "description": "Gripper Right Side",
+     "machine": "",
+     "quantity": 2,
+     "rate": 10500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-19",
+   "billNo": "2188",
+   "inwardNo": "7640",
+   "partyName": "Fahad Traders",
+   "lines": [
+    {
+     "description": "Frame Sperator",
+     "machine": "",
+     "quantity": 24,
+     "rate": 100
+    }
+   ]
+  },
+  {
+   "date": "2026-08-21",
+   "billNo": "603",
+   "inwardNo": "7641",
+   "partyName": "A.A.I Engineering",
+   "lines": [
+    {
+     "description": "Chain Gear Bor 38/T",
+     "machine": "",
+     "quantity": 4,
+     "rate": 500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-21",
+   "billNo": "604",
+   "inwardNo": "7642",
+   "partyName": "A.A.I Engineering",
+   "lines": [
+    {
+     "description": "Chain Gear Bor 36/T",
+     "machine": "",
+     "quantity": 4,
+     "rate": 500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-07",
+   "billNo": "1010",
+   "inwardNo": "7643",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Jeck Salvage Rep",
+     "machine": "",
+     "quantity": 1,
+     "rate": 2000
+    }
+   ]
+  },
+  {
+   "date": "2026-08-10",
+   "billNo": "1011",
+   "inwardNo": "7644",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Worked On Machine",
+     "machine": "",
+     "quantity": 1,
+     "rate": 2000
+    }
+   ]
+  },
+  {
+   "date": "2026-08-18",
+   "billNo": "1013",
+   "inwardNo": "7645",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Pick Finding Funer Fitting",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-20",
+   "billNo": "1014",
+   "inwardNo": "7646",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Puller Shaft Repaired",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-20",
+   "billNo": "1015",
+   "inwardNo": "7647",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Needle Patti New",
+     "machine": "",
+     "quantity": 1,
+     "rate": 2200
+    },
+    {
+     "description": "Puller Shaft Repaired",
+     "machine": "",
+     "quantity": 5,
+     "rate": 1000
+    }
+   ]
+  },
+  {
+   "date": "2026-08-21",
+   "billNo": "1016",
+   "inwardNo": "7648",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Pick Finding Funer New",
+     "machine": "",
+     "quantity": 3,
+     "rate": 2500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-21",
+   "billNo": "1018",
+   "inwardNo": "7649",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Pick Finding Funer Fitting",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    }
+   ]
+  },
+  {
+   "date": "2026-08-28",
+   "billNo": "1019",
+   "inwardNo": "7650",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Jeck Drive Plate Pully Welding",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1500
+    },
+    {
+     "description": "Jeck Drive Plate Sensor Plate Rep",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1000
+    },
+    {
+     "description": "Jeckquard Arm New",
+     "machine": "",
+     "quantity": 12,
+     "rate": 2000
+    }
+   ]
+  },
+  {
+   "date": "2026-08-25",
+   "billNo": "28",
+   "inwardNo": "7651",
+   "partyName": "SMD Traders",
+   "lines": [
+    {
+     "description": "IRFP250M",
+     "machine": "",
+     "quantity": 6,
+     "rate": 300
+    },
+    {
+     "description": "K25T120",
+     "machine": "",
+     "quantity": 12,
+     "rate": 350
+    }
+   ]
+  },
+  {
+   "date": "2026-08-29",
+   "billNo": "3534",
+   "inwardNo": "7652",
+   "partyName": "Textile Engineering",
+   "lines": [
+    {
+     "description": "Belt 1520 Black",
+     "machine": "",
+     "quantity": 10,
+     "rate": 1200
+    },
+    {
+     "description": "Module Cycle",
+     "machine": "",
+     "quantity": 32,
+     "rate": 110
+    }
+   ]
+  },
+  {
+   "date": "2026-08-31",
+   "billNo": "1021",
+   "inwardNo": "7653",
+   "partyName": "A.A Engineering",
+   "lines": [
+    {
+     "description": "Pick Finding Funer Fitting",
+     "machine": "",
+     "quantity": 1,
+     "rate": 1000
+    },
+    {
+     "description": "Pick Finding Shim",
+     "machine": "",
+     "quantity": 12,
+     "rate": 800
+    }
+   ]
+  }
+ ],
+ "petty": [
+  {
+   "date": "2026-08-05",
+   "description": "Cash Recceived for Petty Cash",
+   "kind": "CASH_IN",
+   "amount": 80136
+  },
+  {
+   "date": "2026-08-05",
+   "description": "Cash Recceived for Salary, Wages and Contractor Payment",
+   "kind": "CASH_IN",
+   "amount": 1509864
+  },
+  {
+   "date": "2026-08-05",
+   "description": "Paid Salaries and Contracters amount",
+   "kind": "SALARY",
+   "amount": 1509864
+  },
+  {
+   "date": "2026-08-02",
+   "description": "Salvage & Weft Cutter For G-6300",
+   "kind": "EXPENSE",
+   "amount": 18000
+  },
+  {
+   "date": "2026-08-03",
+   "description": "Bearing 6207 5pcs,Toner Refilling,KDJ-4629 Petrol,Bykea For Electric Comp",
+   "kind": "EXPENSE",
+   "amount": 8400
+  },
+  {
+   "date": "2026-08-07",
+   "description": "LY3 Relay 9pcs,LY4 Relay 6pcs,LY4 Base 6pcs",
+   "kind": "EXPENSE",
+   "amount": 17100
+  },
+  {
+   "date": "2026-08-08",
+   "description": "Acid 2 Can,Broom 10pcs,Surf 3kg,Belt 1100 H 2pcs,",
+   "kind": "EXPENSE",
+   "amount": 13010
+  },
+  {
+   "date": "2026-08-08",
+   "description": "LN Bolt 4pcs,Breaker 16 To 22A 2pcs,Petrol KGA 6065",
+   "kind": "EXPENSE",
+   "amount": 6640
+  },
+  {
+   "date": "2026-08-08",
+   "description": "Bearing 6207 3pcs,6304 3pcs,6008 2pcs,Diamond File,Cutter Blade 5 Packet",
+   "kind": "EXPENSE",
+   "amount": 9920
+  },
+  {
+   "date": "2026-08-12",
+   "description": "PTCL Bill Paid",
+   "kind": "EXPENSE",
+   "amount": 8070
+  },
+  {
+   "date": "2026-08-15",
+   "description": "Chalk 24box,Register 3pcs,Bykea For Electronic Componant",
+   "kind": "EXPENSE",
+   "amount": 2780
+  },
+  {
+   "date": "2026-08-20",
+   "description": "Cash Recceived for Petty Cash",
+   "kind": "CASH_IN",
+   "amount": 86930
+  },
+  {
+   "date": "2026-08-20",
+   "description": "Cash Recceived for Salary, Wages and Contractor Payment",
+   "kind": "CASH_IN",
+   "amount": 983070
+  },
+  {
+   "date": "2026-08-20",
+   "description": "Paid Salaries and Contracters amount",
+   "kind": "SALARY",
+   "amount": 983070
+  },
+  {
+   "date": "2026-08-16",
+   "description": "Solar Panel Wash,Washing Chemical,Dry Mop(Cleaning Date 10-08-2026)",
+   "kind": "EXPENSE",
+   "amount": 16400
+  },
+  {
+   "date": "2026-08-20",
+   "description": "Grease Bucket 12kg,Petrol KGA-6065",
+   "kind": "EXPENSE",
+   "amount": 9000
+  },
+  {
+   "date": "2026-08-21",
+   "description": "Jeck Drive Plate Bush,Bykea For Electronic Cmponant,Silicon Tube",
+   "kind": "EXPENSE",
+   "amount": 3790
+  },
+  {
+   "date": "2026-08-24",
+   "description": "Chain Gear 38 Teeth With Bolt",
+   "kind": "EXPENSE",
+   "amount": 4680
+  },
+  {
+   "date": "2026-08-25",
+   "description": "Leno Con Winding",
+   "kind": "EXPENSE",
+   "amount": 2500
+  },
+  {
+   "date": "2026-08-27",
+   "description": "08BI 428 Chain 10ft,Ufone Blaze Pkg",
+   "kind": "EXPENSE",
+   "amount": 5650
+  },
+  {
+   "date": "2026-08-27",
+   "description": "Stationary Items,Marker,Ink,Ball pen,A4 Rim,Register,D/Book",
+   "kind": "EXPENSE",
+   "amount": 6455
+  },
+  {
+   "date": "2026-08-29",
+   "description": "Solar Panel Wash(Cleaning Date 25-08-2026)",
+   "kind": "EXPENSE",
+   "amount": 12000
+  },
+  {
+   "date": "2026-08-29",
+   "description": "Helper Injured(Bandage And Medicine)",
+   "kind": "EXPENSE",
+   "amount": 5700
+  },
+  {
+   "date": "2026-08-31",
+   "description": "Dobby Belt 1400-14M 55mm 1pcs,1100H Belt 30mm 1pcs",
+   "kind": "EXPENSE",
+   "amount": 8200
+  },
+  {
+   "date": "2026-08-31",
+   "description": "Bearing 6304N 6pcs,Silicon Tube 5pcs",
+   "kind": "EXPENSE",
+   "amount": 4350
+  },
+  {
+   "date": "2026-08-31",
+   "description": "JeckQuard LCD Repaired,Ribbon Cable 3+1 10pcs",
+   "kind": "EXPENSE",
+   "amount": 4500
+  }
+ ]
+}

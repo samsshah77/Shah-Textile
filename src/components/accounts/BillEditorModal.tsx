@@ -195,6 +195,7 @@ export function BillEditorModal({
                     </td>
                     <td className="px-1">
                       <select value={r.machine} onChange={(e) => setRow(r.key, { machine: e.target.value })} className={input} aria-label={`Item ${i + 1} machine`}>
+                        <option value="">— chunein —</option>
                         {[...new Set([...MACHINE_OPTIONS, r.machine].filter(Boolean))].map((m) => (
                           <option key={m} value={m}>
                             {m}

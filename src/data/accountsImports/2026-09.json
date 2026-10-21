@@ -1,6 +1,6 @@
 {
  "month": "2026-09",
- "source": "09_Daily_Expense_Record_Sara_Textile_September-26.xlsx",
+ "source": "sep.xlsx",
  "expected": {
   "billsTotal": 573130,
   "pettyOpening": 4635,
@@ -8,6 +8,7 @@
  },
  "partyAliases": {
   "Marhaba Engineering": "Marhaba Engineering Works",
+  "Marha Engineering Works": "Marhaba Engineering Works",
   "JAB Electronic": "JAB Electronics"
  },
  "bills": [
@@ -19,37 +20,37 @@
    "lines": [
     {
      "description": "Servo Motor",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 3,
      "rate": 42000
     },
     {
      "description": "Clutch Cover",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 1,
      "rate": 2000
     },
     {
      "description": "Pick Finding Complete",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 1,
      "rate": 95000
     },
     {
      "description": "Frame 13''",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 12,
      "rate": 13000
     },
     {
      "description": "Shaft Wheel With Bracket",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 2,
      "rate": 7500
     },
     {
      "description": "Nozzle",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 7,
      "rate": 300
     }
@@ -63,7 +64,7 @@
    "lines": [
     {
      "description": "Salvage Cutter Tip",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 30,
      "rate": 250
     }
@@ -77,7 +78,7 @@
    "lines": [
     {
      "description": "Weft Cutter Blade Repaired",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 11,
      "rate": 250
     }
@@ -91,13 +92,13 @@
    "lines": [
     {
      "description": "Module New",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 9,
      "rate": 2200
     },
     {
      "description": "Module Cycle",
-     "machine": "PU",
+     "machine": "",
      "quantity": 104,
      "rate": 110
     }
@@ -111,13 +112,13 @@
    "lines": [
     {
      "description": "RAM TC551001 Dip",
-     "machine": "Electronic",
+     "machine": "",
      "quantity": 2,
      "rate": 1500
     },
     {
      "description": "IC 75179 Dip",
-     "machine": "Electronic",
+     "machine": "",
      "quantity": 6,
      "rate": 250
     }
@@ -185,7 +186,7 @@
    "lines": [
     {
      "description": "G6200 Gripper Set",
-     "machine": "G-6200",
+     "machine": "",
      "quantity": 1,
      "rate": 19500
     }
@@ -269,7 +270,7 @@
     },
     {
      "description": "Opner Patti G-6300",
-     "machine": "G-6300",
+     "machine": "",
      "quantity": 5,
      "rate": 800
     },

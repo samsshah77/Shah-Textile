@@ -113,3 +113,20 @@ extension, so a file can never be saved as e.g. `.php`. The browser shrinks phot
 (longest side 1600 px, JPEG). `src/app/uploads/[...path]/route.ts` serves pictures added
 after the app started when the web server does not. Back up `public/uploads` together with
 the database.
+
+## One-time reset to the July–September 2026 files (`/accounts/reset`)
+
+Decided by the accountant: the ERP keeps Accounts from July 2026 on. The page shows first
+what goes and what comes; after typing RESET it:
+
+1. takes a database snapshot (`data_snapshots`, reason "before accounts reset…");
+2. in one transaction removes everything before July 2026 (bills, payments, petty cash,
+   Cost Statement lines) and the old "FOI paid (copied …)" lump sums;
+3. replaces July–September bills and petty cash with the files
+   (`src/data/accountsImports/2026-07/08/09.json`; July's petty cash b/f 3,473 becomes the
+   opening entry);
+4. leaves October onwards, parties, and payments / opening balances entered by hand dated
+   July–September as they are.
+
+Refused while a month up to September is locked; runs once (`acc_import_log`
+`reset:2026-07..09`). Machine is blank where the file has none — chosen on Daily Inward.

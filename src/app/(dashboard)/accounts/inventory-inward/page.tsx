@@ -184,6 +184,7 @@ function DailyInwardContent() {
                 <span className="text-[11px] text-muted-foreground font-semibold">Machine:</span>
                 <select value={machine} onChange={(e) => setMachine(e.target.value)} className="bg-transparent text-xs font-bold cursor-pointer" aria-label="Machine filter">
                   <option value="*">All machines</option>
+                  <option value="">Machine nahi chuni</option>
                   {MACHINE_OPTIONS.map((m) => (
                     <option key={m} value={m}>
                       {m === 'ALL' ? 'ALL (general)' : m}
@@ -323,6 +324,11 @@ function DailyInwardContent() {
                               onChange={(e) => editLine(r, { machine: e.target.value })}
                               className={cn('w-full max-w-[78px] px-1 py-0.5 rounded text-[9px] font-bold uppercase text-center cursor-pointer border-0', machineBadge(r.line.machine))}
                             >
+                              {!r.line.machine && (
+                                <option value="" className="bg-white text-slate-500">
+                                  chunein
+                                </option>
+                              )}
                               {[...new Set([...MACHINE_OPTIONS, r.line.machine].filter(Boolean))].map((m) => (
                                 <option key={m} value={m} className="bg-white text-slate-900">
                                   {m}

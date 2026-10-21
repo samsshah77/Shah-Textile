@@ -33,9 +33,9 @@ const n = (v: unknown) => (v == null ? 0 : Number(v))
 const s = (v: unknown) => (v == null ? '' : String(v))
 
 /** Run `fn` in one transaction after the tables exist. */
-export async function inTx<T>(fn: (db: Db) => Promise<T>): Promise<T> {
+export async function inTx<T>(fn: (db: Db) => Promise<T>, timeoutMs = 20000): Promise<T> {
   await ensureAccountsTables()
-  return prisma.$transaction((tx) => fn(tx as unknown as Db), { timeout: 20000 })
+  return prisma.$transaction((tx) => fn(tx as unknown as Db), { timeout: timeoutMs, maxWait: 20000 })
 }
 
 export async function db(): Promise<Db> {

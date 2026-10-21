@@ -240,3 +240,19 @@ describe('Bills in inward-number order; pictures are checked by their bytes', ()
     expect(sniffImage(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))).toBeNull()
   })
 })
+
+describe('July–September files for the Accounts reset', () => {
+  it('match the Excel totals and the petty cash carries on month to month', async () => {
+    const { RESET_FILES } = await import('@/server/accounts/resetFromFiles')
+    const totals = RESET_FILES.map((f) => f.bills.reduce((t, b) => t + b.lines.reduce((s, l) => s + Math.round(l.quantity * l.rate), 0), 0))
+    expect(totals).toEqual([588081, 677551, 573130])
+    for (const f of RESET_FILES) {
+      let bal = f.expected.pettyOpening ?? 0
+      for (const e of f.petty) bal += e.kind === 'CASH_IN' ? e.amount : -e.amount
+      expect(Math.round(bal)).toBe(f.expected.pettyClosing)
+      expect(f.bills.every((b) => b.date.startsWith(f.month) && b.inwardNo)).toBe(true)
+    }
+    expect(RESET_FILES[0].expected.pettyClosing).toBe(RESET_FILES[1].expected.pettyOpening)
+    expect(RESET_FILES[1].expected.pettyClosing).toBe(RESET_FILES[2].expected.pettyOpening)
+  })
+})
