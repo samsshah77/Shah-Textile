@@ -86,6 +86,7 @@ export function partyLedger(
           billId: b.id,
           billNo: b.billNo,
           inwardNo: b.inwardNo,
+          ...(l === b.lines[0] && b.attachments?.length ? { attachments: b.attachments } : {}),
           description: l.description,
           machine: l.machine,
           quantity: l.quantity,

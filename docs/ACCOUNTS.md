@@ -94,3 +94,22 @@ in `src/data/accountsImports/2026-09.json` (made from the Excel, no hand typing)
   dated within 5 days of an ERP entry counts as present (each ERP entry once);
 - never changes or deletes anything, refuses a locked month, runs once (`acc_import_log`
   source `file:2026-09`), all in one transaction, Tufail only; written to the audit log.
+
+## Bill pictures and inward order
+
+- A bill can carry pictures of the paper bill (`acc_bills.attachments`, up to 12). They are
+  added in the bill editor ("Bill photo"), shown as 📎 on Daily Inward and on the party
+  ledger. Only links under `/uploads/bills/` are accepted.
+- Bills of a month are listed by **inward number**: a bill entered later with an earlier
+  inward number goes to its place automatically. Bills without an inward number come last
+  (by date).
+
+## Picture uploads (looms, profiles, bills)
+
+`POST /api/upload?kind=loom|profile|bill` → `public/uploads/<looms|profiles|bills>/`.
+Looms: production editors; profiles and bills: the accounts editor (Tufail). The file type
+is read from the file's bytes (JPG / PNG / WEBP / GIF only) and the server picks the
+extension, so a file can never be saved as e.g. `.php`. The browser shrinks photos first
+(longest side 1600 px, JPEG). `src/app/uploads/[...path]/route.ts` serves pictures added
+after the app started when the web server does not. Back up `public/uploads` together with
+the database.

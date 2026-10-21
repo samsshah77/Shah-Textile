@@ -97,12 +97,13 @@ export const accountsApi = {
     partyKind?: PartyKind
     remarks?: string
     lines: LineDraft[]
+    attachments?: string[]
     afterBillId?: string
   }) => call<{ bill: Bill }>('POST', '/api/accounts/bills', input).then((r) => r.bill),
   updateBill: (
     id: string,
     baseVersion: number,
-    patch: Partial<{ date: string; month: string; billNo: string; inwardNo: string; partyId: string; remarks: string; lines: LineDraft[] }>
+    patch: Partial<{ date: string; month: string; billNo: string; inwardNo: string; partyId: string; remarks: string; lines: LineDraft[]; attachments: string[] }>
   ) => call<{ bill: Bill }>('PATCH', `/api/accounts/bills/${id}`, { baseVersion, ...patch }).then((r) => r.bill),
   deleteBill: (id: string, version: number) => call<{ deleted: string }>('DELETE', `/api/accounts/bills/${id}${q({ version })}`),
   addLine: (billId: string, baseVersion: number, line: LineDraft, afterLineId?: string) =>

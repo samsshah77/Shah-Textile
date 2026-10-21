@@ -18,6 +18,10 @@ export const lineInput = z.object({
   rate: money,
 })
 
+/** A picture of the paper bill, uploaded through /api/upload?kind=bill. */
+const attachment = z.string().regex(/^\/uploads\/bills\/[\w.-]{1,120}$/, 'Bill ki tasveer ka link ghalat hai.')
+const attachments = z.array(attachment).max(12, 'Ek bill par 12 se zyada tasveerein nahi.')
+
 export const billCreate = z.object({
   month,
   date,
@@ -29,6 +33,7 @@ export const billCreate = z.object({
   partyKind: z.enum(['TRADER', 'WORKSHOP']).optional(),
   remarks: text(500).default(''),
   lines: z.array(lineInput).min(1, 'At least one item').max(200),
+  attachments: attachments.default([]),
   /** Insert right after this bill in the sheet order (optional). */
   afterBillId: z.string().max(64).optional(),
 })
@@ -43,6 +48,7 @@ export const billUpdate = z.object({
   remarks: text(500).optional(),
   /** When given, replaces all lines (ids kept where provided). */
   lines: z.array(lineInput).min(1).max(200).optional(),
+  attachments: attachments.optional(),
 })
 
 export const lineUpdate = z.object({

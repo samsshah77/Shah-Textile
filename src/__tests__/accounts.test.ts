@@ -18,7 +18,7 @@ const party = (id: string, name: string, extra: Partial<Party> = {}): Party => (
 })
 const bill = (id: string, partyId: string, month: string, date: string, lines: [string, number, number][], billNo = id): Bill => {
   const ls = lines.map(([description, quantity, rate], i) => ({ id: `${id}-${i}`, lineNo: i + 1, description, machine: '', quantity, rate, amount: lineAmount(quantity, rate) }))
-  return { id, partyId, month, date, billNo, inwardNo: '', remarks: '', sortOrder: 1, version: 1, lines: ls, total: ls.reduce((s, l) => s + l.amount, 0) }
+  return { id, partyId, month, date, billNo, inwardNo: '', remarks: '', sortOrder: 1, version: 1, lines: ls, total: ls.reduce((s, l) => s + l.amount, 0), attachments: [] }
 }
 
 describe('helpers', () => {
@@ -220,5 +220,23 @@ describe('September 2026 import file', () => {
     expect(partyKey('Marhaba Engineering')).toBe(partyKey('Marhaba Engineering Works'))
     expect(partyKey('JAB Electronic')).toBe(partyKey('JAB Electronics'))
     expect(partyKey('Textile Traders')).not.toBe(partyKey('Textile Engineering'))
+  })
+})
+
+describe('Bills in inward-number order; pictures are checked by their bytes', () => {
+  it('a bill entered later with an earlier inward number goes to its place', async () => {
+    const { compareBills } = await import('@/lib/accounts/util')
+    const b = (id: string, inwardNo: string, date: string, sortOrder: number) => ({ id, inwardNo, date, sortOrder })
+    const list = [b('a', '7660', '2026-09-11', 1), b('b', '7654', '2026-09-01', 2), b('c', '', '2026-09-05', 3), b('d', '7657', '2026-09-02', 4)]
+    expect(list.sort(compareBills).map((x) => x.id)).toEqual(['b', 'd', 'a', 'c'])
+  })
+  it('only real JPG / PNG / WEBP / GIF files are accepted, whatever their name', async () => {
+    const { sniffImage } = await import('@/server/imageSniff')
+    expect(sniffImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]))).toBe('.jpg')
+    expect(sniffImage(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe('.png')
+    expect(sniffImage(Buffer.from('RIFF\0\0\0\0WEBPVP8 '))).toBe('.webp')
+    expect(sniffImage(Buffer.from('GIF89a....'))).toBe('.gif')
+    expect(sniffImage(Buffer.from('<?php echo 1; ?>'))).toBeNull()
+    expect(sniffImage(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))).toBeNull()
   })
 })

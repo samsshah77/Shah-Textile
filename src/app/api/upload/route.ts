@@ -4,27 +4,41 @@ import path from 'path'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/server/current-user'
+import { hasPermission } from '@/server/permissions'
+import { isAccountsController } from '@/lib/accountsAccess'
+import { sniffImage } from '@/server/imageSniff'
 
 export const runtime = 'nodejs'
 
 const MAX_BYTES = 8 * 1024 * 1024 // 8 MB
-const ALLOWED = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'])
 
-function extFor(mime: string, filename: string): string {
-  const fromName = path.extname(filename || '').toLowerCase()
-  if (fromName && fromName.length <= 5) return fromName
-  if (mime === 'image/png') return '.png'
-  if (mime === 'image/webp') return '.webp'
-  if (mime === 'image/gif') return '.gif'
-  return '.jpg'
+/**
+ * Where a picture goes and who may upload it:
+ *  - loom    → /uploads/looms     (production editors)
+ *  - profile → /uploads/profiles  (salary editor: Tufail)
+ *  - bill    → /uploads/bills     (accounts editor: Tufail)
+ */
+const KINDS = {
+  loom: { dir: 'looms', prefix: 'loom' },
+  profile: { dir: 'profiles', prefix: 'profile' },
+  bill: { dir: 'bills', prefix: 'bill' },
+} as const
+type Kind = keyof typeof KINDS
+
+async function mayUpload(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>, kind: Kind): Promise<boolean> {
+  if (kind === 'loom') return hasPermission(user.id, { moduleKey: 'floor', resourceKey: 'production_entries', action: 'UPDATE' })
+  return isAccountsController({ ...user, role: user.roleKey })
 }
 
-/** Same-origin upload — saves under public/uploads (Hostinger / own VPS). */
+/** Same-origin upload — saves under public/uploads/<kind> on the server. */
 export async function POST(request: NextRequest) {
   const user = await currentUser(request)
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const kindParam = request.nextUrl.searchParams.get('kind') || 'loom'
+  if (!(kindParam in KINDS)) return NextResponse.json({ error: 'Unknown upload kind' }, { status: 400 })
+  const kind = kindParam as Kind
+  if (!(await mayUpload(user, kind))) return NextResponse.json({ error: 'Is cheez ki tasveer lagane ki ijazat nahi.' }, { status: 403 })
 
   let form: FormData
   try {
@@ -32,30 +46,21 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid form data' }, { status: 400 })
   }
-
   const file = form.get('file')
-  if (!file || !(file instanceof File)) {
-    return NextResponse.json({ error: 'Missing file field' }, { status: 400 })
-  }
-
-  if (!ALLOWED.has(file.type) && !file.type.startsWith('image/')) {
-    return NextResponse.json({ error: 'Only image files are allowed' }, { status: 400 })
-  }
-
-  if (file.size <= 0 || file.size > MAX_BYTES) {
-    return NextResponse.json({ error: 'Image must be between 1 byte and 8 MB' }, { status: 400 })
-  }
+  if (!file || !(file instanceof File)) return NextResponse.json({ error: 'Missing file field' }, { status: 400 })
+  if (file.size <= 0 || file.size > MAX_BYTES) return NextResponse.json({ error: 'Image must be between 1 byte and 8 MB' }, { status: 400 })
 
   const buffer = Buffer.from(await file.arrayBuffer())
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const id = randomBytes(8).toString('hex')
-  const ext = extFor(file.type, file.name)
-  const filename = `loom-${stamp}-${id}${ext}`
+  const ext = sniffImage(buffer)
+  if (!ext) return NextResponse.json({ error: 'Sirf JPG, PNG, WEBP ya GIF tasveer lag sakti hai.' }, { status: 400 })
 
-  const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'looms')
+  const { dir, prefix } = KINDS[kind]
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const filename = `${prefix}-${stamp}-${randomBytes(8).toString('hex')}${ext}`
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads', dir)
   await mkdir(uploadsDir, { recursive: true })
   await writeFile(path.join(uploadsDir, filename), buffer)
 
-  const url = `/uploads/looms/${filename}`
+  const url = `/uploads/${dir}/${filename}`
   return NextResponse.json({ url, data: url })
 }

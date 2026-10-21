@@ -100,6 +100,7 @@ export const ACCOUNTS_DDL = [
 
   /** One row per old store key (or seed) that was copied in, so it is never copied twice. */
   // Payables (A/P): whose payable a supplier is, and opening / adjustment entries.
+  `ALTER TABLE "acc_bills" ADD COLUMN IF NOT EXISTS "attachments" JSONB NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE "acc_parties" ADD COLUMN IF NOT EXISTS "account" TEXT NOT NULL DEFAULT 'SARA' CHECK ("account" IN ('SARA','FOI'))`,
   `ALTER TABLE "acc_payments" ADD COLUMN IF NOT EXISTS "kind" TEXT NOT NULL DEFAULT 'PAYMENT' CHECK ("kind" IN ('PAYMENT','OPENING','ADJUSTMENT'))`,
   `ALTER TABLE "acc_payments" ADD COLUMN IF NOT EXISTS "paidFrom" TEXT NOT NULL DEFAULT 'SARA' CHECK ("paidFrom" IN ('SARA','FOI'))`,

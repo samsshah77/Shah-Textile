@@ -1,5 +1,6 @@
 'use client'
 
+import { BillPhotosLink } from '@/components/accounts/BillPhotosLink'
 import { Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PlusCircle, Search, Filter, Building2, Download, Printer, Pencil, Plus, Trash2, Receipt } from 'lucide-react'
@@ -7,7 +8,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import { MACHINE_OPTIONS, type Bill, type BillLine, type MonthBook, type Party } from '@/lib/accounts/types'
-import { monthLabel, rs, qty } from '@/lib/accounts/util'
+import { monthLabel, rs, qty, compareBills } from '@/lib/accounts/util'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { BillEditorModal } from '@/components/accounts/BillEditorModal'
@@ -42,11 +43,13 @@ function DailyInwardContent() {
   const putBill = (bill: Bill | null, removedId?: string) =>
     setBook((b) => {
       if (!b) return b
-      const bills = bill
-        ? b.bills.some((x) => x.id === bill.id)
-          ? b.bills.map((x) => (x.id === bill.id ? bill : x))
-          : [...b.bills, bill].sort((x, y) => x.sortOrder - y.sortOrder)
-        : b.bills.filter((x) => x.id !== removedId)
+      const bills = (
+        bill
+          ? b.bills.some((x) => x.id === bill.id)
+            ? b.bills.map((x) => (x.id === bill.id ? bill : x))
+            : [...b.bills, bill]
+          : b.bills.filter((x) => x.id !== removedId)
+      ).sort(compareBills)
       return { ...b, bills, total: bills.reduce((t, x) => t + x.total, 0) }
     })
 
@@ -270,6 +273,7 @@ function DailyInwardContent() {
                             </td>
                             <td rowSpan={r.span} className={cn(cell, 'px-1 text-center font-mono font-bold align-middle border-b-2 border-b-slate-800', bg)}>
                               {r.bill.billNo || '-'}
+                              <BillPhotosLink urls={r.bill.attachments} />
                             </td>
                             <td rowSpan={r.span} className={cn(cell, 'px-1 text-center font-mono font-bold text-[#0066cc] align-middle border-b-2 border-b-slate-800', bg)}>
                               {r.bill.inwardNo || '-'}

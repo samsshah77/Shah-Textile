@@ -1,5 +1,6 @@
 'use client'
 
+import { PictureStrip } from '@/components/shared/PictureStrip'
 import { contractorBasis, contractorPaidMidMonth } from '@/services/payroll/contractorPlan'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -106,6 +107,7 @@ export function EmployeeProfileForm({
   const [paidMidMonth, setPaidMidMonth] = useState(false)
   const [efficiencyEligible, setEfficiencyEligible] = useState(false)
   const [remarks, setRemarks] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
   /** The chosen month shows an earlier job (e.g. Contractor in Sep, Weaver from Oct). */
   const [pastJob, setPastJob] = useState<{ sheet: string; was: string; now: string } | null>(null)
 
@@ -134,10 +136,12 @@ export function EmployeeProfileForm({
     setResignedAt('')
     setAdvanceEligible(false)
     setRemarks('')
+    setPhotoUrl('')
   }
 
   const loadEmployee = (current: EmployeeProfile, month: string) => {
     setEditingEmployee(current)
+    setPhotoUrl(current.photoUrl || '')
     // Show the person as the chosen month's sheets have them (the job can change by month).
     const asOf = payrollService.employeeAsOfMonth(current, month)
     const emp = asOf.view
@@ -379,6 +383,7 @@ export function EmployeeProfileForm({
       // Kept in step for anything still reading the old field.
       payCycle: formKind === 'contractor' ? (paidMidMonth ? ('FORTNIGHTLY' as const) : ('MONTHLY' as const)) : undefined,
       remarks,
+      photoUrl,
     }
 
     setIsSaving(true)
@@ -536,7 +541,7 @@ export function EmployeeProfileForm({
         <aside className="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-6 text-center lg:sticky lg:top-20">
           <ProfileAvatar
             name={name || editingEmployee?.name}
-            photoUrl={editingEmployee?.photoUrl}
+            photoUrl={photoUrl || undefined}
             category={avatarCategory}
             size="xl"
           />
@@ -558,6 +563,19 @@ export function EmployeeProfileForm({
             >
               {status}
             </span>
+          )}
+          {canEditAccounts && (isFormEditing || mode === 'create') && (
+            <div className="mt-3 flex flex-col items-center gap-1">
+              <PictureStrip
+                urls={photoUrl ? [photoUrl] : []}
+                onChange={(next) => setPhotoUrl(next[next.length - 1] || '')}
+                kind="profile"
+                editable
+                max={1}
+                label="Photo"
+              />
+              <span className="text-[10px] text-slate-500">Save dabane par photo profile mein lagegi</span>
+            </div>
           )}
           {mode === 'edit' && !isFormEditing && canEditAccounts && (
             <p className="mt-3 text-[11px] text-slate-500">View only — top pe Edit dabao</p>

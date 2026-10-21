@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { lineAmount, monthLabel, slugifyPartyName, rs } from '@/lib/accounts/util'
 import { MACHINE_OPTIONS, type Bill, type Party, type PartyKind } from '@/lib/accounts/types'
 import { accountsApi, type LineDraft } from '@/services/accounts/accountsApi'
+import { PictureStrip } from '@/components/shared/PictureStrip'
 
 type Draft = { key: string; id?: string; description: string; machine: string; quantity: string; rate: string }
 
@@ -40,6 +41,7 @@ export function BillEditorModal({
   const [partyName, setPartyName] = useState(party?.name || '')
   const [newKind, setNewKind] = useState<PartyKind>('TRADER')
   const [remarks, setRemarks] = useState(bill?.remarks || '')
+  const [attachments, setAttachments] = useState<string[]>(bill?.attachments || [])
   const [rows, setRows] = useState<Draft[]>(
     bill
       ? bill.lines.map((l) => ({ key: l.id, id: l.id, description: l.description, machine: l.machine, quantity: String(l.quantity), rate: String(l.rate) }))
@@ -71,7 +73,7 @@ export function BillEditorModal({
       if (bill) {
         let partyId = matched?.id
         if (!partyId) partyId = (await accountsApi.createParty({ name: partyName.trim(), kind: newKind })).id
-        onSaved(await accountsApi.updateBill(bill.id, bill.version, { date, billNo, inwardNo, partyId, remarks, lines }))
+        onSaved(await accountsApi.updateBill(bill.id, bill.version, { date, billNo, inwardNo, partyId, remarks, lines, attachments }))
       } else {
         onSaved(
           await accountsApi.createBill({
@@ -81,6 +83,7 @@ export function BillEditorModal({
             inwardNo,
             remarks,
             lines,
+            attachments,
             ...(matched ? { partyId: matched.id } : { partyName: partyName.trim(), partyKind: newKind }),
           })
         )
@@ -235,6 +238,11 @@ export function BillEditorModal({
             <span className="text-[11px] font-semibold text-slate-600">Remarks</span>
             <input value={remarks} onChange={(e) => setRemarks(e.target.value)} className={input} />
           </label>
+
+          <div className="space-y-1">
+            <span className="text-[11px] font-semibold text-slate-600">Bill ki tasveer (kaghaz wala bill)</span>
+            <PictureStrip urls={attachments} onChange={setAttachments} kind="bill" editable label="Bill photo" />
+          </div>
 
           {error && <div className="alert alert-danger py-2 px-3 small mb-0">{error}</div>}
 

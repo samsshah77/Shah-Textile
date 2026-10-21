@@ -1,5 +1,6 @@
 'use client'
 
+import { BillPhotosLink } from '@/components/accounts/BillPhotosLink'
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer, Pencil, Wallet, Trash2 } from 'lucide-react'
@@ -143,7 +144,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                           >
                             <td className={cn(cell, 'px-2 text-center font-mono text-slate-500')}>{i + 1}</td>
                             <td className={cn(cell, 'px-2 text-center font-mono')}>{r.date}</td>
-                            <td className={cn(cell, 'px-2 text-center font-mono font-bold')}>{r.billNo || '-'}</td>
+                            <td className={cn(cell, 'px-2 text-center font-mono font-bold')}>{r.billNo || '-'}<BillPhotosLink urls={r.attachments} /></td>
                             <td className={cn(cell, 'px-2 text-center font-mono text-[#0066cc]')}>{r.inwardNo || '-'}</td>
                             <td className={cn(cell, 'px-2 py-1.5')}>{r.description}</td>
                             <td className={cn(cell, 'px-2 text-right font-mono')}>{r.kind === 'LINE' ? qty(r.quantity) : ''}</td>

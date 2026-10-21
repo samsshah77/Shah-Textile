@@ -61,6 +61,8 @@ export interface Bill {
   version: number
   lines: BillLine[]
   total: number
+  /** Pictures of the paper bill (/uploads/bills/…). */
+  attachments: string[]
 }
 
 export interface Payment {
@@ -131,6 +133,8 @@ export interface LedgerRow {
   billId?: string
   billNo: string
   inwardNo: string
+  /** Bill pictures — on the bill's first line only. */
+  attachments?: string[]
   description: string
   machine: string
   quantity: number

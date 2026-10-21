@@ -89,3 +89,19 @@ export function qty(n: number): string {
 export function payableEffect(p: { kind?: string; amount: number }): number {
   return p.kind === 'OPENING' ? p.amount : -p.amount
 }
+
+/**
+ * Sheet order of a month's bills: by inward number (a bill entered later with an earlier
+ * inward number goes to its place); bills without an inward number last, by date. Same
+ * order as the server's listBills.
+ */
+export function compareBills(
+  a: { inwardNo: string; date: string; sortOrder: number; id: string },
+  b: { inwardNo: string; date: string; sortOrder: number; id: string }
+): number {
+  const na = /^\d{1,15}$/.test(a.inwardNo.trim()) ? Number(a.inwardNo) : null
+  const nb = /^\d{1,15}$/.test(b.inwardNo.trim()) ? Number(b.inwardNo) : null
+  if (na !== null && nb !== null && na !== nb) return na - nb
+  if ((na === null) !== (nb === null)) return na === null ? 1 : -1
+  return a.date.localeCompare(b.date) || a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)
+}

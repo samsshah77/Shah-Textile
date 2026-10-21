@@ -62,7 +62,7 @@ function toParty(r: Row): Party {
 }
 
 const BILL_COLS = `b."id", b."partyId", b."month", to_char(b."date",'YYYY-MM-DD') AS "date", b."billNo", b."inwardNo",
-  b."remarks", b."sortOrder", b."version"`
+  b."remarks", b."sortOrder", b."version", b."attachments"`
 const LINE_COLS = `l."id", l."billId", l."lineNo", l."description", l."machine",
   l."quantity"::float8 AS "quantity", l."rate"::float8 AS "rate", l."amount"::float8 AS "amount"`
 
@@ -100,6 +100,7 @@ function assemble(bills: Row[], lines: Row[]): Bill[] {
       version: n(b.version),
       lines: ls,
       total: ls.reduce((t, l) => t + l.amount, 0),
+      attachments: Array.isArray(b.attachments) ? (b.attachments as unknown[]).filter((x): x is string => typeof x === 'string') : [],
     }
   })
 }
@@ -248,6 +249,10 @@ export async function updateParty(
 
 // ---------------------------------------------------------------- bills
 
+/**
+ * Bills of a month in inward-number order (a bill entered later with an earlier inward
+ * number takes its place automatically); bills without an inward number come last, by date.
+ */
 export async function listBills(dbc: Db, where: { month?: string; partyId?: string }): Promise<Bill[]> {
   const cond: string[] = []
   const params: unknown[] = []
@@ -261,7 +266,10 @@ export async function listBills(dbc: Db, where: { month?: string; partyId?: stri
   }
   const whereSql = cond.length ? `WHERE ${cond.join(' AND ')}` : ''
   const bills = await dbc.$queryRawUnsafe<Row[]>(
-    `SELECT ${BILL_COLS} FROM "acc_bills" b ${whereSql} ORDER BY b."month", b."sortOrder", b."createdAt", b."id"`,
+    `SELECT ${BILL_COLS} FROM "acc_bills" b ${whereSql} ORDER BY b."month",
+       (CASE WHEN b."inwardNo" ~ '^[0-9]{1,15}$' THEN 0 ELSE 1 END),
+       (CASE WHEN b."inwardNo" ~ '^[0-9]{1,15}$' THEN b."inwardNo"::bigint END),
+       b."date", b."sortOrder", b."createdAt", b."id"`,
     ...params
   )
   if (!bills.length) return []
@@ -309,6 +317,7 @@ export async function createBill(
     partyId: string
     remarks: string
     lines: LineInput[]
+    attachments?: string[]
     afterBillId?: string
     createdBy?: string | null
     id?: string
@@ -333,8 +342,8 @@ export async function createBill(
   }
   const id = input.id || randomUUID()
   await dbc.$executeRawUnsafe(
-    `INSERT INTO "acc_bills" ("id","partyId","month","date","billNo","inwardNo","remarks","sortOrder","createdBy")
-     VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9)`,
+    `INSERT INTO "acc_bills" ("id","partyId","month","date","billNo","inwardNo","remarks","sortOrder","createdBy","attachments")
+     VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10::jsonb)`,
     id,
     input.partyId,
     input.month,
@@ -343,7 +352,8 @@ export async function createBill(
     input.inwardNo.trim(),
     input.remarks.trim(),
     sortOrder,
-    input.createdBy ?? null
+    input.createdBy ?? null,
+    JSON.stringify(input.attachments ?? [])
   )
   await insertLines(dbc, id, input.lines)
   return (await getBill(dbc, id))!
@@ -375,6 +385,7 @@ export async function updateBill(
     partyId?: string
     remarks?: string
     lines?: LineInput[]
+    attachments?: string[]
   }
 ): Promise<{ before: Bill; after: Bill }> {
   const before = await claimBill(dbc, id, baseVersion)
@@ -382,14 +393,15 @@ export async function updateBill(
   const month = patch.month ?? before.month
   if (month !== before.month) await assertUnlocked(dbc, month)
   await dbc.$executeRawUnsafe(
-    `UPDATE "acc_bills" SET "date"=$2::date,"month"=$3,"billNo"=$4,"inwardNo"=$5,"partyId"=$6,"remarks"=$7 WHERE "id"=$1`,
+    `UPDATE "acc_bills" SET "date"=$2::date,"month"=$3,"billNo"=$4,"inwardNo"=$5,"partyId"=$6,"remarks"=$7,"attachments"=$8::jsonb WHERE "id"=$1`,
     id,
     patch.date ?? before.date,
     month,
     (patch.billNo ?? before.billNo).trim(),
     (patch.inwardNo ?? before.inwardNo).trim(),
     patch.partyId ?? before.partyId,
-    (patch.remarks ?? before.remarks).trim()
+    (patch.remarks ?? before.remarks).trim(),
+    JSON.stringify(patch.attachments ?? before.attachments)
   )
   if (patch.lines) {
     await dbc.$executeRawUnsafe(`DELETE FROM "acc_bill_lines" WHERE "billId" = $1`, id)
