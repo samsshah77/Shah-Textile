@@ -95,10 +95,20 @@ export const paymentCreate = z.object({
   paidFrom: z.enum(['SARA', 'FOI']).default('SARA'),
   reference: text(80).default(''),
   remarks: text(500).default(''),
+  attachments: attachments.default([]),
 }).superRefine((p, ctx) => {
   // A payment is always money out; an opening balance or adjustment may be negative.
   if (p.kind === 'PAYMENT' ? p.amount <= 0 : p.amount === 0)
     ctx.addIssue({ code: 'custom', path: ['amount'], message: p.kind === 'PAYMENT' ? 'Amount must be more than 0' : 'Amount cannot be 0' })
+})
+
+export const paymentUpdate = z.object({
+  baseVersion: z.number().int().min(1),
+  date: date.optional(),
+  amount: signedMoney.optional(),
+  reference: text(80).optional(),
+  remarks: text(500).optional(),
+  attachments: attachments.optional(),
 })
 
 export const pettyCreate = z.object({

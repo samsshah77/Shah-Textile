@@ -132,7 +132,10 @@ export const accountsApi = {
     paidFrom?: PayAccount
     reference?: string
     remarks?: string
+    attachments?: string[]
   }) => call<{ payment: Payment }>('POST', '/api/accounts/payments', input).then((r) => r.payment),
+  updatePayment: (id: string, baseVersion: number, patch: { date?: string; amount?: number; reference?: string; remarks?: string; attachments?: string[] }) =>
+    call<{ payment: Payment }>('PATCH', `/api/accounts/payments/${id}`, { baseVersion, ...patch }).then((r) => r.payment),
   resetPreview: () => call<{ preview: ResetPreview }>('GET', '/api/accounts/reset').then((r) => r.preview),
   reset: () => call<{ result: ResetResult; snapshot: string }>('POST', '/api/accounts/reset', { confirm: 'RESET' }),
   monthImportPreview: (month: string) =>

@@ -77,6 +77,8 @@ export interface Payment {
   paidFrom: PayAccount
   reference: string
   remarks: string
+  /** Pictures of the cheque / receipt (/uploads/bills/…). */
+  attachments: string[]
   version: number
 }
 
@@ -133,8 +135,12 @@ export interface LedgerRow {
   billId?: string
   billNo: string
   inwardNo: string
-  /** Bill pictures — on the bill's first line only. */
+  /** Bill pictures (first line only) or payment pictures. */
   attachments?: string[]
+  /** On a bill's first line: how much of the bill is cleared (oldest bills are paid first). */
+  billStatus?: BillClearance
+  /** Payment rows: the date / amount / note, for editing. */
+  payment?: Payment
   description: string
   machine: string
   quantity: number
@@ -144,6 +150,14 @@ export interface LedgerRow {
   balance: number
 }
 
+/** How far one bill is paid — payments clear the oldest bills first. */
+export interface BillClearance {
+  total: number
+  cleared: number
+  due: number
+  status: 'PAID' | 'PARTLY' | 'UNPAID'
+}
+
 export interface PartyLedger {
   party: Party
   /** Purchases − payments before the period (0 for "all months"). */
@@ -151,6 +165,8 @@ export interface PartyLedger {
   rows: LedgerRow[]
   summary: PartySummary
   payments: Payment[]
+  /** Oldest bill not fully paid (all time), or null when everything is paid. */
+  oldestUnpaid: string | null
 }
 
 export interface PettyCashStatement {
@@ -251,6 +267,8 @@ export interface PayableRow {
   balance: number
   lastBill: string | null
   lastPayment: string | null
+  /** Oldest bill not fully paid yet (payments clear the oldest bills first). */
+  oldestUnpaid: string | null
 }
 
 export interface PayablesReport {

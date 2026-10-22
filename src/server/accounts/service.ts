@@ -10,6 +10,7 @@ import * as repo from '@/server/accounts/repo'
 import {
   buildCostStatement,
   partyLedger,
+  billClearance,
   partySummaries,
   payablesReport,
   payrollTotals,
@@ -67,7 +68,8 @@ export async function ledger(idOrSlug: string, month: string | null): Promise<Pa
     party,
     allBills.filter((b) => b.month === month),
     allPay.filter((p) => p.month === month),
-    before
+    before,
+    billClearance(allBills, allPay)
   )
 }
 

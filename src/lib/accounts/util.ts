@@ -105,3 +105,24 @@ export function compareBills(
   if ((na === null) !== (nb === null)) return na === null ? 1 : -1
   return a.date.localeCompare(b.date) || a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)
 }
+
+// ---------------------------------------------------------------- payables age
+
+/** Today's date on this computer (local time, YYYY-MM-DD). */
+export const todayStr = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Whole days from `date` to today. */
+export function daysSince(date: string, today = todayStr()): number {
+  return Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86400000))
+}
+
+/** "3 mahine 5 din" style age of an unpaid bill. */
+export function ageLabel(date: string): string {
+  const d = daysSince(date)
+  if (d < 31) return `${d} din`
+  const m = Math.floor(d / 30)
+  return `${m} mahine${d % 30 ? ` ${d % 30} din` : ''}`
+}

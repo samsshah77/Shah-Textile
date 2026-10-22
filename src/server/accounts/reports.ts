@@ -4,6 +4,7 @@
  */
 import type {
   Bill,
+  BillClearance,
   CostInputs,
   CostStatement,
   LedgerRow,
@@ -62,6 +63,35 @@ export function partySummaries(parties: Party[], bills: Bill[], payments: Paymen
 const round2 = (v: number) => Math.round(v * 100) / 100
 
 /**
+ * Which bills are paid. Suppliers are paid later and in parts (a 3 lakh bill may get 2
+ * lakh after two months), so every payment / set-off clears the OLDEST bills first.
+ * Returns each bill's cleared and due amount, and the date of the oldest bill still due.
+ */
+export function billClearance(bills: Bill[], payments: Payment[]): { byBill: Map<string, BillClearance>; oldestUnpaid: string | null } {
+  // Debits: positive opening balances (old ledger) and bills, oldest first.
+  type Debit = { id: string | null; date: string; order: number; total: number }
+  const debits: Debit[] = []
+  let credit = 0
+  for (const p of payments) {
+    const effect = payableEffect(p)
+    if (effect > 0) debits.push({ id: null, date: p.date, order: -1, total: effect })
+    else credit += -effect
+  }
+  for (const b of bills) debits.push({ id: b.id, date: b.date, order: b.sortOrder, total: round2(b.total) })
+  debits.sort((a, b) => (a.date === b.date ? a.order - b.order : a.date < b.date ? -1 : 1))
+  const byBill = new Map<string, BillClearance>()
+  let oldestUnpaid: string | null = null
+  for (const d of debits) {
+    const cleared = round2(Math.min(Math.max(credit, 0), Math.max(d.total, 0)))
+    credit = round2(credit - cleared)
+    const due = round2(d.total - cleared)
+    if (due >= 1 && !oldestUnpaid) oldestUnpaid = d.date
+    if (d.id) byBill.set(d.id, { total: d.total, cleared, due, status: due < 1 ? 'PAID' : cleared >= 1 ? 'PARTLY' : 'UNPAID' })
+  }
+  return { byBill, oldestUnpaid }
+}
+
+/**
  * Date-wise payable ledger (like the Excel "Payable Ledger Account"): purchase lines are
  * debits, payments and set-offs are credits, opening balances come first; running balance.
  * `opening` = everything owed before the period (0 when showing all months).
@@ -70,7 +100,9 @@ export function partyLedger(
   party: Party,
   bills: Bill[],
   payments: Payment[],
-  opening = 0
+  opening = 0,
+  /** Bill status from ALL of the party's bills and payments (not only this period). */
+  clearance: ReturnType<typeof billClearance> = billClearance(bills, payments)
 ): PartyLedger {
   type Item = { date: string; order: number; row: Omit<LedgerRow, 'balance'> }
   const items: Item[] = []
@@ -87,6 +119,7 @@ export function partyLedger(
           billNo: b.billNo,
           inwardNo: b.inwardNo,
           ...(l === b.lines[0] && b.attachments?.length ? { attachments: b.attachments } : {}),
+          ...(l === b.lines[0] && clearance.byBill.get(b.id) ? { billStatus: clearance.byBill.get(b.id) } : {}),
           description: l.description,
           machine: l.machine,
           quantity: l.quantity,
@@ -104,7 +137,7 @@ export function partyLedger(
         ? 'Opening balance (purana ledger)'
         : p.kind === 'ADJUSTMENT'
           ? 'Adjustment'
-          : `Payment — ${p.mode === 'CHEQUE' ? 'cheque' : p.mode === 'CASH' ? 'cash' : 'other'}${p.paidFrom === 'FOI' ? ' (FOI)' : ''}`
+          : 'Payment'
     items.push({
       date: p.date,
       order: p.kind === 'OPENING' ? -1 : 1e9,
@@ -112,6 +145,8 @@ export function partyLedger(
         kind: p.kind,
         paymentId: p.id,
         paymentVersion: p.version,
+        payment: p,
+        ...(p.attachments?.length ? { attachments: p.attachments } : {}),
         date: p.date,
         month: p.month,
         billNo: p.reference,
@@ -132,7 +167,7 @@ export function partyLedger(
     return { ...row, balance }
   })
   const [summary] = partySummaries([party], bills, payments)
-  return { party, opening, rows, summary, payments }
+  return { party, opening, rows, summary, payments, oldestUnpaid: clearance.oldestUnpaid }
 }
 
 /** A/P Synopsis: what we owe each supplier on `asOf` (bills and entries dated up to it). */
@@ -152,6 +187,10 @@ export function payablesReport(asOf: string, parties: Party[], bills: Bill[], pa
       balance: r.balance,
       lastBill: r.lastDate,
       lastPayment: lastPay.get(r.party.id) || null,
+      oldestUnpaid: billClearance(
+        b.filter((x) => x.partyId === r.party.id),
+        p.filter((x) => x.partyId === r.party.id)
+      ).oldestUnpaid,
     }))
     .sort((x, y) => Math.abs(y.balance) - Math.abs(x.balance) || x.party.name.localeCompare(y.party.name))
   const sara = round2(sum(rows.filter((r) => r.party.account !== 'FOI'), (r) => r.balance))

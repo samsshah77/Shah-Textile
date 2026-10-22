@@ -3,6 +3,7 @@ import { planImport, sheetKeyToMonth, billFingerprints } from '@/server/accounts
 import {
   buildCostStatement,
   partyLedger,
+  billClearance,
   partySummaries,
   pettyStatement,
   resolveCostInputs,
@@ -110,7 +111,7 @@ describe('copying the old data', () => {
 describe('party reports', () => {
   const p1 = party('p1', 'Fahad Traders')
   const bills = [bill('b1', 'p1', '2026-09', '2026-09-02', [['Left', 2, 10500], ['Right', 2, 10500]]), bill('b2', 'p1', '2026-09', '2026-09-09', [['Frame', 24, 100]])]
-  const pay = [{ id: 'y', partyId: 'p1', month: '2026-09', date: '2026-09-05', amount: 20000, kind: 'PAYMENT' as const, mode: 'CASH' as const, paidFrom: 'SARA' as const, reference: '', remarks: '', version: 1 }]
+  const pay = [{ id: 'y', partyId: 'p1', month: '2026-09', date: '2026-09-05', amount: 20000, kind: 'PAYMENT' as const, mode: 'CASH' as const, paidFrom: 'SARA' as const, reference: '', remarks: '', attachments: [] as string[], version: 1 }]
   it('summary: purchases, bills, items, paid, balance', () => {
     const [s] = partySummaries([p1], bills, pay)
     expect(s).toMatchObject({ purchases: 44400, bills: 2, items: 28, paid: 20000, balance: 24400, lastDate: '2026-09-09' })
@@ -135,6 +136,24 @@ describe('party reports', () => {
     const l = partyLedger(p1, bills, entries.filter((e) => e.partyId === 'p1'))
     expect(l.rows[0]).toMatchObject({ kind: 'OPENING', amount: 81900, balance: 81900 })
     expect(l.rows[l.rows.length - 1].balance).toBe(105900)
+  })
+  it('bill status: payments clear the oldest bills first (part payments allowed)', () => {
+    // b1 = 42,000 (2 Sep), b2 = 2,400 (9 Sep). 20,000 paid → b1 partly paid, b2 unpaid.
+    const c = billClearance(bills, pay)
+    expect(c.byBill.get('b1')).toMatchObject({ total: 42000, cleared: 20000, due: 22000, status: 'PARTLY' })
+    expect(c.byBill.get('b2')).toMatchObject({ cleared: 0, due: 2400, status: 'UNPAID' })
+    expect(c.oldestUnpaid).toBe('2026-09-02')
+    // Two more payments months later: b1 cleared, oldest due moves to b2, then nothing due.
+    const more = [...pay, { ...pay[0], id: 'y2', date: '2026-11-10', month: '2026-11', amount: 23000 }]
+    const c2 = billClearance(bills, more)
+    expect(c2.byBill.get('b1')!.status).toBe('PAID')
+    expect(c2.byBill.get('b2')).toMatchObject({ due: 1400, status: 'PARTLY' })
+    expect(c2.oldestUnpaid).toBe('2026-09-09')
+    const c3 = billClearance(bills, [...more, { ...pay[0], id: 'y3', date: '2026-12-01', month: '2026-12', amount: 1400 }])
+    expect(c3.oldestUnpaid).toBeNull()
+    const l = partyLedger(p1, bills, more)
+    expect(l.rows[0].billStatus?.status).toBe('PAID')
+    expect(l.oldestUnpaid).toBe('2026-09-09')
   })
   it('petty statement carries the balance b/f', () => {
     const s = pettyStatement('2026-09', [

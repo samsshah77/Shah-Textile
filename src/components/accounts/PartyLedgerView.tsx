@@ -1,14 +1,15 @@
 'use client'
 
 import { BillPhotosLink } from '@/components/accounts/BillPhotosLink'
+import { PictureStrip } from '@/components/shared/PictureStrip'
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer, Pencil, Wallet, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
-import { monthLabel, rs, qty } from '@/lib/accounts/util'
-import type { PartyKind, PartyLedger, PayAccount, PaymentKind, PaymentMode } from '@/lib/accounts/types'
+import { ageLabel, monthLabel, rs, qty, todayStr } from '@/lib/accounts/util'
+import type { BillClearance, PartyKind, PartyLedger, Payment } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, MonthPicker } from '@/components/accounts/ui'
@@ -24,6 +25,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
   )
   const [editing, setEditing] = useState(false)
   const [paying, setPaying] = useState(false)
+  const [editPay, setEditPay] = useState<Payment | null>(null)
   const back = kind === 'WORKSHOP' ? '/accounts/workshops' : '/accounts/traders'
   const period = month === 'all' ? 'All months' : monthLabel(month)
   const cell = 'border border-slate-400 dark:border-slate-600'
@@ -47,7 +49,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               {canEditAccounts && ledger && (
                 <>
                   <button type="button" onClick={() => setPaying(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer !min-h-9 !h-9">
-                    <Wallet className="size-4" /> Payment / entry
+                    <Wallet className="size-4" /> Payment
                   </button>
                   <button type="button" onClick={() => setEditing(true)} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                     <Pencil className="size-3.5" /> Edit party
@@ -71,12 +73,12 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
               {(
                 [
-                  ['Brought forward', ledger.opening, 'text-slate-600'],
-                  ...(ledger.summary.opening ? [['Opening balance', ledger.summary.opening, 'text-amber-700']] : []),
-                  ['Bills (debit)', ledger.summary.purchases, 'text-slate-900'],
-                  ['Paid (credit)', ledger.summary.paid, 'text-emerald-700'],
+                  ...(ledger.opening ? [['Pichla baqi (b/f)', ledger.opening, 'text-slate-600']] : []),
+                  ...(ledger.summary.opening ? [['Opening (purana ledger)', ledger.summary.opening, 'text-amber-700']] : []),
+                  ['Bills', ledger.summary.purchases, 'text-slate-900'],
+                  ['Paid', ledger.summary.paid, 'text-emerald-700'],
                   ...(ledger.summary.adjusted ? [['Adjustments', ledger.summary.adjusted, 'text-sky-700']] : []),
-                  [`Total payable${ledger.party.account === 'FOI' ? ' (FOI)' : ''}`, ledger.opening + ledger.summary.balance, 'text-[#0066cc]'],
+                  ['Baqi', ledger.opening + ledger.summary.balance, 'text-[#0066cc]'],
                 ] as Array<[string, number, string]>
               ).map(([label, value, cls]) => (
                 <div key={label as string} className="erp-card p-3">
@@ -84,6 +86,16 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                   <div className={cn('text-lg font-black font-mono', cls as string)}>{rs(value as number)}</div>
                 </div>
               ))}
+              <div className="erp-card p-3">
+                <div className="text-[10px] font-bold uppercase text-slate-500">Purana baqi bill</div>
+                {ledger.oldestUnpaid ? (
+                  <div className="text-sm font-black font-mono text-rose-700">
+                    {ledger.oldestUnpaid} <span className="text-[11px] font-bold">({ageLabel(ledger.oldestUnpaid)})</span>
+                  </div>
+                ) : (
+                  <div className="text-sm font-black text-emerald-700">Sab bills paid</div>
+                )}
+              </div>
             </div>
 
             <div className="erp-card overflow-hidden">
@@ -98,8 +110,8 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                 <table className="w-full min-w-[900px] text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-100 font-bold uppercase text-[10px]">
-                      {['S.No', 'Date', 'Bill / Ref No', 'Inward No', 'Description', 'Qty', 'Rate', 'Debit (bill)', 'Credit (paid)', 'Balance'].map((h, i) => (
-                        <th key={h} className={cn(cell, 'py-2 px-2', i >= 5 ? 'text-right' : i === 4 ? 'text-left' : 'text-center')}>
+                      {['S.No', 'Date', 'Bill / Ref No', 'Inward No', 'Description', 'Qty', 'Rate', 'Bill', 'Paid', 'Balance', 'Bill status'].map((h, i) => (
+                        <th key={h} className={cn(cell, 'py-2 px-2', i === 10 ? 'text-center' : i >= 5 ? 'text-right' : i === 4 ? 'text-left' : 'text-center')}>
                           {h}
                         </th>
                       ))}
@@ -116,12 +128,13 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                         <td className={cn(cell, 'px-2')}>Pichle mahinon ka baqi</td>
                         <td className={cell} colSpan={4} />
                         <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(ledger.opening)}</td>
+                        <td className={cell} />
                         {canEditAccounts && <td className={cn(cell, 'print:hidden')} />}
                       </tr>
                     )}
                     {ledger.rows.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className={cn(cell, 'py-8 text-center text-muted-foreground')}>
+                        <td colSpan={12} className={cn(cell, 'py-8 text-center text-muted-foreground')}>
                           {period} mein koi bill ya payment nahi.
                         </td>
                       </tr>
@@ -152,8 +165,14 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                             <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{r.amount ? rs(r.amount) : ''}</td>
                             <td className={cn(cell, 'px-2 text-right font-mono text-emerald-700')}>{r.paid ? rs(r.paid) : ''}</td>
                             <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(r.balance)}</td>
+                            <td className={cn(cell, 'px-2 text-center')}>{r.billStatus && <BillStatusChip s={r.billStatus} />}</td>
                             {canEditAccounts && (
-                              <td className={cn(cell, 'text-center print:hidden')}>
+                              <td className={cn(cell, 'text-center whitespace-nowrap print:hidden')}>
+                                {r.payment && (
+                                  <button type="button" onClick={() => setEditPay(r.payment!)} className="p-1 text-slate-400 hover:text-sky-700 cursor-pointer" aria-label="Edit entry" title="Badlein / tasveer lagayein">
+                                    <Pencil className="size-3.5" />
+                                  </button>
+                                )}
                                 {r.paymentId && (
                                   <button type="button" onClick={() => removePayment(r.paymentId!, r.paymentVersion || 1)} className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" aria-label="Delete entry">
                                     <Trash2 className="size-3.5" />
@@ -174,6 +193,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                       <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(ledger.summary.purchases)}</td>
                       <td className={cn(cell, 'px-2 text-right font-mono text-emerald-700')}>{rs(ledger.summary.paid)}</td>
                       <td className={cn(cell, 'px-2 text-right font-mono text-[#0066cc]')}>{rs(ledger.opening + ledger.summary.balance)}</td>
+                      <td className={cell} />
                       {canEditAccounts && <td className={cn(cell, 'print:hidden')} />}
                     </tr>
                   </tfoot>
@@ -181,9 +201,8 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               </div>
             </div>
             {editing && <PartyForm kind={kind} party={ledger.party} onClose={() => setEditing(false)} />}
-            {paying && (
-              <PaymentForm partyId={ledger.party.id} account={ledger.party.account} month={month === 'all' ? '' : month} onClose={() => setPaying(false)} />
-            )}
+            {paying && <PaymentForm partyId={ledger.party.id} month={month === 'all' ? '' : month} onClose={() => setPaying(false)} />}
+            {editPay && <PaymentForm partyId={ledger.party.id} month="" existing={editPay} onClose={() => setEditPay(null)} />}
           </>
         )}
       </LoadState>
@@ -191,43 +210,49 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
   )
 }
 
+function BillStatusChip({ s }: { s: BillClearance }) {
+  if (s.status === 'PAID')
+    return <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">Paid</span>
+  if (s.status === 'PARTLY')
+    return (
+      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`${rs(s.cleared)} paid`}>
+        Baqi {rs(s.due)}
+      </span>
+    )
+  return <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">Unpaid</span>
+}
+
+/** Payment: just date, amount, a note and pictures. Also used to fix an entry later. */
 function PaymentForm({
   partyId,
-  account,
   month,
+  existing,
   onClose,
 }: {
   partyId: string
-  account: PayAccount
   month: string
+  existing?: Payment
   onClose: () => void
 }) {
-  const today = new Date().toISOString().slice(0, 10)
-  const [kind, setKind] = useState<PaymentKind>('PAYMENT')
-  const [date, setDate] = useState(month && !today.startsWith(month) ? `${month}-01` : today)
-  const [amount, setAmount] = useState('')
-  const [mode, setMode] = useState<PaymentMode>('CHEQUE')
-  const [paidFrom, setPaidFrom] = useState<PayAccount>(account)
-  const [reference, setReference] = useState('')
-  const [remarks, setRemarks] = useState('')
+  const today = todayStr()
+  const [date, setDate] = useState(existing?.date || (month && !today.startsWith(month) ? `${month}-01` : today))
+  const [amount, setAmount] = useState(existing ? String(existing.amount) : '')
+  const [note, setNote] = useState(existing?.remarks || '')
+  const [pictures, setPictures] = useState<string[]>(existing?.attachments || [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isPayment = !existing || existing.kind === 'PAYMENT'
   const input = 'w-full px-2.5 py-1.5 text-xs bg-background border border-slate-300 rounded-md'
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true)
     setError(null)
     try {
-      await accountsApi.createPayment({
-        partyId,
-        date,
-        amount: Number(amount),
-        kind,
-        mode: kind === 'PAYMENT' ? mode : 'OTHER',
-        paidFrom: kind === 'PAYMENT' ? paidFrom : account,
-        reference,
-        remarks,
-      })
+      if (existing) {
+        await accountsApi.updatePayment(existing.id, existing.version, { date, amount: Number(amount), remarks: note, attachments: pictures })
+      } else {
+        await accountsApi.createPayment({ partyId, date, amount: Number(amount), kind: 'PAYMENT', mode: 'OTHER', remarks: note, attachments: pictures })
+      }
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save nahi hua.')
@@ -235,45 +260,26 @@ function PaymentForm({
       setBusy(false)
     }
   }
-  const hint: Record<PaymentKind, string> = {
-    PAYMENT: 'Party ko diye gaye paise (cheque / cash). Is se baqi kam hota hai.',
-    OPENING:
-      'Purane ledger ka baqi jo is system se pehle ka hai (jis tareekh tak). Positive = humne dena hai; minus = party ko advance diya hua.',
-    ADJUSTMENT: 'Set-off / discount / maal wapsi (jaise scrap sale ka adjust). Positive se baqi kam hota hai; minus se barhta hai.',
-  }
+  const title = existing ? (existing.kind === 'PAYMENT' ? 'Payment badlein' : existing.kind === 'OPENING' ? 'Opening badlein' : 'Adjustment badlein') : 'Payment'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
       <form onSubmit={submit} className="w-full max-w-md bg-background rounded-xl border border-border shadow-2xl p-5 space-y-3">
-        <h3 className="font-bold text-sm">Ledger entry</h3>
-        <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-          {(
-            [
-              ['PAYMENT', 'Payment'],
-              ['OPENING', 'Opening balance'],
-              ['ADJUSTMENT', 'Adjustment'],
-            ] as Array<[PaymentKind, string]>
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setKind(k)}
-              className={cn('flex-1 rounded-md px-2 py-1 text-xs font-bold cursor-pointer', kind === k ? 'bg-white shadow text-slate-900' : 'text-slate-500')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="text-[11px] text-slate-500">{hint[kind]}</p>
+        <h3 className="font-bold text-sm">{title}</h3>
+        {!existing && (
+          <p className="text-[11px] text-slate-500">
+            Jitni raqam di — poori ya aadhi. Ye sab se purane bill se kat-ti hai; baqi apne aap hisab ho jata hai.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Date *</span>
+            <span className="text-[11px] font-semibold text-slate-600">Tareekh *</span>
             <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className={input} />
           </label>
           <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Amount *</span>
+            <span className="text-[11px] font-semibold text-slate-600">Raqam *</span>
             <input
               type="number"
-              min={kind === 'PAYMENT' ? 0.01 : undefined}
+              min={isPayment ? 0.01 : undefined}
               step="any"
               required
               value={amount}
@@ -281,34 +287,15 @@ function PaymentForm({
               className={cn(input, 'font-mono text-right')}
             />
           </label>
-          {kind === 'PAYMENT' && (
-            <>
-              <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-slate-600">Mode</span>
-                <select value={mode} onChange={(e) => setMode(e.target.value as PaymentMode)} className={input}>
-                  <option value="CHEQUE">Cheque</option>
-                  <option value="CASH">Cash</option>
-                  <option value="OTHER">Other</option>
-                </select>
-              </label>
-              <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-slate-600">Kis account se</span>
-                <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value as PayAccount)} className={input}>
-                  <option value="SARA">Sara Textile</option>
-                  <option value="FOI">FOI</option>
-                </select>
-              </label>
-            </>
-          )}
-          <label className={cn('block space-y-1', kind !== 'PAYMENT' && 'col-span-2')}>
-            <span className="text-[11px] font-semibold text-slate-600">{kind === 'PAYMENT' ? 'Bank / cheque no.' : 'Reference'}</span>
-            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={kind === 'PAYMENT' ? 'Meezan 34378721' : ''} className={input} />
-          </label>
         </div>
         <label className="block space-y-1">
-          <span className="text-[11px] font-semibold text-slate-600">Remarks</span>
-          <input value={remarks} onChange={(e) => setRemarks(e.target.value)} className={input} />
+          <span className="text-[11px] font-semibold text-slate-600">Note (cheque no., bank, waghera)</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Meezan cheque 34378721" className={input} />
         </label>
+        <div className="space-y-1">
+          <span className="text-[11px] font-semibold text-slate-600">Tasveer (cheque / raseed)</span>
+          <PictureStrip urls={pictures} onChange={setPictures} kind="bill" editable max={6} label="Tasveer lagayein" />
+        </div>
         {error && <div className="alert alert-danger py-2 px-3 small mb-0">{error}</div>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="erp-btn-secondary text-xs cursor-pointer">

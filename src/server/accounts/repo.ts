@@ -495,7 +495,7 @@ export async function listMonths(dbc: Db): Promise<string[]> {
 
 // ---------------------------------------------------------------- payments
 
-const PAY_COLS = `"id","partyId","month",to_char("date",'YYYY-MM-DD') AS "date","amount"::float8 AS "amount","kind","mode","paidFrom","reference","remarks","version"`
+const PAY_COLS = `"id","partyId","month",to_char("date",'YYYY-MM-DD') AS "date","amount"::float8 AS "amount","kind","mode","paidFrom","reference","remarks","version","attachments"`
 function toPayment(r: Row): Payment {
   return {
     id: s(r.id),
@@ -508,6 +508,7 @@ function toPayment(r: Row): Payment {
     paidFrom: s(r.paidFrom) === 'FOI' ? 'FOI' : 'SARA',
     reference: s(r.reference),
     remarks: s(r.remarks),
+    attachments: Array.isArray(r.attachments) ? (r.attachments as unknown[]).filter((x): x is string => typeof x === 'string') : [],
     version: n(r.version),
   }
 }
@@ -542,6 +543,7 @@ export async function createPayment(
     paidFrom?: PayAccount
     reference: string
     remarks: string
+    attachments?: string[]
     id?: string
   }
 ): Promise<Payment> {
@@ -550,8 +552,8 @@ export async function createPayment(
   if (!(await getParty(dbc, p.partyId))) throw new AccountsError(404, 'Party not found.', 'NOT_FOUND')
   const id = p.id || randomUUID()
   await dbc.$executeRawUnsafe(
-    `INSERT INTO "acc_payments" ("id","partyId","month","date","amount","kind","mode","paidFrom","reference","remarks")
-     VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10)`,
+    `INSERT INTO "acc_payments" ("id","partyId","month","date","amount","kind","mode","paidFrom","reference","remarks","attachments")
+     VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
     id,
     p.partyId,
     month,
@@ -561,10 +563,47 @@ export async function createPayment(
     p.mode,
     p.paidFrom || 'SARA',
     p.reference,
-    p.remarks
+    p.remarks,
+    JSON.stringify(p.attachments ?? [])
   )
   const rows = await dbc.$queryRawUnsafe<Row[]>(`SELECT ${PAY_COLS} FROM "acc_payments" WHERE "id" = $1`, id)
   return toPayment(rows[0])
+}
+
+/** Change a ledger entry's date / amount / note / pictures (both months must be open). */
+export async function updatePayment(
+  dbc: Db,
+  id: string,
+  baseVersion: number,
+  patch: { date?: string; amount?: number; reference?: string; remarks?: string; attachments?: string[] }
+): Promise<{ before: Payment; after: Payment }> {
+  const rows = await dbc.$queryRawUnsafe<Row[]>(`SELECT ${PAY_COLS} FROM "acc_payments" WHERE "id" = $1`, id)
+  if (!rows[0]) throw new AccountsError(404, 'Payment not found.', 'NOT_FOUND')
+  const before = toPayment(rows[0])
+  if (before.version !== baseVersion) throw staleError()
+  await assertUnlocked(dbc, before.month)
+  const date = patch.date ?? before.date
+  const month = patch.date ? monthOfDate(date) : before.month
+  if (month !== before.month) await assertUnlocked(dbc, month)
+  const amount = patch.amount ?? before.amount
+  if (before.kind === 'PAYMENT' ? amount <= 0 : amount === 0)
+    throw new AccountsError(400, before.kind === 'PAYMENT' ? 'Amount 0 se zyada honi chahiye.' : 'Amount 0 nahi ho sakti.', 'BAD_INPUT')
+  const done = await dbc.$executeRawUnsafe(
+    `UPDATE "acc_payments" SET "date"=$3::date,"month"=$4,"amount"=$5,"reference"=$6,"remarks"=$7,"attachments"=$8::jsonb,
+       "version"="version"+1,"updatedAt"=CURRENT_TIMESTAMP
+     WHERE "id"=$1 AND "version"=$2`,
+    id,
+    baseVersion,
+    date,
+    month,
+    amount,
+    (patch.reference ?? before.reference).trim(),
+    (patch.remarks ?? before.remarks).trim(),
+    JSON.stringify(patch.attachments ?? before.attachments)
+  )
+  if (!done) throw staleError()
+  const after = await dbc.$queryRawUnsafe<Row[]>(`SELECT ${PAY_COLS} FROM "acc_payments" WHERE "id" = $1`, id)
+  return { before, after: toPayment(after[0]) }
 }
 
 export async function deletePayment(dbc: Db, id: string, baseVersion: number): Promise<Payment> {
