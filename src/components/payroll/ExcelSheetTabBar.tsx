@@ -257,12 +257,6 @@ export const ACCOUNTS_EXCEL_SHEETS: SheetTabInfo[] = [
   },
   {
     sheetNumber: 6,
-    name: 'Monthly Purchases',
-    href: '/accounts/reports/monthly-purchases',
-    activeCheck: (p) => p.startsWith('/accounts/reports/monthly-purchases'),
-  },
-  {
-    sheetNumber: 7,
     name: 'Final Cost Statement',
     href: '/accounts/cost-statement',
     activeCheck: (p) => p === '/accounts/cost-statement',

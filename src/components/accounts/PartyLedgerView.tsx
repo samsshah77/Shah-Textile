@@ -8,14 +8,39 @@ import { ArrowLeft, Printer, Pencil, Wallet, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
-import { ageLabel, monthLabel, rs, qty, todayStr } from '@/lib/accounts/util'
-import type { BillClearance, PartyKind, PartyLedger, Payment } from '@/lib/accounts/types'
+import { ageLabel, monthLabel, rs, todayStr } from '@/lib/accounts/util'
+import type { BillClearance, LedgerRow, PartyKind, PartyLedger, Payment } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, MonthPicker } from '@/components/accounts/ui'
 import { PartyForm } from '@/components/accounts/PartyDirectory'
 
-/** One party's date-wise ledger: every purchase line and payment with a running balance. */
+/**
+ * A bill's item lines shown as one row (like the Excel khata): date, bill no, bill amount,
+ * paid, running balance. Item details stay in Daily Inward.
+ */
+function billRows(rows: LedgerRow[]): LedgerRow[] {
+  const out: LedgerRow[] = []
+  for (const r of rows) {
+    const prev = out[out.length - 1]
+    const sameBill =
+      r.kind === 'LINE' &&
+      prev?.kind === 'LINE' &&
+      (r.billId ? r.billId === prev.billId : r.billNo === prev.billNo && r.date === prev.date)
+    if (sameBill) {
+      out[out.length - 1] = {
+        ...prev,
+        amount: prev.amount + r.amount,
+        balance: r.balance,
+        billStatus: prev.billStatus || r.billStatus,
+        attachments: prev.attachments?.length ? prev.attachments : r.attachments,
+      }
+    } else out.push({ ...r })
+  }
+  return out
+}
+
+/** One party's date-wise ledger: every bill and payment with a running balance. */
 export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind }) {
   const { canEditAccounts } = useAuth()
   const { month, setMonth, months } = useAccountsMonth({ allowAll: true })
@@ -112,14 +137,14 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                   {ledger.party.name} · {ledger.party.kind === 'WORKSHOP' ? 'Workshop' : 'Trader'} · {period}
                   {!ledger.party.active && <span className="ml-2 text-rose-600">(removed from list)</span>}
                 </h2>
-                <span className="text-xs text-slate-500">{ledger.summary.bills} bills · {qty(ledger.summary.items)} items</span>
+                <span className="text-xs text-slate-500">{ledger.summary.bills} bills</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px] text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-100 font-bold uppercase text-[10px]">
-                      {['S.No', 'Date', 'Bill / Ref No', 'Inward No', 'Description', 'Qty', 'Rate', 'Bill', 'Paid', 'Balance', 'Bill status'].map((h, i) => (
-                        <th key={h} className={cn(cell, 'py-2 px-2', i === 10 ? 'text-center' : i >= 5 ? 'text-right' : i === 4 ? 'text-left' : 'text-center')}>
+                      {['S.No', 'Date', 'Bill No', 'Bill', 'Paid', 'Balance', 'Bill status'].map((h, i) => (
+                        <th key={h} className={cn(cell, 'py-2 px-2', i === 2 ? 'text-left' : i >= 3 && i <= 5 ? 'text-right' : 'text-center')}>
                           {h}
                         </th>
                       ))}
@@ -130,11 +155,9 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                     {ledger.opening !== 0 && (
                       <tr className="bg-amber-50/60 italic">
                         <td className={cn(cell, 'px-2 text-center')}>-</td>
-                        <td className={cn(cell, 'px-2 text-center')} colSpan={3}>
-                          Balance b/f
-                        </td>
-                        <td className={cn(cell, 'px-2')}>Pichle mahinon ka baqi</td>
-                        <td className={cell} colSpan={4} />
+                        <td className={cn(cell, 'px-2 text-center')} />
+                        <td className={cn(cell, 'px-2')}>Balance b/f — pichle mahinon ka baqi</td>
+                        <td className={cell} colSpan={2} />
                         <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(ledger.opening)}</td>
                         <td className={cell} />
                         {canEditAccounts && <td className={cn(cell, 'print:hidden')} />}
@@ -142,12 +165,12 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                     )}
                     {ledger.rows.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className={cn(cell, 'py-8 text-center text-muted-foreground')}>
+                        <td colSpan={8} className={cn(cell, 'py-8 text-center text-muted-foreground')}>
                           {period} mein koi bill ya payment nahi.
                         </td>
                       </tr>
                     ) : (
-                      ledger.rows.map((r, i) => {
+                      billRows(ledger.rows).map((r, i) => {
                         return (
                           <tr
                             key={i}
@@ -165,11 +188,10 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                           >
                             <td className={cn(cell, 'px-2 text-center font-mono text-slate-500')}>{i + 1}</td>
                             <td className={cn(cell, 'px-2 text-center font-mono')}>{r.date}</td>
-                            <td className={cn(cell, 'px-2 text-center font-mono font-bold')}>{r.billNo || '-'}<BillPhotosLink urls={r.attachments} /></td>
-                            <td className={cn(cell, 'px-2 text-center font-mono text-[#0066cc]')}>{r.inwardNo || '-'}</td>
-                            <td className={cn(cell, 'px-2 py-1.5')}>{r.description}</td>
-                            <td className={cn(cell, 'px-2 text-right font-mono')}>{r.kind === 'LINE' ? qty(r.quantity) : ''}</td>
-                            <td className={cn(cell, 'px-2 text-right font-mono')}>{r.kind === 'LINE' ? qty(r.rate) : ''}</td>
+                            <td className={cn(cell, 'px-2 py-1.5', r.kind === 'LINE' ? 'font-mono font-bold' : 'font-semibold')}>
+                              {r.kind === 'LINE' ? `Bill no ${r.billNo || '-'}` : `${r.description}${r.billNo ? ` (Ref ${r.billNo})` : ''}`}
+                              <BillPhotosLink urls={r.attachments} />
+                            </td>
                             <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{r.amount ? rs(r.amount) : ''}</td>
                             <td className={cn(cell, 'px-2 text-right font-mono text-emerald-700')}>{r.paid ? rs(r.paid) : ''}</td>
                             <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(r.balance)}</td>
@@ -195,7 +217,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-200 font-black">
-                      <td colSpan={7} className={cn(cell, 'px-3 py-2 text-right uppercase')}>
+                      <td colSpan={3} className={cn(cell, 'px-3 py-2 text-right uppercase')}>
                         Total ({period})
                       </td>
                       <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(ledger.summary.purchases)}</td>

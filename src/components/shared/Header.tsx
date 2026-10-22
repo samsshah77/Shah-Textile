@@ -64,7 +64,6 @@ function resolveAccountsPage(pathname: string): string {
   if (pathname === '/accounts/daily-expense' || pathname === '/accounts/inventory-inward') return 'Daily Inward & Expenses'
   if (pathname.startsWith('/accounts/payables')) return 'Payables (A/P Synopsis)'
   if (pathname.startsWith('/accounts/petty-cash')) return 'Petty Cash Journal'
-  if (pathname.startsWith('/accounts/reports')) return 'Monthly Purchases'
   return 'Accounts'
 }
 

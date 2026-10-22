@@ -124,12 +124,6 @@ const ACCOUNTS_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p.startsWith('/accounts/petty-cash'),
   },
   {
-    title: 'Monthly Purchases',
-    href: '/accounts/reports/monthly-purchases',
-    icon: 'bi-graph-up-arrow',
-    activeCheck: (p) => p.startsWith('/accounts/reports'),
-  },
-  {
     title: 'Final Cost Statement',
     href: '/accounts/cost-statement',
     icon: 'bi-file-earmark-bar-graph',
