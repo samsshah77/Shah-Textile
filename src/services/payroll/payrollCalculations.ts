@@ -11,6 +11,9 @@ import type {
   ContractorPaymentRecord,
 } from '@/types/payroll'
 
+/** Round to paise (2 decimals) — salary amounts keep paise like the Excel sheet; screens show whole rupees. */
+export const toPaise = (v: number): number => Math.round((Number(v) || 0) * 100) / 100
+
 export function daysInCalendarMonth(month: string = '2026-08'): number {
   const [year, mon] = (month || '2026-08').split('-').map(Number)
   if (!year || !mon) return 31
@@ -686,7 +689,9 @@ export function calculateContractSalaryRow(
 
   const calculatedRatePerDay = Math.round((salary / actualDays) * 100) / 100
   let ratePerDay = calculatedRatePerDay
-  let basicSalary = Math.round(attendance * ratePerDay)
+  // Like the Excel sheet: attendance × (salary ÷ days) with the exact rate, kept to paise;
+  // the sheet shows whole rupees and the totals add the paise (no 1–2 rupee drift).
+  let basicSalary = toPaise(attendance * (salary / actualDays))
 
   if (isHistorical && row.basicSalary !== undefined && Number(row.attendanceDays) > 0) {
     const explicitDays =
@@ -751,15 +756,25 @@ export function calculateContractSalaryRow(
       ? gwRatePerHr
       : Number((salary / (30 * dutyHrs)).toFixed(2))
 
+  // Exact hourly rate for the amounts (Excel uses the unrounded General Wages rate);
+  // the 2-decimal rate above is only what the sheet shows.
+  const formulaRatePerHr = dutyHrs > 0 ? salary / (30 * dutyHrs) : 0
+  const exactRatePerHr =
+    gwRatePerHr > 0 && Math.abs(gwRatePerHr - formulaRatePerHr) >= 0.01
+      ? Number(matchedEmp?.ratePerHr30) || gwRatePerHr // a rate set by hand in General Wages
+      : formulaRatePerHr
+  let rateForAmounts = exactRatePerHr
   if (isHistorical) {
     if (ratePerHr <= 0) {
       ratePerHr = calculatedRatePerHr
     }
+    // Closed months keep the rate they were worked out with.
+    rateForAmounts = ratePerHr
   } else {
     ratePerHr = calculatedRatePerHr
   }
 
-  let otAmount = Math.round(otHours * ratePerHr)
+  let otAmount = isHistorical ? Math.round(otHours * ratePerHr) : toPaise(otHours * rateForAmounts)
   if (
     isHistorical &&
     row.otAmount !== undefined &&
@@ -773,19 +788,21 @@ export function calculateContractSalaryRow(
     row.lateAmount !== undefined && row.lateAmount !== null && String(row.lateAmount) !== ''
       ? Number(row.lateAmount) || 0
       : lateHours > 0
-        ? Math.round(lateHours * ratePerHr)
+        ? isHistorical
+          ? Math.round(lateHours * ratePerHr)
+          : toPaise(lateHours * rateForAmounts)
         : 0
 
   // Contract Excel Sheet 4 (Contract Employees Salaries):
   // Gross Salary = Basic Salary = attendanceDays × ratePerDay
   // Net Base Salary = Basic − Late − Advance − Ticket (No OT or Efficiency added!)
-  const netSalary = Math.max(0, basicSalary - lateAmount - advanceDeduction - ticketCharges)
+  const netSalary = Math.max(0, toPaise(basicSalary - lateAmount - advanceDeduction - ticketCharges))
 
   // Contract Excel Sheet 10 (Net Payment Contract 1 to 30 / Consolidated Settlement):
   // Gross = Basic + OT + Efficiency
   // Net Amount = Gross − Late − Advance − Ticket
-  const grossSalary = basicSalary + otAmount + efficiencyAmount
-  const netAmount = Math.max(0, grossSalary - lateAmount - advanceDeduction - ticketCharges)
+  const grossSalary = toPaise(basicSalary + otAmount + efficiencyAmount)
+  const netAmount = Math.max(0, toPaise(grossSalary - lateAmount - advanceDeduction - ticketCharges))
 
   return {
     id: row.id || `cnt-${Date.now()}`,
@@ -819,7 +836,8 @@ export function calculateEfficiencyRow(
   const eff = Number(row.efficiencyPercent) || 0
   const salaryEarned = Number(row.salaryEarned) || 0
   const availPercent = eff >= 70 ? Math.max(0, eff - 60) : 0
-  const amount = Math.round(salaryEarned * (availPercent / 100))
+  // Excel: salary earned × avail % (kept to paise; the sheet shows whole rupees).
+  const amount = toPaise(salaryEarned * (availPercent / 100))
 
   return {
     id: row.id || `eff-${Date.now()}`,

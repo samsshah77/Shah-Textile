@@ -46,7 +46,8 @@ function convertHundreds(num: number): string {
 
 export function numberToWordsPKR(amount: number): string {
   if (isNaN(amount) || amount === 0) return "Rupees Zero Only"
-  const integerPart = Math.floor(Math.abs(amount))
+  // Whole rupees, rounded the same way the amount is shown (1,234.60 → One Thousand … Thirty Five).
+  const integerPart = Math.round(Math.abs(amount))
   if (integerPart === 0) return "Rupees Zero Only"
 
   let crore = Math.floor(integerPart / 10000000)

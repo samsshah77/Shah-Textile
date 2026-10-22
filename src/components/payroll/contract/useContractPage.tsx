@@ -121,14 +121,55 @@ export function useContractPage() {
     resetColumnWidth: resetNetColWidth,
   } = useResizableColumns('contract_net', DEFAULT_CONTRACT_NET_WIDTHS)
 
+  /** Rows as saved, and the ones whose amounts the Excel-like hisab (paise) would change. */
+  const [savedRows, setSavedRows] = useState<ContractSalaryRecord[]>([])
+  const [recalcRows, setRecalcRows] = useState<ContractSalaryRecord[]>([])
+
   const reload = (force = false) => {
     if (!force && hasUnsavedChanges) return
     const days = daysInMonth || 30
-    const fresh = payrollService
-      .getContractSalaries(selectedMonth)
-      .map((row) => payrollService.calculateContractSalaryRow(row, days))
+    const saved = payrollService.getContractSalaries(selectedMonth)
+    const fresh = saved.map((row) => payrollService.calculateContractSalaryRow(row, days))
     setContractList(fresh)
     resetSnapshot(fresh)
+    setSavedRows(saved)
+    setRecalcRows(fresh)
+  }
+
+  /**
+   * Saved rows of this month whose amounts differ from today's hisab (Excel-like, with
+   * paise) — e.g. September saved before the 22 Oct fix. Shown so the accountant can
+   * apply and Save; nothing changes on its own.
+   */
+  const AMOUNT_FIELDS = ['basicSalary', 'otAmount', 'lateAmount', 'grossSalary', 'netSalary', 'netAmount'] as const
+  const staleRows = recalcRows.filter((r) => {
+    const s = savedRows.find((x) => x.id === r.id)
+    return Boolean(s && AMOUNT_FIELDS.some((f) => Math.abs((Number(s[f]) || 0) - (Number(r[f]) || 0)) >= 0.005))
+  })
+  const staleTotals = {
+    otBefore: savedRows.reduce((t, r) => t + (Number(r.otAmount) || 0), 0),
+    otAfter: recalcRows.reduce((t, r) => t + (Number(r.otAmount) || 0), 0),
+    netBefore: savedRows.reduce((t, r) => t + (Number(r.netAmount) || 0), 0),
+    netAfter: recalcRows.reduce((t, r) => t + (Number(r.netAmount) || 0), 0),
+  }
+  /** Save the sheet with the Excel-like amounts (the table already shows them). */
+  const saveRecalc = () => {
+    if (!isEditable || staleRows.length === 0) return
+    const r = (v: number) => Math.round(v).toLocaleString('en-US')
+    askConfirm({
+      title: 'Naya (Excel jaisa) hisab save karein?',
+      message:
+        `${staleRows.length} logon ki raqam paise ke hisab se 1–2 rupay badlegi. ` +
+        `OT total ${r(staleTotals.otBefore)} → ${r(staleTotals.otAfter)}, ` +
+        `Net total ${r(staleTotals.netBefore)} → ${r(staleTotals.netAfter)}.`,
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.saveContractSalaries(selectedMonth, contractList)
+        commitSaved(contractList)
+        setSavedRows(contractList)
+        showSuccess('Saved', 'Contract sheet naye hisab se save ho gayi.')
+      },
+    })
   }
 
   useEffect(() => {
@@ -328,6 +369,9 @@ export function useContractPage() {
 
 
   return {
+    staleRows,
+    staleTotals,
+    saveRecalc,
     canEditAccounts,
     askConfirm,
     showSuccess,
