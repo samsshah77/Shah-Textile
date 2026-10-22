@@ -41,6 +41,14 @@ or computers overwrote each other. Now (`src/lib/floor/rowSync.ts`,
 Fields the server owns on a day row (approval, last edited by / at, quality id) are not
 counted as changes and are kept from the stored row when a day is rebuilt.
 
+## No browser-only copies (Oct 2026)
+
+The browser used to keep its own copies of unsent quality ends, new / reused qualities, new
+beams and beam Sw# in localStorage, and re-sent them on every page load — without the row
+checks above, so an old tab could end a quality again or bring back a deleted one. These
+copies are gone (`src/services/production/floorLocalCache.ts`); the old keys are removed on
+load. A save that fails shows the red "Not saved" banner and is simply done again.
+
 ## Yarn stock = movements
 
 `floor_yarns` totals are a cache recomputed from `floor_yarn_movements` after every change:

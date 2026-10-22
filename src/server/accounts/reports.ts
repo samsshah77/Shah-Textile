@@ -134,7 +134,7 @@ export function partyLedger(
     const effect = payableEffect(p)
     const label =
       p.kind === 'OPENING'
-        ? 'Opening balance (purana ledger)'
+        ? 'Purana baqi (ERP se pehle)'
         : p.kind === 'ADJUSTMENT'
           ? 'Adjustment'
           : 'Payment'

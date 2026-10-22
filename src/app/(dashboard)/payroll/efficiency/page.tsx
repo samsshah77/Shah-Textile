@@ -171,13 +171,14 @@ export default function TechnicalEfficiencyPage() {
     if (!row) return
     const empName = row?.name || 'this entry'
     askConfirm({
-      ...removeRowConfirm(empName, 'is mahine ki Efficiency sheet', { comesBack: true }),
+      ...removeRowConfirm(empName, 'is mahine ki Efficiency sheet', { staysOff: true }),
       onConfirm: () => {
         const updated = incentiveList
           .filter((item) => item.id !== id)
           .map((item, idx) => ({ ...item, serialNo: idx + 1 }))
         setIncentiveList(updated)
-        payrollService.saveEfficiencyIncentives(updated)
+        payrollService.noteEfficiencyRemovals(selectedMonth, updated)
+        payrollService.saveEfficiencyIncentives(updated, true, selectedMonth)
       },
     })
   }
@@ -202,7 +203,8 @@ export default function TechnicalEfficiencyPage() {
       message: 'Efficiency incentives save ho jayengi.',
       confirmText: 'Save',
       onConfirm: () => {
-        payrollService.saveEfficiencyIncentives(incentiveList)
+        payrollService.noteEfficiencyRemovals(selectedMonth, incentiveList)
+        payrollService.saveEfficiencyIncentives(incentiveList, true, selectedMonth)
         commitSaved(incentiveList)
         showSuccess('Saved', 'Efficiency incentives successfully saved.')
       },

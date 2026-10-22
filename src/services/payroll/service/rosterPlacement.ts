@@ -15,7 +15,7 @@ import {
   INITIAL_EFFICIENCY_INCENTIVES,
 } from '@/data/payrollSeeds'
 import { STORAGE_KEYS } from '@/services/payroll/payrollConstants'
-import { contractorRemovedKeys, contractorRowKey, hydrated, isTombstonedEmployee, isMonthLocked, writeStore } from '@/services/payroll/payrollStorage'
+import { contractorRemovedKeys, contractorRowKey, efficiencyRemovedKeys, personRowKey, hydrated, isTombstonedEmployee, isMonthLocked, writeStore } from '@/services/payroll/payrollStorage'
 import {
   employeeBelongsInMonth,
   namesMatch,
@@ -111,6 +111,7 @@ export const rosterPlacementMethods = {
     let next: EfficiencyIncentiveRecord[] = all
     const zeroed: string[] = []
     let changed = false
+    const removedByHand = efficiencyRemovedKeys(month)
     for (const emp of roster) {
       const isMine = (r: EfficiencyIncentiveRecord) =>
         r.employeeId === emp.id || (!r.employeeId && namesMatch(r.name, emp.name))
@@ -126,6 +127,8 @@ export const rosterPlacementMethods = {
         continue
       }
       if (mineNow.length) continue
+      // Taken off this month's sheet by hand — do not bring it back on page open.
+      if (removedByHand.has(personRowKey({ employeeId: emp.id, name: emp.name }))) continue
       const last = [...next]
         .filter((r) => r.month < month && isMine(r))
         .sort((a, b) => b.month.localeCompare(a.month))[0]

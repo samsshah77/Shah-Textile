@@ -36,15 +36,7 @@ import {
   seedLooms,
   seedQualities,
 } from '@/services/production/productionSeeds'
-import {
-  applyLocalQualityEnds,
-  applyLocalPendingQualities,
-  forgetLocalPendingQuality,
-  mergeLoomEndLists,
-  rememberLocalPendingQuality,
-  forgetLocalQualityEnd,
-  rememberLocalQualityEnd,
-} from '@/services/production/floorLocalCache'
+import { mergeLoomEndLists } from '@/services/production/floorLocalCache'
 import {
   memoryStore,
   notifyFloorSaveProblem,
@@ -66,9 +58,7 @@ import type { ProductionMastersService } from '@/services/productionMastersServi
 
 export const qualitiesMethods = {
   getQualities(this: ProductionMastersService): QualityMaster[] {
-    const before = applyLocalPendingQualities(
-      applyLocalQualityEnds(loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality))
-    )
+    const before = loadJson(KEY_QUALITY, seedQualities).map(normalizeQuality)
     const merged = collapseDuplicateActiveQualities(before)
     // Keep merged Active forks in memory so later PUTs include them.
     try {
@@ -427,12 +417,6 @@ export const qualitiesMethods = {
       }
     }
 
-    // Backdated start date must survive refresh until DB upsert confirms createdOn.
-    if (nextPatch.createdOn !== undefined) {
-      const stamped = qualities.find((q) => q.id === id)
-      if (stamped) rememberLocalPendingQuality(stamped)
-    }
-
     if (reviving && restoreLoomNums.length > 0) {
       const looms = this.getLooms()
       const restoredNums: number[] = []
@@ -462,24 +446,6 @@ export const qualitiesMethods = {
       }
     }
 
-    const saved = qualities.find((q) => q.id === id)
-    if (reviving && saved) {
-      // Keep Active revive until DB confirms — otherwise hydrate/local ends snap back to ENDED
-      // and Continue looks like success while Ends row never leaves.
-      forgetLocalQualityEnd(id)
-      rememberLocalPendingQuality(
-        normalizeQuality({
-          ...saved,
-          status: 'ACTIVE',
-          endedOn: null,
-          loomEnds: saved.loomEnds,
-        })
-      )
-    } else if (saved?.status === 'ENDED' && saved.endedOn) {
-      rememberLocalQualityEnd(id, saved.endedOn, saved.name, saved.loomEnds)
-    } else if (nextPatch.status === 'ACTIVE' || nextPatch.status === 'HOLD') {
-      forgetLocalQualityEnd(id)
-    }
     const recipeTouched =
       nextPatch.name !== undefined ||
       nextPatch.fabricType !== undefined ||
@@ -527,7 +493,6 @@ export const qualitiesMethods = {
     })
     qualities.push(added)
     this.saveQualities(qualities)
-    rememberLocalPendingQuality(added)
     void this.flushNewQuality(added)
     return qualities
   },
@@ -577,10 +542,6 @@ export const qualitiesMethods = {
       loomEnds: [],
     })
 
-    // Keep original ENDED for Ends tab — do NOT revive / forget its local end.
-    rememberLocalQualityEnd(src.id, endedOn, src.name, src.loomEnds)
-    rememberLocalPendingQuality(newQuality)
-
     const qualities = collapseDuplicateActiveQualities(
       [...list.filter((q) => q.id !== newQuality.id), newQuality],
       day
@@ -592,11 +553,6 @@ export const qualitiesMethods = {
 
   /** Persist new Active run; keep original ENDED row in DB (server-atomic). */
   async flushReassign(this: ProductionMastersService, revived: QualityMaster, archive: QualityMaster | null): Promise<boolean> {
-    // Browser backup until hydrate confirms DB has the Active fork.
-    rememberLocalPendingQuality(revived)
-    if (archive?.id && archive.endedOn) {
-      rememberLocalQualityEnd(archive.id, String(archive.endedOn).slice(0, 10), archive.name, archive.loomEnds)
-    }
 
     const createdOn = String(revived.createdOn || getProductionToday()).slice(0, 10)
     let ok = false
@@ -645,7 +601,6 @@ export const qualitiesMethods = {
 
   /** @deprecated prefer flushReassign — kept for addQuality path */
   async flushNewQuality(this: ProductionMastersService, quality: QualityMaster): Promise<boolean> {
-    rememberLocalPendingQuality(quality)
     const okUpsert = await persistQualityUpsert(quality)
     // Keep pending until hydrate confirms — protects against stale quality PUT wipe.
     return okUpsert
@@ -675,21 +630,11 @@ export const qualitiesMethods = {
     const q = this.getQualities().find((item) => item.id === id)
     if (!q) return false
     const status = normalizeQualityStatus(q.status)
-    if (status === 'ENDED' && q.endedOn) {
-      rememberLocalQualityEnd(id, q.endedOn, q.name, q.loomEnds)
-    } else if (status === 'ACTIVE') {
-      forgetLocalQualityEnd(id)
-    }
     const endedOn = status === 'ACTIVE' ? null : q.endedOn ?? null
     // Row upsert + status patch only — full-table PUT races and can wipe reuse archives.
     const okUpsert = await persistQualityUpsert(q)
     const okPatch = await persistQualityStatus(id, status, endedOn)
-    const ok = okPatch || okUpsert
-    // Only clear Continue/Resume pending after DB confirms Active.
-    if (ok && status === 'ACTIVE') {
-      forgetLocalPendingQuality(id)
-    }
-    return ok
+    return okPatch || okUpsert
   },
 
   /** Push full qualities list + status patch for ended/hold rows. */
@@ -782,8 +727,6 @@ export const qualitiesMethods = {
   deleteQuality(this: ProductionMastersService, id: string): QualityMaster[] {
     const qualities = this.getQualities().filter((q) => q.id !== id)
     this.saveQualitiesMemory(qualities)
-    forgetLocalPendingQuality(id)
-    forgetLocalQualityEnd(id)
     const beams = this.getBeams()
     if (beams.some((b) => b.qualityId === id)) {
       this.saveBeams(beams.map((b) => (b.qualityId === id ? { ...b, qualityId: null } : b)))

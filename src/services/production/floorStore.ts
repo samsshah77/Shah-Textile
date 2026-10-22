@@ -10,10 +10,7 @@ import {
   PRODUCTION_TODAY_MONTH,
   getCalendarToday,
 } from '@/constants/productionCalendar'
-import {
-  isClient,
-  normalizeBeam,
-} from '@/services/production/loomBeamHelpers'
+import { isClient } from '@/services/production/loomBeamHelpers'
 import type {
   BeamMaster,
   QualityLifecycleStatus,
@@ -21,7 +18,6 @@ import type {
 } from '@/services/production/masterTypes'
 import {
   normalizeQuality,
-  normalizeQualityStatus,
 } from '@/services/production/masterTypes'
 import {
   normalizeSheetEntry,
@@ -29,16 +25,7 @@ import {
   sortSheetEntries,
   sheetRowKey,
 } from '@/services/production/qualityRuns'
-import {
-  readLocalPendingQualities,
-  applyLocalQualityEnds,
-  applyLocalPendingQualities,
-  forgetLocalPendingQuality,
-  applyLocalPendingBeams,
-  applyLocalBeamSwLots,
-  readLocalPendingBeams,
-  forgetLocalPendingBeam,
-} from '@/services/production/floorLocalCache'
+import { LEGACY_LOCAL_COPY_KEYS } from '@/services/production/floorLocalCache'
 import {
   memoryStore,
   notifyFloorSaveProblem,
@@ -203,6 +190,10 @@ export function clearLegacyFloorLocalStorage() {
     KEY_YARN_ISSUANCE,
     KEY_YARN_MOVEMENTS,
     KEY_QUALITY,
+    // Old browser-only copies of unsent quality ends / new qualities / beams / Sw#.
+    // The server is the only record now; these were re-sent on load and could undo
+    // what someone else saved.
+    ...LEGACY_LOCAL_COPY_KEYS,
   ]
   try {
     for (const key of keys) localStorage.removeItem(key)
@@ -345,76 +336,7 @@ export async function hydrateFloorFromDb(): Promise<void> {
           setListFromServer(key, value, hashes[key], { force: true })
         })
         rememberMonthLocks(data.monthLocks)
-        // Re-apply browser-backed Quality Ends + pending reused Actives if DB lagged.
-        try {
-          const raw = memoryStore.get(KEY_QUALITY)
-          if (raw) {
-            const pendingSnapshot = readLocalPendingQualities()
-            const pendingActiveIds = new Set(
-              pendingSnapshot
-                .filter((p) => normalizeQualityStatus(p.status) === 'ACTIVE')
-                .map((p) => p.id)
-            )
-            const fromDb = (JSON.parse(raw) as QualityMaster[]).map(normalizeQuality)
-            const withEnds = applyLocalQualityEnds(fromDb)
-            const merged = applyLocalPendingQualities(withEnds)
-            memoryStore.set(KEY_QUALITY, JSON.stringify(merged))
-            for (const q of merged) {
-              // Never re-stamp ENDED over a same-id Active reuse still in pending.
-              if (q.status === 'ENDED' && q.endedOn && !pendingActiveIds.has(q.id)) {
-                // Only when the server does not already have this End.
-                const db = fromDb.find((x) => x.id === q.id)
-                if (!db || db.status !== 'ENDED' || String(db.endedOn || '').slice(0, 10) !== String(q.endedOn).slice(0, 10)) {
-                  void persistQualityStatus(q.id, 'ENDED', q.endedOn)
-                }
-              }
-            }
-            // Push any still-pending rows (Active reuse / new quality) to DB.
-            for (const p of readLocalPendingQualities()) {
-              const alreadyInDb = fromDb.some((q) => q.id === p.id)
-              void (async () => {
-                const okUpsert = await persistQualityUpsert(p)
-                const status = normalizeQualityStatus(p.status)
-                const okPatch =
-                  status === 'ACTIVE'
-                    ? await persistQualityStatus(p.id, 'ACTIVE', null)
-                    : status === 'ENDED' || status === 'HOLD'
-                      ? await persistQualityStatus(p.id, status, p.endedOn ?? null)
-                      : false
-                // Drop pending only once DB has confirmed the row (or upsert just wrote it).
-                if (alreadyInDb || okUpsert || okPatch) forgetLocalPendingQuality(p.id)
-              })()
-            }
-          }
-        } catch {
-          // ignore merge errors
-        }
         clearLegacyFloorLocalStorage()
-        // Re-apply browser Sw# backup + pending new beams if DB lagged.
-        try {
-          const rawBeams = memoryStore.get(KEY_BEAMS)
-          if (rawBeams) {
-            const fromDb = (JSON.parse(rawBeams) as BeamMaster[]).map((b) => normalizeBeam(b))
-            const withPending = applyLocalPendingBeams(fromDb)
-            const merged = applyLocalBeamSwLots(withPending)
-            memoryStore.set(KEY_BEAMS, JSON.stringify(merged.map((b) => normalizeBeam(b))))
-            for (const b of merged) {
-              // Only beams whose Sw# the server does not have yet.
-              if (b.swLot && !fromDb.find((x) => x.beamNo === b.beamNo)?.swLot) {
-                void persistBeamPatch(b.beamNo, { swLot: b.swLot })
-              }
-            }
-            // Flush any beams that only exist in browser pending backup.
-            for (const p of readLocalPendingBeams()) {
-              const alreadyInDb = fromDb.some((b) => b.beamNo === p.beamNo)
-              void persistBeamUpsert(p).then((ok) => {
-                if (ok || alreadyInDb) forgetLocalPendingBeam(p.beamNo)
-              })
-            }
-          }
-        } catch {
-          // ignore
-        }
       }
       hydrated = true
     } catch (err) {
@@ -440,29 +362,6 @@ export async function refreshFloorMastersFromDb(): Promise<void> {
       if (key in store) setListFromServer(key, store[key], hashes[key])
     }
     rememberMonthLocks(data.monthLocks)
-    // Keep browser Sw# + pending new beams if server row is still empty / missing.
-    try {
-      const rawBeams = memoryStore.get(KEY_BEAMS)
-      if (rawBeams) {
-        const fromDb = (JSON.parse(rawBeams) as BeamMaster[]).map((b) => normalizeBeam(b))
-        const withPending = applyLocalPendingBeams(fromDb)
-        const merged = applyLocalBeamSwLots(withPending)
-        memoryStore.set(KEY_BEAMS, JSON.stringify(merged.map((b) => normalizeBeam(b))))
-        for (const b of merged) {
-          if (b.swLot && !(fromDb.find((x) => x.beamNo === b.beamNo)?.swLot)) {
-            void persistBeamPatch(b.beamNo, { swLot: b.swLot })
-          }
-        }
-        for (const p of readLocalPendingBeams()) {
-          const alreadyInDb = fromDb.some((b) => b.beamNo === p.beamNo)
-          void persistBeamUpsert(p).then((ok) => {
-            if (ok || alreadyInDb) forgetLocalPendingBeam(p.beamNo)
-          })
-        }
-      }
-    } catch {
-      // ignore
-    }
   } catch (err) {
     console.error('[floor] refresh masters failed', err)
   }

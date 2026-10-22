@@ -577,6 +577,8 @@ export type HrMetaShape = {
    * "<employee id or name:…>|<1-15 or 1-31>". Page open must not add them back.
    */
   contractorRemoved?: Record<string, string[]>
+  /** Same for the Efficiency sheet: "<employee id or name:…>" per month. */
+  efficiencyRemoved?: Record<string, string[]>
 }
 
 export function writeHrMeta(custom: {
@@ -669,15 +671,22 @@ export function contractorRowKey(r: { employeeId?: string | null; name?: string 
   return `${who}|${sheet}`
 }
 
-/** Contractor rows removed by hand from `month` (they stay off the sheet). */
-export function contractorRemovedKeys(month: string): Set<string> {
-  return new Set(readHrMetaRaw().contractorRemoved?.[month] || [])
+/** Key of a person on the Efficiency sheet (by profile id; very old rows by name). */
+export function personRowKey(r: { employeeId?: string | null; name?: string | null }): string {
+  return r.employeeId ? String(r.employeeId) : `name:${normalizeNameLocal(r.name || '')}`
+}
+
+type RemovedField = 'contractorRemoved' | 'efficiencyRemoved'
+
+/** Rows removed by hand from `month` on one sheet (they stay off that month). */
+function removedKeys(field: RemovedField, month: string): Set<string> {
+  return new Set(readHrMetaRaw()[field]?.[month] || [])
 }
 
 /** Remember removed rows / forget rows that are on the sheet again, for one month. */
-export function updateContractorRemoved(month: string, add: string[], drop: string[]): void {
+function updateRemoved(field: RemovedField, month: string, add: string[], drop: string[]): void {
   const raw = readHrMetaRaw()
-  const all = { ...(raw.contractorRemoved || {}) }
+  const all = { ...(raw[field] || {}) }
   const set = new Set(all[month] || [])
   const before = [...set].sort().join(',')
   for (const k of drop) set.delete(k)
@@ -685,8 +694,15 @@ export function updateContractorRemoved(month: string, add: string[], drop: stri
   if ([...set].sort().join(',') === before) return
   if (set.size) all[month] = [...set].sort()
   else delete all[month]
-  writeStore(STORAGE_KEYS.HR_META, { ...raw, contractorRemoved: all })
+  writeStore(STORAGE_KEYS.HR_META, { ...raw, [field]: all })
 }
+
+export const contractorRemovedKeys = (month: string) => removedKeys('contractorRemoved', month)
+export const updateContractorRemoved = (month: string, add: string[], drop: string[]) =>
+  updateRemoved('contractorRemoved', month, add, drop)
+export const efficiencyRemovedKeys = (month: string) => removedKeys('efficiencyRemoved', month)
+export const updateEfficiencyRemoved = (month: string, add: string[], drop: string[]) =>
+  updateRemoved('efficiencyRemoved', month, add, drop)
 
 export function readMonthLock(month: string): MonthLockInfo | null {
   const meta = readHrMetaRaw()

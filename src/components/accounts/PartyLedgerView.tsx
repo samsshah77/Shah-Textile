@@ -24,7 +24,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
     [slug, month]
   )
   const [editing, setEditing] = useState(false)
-  const [paying, setPaying] = useState(false)
+  const [paying, setPaying] = useState<false | 'PAYMENT' | 'OPENING'>(false)
   const [editPay, setEditPay] = useState<Payment | null>(null)
   const back = kind === 'WORKSHOP' ? '/accounts/workshops' : '/accounts/traders'
   const period = month === 'all' ? 'All months' : monthLabel(month)
@@ -48,8 +48,16 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               </Link>
               {canEditAccounts && ledger && (
                 <>
-                  <button type="button" onClick={() => setPaying(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer !min-h-9 !h-9">
+                  <button type="button" onClick={() => setPaying('PAYMENT')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer !min-h-9 !h-9">
                     <Wallet className="size-4" /> Payment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaying('OPENING')}
+                    className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer"
+                    title="ERP se pehle ka baqi (purane register / Excel se)"
+                  >
+                    Purana baqi
                   </button>
                   <button type="button" onClick={() => setEditing(true)} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                     <Pencil className="size-3.5" /> Edit party
@@ -74,7 +82,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               {(
                 [
                   ...(ledger.opening ? [['Pichla baqi (b/f)', ledger.opening, 'text-slate-600']] : []),
-                  ...(ledger.summary.opening ? [['Opening (purana ledger)', ledger.summary.opening, 'text-amber-700']] : []),
+                  ...(ledger.summary.opening ? [['Purana baqi', ledger.summary.opening, 'text-amber-700']] : []),
                   ['Bills', ledger.summary.purchases, 'text-slate-900'],
                   ['Paid', ledger.summary.paid, 'text-emerald-700'],
                   ...(ledger.summary.adjusted ? [['Adjustments', ledger.summary.adjusted, 'text-sky-700']] : []),
@@ -201,7 +209,9 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               </div>
             </div>
             {editing && <PartyForm kind={kind} party={ledger.party} onClose={() => setEditing(false)} />}
-            {paying && <PaymentForm partyId={ledger.party.id} month={month === 'all' ? '' : month} onClose={() => setPaying(false)} />}
+            {paying && (
+              <PaymentForm partyId={ledger.party.id} month={month === 'all' ? '' : month} kind={paying} onClose={() => setPaying(false)} />
+            )}
             {editPay && <PaymentForm partyId={ledger.party.id} month="" existing={editPay} onClose={() => setEditPay(null)} />}
           </>
         )}
@@ -223,25 +233,34 @@ function BillStatusChip({ s }: { s: BillClearance }) {
 }
 
 /** Payment: just date, amount, a note and pictures. Also used to fix an entry later. */
+/** First month kept in the ERP (July 2026): an old balance is dated on its first day. */
+const OPENING_DATE = '2026-07-01'
+
 function PaymentForm({
   partyId,
   month,
   existing,
+  kind: newKind = 'PAYMENT',
   onClose,
 }: {
   partyId: string
   month: string
   existing?: Payment
+  /** For a new entry: a payment, or the party's old balance from before the ERP. */
+  kind?: 'PAYMENT' | 'OPENING'
   onClose: () => void
 }) {
   const today = todayStr()
-  const [date, setDate] = useState(existing?.date || (month && !today.startsWith(month) ? `${month}-01` : today))
+  const opening = existing ? existing.kind === 'OPENING' : newKind === 'OPENING'
+  const [date, setDate] = useState(
+    existing?.date || (opening ? OPENING_DATE : month && !today.startsWith(month) ? `${month}-01` : today)
+  )
   const [amount, setAmount] = useState(existing ? String(existing.amount) : '')
   const [note, setNote] = useState(existing?.remarks || '')
   const [pictures, setPictures] = useState<string[]>(existing?.attachments || [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const isPayment = !existing || existing.kind === 'PAYMENT'
+  const isPayment = existing ? existing.kind === 'PAYMENT' : !opening
   const input = 'w-full px-2.5 py-1.5 text-xs bg-background border border-slate-300 rounded-md'
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -251,7 +270,15 @@ function PaymentForm({
       if (existing) {
         await accountsApi.updatePayment(existing.id, existing.version, { date, amount: Number(amount), remarks: note, attachments: pictures })
       } else {
-        await accountsApi.createPayment({ partyId, date, amount: Number(amount), kind: 'PAYMENT', mode: 'OTHER', remarks: note, attachments: pictures })
+        await accountsApi.createPayment({
+          partyId,
+          date,
+          amount: Number(amount),
+          kind: opening ? 'OPENING' : 'PAYMENT',
+          mode: 'OTHER',
+          remarks: note,
+          attachments: pictures,
+        })
       }
       onClose()
     } catch (err) {
@@ -260,14 +287,28 @@ function PaymentForm({
       setBusy(false)
     }
   }
-  const title = existing ? (existing.kind === 'PAYMENT' ? 'Payment badlein' : existing.kind === 'OPENING' ? 'Opening badlein' : 'Adjustment badlein') : 'Payment'
+  const title = existing
+    ? existing.kind === 'PAYMENT'
+      ? 'Payment badlein'
+      : existing.kind === 'OPENING'
+        ? 'Purana baqi badlein'
+        : 'Adjustment badlein'
+    : opening
+      ? 'Purana baqi (ERP se pehle ka)'
+      : 'Payment'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
       <form onSubmit={submit} className="w-full max-w-md bg-background rounded-xl border border-border shadow-2xl p-5 space-y-3">
         <h3 className="font-bold text-sm">{title}</h3>
-        {!existing && (
+        {!existing && !opening && (
           <p className="text-[11px] text-slate-500">
             Jitni raqam di — poori ya aadhi. Ye sab se purane bill se kat-ti hai; baqi apne aap hisab ho jata hai.
+          </p>
+        )}
+        {opening && (
+          <p className="text-[11px] text-slate-500">
+            July 2026 se pehle ka jo baqi purane register / Excel mein tha. Hum ne dena hai to seedhi raqam (jaise 25000);
+            party ko advance diya hua hai to minus mein (jaise -5000). Ye sab se pehle wala bill maana jata hai.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">

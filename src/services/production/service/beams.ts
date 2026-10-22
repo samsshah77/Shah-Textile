@@ -21,14 +21,7 @@ import {
 import type {
   MountBeamResult,
 } from '@/services/production/loomBeamHelpers'
-import {
-  applyLocalPendingBeams,
-  applyLocalBeamSwLots,
-  readLocalPendingBeams,
-  forgetLocalPendingBeam,
-  writeLocalBeamSwLot,
-  writeLocalPendingBeam,
-} from '@/services/production/floorLocalCache'
+import { isBeamUnconfirmed, markBeamConfirmed, markBeamUnconfirmed } from '@/services/production/floorLocalCache'
 import {
   memoryStore,
 } from '@/services/production/floorSync'
@@ -46,7 +39,7 @@ import type { ProductionMastersService } from '@/services/productionMastersServi
 
 export const beamsMethods = {
   deleteBeam(this: ProductionMastersService, beamNo: string): BeamMaster[] {
-    forgetLocalPendingBeam(beamNo)
+    markBeamConfirmed(beamNo)
     const beams = this.getBeams().filter((b) => b.beamNo !== beamNo)
     // Memory first; DB delete is explicit (avoid full-list stale wipe races).
     try {
@@ -61,7 +54,7 @@ export const beamsMethods = {
 
   getBeams(this: ProductionMastersService): BeamMaster[] {
     const beams = loadJson(KEY_BEAMS, seedBeams).map((b) => normalizeBeam(b))
-    return applyLocalBeamSwLots(applyLocalPendingBeams(beams)).map((b) => normalizeBeam(b))
+    return beams
   },
 
   saveBeams(this: ProductionMastersService, beams: BeamMaster[]) {
@@ -74,9 +67,6 @@ export const beamsMethods = {
     patch: Partial<BeamMaster>,
     opts?: { sheetDate?: string }
   ): BeamMaster[] {
-    if (patch.swLot !== undefined) {
-      writeLocalBeamSwLot(beamNo, patch.swLot)
-    }
     const beams = this.getBeams().map((b) => {
       if (b.beamNo !== beamNo) return b
       return normalizeBeam({ ...b, ...patch, beamNo })
@@ -165,22 +155,20 @@ export const beamsMethods = {
       beamRepeat: partial.beamRepeat ?? null,
     })
     beams.push(added)
-    if (partial.swLot) writeLocalBeamSwLot(partial.beamNo, partial.swLot)
-    // Browser backup until DB confirms — survives refresh if network/PUT fails.
-    writeLocalPendingBeam(added)
+    // Until the server confirms, Add Beam waits on it (flushPendingBeam) — this tab only.
+    markBeamUnconfirmed(added.beamNo)
     try {
       memoryStore.set(KEY_BEAMS, JSON.stringify(beams.map((b) => normalizeBeam(b))))
     } catch {
       // ignore
     }
-    // Fire upsert immediately; hydrate merge restores from pending if refresh wins the race.
     void (async () => {
       const ok = await persistBeamUpsert(added)
       if (ok) {
-        forgetLocalPendingBeam(added.beamNo)
+        markBeamConfirmed(added.beamNo)
         void persistKey(KEY_BEAMS, this.getBeams())
       } else {
-        console.error('[floor] addBeam upsert failed — kept in pending local', added.beamNo)
+        console.error('[floor] addBeam upsert failed', added.beamNo)
       }
     })()
     if (added.usedInLoom) {
@@ -197,19 +185,18 @@ export const beamsMethods = {
   async flushPendingBeam(this: ProductionMastersService, beamNo: string, timeoutMs = 8000): Promise<boolean> {
     const started = Date.now()
     while (Date.now() - started < timeoutMs) {
-      const pending = readLocalPendingBeams().some((b) => b.beamNo === beamNo)
-      if (!pending) return true
+      if (!isBeamUnconfirmed(beamNo)) return true
       const beam = this.getBeams().find((b) => b.beamNo === beamNo)
       if (beam) {
         const ok = await persistBeamUpsert(beam)
         if (ok) {
-          forgetLocalPendingBeam(beamNo)
+          markBeamConfirmed(beamNo)
           return true
         }
       }
       await new Promise((r) => setTimeout(r, 250))
     }
-    return !readLocalPendingBeams().some((b) => b.beamNo === beamNo)
+    return !isBeamUnconfirmed(beamNo)
   },
 
   /**

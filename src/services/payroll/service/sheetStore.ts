@@ -27,6 +27,8 @@ import {
   advancePersonMonthKey,
   contractorRowKey,
   updateContractorRemoved,
+  personRowKey,
+  updateEfficiencyRemoved,
 } from '@/services/payroll/payrollStorage'
 import {
   sheetMonthKey,
@@ -361,10 +363,35 @@ export const sheetStoreMethods = {
     )
   },
 
-  saveEfficiencyIncentives(this: PayrollService, list: EfficiencyIncentiveRecord[], triggerCascade: boolean = true): void {
+  /**
+   * Before saving the Efficiency sheet of `month`: remember people taken off it by hand
+   * (page open will not add them back) and forget anyone who is on it again.
+   */
+  noteEfficiencyRemovals(this: PayrollService, month: string, rows: EfficiencyIncentiveRecord[]): void {
+    if (!this.canWrite()) return
+    const before = this.getEfficiencyIncentives(month)
+    const people = this.getEmployees()
+    const keyOf = (r: EfficiencyIncentiveRecord) =>
+      personRowKey({ employeeId: r.employeeId || people.find((e) => namesMatch(e.name, r.name))?.id, name: r.name })
+    const onSheet = new Set(rows.map(keyOf))
+    const removed = before
+      .filter((r) => !rows.some((x) => x.id === r.id))
+      .map(keyOf)
+      .filter((k) => !onSheet.has(k))
+    updateEfficiencyRemoved(month, removed, [...onSheet])
+  },
+
+  saveEfficiencyIncentives(
+    this: PayrollService,
+    list: EfficiencyIncentiveRecord[],
+    triggerCascade: boolean = true,
+    /** The month being saved — needed when its last row was removed (empty list). */
+    month?: string
+  ): void {
     if (!this.canWrite()) return
     const existing = this.readStore(STORAGE_KEYS.EFFICIENCY, INITIAL_EFFICIENCY_INCENTIVES)
     const incomingMonths = new Set(list.map((r) => r.month).filter(Boolean))
+    if (month) incomingMonths.add(month)
     const kept = existing.filter(
       (r) => !list.some((n) => n.id === r.id) && !(r.month && incomingMonths.has(r.month))
     )
