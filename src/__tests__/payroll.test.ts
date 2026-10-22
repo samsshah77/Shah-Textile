@@ -42,8 +42,14 @@ describe('Staff salary (Excel rules)', () => {
     expect(r.basicSalary).toBe(20000)
   })
 
-  it('OT = hours × salary ÷ (30 × duty hours)  (Excel: 176 h × 40,000 ÷ 240 = 29,333)', () => {
+  it('OT = hours × salary ÷ (30 × duty hours), paise kept like Excel (176 h × 40,000 ÷ 240 = 29,333.33)', () => {
     const r = calculateStaffSalaryRow({ salary: 40000, attendanceDays: 30, otHours: 176, month: '2026-10' }, 30, '2026-10')
+    expect(r.otAmount).toBe(29333.33)
+    expect(r.synopsisAmount).toBe(69333.33)
+  })
+
+  it('a closed (non-active) month keeps the old whole-rupee OT', () => {
+    const r = calculateStaffSalaryRow({ salary: 40000, attendanceDays: 30, otHours: 176, month: '2026-08' }, 30, '2026-10')
     expect(r.otAmount).toBe(29333)
   })
 

@@ -628,10 +628,13 @@ export function calculateStaffSalaryRow(
     gwRatePerHr > 0
       ? gwRatePerHr
       : Number((salary / (30 * dutyHrs)).toFixed(2))
-  const otAmount = Math.round((otHours * salary) / (30 * dutyHrs))
-  const grossAmount = basicSalary + otAmount
-  const synopsisAmount = grossAmount - lessAdvance
-  const netCashAmount = Math.max(0, synopsisAmount - chequeAmount)
+  // Excel keeps paise (176 × 40,000 / 240 = 29,333.33) and rounds only the cheque total.
+  // Months already closed keep the old whole-rupee OT so their totals don't move.
+  const otExact = (otHours * salary) / (30 * dutyHrs)
+  const otAmount = isHistorical ? Math.round(otExact) : toPaise(otExact)
+  const grossAmount = toPaise(basicSalary + otAmount)
+  const synopsisAmount = toPaise(grossAmount - lessAdvance)
+  const netCashAmount = Math.max(0, toPaise(synopsisAmount - chequeAmount))
 
   return {
     id: row.id || `staff-${Date.now()}`,

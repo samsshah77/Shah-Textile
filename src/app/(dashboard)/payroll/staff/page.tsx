@@ -87,14 +87,48 @@ export default function StaffSalariesPage() {
     DEFAULT_STAFF_WIDTHS
   )
 
+  /** Rows as saved, and as today's (Excel-like, paise) hisab works them out. */
+  const [savedRows, setSavedRows] = useState<StaffSalaryRecord[]>([])
+  const [recalcRows, setRecalcRows] = useState<StaffSalaryRecord[]>([])
+
   const reload = (force = false) => {
     if (!force && hasUnsavedChanges) return
     const days = daysInMonth || 30
-    const fresh = payrollService
-      .getStaffSalaries(selectedMonth)
-      .map((row) => payrollService.calculateStaffSalaryRow(row, days))
+    const saved = payrollService.getStaffSalaries(selectedMonth)
+    const fresh = saved.map((row) => payrollService.calculateStaffSalaryRow(row, days))
     setStaffList(fresh)
     resetSnapshot(fresh)
+    setSavedRows(saved)
+    setRecalcRows(fresh)
+  }
+
+  /**
+   * Saved rows whose amounts differ from today's hisab (OT with paise, like the Excel) —
+   * e.g. September saved before the fix. The Synopsis reads saved rows, so the accountant
+   * saves once; nothing changes on its own.
+   */
+  const STALE_FIELDS = ['otAmount', 'grossAmount', 'synopsisAmount', 'netCashAmount'] as const
+  const staleRows = recalcRows.filter((r) => {
+    const s = savedRows.find((x) => x.id === r.id)
+    return Boolean(s && STALE_FIELDS.some((f) => Math.abs((Number(s[f]) || 0) - (Number(r[f]) || 0)) >= 0.005))
+  })
+  const staleSynopsis = {
+    before: savedRows.reduce((t, r) => t + (Number(r.synopsisAmount) || 0), 0),
+    after: recalcRows.reduce((t, r) => t + (Number(r.synopsisAmount) || 0), 0),
+  }
+  const saveRecalc = () => {
+    if (!isEditable || staleRows.length === 0 || hasUnsavedChanges) return
+    askConfirm({
+      title: 'Naya (Excel jaisa) hisab save karein?',
+      message: `${staleRows.length} logon ka OT paise ke saath save hoga (jaise Excel). Synopsis total ${formatNumber(staleSynopsis.before, 2)} → ${formatNumber(staleSynopsis.after, 2)}.`,
+      confirmText: 'Save',
+      onConfirm: () => {
+        payrollService.saveStaffSalaries(staffList)
+        commitSaved(staffList)
+        setSavedRows(staffList)
+        showSuccess('Saved', 'Staff sheet naye hisab se save ho gayi.')
+      },
+    })
   }
 
   useEffect(() => {
@@ -360,6 +394,25 @@ export default function StaffSalariesPage() {
         onSave={handleSave}
         onDiscard={handleDiscard}
       />
+
+      {/* Saved before the Excel-like (paise) OT — e.g. September: show and let Tufail save. */}
+      {staleRows.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 print:hidden">
+          <span>
+            Is mahine ki save ki hui raqam purane hisab (OT round) se hai. Excel jaisa hisab (paise ke saath) se{' '}
+            <strong>{staleRows.length}</strong> logon ka OT thora badalta hai — Synopsis total{' '}
+            <strong>{formatNumber(staleSynopsis.before, 2)}</strong> → <strong>{formatNumber(staleSynopsis.after, 2)}</strong>.
+            Table naya hisab dikha raha hai.
+          </span>
+          {isEditable ? (
+            <button type="button" onClick={saveRecalc} className="rounded-md bg-sky-700 px-3 py-1.5 font-semibold text-white cursor-pointer">
+              Naya hisab save karein
+            </button>
+          ) : canEditAccounts ? (
+            <span className="font-semibold">Mahina locked hai — pehle unlock karein, phir save.</span>
+          ) : null}
+        </div>
+      )}
 
       {modals}
 
