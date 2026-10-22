@@ -191,6 +191,7 @@ export function payablesReport(asOf: string, parties: Party[], bills: Bill[], pa
         b.filter((x) => x.partyId === r.party.id),
         p.filter((x) => x.partyId === r.party.id)
       ).oldestUnpaid,
+      openings: payments.filter((x) => x.partyId === r.party.id && x.kind === 'OPENING'),
     }))
     .sort((x, y) => Math.abs(y.balance) - Math.abs(x.balance) || x.party.name.localeCompare(y.party.name))
   const sara = round2(sum(rows.filter((r) => r.party.account !== 'FOI'), (r) => r.balance))

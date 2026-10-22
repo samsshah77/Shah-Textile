@@ -7,6 +7,7 @@ import {
   readHrMetaRaw,
   defaultPettyCashInflow,
   pettyCashInflowMetaKey,
+  writeStore,
 } from '@/services/payroll/payrollStorage'
 import { buildFortnightSynopsis, buildMonthlyGrandSummary } from '@/services/payroll/payrollReports'
 import type { PayrollService } from '@/services/payrollService'
@@ -21,18 +22,38 @@ export const pettyCashSynopsisMethods = {
   // ==========================================
 
   /**
-   * "Petty Cash Transfer Inflow" on the salary Synopsis. Petty cash lives in Accounts only:
-   * the amount is the total of that fortnight's "Cash in" entries there. A locked salary
-   * month keeps the value it had (typed earlier, or the old default) so closed months
-   * never change.
+   * "Petty Cash Transfer Inflow" on the salary Synopsis: the petty cash the accountant asks
+   * for with this fortnight's cheque. A typed amount wins; otherwise it is the total of that
+   * fortnight's "Cash in" entries in Accounts › Petty Cash. A locked salary month keeps the
+   * value it had (typed, or the old default) so closed months never change.
    */
   getPettyCashInflow(this: PayrollService, month: string, fortnight: '1-15' | '16-31'): number {
-    const legacy = () => {
-      const override = readHrMetaRaw().pettyCashInflowOverrides?.[pettyCashInflowMetaKey(month, fortnight)]
-      return typeof override === 'number' && Number.isFinite(override) ? Math.round(override) : defaultPettyCashInflow(fortnight)
-    }
-    if (isMonthLocked(month)) return legacy()
+    const typed = this.getTypedPettyCashInflow(month, fortnight)
+    if (isMonthLocked(month)) return typed ?? defaultPettyCashInflow(fortnight)
+    return typed ?? this.getAccountsPettyCashInflow(month, fortnight)
+  },
+
+  /** The amount typed on the Synopsis for this fortnight, or null when none was typed. */
+  getTypedPettyCashInflow(this: PayrollService, month: string, fortnight: '1-15' | '16-31'): number | null {
+    const v = readHrMetaRaw().pettyCashInflowOverrides?.[pettyCashInflowMetaKey(month, fortnight)]
+    return typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null
+  },
+
+  /** Total "Cash in" of the fortnight in Accounts › Petty Cash (0 until loaded). */
+  getAccountsPettyCashInflow(this: PayrollService, month: string, fortnight: '1-15' | '16-31'): number {
     return accountsInflow.get(`${month}|${fortnight}`) ?? 0
+  },
+
+  /** Type the petty cash amount for a fortnight (null = go back to the Accounts total). */
+  setPettyCashInflow(this: PayrollService, month: string, fortnight: '1-15' | '16-31', value: number | null): void {
+    if (!this.canWrite() || isMonthLocked(month)) return
+    const raw = readHrMetaRaw()
+    const all = { ...(raw.pettyCashInflowOverrides || {}) }
+    const key = pettyCashInflowMetaKey(month, fortnight)
+    if (value == null || !Number.isFinite(value)) delete all[key]
+    else all[key] = Math.max(0, Math.round(value))
+    writeStore(STORAGE_KEYS.HR_META, { ...raw, pettyCashInflowOverrides: all })
+    this.notifyDataChanged(month)
   },
 
   /** Load the Accounts petty cash "Cash in" totals of `month` (call before showing the Synopsis). */

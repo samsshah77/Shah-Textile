@@ -236,7 +236,8 @@ function BillStatusChip({ s }: { s: BillClearance }) {
 /** First month kept in the ERP (July 2026): an old balance is dated on its first day. */
 const OPENING_DATE = '2026-07-01'
 
-function PaymentForm({
+/** Payment or old-balance entry: date, amount, a note and pictures. Also edits an existing one. */
+export function PaymentForm({
   partyId,
   month,
   existing,

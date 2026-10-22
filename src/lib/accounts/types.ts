@@ -269,6 +269,8 @@ export interface PayableRow {
   lastPayment: string | null
   /** Oldest bill not fully paid yet (payments clear the oldest bills first). */
   oldestUnpaid: string | null
+  /** The party's old-balance (before the ERP) entries, so the list can edit them. */
+  openings: Payment[]
 }
 
 export interface PayablesReport {

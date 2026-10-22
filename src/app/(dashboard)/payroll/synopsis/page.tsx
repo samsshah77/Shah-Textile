@@ -15,6 +15,60 @@ import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { fortnightDisplayLabel, secondHalfLabel } from '@/components/payroll/FortnightSelect'
 import { MonthLockButton } from '@/components/payroll/MonthLockBanner'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { useAuth } from '@/context/AuthContext'
+import { isMonthLocked } from '@/services/payroll/payrollStorage'
+
+/**
+ * Petty cash to ask for with this fortnight's cheque. Tufail types it; without a typed
+ * amount it is the "Cash in" total of Accounts › Petty Cash. Locked month: view only.
+ */
+function PettyInflowCell({ month, fortnight, amount }: { month: string; fortnight: '1-15' | '16-31'; amount: number }) {
+  const { canEditAccounts } = useAuth()
+  const typed = payrollService.getTypedPettyCashInflow(month, fortnight)
+  const fromAccounts = payrollService.getAccountsPettyCashInflow(month, fortnight)
+  const editable = canEditAccounts && !isMonthLocked(month)
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft == null) return
+    const clean = draft.replace(/[,\s]/g, '')
+    if (clean === '') payrollService.setPettyCashInflow(month, fortnight, null)
+    else if (/^\d+(\.\d+)?$/.test(clean)) payrollService.setPettyCashInflow(month, fortnight, Number(clean))
+    setDraft(null)
+  }
+  if (!editable) return <span>{formatNumber(amount, 0)}</span>
+  return (
+    <span className="inline-flex flex-col items-end gap-0.5">
+      <input
+        inputMode="numeric"
+        aria-label={`Petty cash inflow ${fortnight}`}
+        value={draft ?? formatNumber(amount, 0)}
+        onFocus={(e) => {
+          setDraft(String(amount))
+          requestAnimationFrame(() => e.target.select())
+        }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          if (e.key === 'Escape') setDraft(null)
+        }}
+        className="w-32 rounded border border-slate-300 bg-amber-50/60 px-2 py-0.5 text-right font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0066cc] print:border-0 print:bg-transparent"
+      />
+      <span className="text-[10px] font-normal text-slate-500 print:hidden">
+        {typed == null ? (
+          <>Accounts › Petty Cash (Cash in) se</>
+        ) : (
+          <>
+            Likha hua · Accounts mein {formatNumber(fromAccounts, 0)}{' '}
+            <button type="button" className="text-[#0066cc] underline cursor-pointer" onClick={() => payrollService.setPettyCashInflow(month, fortnight, null)}>
+              Accounts wala lo
+            </button>
+          </>
+        )}
+      </span>
+    </span>
+  )
+}
 
 function DisbursementSynopsisContent() {
   const { modals } = usePayrollModals()
@@ -296,13 +350,10 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
-                    + Petty Cash Transfer Inflow (Accounts › Petty Cash, Cash in):
+                    + Petty Cash Transfer Inflow (jo petty cash is cheque ke saath mangwana hai):
                   </td>
                   <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
-                    {formatNumber(f1.pettyCashInflow, 0)}
-                    <a href="/accounts/petty-cash" className="ml-2 text-[10px] font-normal text-[#0066cc] underline print:hidden" title="Accounts › Petty Cash ki 'Cash in' entries se">
-                      Accounts se
-                    </a>
+                    <PettyInflowCell month={selectedMonth} fortnight="1-15" amount={f1.pettyCashInflow} />
                   </td>
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">
@@ -375,13 +426,10 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
-                    + Petty Cash Transfer Inflow (Accounts › Petty Cash, Cash in):
+                    + Petty Cash Transfer Inflow (jo petty cash is cheque ke saath mangwana hai):
                   </td>
                   <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
-                    {formatNumber(f2.pettyCashInflow, 0)}
-                    <a href="/accounts/petty-cash" className="ml-2 text-[10px] font-normal text-[#0066cc] underline print:hidden" title="Accounts › Petty Cash ki 'Cash in' entries se">
-                      Accounts se
-                    </a>
+                    <PettyInflowCell month={selectedMonth} fortnight="16-31" amount={f2.pettyCashInflow} />
                   </td>
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">

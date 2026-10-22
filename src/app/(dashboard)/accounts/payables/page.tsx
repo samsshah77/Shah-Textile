@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Printer, Search } from 'lucide-react'
+import { Pencil, Printer, Search } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { cn } from '@/lib/utils'
 import { ageLabel, daysSince, rs, todayStr } from '@/lib/accounts/util'
@@ -10,6 +10,8 @@ import type { PayablesReport } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData } from '@/hooks/useAccounts'
 import { LoadState } from '@/components/accounts/ui'
+import { PaymentForm } from '@/components/accounts/PartyLedgerView'
+import { useAuth } from '@/context/AuthContext'
 
 /**
  * Payables — how much each trader / workshop is owed. Payments come later and in parts,
@@ -21,6 +23,8 @@ export default function PayablesPage() {
   const [kind, setKind] = useState<'ALL' | 'TRADER' | 'WORKSHOP'>('ALL')
   const [q, setQ] = useState('')
   const { data, error, loading } = useAccountsData<PayablesReport>(() => accountsApi.payables(todayStr()), [])
+  const { canEditAccounts } = useAuth()
+  const [editOpening, setEditOpening] = useState<PayablesReport['rows'][number] | null>(null)
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -32,8 +36,8 @@ export default function PayablesPage() {
     )
   }, [data, onlyOwed, kind, q])
   const tot = (f: (r: PayablesReport['rows'][number]) => number) => rows.reduce((t, r) => t + f(r), 0)
-  // Bills = what the party billed (old-ledger opening and set-offs folded in, so Bills − Paid = Baqi).
-  const billed = (r: PayablesReport['rows'][number]) => r.opening + r.purchases - r.adjusted
+  // Purana baqi (before July 2026) + Bills (from July, set-offs taken off) − Paid = Baqi.
+  const billed = (r: PayablesReport['rows'][number]) => r.purchases - r.adjusted
 
   const cell = 'border border-slate-300 dark:border-slate-700'
   return (
@@ -66,10 +70,11 @@ export default function PayablesPage() {
       <LoadState loading={loading} error={error} hasData={Boolean(data)}>
         {data && (
           <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(
                 [
-                  ['Bills', tot(billed), 'text-slate-900'],
+                  ['Purana baqi', tot((r) => r.opening), 'text-amber-700'],
+                  ['Bills (July se)', tot(billed), 'text-slate-900'],
                   ['Paid', tot((r) => r.paid), 'text-emerald-700'],
                   ['Kul baqi', tot((r) => r.balance), 'text-[#0066cc]'],
                 ] as Array<[string, number, string]>
@@ -85,8 +90,8 @@ export default function PayablesPage() {
               <table className="w-full min-w-[820px] border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-[10px] font-bold uppercase">
-                    {['S.No', 'Party', 'Bills', 'Paid', 'Baqi', 'Purana baqi bill', 'Akhri payment'].map((h, i) => (
-                      <th key={h} className={cn(cell, 'px-2 py-2', i === 1 ? 'text-left' : i >= 2 && i <= 4 ? 'text-right' : 'text-center')}>
+                    {['S.No', 'Party', 'Purana baqi', 'Bills (July se)', 'Paid', 'Baqi', 'Purana baqi bill', 'Akhri payment'].map((h, i) => (
+                      <th key={h} className={cn(cell, 'px-2 py-2', i === 1 ? 'text-left' : i >= 2 && i <= 5 ? 'text-right' : 'text-center')}>
                         {h}
                       </th>
                     ))}
@@ -95,7 +100,7 @@ export default function PayablesPage() {
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className={cn(cell, 'py-8 text-center text-slate-500')}>
+                      <td colSpan={8} className={cn(cell, 'py-8 text-center text-slate-500')}>
                         Koi party nahi.
                       </td>
                     </tr>
@@ -110,6 +115,22 @@ export default function PayablesPage() {
                               {r.party.name}
                             </Link>
                             <span className="ml-1.5 text-[10px] font-normal text-slate-500">{r.party.kind === 'WORKSHOP' ? 'Workshop' : 'Trader'}</span>
+                          </td>
+                          <td className={cn(cell, 'px-2 text-right font-mono text-amber-800')}>
+                            <span className="inline-flex items-center gap-1">
+                              {r.opening ? rs(r.opening) : '-'}
+                              {canEditAccounts && r.openings.length <= 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditOpening(r)}
+                                  className="p-0.5 text-slate-400 hover:text-sky-700 cursor-pointer print:hidden"
+                                  aria-label={`${r.party.name}: purana baqi ${r.opening ? 'badlein' : 'daalein'}`}
+                                  title={r.opening ? 'Purana baqi badlein' : 'Purana baqi daalein (July 2026 se pehle ka)'}
+                                >
+                                  <Pencil className="size-3" />
+                                </button>
+                              )}
+                            </span>
                           </td>
                           <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(billed(r))}</td>
                           <td className={cn(cell, 'px-2 text-right font-mono text-emerald-700')}>{r.paid ? rs(r.paid) : '-'}</td>
@@ -145,6 +166,7 @@ export default function PayablesPage() {
                     <td colSpan={2} className={cn(cell, 'px-3 py-2 text-right uppercase')}>
                       Total ({rows.length})
                     </td>
+                    <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(tot((r) => r.opening))}</td>
                     <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(tot(billed))}</td>
                     <td className={cn(cell, 'px-2 text-right font-mono')}>{rs(tot((r) => r.paid))}</td>
                     <td className={cn(cell, 'px-2 text-right font-mono text-[#0066cc]')}>{rs(tot((r) => r.balance))}</td>
@@ -155,8 +177,18 @@ export default function PayablesPage() {
             </div>
             <p className="text-[11px] text-slate-500 print:hidden">
               Bills Daily Inward se aate hain. Payment party ke naam par click kar ke &quot;Payment&quot; se daalein (tareekh, raqam, tasveer).
-              Aadhi payment bhi chalegi — wo sab se purane bill se kat-ti hai.
+              Aadhi payment bhi chalegi — wo sab se purane bill se kat-ti hai. Hisab July 2026 se hai: is se pehle ka jo
+              dena tha wo &quot;Purana baqi&quot; mein ✏️ se daalein.
             </p>
+            {editOpening && (
+              <PaymentForm
+                partyId={editOpening.party.id}
+                month=""
+                kind="OPENING"
+                existing={editOpening.openings[0]}
+                onClose={() => setEditOpening(null)}
+              />
+            )}
           </>
         )}
       </LoadState>
