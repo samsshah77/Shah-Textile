@@ -237,49 +237,23 @@ function HeaderContent() {
 
         <ul className="navbar-nav ms-auto align-items-center">
           <li className="nav-item d-none d-sm-flex align-items-center me-2">
-            <span
-              className="badge text-bg-secondary fw-semibold"
-              title="Floor date"
-              style={{ fontSize: '0.78rem', letterSpacing: '0.01em' }}
-            >
-              {headerDateLabel}
-            </span>
-          </li>
-
-          <li className="nav-item d-none d-sm-flex align-items-center me-2">
-            <span
-              className="d-inline-flex align-items-center gap-2 px-2.5 py-1 rounded-pill border"
-              style={{
-                background: 'linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)',
-                borderColor: '#d7dee8',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)',
-                lineHeight: 1.2,
-              }}
-              title="Local time"
-            >
-              <span
-                className="d-inline-flex align-items-center justify-content-center rounded-circle"
-                style={{
-                  width: 22,
-                  height: 22,
-                  background: 'rgba(13, 110, 253, 0.12)',
-                  color: '#0d6efd',
-                  flexShrink: 0,
-                }}
-              >
-                <i className="bi bi-clock" style={{ fontSize: '0.78rem' }} />
+            <span className="sara-clock" title="Floor date · local time">
+              <span className="sara-clock__date">
+                <i className="bi bi-calendar3" aria-hidden="true" />
+                {headerDateLabel}
               </span>
-              <span
-                className="fw-semibold text-body"
-                style={{
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                  fontSize: '0.82rem',
-                  letterSpacing: '0.03em',
-                  fontVariantNumeric: 'tabular-nums',
-                  minWidth: '7.6ch',
-                }}
-              >
-                {timeStr || '--:--:--'}
+              <span className="sara-clock__sep" aria-hidden="true" />
+              <span className="sara-clock__time">
+                <span className="sara-clock__dot" aria-hidden="true" />
+                {timeStr ? (
+                  <>
+                    {timeStr.slice(0, 5)}
+                    <span className="sara-clock__sec">:{timeStr.slice(6, 8)}</span>
+                    <span className="sara-clock__ampm">{timeStr.slice(9)}</span>
+                  </>
+                ) : (
+                  '--:--'
+                )}
               </span>
             </span>
           </li>
