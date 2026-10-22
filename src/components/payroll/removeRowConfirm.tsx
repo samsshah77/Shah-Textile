@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
  * one row off this table — the person's profile and every other month / fortnight stay
  * as they are.
  */
-export function removeRowConfirm(name: string, table: string, opts: { comesBack?: boolean } = {}) {
+export function removeRowConfirm(name: string, table: string, opts: { comesBack?: boolean; staysOff?: boolean } = {}) {
   const message: ReactNode = (
     <div className="space-y-2 text-xs text-slate-600 text-left">
       <p>
@@ -15,6 +15,12 @@ export function removeRowConfirm(name: string, table: string, opts: { comesBack?
         Profile aur doosre mahinon / fortnights ka data waisa hi rahega. Agar is shakhs ka kaam khatam ho
         gaya hai to profile mein <strong>Resign / Left date</strong> daalein, taake agle mahine ki sheet mein na aaye.
       </div>
+      {opts.staysOff && (
+        <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+          Save ke baad ye row is mahine ki sheet par wapas nahi aayegi. Agle mahine profile ke hisab se phir aayegi.
+          Wapas chahiye ho to nayi row add karke wohi naam likh dein.
+        </div>
+      )}
       {opts.comesBack && (
         <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
           Agar is mahine is shakhs ki koi aur row nahi bachti aur profile active hai, to page dobara kholne par

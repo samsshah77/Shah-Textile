@@ -216,7 +216,7 @@ function ContractorsPayrollContent() {
     if (!row) return
     const empName = row?.name || 'Contractor'
     askConfirm({
-      ...removeRowConfirm(empName, 'is mahine ki Contractors sheet', { comesBack: true }),
+      ...removeRowConfirm(empName, 'is mahine ki Contractors sheet', { staysOff: true }),
       onConfirm: () => {
         const filtered = contractorsList
           .filter((c) => c.id !== id)
@@ -234,6 +234,7 @@ function ContractorsPayrollContent() {
       message: `Save ${formatPayrollMonthLabel(selectedMonth)} (${cycleLabel(selectedMonth, activeFortnight)})?`,
       confirmText: 'Save',
       onConfirm: () => {
+        payrollService.noteContractorRemovals(selectedMonth, activeFortnight === '1-31' ? '1-31' : '1-15', contractorsList)
         if (activeFortnight === '1-31') {
           payrollService.saveContractorsMonthEnd(selectedMonth, contractorsList)
         } else {

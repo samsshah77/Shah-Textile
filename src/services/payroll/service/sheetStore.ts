@@ -25,6 +25,8 @@ import {
   isTombstonedEmployee,
   dedupeRowsByKey,
   advancePersonMonthKey,
+  contractorRowKey,
+  updateContractorRemoved,
 } from '@/services/payroll/payrollStorage'
 import {
   sheetMonthKey,
@@ -499,6 +501,24 @@ export const sheetStoreMethods = {
       month,
       'name'
     )
+  },
+
+  /**
+   * Before saving a contractors sheet: remember people the accountant took off it this month
+   * (so opening the page does not add them back), and forget anyone who is on it again.
+   */
+  noteContractorRemovals(this: PayrollService, month: string, sheet: '1-15' | '1-31', rows: ContractorPaymentRecord[]): void {
+    if (!this.canWrite()) return
+    const before = sheet === '1-31' ? this.getContractorsMonthEnd(month) : this.getContractorsPayments(month, '1-15')
+    const people = this.getEmployees()
+    const keyOf = (r: ContractorPaymentRecord) =>
+      contractorRowKey({ employeeId: r.employeeId || people.find((e) => namesMatch(e.name, r.name))?.id, name: r.name }, sheet)
+    const onSheet = new Set(rows.map(keyOf))
+    const removed = before
+      .filter((r) => !rows.some((x) => x.id === r.id))
+      .map(keyOf)
+      .filter((k) => !onSheet.has(k))
+    updateContractorRemoved(month, removed, [...onSheet])
   },
 
   /** Replace the month-end rows of `month`; other months and the 1–15 sheet stay as they are. */

@@ -15,7 +15,7 @@ import {
   INITIAL_EFFICIENCY_INCENTIVES,
 } from '@/data/payrollSeeds'
 import { STORAGE_KEYS } from '@/services/payroll/payrollConstants'
-import { hydrated, isTombstonedEmployee, isMonthLocked, writeStore } from '@/services/payroll/payrollStorage'
+import { contractorRemovedKeys, contractorRowKey, hydrated, isTombstonedEmployee, isMonthLocked, writeStore } from '@/services/payroll/payrollStorage'
 import {
   employeeBelongsInMonth,
   namesMatch,
@@ -52,6 +52,7 @@ export const rosterPlacementMethods = {
     if (month < this.getActiveFortnightPeriod().month || isMonthLocked(month)) return false
     let next = this.readStore(STORAGE_KEYS.CONTRACTORS, INITIAL_CONTRACTORS)
     let changed = false
+    const removedByHand = contractorRemovedKeys(month)
     for (const emp of roster) {
       const mine = (r: ContractorPaymentRecord) =>
         r.month === month && (r.employeeId === emp.id || (!r.employeeId && namesMatch(r.name, emp.name)))
@@ -69,6 +70,8 @@ export const rosterPlacementMethods = {
           (r) => mine(r) && (sheet === '1-31' ? isMonthEndContractorRow(r) : r.fortnight === '1-15')
         )
         if (has) continue
+        // Taken off this month's sheet by hand — do not bring it back on page open.
+        if (removedByHand.has(contractorRowKey({ employeeId: emp.id, name: emp.name }, sheet))) continue
         const serial =
           next.filter(
             (r) => r.month === month && (sheet === '1-31' ? isMonthEndContractorRow(r) : r.fortnight === '1-15')

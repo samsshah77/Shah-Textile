@@ -572,6 +572,11 @@ export type HrMetaShape = {
   /** Profiles permanently removed — repairRoster must not resurrect from seed. */
   deletedEmployeeIds?: string[]
   deletedEmployeeNames?: string[]
+  /**
+   * Contractor rows the accountant removed from a month's sheet, per month:
+   * "<employee id or name:…>|<1-15 or 1-31>". Page open must not add them back.
+   */
+  contractorRemoved?: Record<string, string[]>
 }
 
 export function writeHrMeta(custom: {
@@ -587,6 +592,8 @@ export function writeHrMeta(custom: {
 }): void {
   const raw = readHrMetaRaw()
   writeStore(STORAGE_KEYS.HR_META, {
+    // Keep settings this function does not know about (e.g. contractorRemoved).
+    ...raw,
     ...custom,
     pettyCashInflowOverrides:
       custom.pettyCashInflowOverrides ?? raw.pettyCashInflowOverrides,
@@ -654,6 +661,31 @@ export function clearDeletedEmployeeTombstone(id?: string, name?: string): void 
     deletedEmployeeIds: [...ids],
     deletedEmployeeNames: [...names],
   })
+}
+
+/** Key of a contractor on one sheet of a month (by profile id; very old rows by name). */
+export function contractorRowKey(r: { employeeId?: string | null; name?: string | null }, sheet: '1-15' | '1-31'): string {
+  const who = r.employeeId ? String(r.employeeId) : `name:${normalizeNameLocal(r.name || '')}`
+  return `${who}|${sheet}`
+}
+
+/** Contractor rows removed by hand from `month` (they stay off the sheet). */
+export function contractorRemovedKeys(month: string): Set<string> {
+  return new Set(readHrMetaRaw().contractorRemoved?.[month] || [])
+}
+
+/** Remember removed rows / forget rows that are on the sheet again, for one month. */
+export function updateContractorRemoved(month: string, add: string[], drop: string[]): void {
+  const raw = readHrMetaRaw()
+  const all = { ...(raw.contractorRemoved || {}) }
+  const set = new Set(all[month] || [])
+  const before = [...set].sort().join(',')
+  for (const k of drop) set.delete(k)
+  for (const k of add) set.add(k)
+  if ([...set].sort().join(',') === before) return
+  if (set.size) all[month] = [...set].sort()
+  else delete all[month]
+  writeStore(STORAGE_KEYS.HR_META, { ...raw, contractorRemoved: all })
 }
 
 export function readMonthLock(month: string): MonthLockInfo | null {
