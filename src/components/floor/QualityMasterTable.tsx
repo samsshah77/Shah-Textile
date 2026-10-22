@@ -29,6 +29,7 @@ import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCell
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { DailyLoomProductionEntry } from '@/types/production'
+import { resolveLoomCondition } from '@/constants/loomConditions'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import {
@@ -313,6 +314,26 @@ export function QualityMasterTable({
     return map
   }, [dayRows, qualities, sheetDate, looms])
 
+  /** Looms on Beam End / Beam Cut for the selected day (day sheet first, else today's loom master). */
+  const beamEndLooms = useMemo(() => {
+    const dayKey = String(sheetDate || '').slice(0, 10)
+    const isToday = !dayKey || dayKey === getProductionToday()
+    const set = new Set<number>()
+    const rowLooms = new Set<number>()
+    for (const e of dayRows) {
+      rowLooms.add(e.loomNumber)
+      const cond = resolveLoomCondition(e.status, e.remarks)
+      if (cond === 'BEAM_END' || cond === 'BEAM_CUT') set.add(e.loomNumber)
+    }
+    if (isToday) {
+      for (const l of looms) {
+        if (rowLooms.has(l.loomNumber)) continue
+        if (l.status === 'BEAM_END' || l.status === 'BEAM_CUT') set.add(l.loomNumber)
+      }
+    }
+    return set
+  }, [dayRows, looms, sheetDate])
+
   const availableLooms = useMemo(() => {
     const dayKey = String(sheetDate || '').slice(0, 10)
     const isToday = !dayKey || dayKey === getProductionToday()
@@ -347,8 +368,11 @@ export function QualityMasterTable({
       }
     }
 
+    // Beam End / Beam Cut on this day: the loom is free for a new beam / quality even
+    // though the quality is still allotted to it — show it as available.
+    for (const n of beamEndLooms) busyLooms.delete(n)
     return allLoomNumbers.filter((n) => !busyLooms.has(n))
-  }, [looms, qualities, dayRows, sheetDate, assignedByQuality])
+  }, [looms, qualities, dayRows, sheetDate, assignedByQuality, beamEndLooms])
 
   const productionByQuality = useMemo(() => {
     const stats: Record<string, number> = {}
@@ -1673,17 +1697,21 @@ export function QualityMasterTable({
                 {availableLooms.map((loomNum) => {
                   const loomObj = looms.find((l) => l.loomNumber === loomNum)
                   const modelLabel = loomObj?.model || loomObj?.category
+                  const beamEnd = beamEndLooms.has(loomNum)
+                  const state = beamEnd ? 'Beam End — available' : 'Available'
                   const tooltipText = modelLabel
-                    ? `Loom #${loomNum} (${modelLabel}) • Available`
-                    : `Loom #${loomNum} • Available`
+                    ? `Loom #${loomNum} (${modelLabel}) • ${state}`
+                    : `Loom #${loomNum} • ${state}`
 
                   return (
                     <span
                       key={loomNum}
                       className="sara-available-loom-chip d-inline-flex align-items-center justify-content-center text-center font-monospace"
                       title={tooltipText}
+                      style={beamEnd ? { background: '#e2d9f3', color: '#4c2a85', borderColor: '#6f42c1' } : undefined}
                     >
                       {loomNum}
+                      {beamEnd && <span style={{ fontSize: 9, marginLeft: 2 }}>B/E</span>}
                     </span>
                   )
                 })}

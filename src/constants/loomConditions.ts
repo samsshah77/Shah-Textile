@@ -15,6 +15,7 @@ export const LOOM_STATUSES: LoomStatus[] = [
   'RSARNING',
   'BEAM_CUT',
   'RESARNING',
+  'NO_WEFT',
   'BREAKDOWN',
 ]
 
@@ -32,6 +33,7 @@ export const LOOM_STATUS_LABEL: Record<LoomStatus, string> = {
   RSARNING: 'Rsarning',
   BEAM_CUT: 'B/Cut',
   RESARNING: 'ReSarning',
+  NO_WEFT: 'No Weft',
   BREAKDOWN: 'BREAKDOWN',
 }
 
@@ -49,6 +51,7 @@ export const LOOM_STATUS_COLOR: Record<LoomStatus, string> = {
   RSARNING: '#198754',
   BEAM_CUT: '#dc3545',
   RESARNING: '#6c757d',
+  NO_WEFT: '#b45309',
   BREAKDOWN: '#fd7e14',
 }
 
@@ -67,6 +70,7 @@ export const LOOM_STATUS_ROW_BG: Record<LoomStatus, string | undefined> = {
   RSARNING: '#d1e7dd',
   BEAM_CUT: '#f5c2c7',
   RESARNING: '#e9ecef',
+  NO_WEFT: '#fde68a',
   BREAKDOWN: '#ffe5d0',
 }
 
@@ -84,6 +88,7 @@ const REMARK_ALIASES: Array<{ match: RegExp; status: LoomStatus }> = [
   { match: /^r\s*sarning$/i, status: 'RSARNING' },
   { match: /^b\s*[\/-]?\s*cut$/i, status: 'BEAM_CUT' },
   { match: /^re\s*sarning$/i, status: 'RESARNING' },
+  { match: /^no\s*[-_]?\s*weft$/i, status: 'NO_WEFT' },
   { match: /^breakdown$/i, status: 'BREAKDOWN' },
   { match: /^stopped$/i, status: 'STOPPED' },
   { match: /^running$/i, status: 'RUNNING' },

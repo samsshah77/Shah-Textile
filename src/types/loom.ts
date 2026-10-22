@@ -16,6 +16,7 @@ export type LoomStatus =
   | 'RSARNING'
   | 'BEAM_CUT' // B/Cut
   | 'RESARNING'
+  | 'NO_WEFT' // No Weft (bharti ka dhaga nahi)
   | 'BREAKDOWN' // legacy catch-all
 
 export interface LoomConfig {

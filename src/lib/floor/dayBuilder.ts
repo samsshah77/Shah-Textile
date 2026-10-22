@@ -82,10 +82,27 @@ export function buildDayRows(input: DayBuildInput): DailyLoomProductionEntry[] {
   const prevByKey = new Map(loaded.map((e) => [sheetRowKey(e.loomNumber, sheetSegmentIndex(e)), e]))
 
   const primaryEntries = looms.map((loom) => {
-    const prev = prevByKey.get(sheetRowKey(loom.loomNumber, 1))
+    const saved = prevByKey.get(sheetRowKey(loom.loomNumber, 1))
     const beam = beams.find((b) => beamOnLoom(b, loom.loomNumber))
     const live = input.recipe(loom)
     const prior = input.prior(loom.loomNumber)
+    // A "Quality Ended" row saved on a day when the loom was still running a quality (e.g. the
+    // same quality restarted from zero after an earlier End) is stale: build the day afresh.
+    const priorRun = prior && namedQualityOnRow(prior.qualityName)
+      ? qualityRunThatOwnsSheetEntry({ ...prior, date: dateStr }, catalog, dateStr)
+      : null
+    const priorRunLive = Boolean(
+      priorRun &&
+        (normalizeQualityStatus(priorRun.status) !== 'ENDED' ||
+          String(priorRun.endedOn || '').slice(0, 10) >= dateStr)
+    )
+    const staleEndedRow = Boolean(
+      saved &&
+        isQualityEndedSheetRow(saved) &&
+        priorRunLive &&
+        (Number(saved.shiftAMeters) || 0) + (Number(saved.shiftBMeters) || 0) === 0
+    )
+    const prev = staleEndedRow ? undefined : saved
     const isPastDay = dateStr !== today
     const loomQ = loom.qualityId
       ? catalog.find((q) => q.id === loom.qualityId)

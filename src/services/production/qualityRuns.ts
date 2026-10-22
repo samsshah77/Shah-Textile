@@ -313,9 +313,15 @@ export function qualityPoseEndedBeforeDay(
     catalog,
     dayStr
   )
-  if (owner && normalizeQualityStatus(owner.status) === 'ENDED') {
-    const stamp = owner.endedOn ? String(owner.endedOn).slice(0, 10) : ''
-    if (stamp && stamp < dayStr) return true
+  if (owner) {
+    if (normalizeQualityStatus(owner.status) === 'ENDED') {
+      const stamp = owner.endedOn ? String(owner.endedOn).slice(0, 10) : ''
+      if (stamp && stamp < dayStr) return true
+    } else {
+      // A live run (Active / Hold) of this quality owns the row — e.g. the same quality
+      // restarted from zero after an earlier End: an older ENDED run of the name does not count.
+      return false
+    }
   }
 
   // Fallback: ENDED catalog row same name (pick if duplicate names) closed before day.
@@ -335,7 +341,14 @@ export function qualityPoseEndedBeforeDay(
       return false
     }
     const stamp = q.endedOn ? String(q.endedOn).slice(0, 10) : ''
-    return Boolean(stamp && stamp < dayStr)
+    if (!(stamp && stamp < dayStr)) return false
+    // Superseded: the same quality was started again after this End (and by this day).
+    const restarted = catalog.some((r) => {
+      if (r.id === q.id || qualityNameKey(r.name) !== eClean) return false
+      const start = r.createdOn ? String(r.createdOn).slice(0, 10) : ''
+      return Boolean(start && start > stamp && start <= dayStr)
+    })
+    return !restarted
   })
 }
 
@@ -489,6 +502,17 @@ export function qualityRunThatOwnsSheetEntry(
       if (day > through) return false
     } else if (status === 'HOLD' && stamp && day > stamp) {
       return false
+    }
+    // Same quality restarted from zero after this run closed: from the restart day the
+    // new run owns the rows (each restart in a month keeps its own hisab).
+    if ((status === 'ENDED' || status === 'HOLD') && stamp) {
+      const restarted = catalog.some((r) => {
+        if (r.id === q.id || qualityNameKey(r.name) !== qClean) return false
+        if ((nameCounts.get(qClean) || 0) > 1 && Number(r.pick) !== Number(q.pick)) return false
+        const start = r.createdOn ? String(r.createdOn).slice(0, 10) : ''
+        return Boolean(start && start > stamp && start <= day)
+      })
+      if (restarted) return false
     }
     return true
   })

@@ -145,6 +145,7 @@ export function ProductionTable({
             <option value="KNOTTING">KNOTTING</option>
             <option value="BREAKDOWN">BREAKDOWN</option>
             <option value="BEAM_END">BEAM END</option>
+            <option value="NO_WEFT">NO WEFT</option>
           </select>
 
           {/* Export CSV */}
