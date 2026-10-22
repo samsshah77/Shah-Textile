@@ -210,6 +210,87 @@ function DisbursementSynopsisContent() {
             </p>
           </div>
 
+          {/* Same layout as the Excel "Monthly Summery" sheet: 1–15 on the left, 16–31 on the right. */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {(
+              [
+                {
+                  key: 'f1',
+                  title: `Salary Expense ${fortnightDisplayLabel(selectedMonth, '1-15')}`,
+                  items: grand.fortnight1Items,
+                  total: grand.fortnight1Total,
+                  petty: grand.fortnight1PettyCash,
+                  grandTotal: grand.fortnight1Cheque,
+                },
+                {
+                  key: 'f2',
+                  title: `Salary Expense ${secondHalfLabel(selectedMonth)}`,
+                  items: grand.fortnight2Items,
+                  total: grand.fortnight2SalaryTotal,
+                  petty: grand.fortnight2PettyCash,
+                  grandTotal: grand.fortnight2MonthTotal,
+                },
+              ] as const
+            ).map((side) => (
+              <div key={side.key} className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
+                <table className="w-full text-left border-collapse text-xs font-mono">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase text-slate-600">
+                      <th colSpan={3} className="py-2 px-3 text-center font-sans">{side.title}</th>
+                    </tr>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase text-slate-600">
+                      <th className="border-r border-slate-200 py-1.5 px-2 text-center w-12">S.#</th>
+                      <th className="border-r border-slate-200 py-1.5 px-3 font-sans">Description</th>
+                      <th className="py-1.5 px-3 text-right w-36">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {side.items.map((item) => (
+                      <tr key={item.serialNo}>
+                        <td className="border-r border-slate-100 py-1.5 px-2 text-center text-slate-600">{item.serialNo}</td>
+                        <td className="border-r border-slate-100 py-1.5 px-3 font-sans font-medium">
+                          {item.description}
+                          {side.key === 'f2' && item.serialNo === 1 && grand.staffChequeAmount > 0 && (
+                            <span className="ml-1 text-[10px] font-normal text-slate-500">
+                              (cash {formatNumber(item.amount - grand.staffChequeAmount, 0)} + cheque {formatNumber(grand.staffChequeAmount, 0)})
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-3 text-right font-semibold">{formatNumber(item.amount, 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                      <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans uppercase">Total</td>
+                      <td className="py-2 px-3 text-right font-bold">{formatNumber(side.total, 0)}</td>
+                    </tr>
+                    <tr className="border-t border-slate-200">
+                      <td colSpan={2} className="border-r border-slate-200 py-1.5 px-3 font-sans">Petty Cash</td>
+                      <td className="py-1.5 px-3 text-right">{formatNumber(side.petty, 0)}</td>
+                    </tr>
+                    <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                      <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans uppercase">Total</td>
+                      <td className="py-2 px-3 text-right font-bold text-sm text-[#0066cc]">{formatNumber(side.grandTotal, 0)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-blue-200 bg-blue-50/60 p-4 font-sans">
+            <div>
+              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Monthly Total Salary in Words (PKR):</span>
+              <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(grand.monthlyTotalSalary)}</div>
+            </div>
+            <div className="sm:text-right">
+              <span className="text-[11px] font-semibold uppercase text-slate-500">Monthly Total Salary:</span>
+              <div className="text-lg font-bold text-[#0066cc]">{formatCurrency(grand.monthlyTotalSalary)}</div>
+            </div>
+          </div>
+
+          <h3 className="mt-6 mb-2 text-sm font-bold text-slate-800">Head-wise detail (cash / bank cheque / advance)</h3>
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
             <table className="w-full min-w-[1100px] text-left border-collapse text-xs font-mono">
               <thead>
@@ -264,20 +345,8 @@ function DisbursementSynopsisContent() {
             </table>
           </div>
 
-          {/* Prominent Calculated Total in Words */}
-          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
-            <div>
-              <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Grand Monthly Disbursal in Words (PKR):</span>
-              <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(grand.monthlyTotalSalary)}</div>
-            </div>
-            <div className="sm:text-right border-t sm:border-t-0 border-slate-200 pt-2 sm:pt-0 w-full sm:w-auto">
-              <span className="text-[11px] font-semibold uppercase text-slate-500">Reconciled Monthly Total:</span>
-              <div className="text-lg font-bold text-[#0066cc]">{formatCurrency(grand.monthlyTotalSalary)}</div>
-            </div>
-          </div>
-
           {/* Bank Cheque Summary Box */}
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="p-3 border border-slate-200 rounded-md bg-white">
               <div className="text-[11px] text-slate-500 font-semibold uppercase">
                 1st Half Cheque ({fortnightDisplayLabel(selectedMonth, '1-15')}):
@@ -296,10 +365,15 @@ function DisbursementSynopsisContent() {
                 Cash: {formatNumber(grand.fortnight2Total, 0)} + Petty: {formatNumber(grand.fortnight2PettyCash, 0)}
               </div>
             </div>
+            <div className="p-3 border border-slate-200 rounded-md bg-white">
+              <div className="text-[11px] text-slate-500 font-semibold uppercase">Staff Salary Cheque (bank):</div>
+              <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(grand.staffChequeAmount)}</div>
+              <div className="text-[10px] text-slate-500 font-medium mt-0.5">Staff ko seedha cheque — 2nd half cheque se alag</div>
+            </div>
             <div className="bg-blue-50/60 p-3 rounded-md border border-blue-200">
-              <div className="text-[11px] text-[#0066cc] font-semibold uppercase">Grand Monthly Cheque Total:</div>
+              <div className="text-[11px] text-[#0066cc] font-semibold uppercase">Monthly Total Salary:</div>
               <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(grand.monthlyTotalSalary)}</div>
-              <div className="text-[10px] text-[#0066cc] font-medium mt-0.5">100% Fully Balanced & Audited</div>
+              <div className="text-[10px] text-[#0066cc] font-medium mt-0.5">1st half + 2nd half + staff cheque</div>
             </div>
           </div>
         </div>
@@ -401,7 +475,9 @@ function DisbursementSynopsisContent() {
                 <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600">
                   <th className="border-r border-slate-200 py-2 px-2 text-center w-14 min-w-[56px]">S.#</th>
                   <th className="border-r border-slate-200 py-2 px-3 font-sans min-w-[450px]">Disbursement Category</th>
-                  <th className="py-2 px-3 text-right w-48 min-w-[180px] font-semibold text-slate-900">Amount (PKR)</th>
+                  <th className="border-r border-slate-200 py-2 px-3 text-right w-48 min-w-[180px] font-semibold text-slate-900">Amount (PKR)</th>
+                  <th className="border-r border-slate-200 py-2 px-3 text-right w-36">Cheque Amount</th>
+                  <th className="py-2 px-3 text-right w-36 text-red-600">Advance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -409,9 +485,13 @@ function DisbursementSynopsisContent() {
                   <tr key={item.serialNo} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
                     <td className="border-r border-slate-100 py-2 px-2 text-center font-semibold min-w-[56px] text-slate-600">{item.serialNo}</td>
                     <td className="border-r border-slate-100 py-2 px-3 font-medium font-sans min-w-[450px] text-slate-800">{item.description}</td>
-                    <td className="py-2 px-3 text-right font-semibold text-slate-900 min-w-[180px]">
+                    <td className="border-r border-slate-100 py-2 px-3 text-right font-semibold text-slate-900 min-w-[180px]">
                       {formatNumber(item.amount, 0)}
                     </td>
+                    <td className="border-r border-slate-100 py-2 px-3 text-right text-slate-700">
+                      {item.chequeAmount ? formatNumber(item.chequeAmount, 0) : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right text-red-600">{item.advance ? formatNumber(item.advance, 0) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -420,8 +500,14 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
                     Total Net Payroll Cash Disbursal:
                   </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-[#0066cc] min-w-[180px]">
+                  <td className="border-r border-slate-200 py-2.5 px-3 text-right font-bold text-[#0066cc] min-w-[180px]">
                     {formatNumber(f2.totalPayrollCash, 0)}
+                  </td>
+                  <td className="border-r border-slate-200 py-2.5 px-3 text-right font-semibold">
+                    {formatNumber(f2.items.reduce((s, i) => s + (i.chequeAmount || 0), 0), 0)}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-semibold text-red-600">
+                    {formatNumber(f2.items.reduce((s, i) => s + (i.advance || 0), 0), 0)}
                   </td>
                 </tr>
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
@@ -431,6 +517,7 @@ function DisbursementSynopsisContent() {
                   <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
                     <PettyInflowCell month={selectedMonth} fortnight="16-31" amount={f2.pettyCashInflow} />
                   </td>
+                  <td colSpan={2} />
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
@@ -439,6 +526,7 @@ function DisbursementSynopsisContent() {
                   <td className="py-2.5 px-3 text-right font-bold text-sm text-slate-900 min-w-[180px]">
                     {formatNumber(f2.totalBankCheque, 0)}
                   </td>
+                  <td colSpan={2} />
                 </tr>
               </tfoot>
             </table>

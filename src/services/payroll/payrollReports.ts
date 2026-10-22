@@ -20,6 +20,9 @@ export interface PayrollReportContext {
   getPettyCashInflow(month: string, fortnight: '1-15' | '16-31'): number
 }
 
+/** Rupees kept to paise (2 decimals) — totals are rounded only where a cheque is written. */
+const paise = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
 export function buildFortnightSynopsis(
   month: string = '2026-08',
   fortnight: '1-15' | '16-31',
@@ -48,7 +51,7 @@ export function buildFortnightSynopsis(
       totalHelperWages +
       totalContractor1
     const pettyCashInflow = ctx.getPettyCashInflow(month, '1-15')
-    const totalBankCheque = totalPayrollCash + pettyCashInflow
+    const totalBankCheque = Math.round(totalPayrollCash + pettyCashInflow)
 
     return {
       fortnight: '1-15',
@@ -106,7 +109,10 @@ export function buildFortnightSynopsis(
   ]
   const totalContractor2 = contractors2.reduce((s, c) => s + (c.netPayment || 0), 0)
 
-  const totalPayrollCash = Math.round(
+  const totalContractorAdv2 = contractors2.reduce((s, c) => s + (c.lessAdvance || 0), 0)
+
+  // Like the Excel: add the exact amounts (paise included) and round only the cheque.
+  const totalPayrollCash = paise(
     totalStaffSynopsis -
       totalStaffCheque +
       netContractBasic +
@@ -120,7 +126,7 @@ export function buildFortnightSynopsis(
       totalTicket
   )
   const pettyCashInflow = ctx.getPettyCashInflow(month, '16-31')
-  const totalBankCheque = totalPayrollCash + pettyCashInflow
+  const totalBankCheque = Math.round(totalPayrollCash + pettyCashInflow)
 
   return {
     fortnight: '16-31',
@@ -130,21 +136,21 @@ export function buildFortnightSynopsis(
       {
         serialNo: 1,
         description: 'Staff Salaries & Overtime (Net Cash)',
-        amount: Math.round(totalStaffSynopsis - totalStaffCheque),
+        amount: paise(totalStaffSynopsis - totalStaffCheque),
         chequeAmount: totalStaffCheque,
         advance: totalStaffAdvance,
       },
       {
         serialNo: 2,
         description: 'Contract Employees Salaries (Net Basic)',
-        amount: Math.round(netContractBasic),
+        amount: paise(netContractBasic),
         advance: totalContractAdv,
       },
-      { serialNo: 3, description: 'Contract Employees Overtime', amount: Math.round(totalContractOT) },
+      { serialNo: 3, description: 'Contract Employees Overtime', amount: paise(totalContractOT) },
       {
         serialNo: 4,
         description: 'Contract Employees Efficiency',
-        amount: Math.round(totalContractEff),
+        amount: paise(totalContractEff),
       },
       { serialNo: 5, description: 'Weavers Wages (2nd Half)', amount: totalWeaverWages2 },
       { serialNo: 6, description: 'Weavers Overtime / Holidays (2nd Half)', amount: totalWeaverHol2 },
@@ -154,6 +160,7 @@ export function buildFortnightSynopsis(
         serialNo: 9,
         description: `Contractors Bill Payments (${contractors2.length} Contractors)`,
         amount: totalContractor2,
+        advance: totalContractorAdv2,
       },
       { serialNo: 10, description: 'Ticket amount', amount: totalTicket },
     ],
@@ -210,6 +217,21 @@ export function buildMonthlyGrandSummary(
     contractors1.reduce((s, c) => s + (c.netPayment || 0), 0) +
     contractors2.reduce((s, c) => s + (c.netPayment || 0), 0)
   const totalTicket = contract.reduce((s, c) => s + (c.ticketCharges || 0), 0)
+  const totalContractorAdv =
+    contractors1.reduce((s, c) => s + (c.lessAdvance || 0), 0) +
+    contractors2.reduce((s, c) => s + (c.lessAdvance || 0), 0)
+  const totalAdvance1 = f1.items[0]?.amount || 0
+
+  // Excel "Monthly Summery": 16–31 staff line is the full synopsis amount (cash + bank cheque),
+  // so the month total = 1st half + 2nd half + staff cheque.
+  const fortnight2Items = f2.items.map((item) =>
+    item.serialNo === 1
+      ? { ...item, description: 'Staff Salaries & Overtime', amount: paise(item.amount + (item.chequeAmount || 0)) }
+      : item
+  )
+  const fortnight2SalaryTotal = paise(f2.totalPayrollCash + totalStaffCheque)
+  const fortnight2MonthTotal = Math.round(fortnight2SalaryTotal + f2.pettyCashInflow)
+  const monthlyExact = f1.totalPayrollCash + f1.pettyCashInflow + fortnight2SalaryTotal + f2.pettyCashInflow
 
   return {
     month,
@@ -220,87 +242,108 @@ export function buildMonthlyGrandSummary(
     fortnight2Total: f2.totalPayrollCash,
     fortnight2PettyCash: f2.pettyCashInflow,
     fortnight2Cheque: f2.totalBankCheque,
-    monthlyTotalSalary: f1.totalBankCheque + f2.totalBankCheque,
+    staffChequeAmount: totalStaffCheque,
+    fortnight1Items: f1.items,
+    fortnight2Items,
+    fortnight2SalaryTotal,
+    fortnight2MonthTotal,
+    monthlyTotalSalary: Math.round(monthlyExact),
     grandSynopsisItems: [
       {
         serialNo: 1,
+        description: 'Advance / Peshgi (1st half, salaries se wapas katti)',
+        amount: totalAdvance1,
+        chequeAmount: 0,
+        advance: 0,
+        totalGrossHead: 0,
+      },
+      {
+        serialNo: 2,
         description: 'Staff Salaries & Overtime',
-        amount: Math.round(totalStaffCash),
+        amount: paise(totalStaffCash),
         chequeAmount: totalStaffCheque,
         advance: totalStaffAdv,
         totalGrossHead: totalStaffGross,
       },
       {
-        serialNo: 2,
+        serialNo: 3,
         description: 'Contract Employees Salaries',
-        amount: Math.round(Math.max(0, totalContractBasic - totalContractAdv - totalTicket)),
+        amount: paise(Math.max(0, totalContractBasic - totalContractAdv - totalTicket)),
         chequeAmount: 0,
         advance: totalContractAdv,
         totalGrossHead: totalContractBasic,
       },
       {
-        serialNo: 3,
+        serialNo: 4,
         description: 'Contract Employee Overtime',
-        amount: Math.round(totalContractOT),
+        amount: paise(totalContractOT),
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalContractOT,
       },
       {
-        serialNo: 4,
+        serialNo: 5,
         description: 'Contract Employee Efficiency',
-        amount: Math.round(totalContractEff),
+        amount: paise(totalContractEff),
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalContractEff,
       },
       {
-        serialNo: 5,
+        serialNo: 6,
         description: 'Weavers Wages (Total Fortnight 1 + 2)',
-        amount: Math.round(totalWeaverWages),
+        amount: paise(totalWeaverWages),
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalWeaverWages,
       },
       {
-        serialNo: 6,
+        serialNo: 7,
         description: 'Weavers Holy Days / OT Amount',
-        amount: Math.round(totalWeaverHol),
+        amount: paise(totalWeaverHol),
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalWeaverHol,
       },
       {
-        serialNo: 7,
+        serialNo: 8,
         description: 'Weaver Efficiency Bonus',
-        amount: Math.round(totalWeaverEff),
+        amount: paise(totalWeaverEff),
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalWeaverEff,
       },
       {
-        serialNo: 8,
+        serialNo: 9,
         description: 'Helpers Wages (Total Fortnight 1 + 2)',
-        amount: Math.round(totalHelperWages),
+        amount: paise(totalHelperWages),
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalHelperWages,
       },
       {
-        serialNo: 9,
+        serialNo: 10,
         description: 'Contractors Bill Payments',
-        amount: Math.round(totalContractorPayments),
+        amount: paise(totalContractorPayments),
         chequeAmount: 0,
-        advance: 0,
+        advance: totalContractorAdv,
         totalGrossHead: totalContractorPayments,
       },
       {
-        serialNo: 10,
+        serialNo: 11,
         description: 'Ticket Charges',
         amount: totalTicket,
         chequeAmount: 0,
         advance: 0,
         totalGrossHead: totalTicket,
+      },
+      {
+        serialNo: 12,
+        description: 'Petty Cash (1st half + 2nd half cheque ke saath)',
+        amount: f1.pettyCashInflow + f2.pettyCashInflow,
+        chequeAmount: 0,
+        advance: 0,
+        totalGrossHead: f1.pettyCashInflow + f2.pettyCashInflow,
       },
     ],
   }

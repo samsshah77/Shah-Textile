@@ -229,7 +229,18 @@ export interface MonthlyGrandSalarySynopsis {
   fortnight2Total: number;
   fortnight2PettyCash: number;
   fortnight2Cheque: number;
-  monthlyTotalSalary: number; // 2,690,000
+  /** Staff salary paid straight by bank cheque (not inside the 2nd half cheque). */
+  staffChequeAmount: number;
+  /** Excel "Monthly Summery" left column (1–15). */
+  fortnight1Items: FortnightSynopsis['items'];
+  /** Excel "Monthly Summery" right column (16–31) — staff line includes the bank cheque part. */
+  fortnight2Items: FortnightSynopsis['items'];
+  /** 16–31 total before petty cash, paise kept (e.g. 1,580,689.56). */
+  fortnight2SalaryTotal: number;
+  /** 16–31 total with petty cash, rounded (e.g. 1,660,000). */
+  fortnight2MonthTotal: number;
+  /** 1st half + 2nd half + staff cheque — Excel "Monthly Total Salary". */
+  monthlyTotalSalary: number;
   grandSynopsisItems: {
     serialNo: number;
     description: string;
