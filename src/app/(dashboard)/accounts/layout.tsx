@@ -1,6 +1,7 @@
 import { requireFinancePage } from '@/server/page-access'
 import { FinanceReadonly } from '@/components/shared/FinanceReadonly'
 import AccountsHydrate from '@/components/accounts/AccountsHydrate'
+import { ModuleTables } from '@/components/shared/ModuleTables'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +11,9 @@ export default async function AccountsLayout({ children }: { children: React.Rea
   return (
     <div className="sara-module-content">
       <FinanceReadonly>
-        <AccountsHydrate>{children}</AccountsHydrate>
+        <AccountsHydrate>
+          <ModuleTables storageKey="sara.textSize.accounts">{children}</ModuleTables>
+        </AccountsHydrate>
       </FinanceReadonly>
     </div>
   )

@@ -472,8 +472,8 @@ function ContractPayrollContent() {
       {activeTab === 'employees' && (
         <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
-            <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-            <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEES SALARIES (EXCEL SHEET 4)</h2>
+            <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
+            <h2 className="text-sm font-semibold text-slate-700 mt-0.5">CONTRACT EMPLOYEES SALARIES (EXCEL SHEET 4)</h2>
             <p className="text-[11px] text-slate-500 font-mono">Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</p>
           </div>
 
@@ -929,8 +929,8 @@ function ContractPayrollContent() {
       {activeTab === 'overtime' && (
         <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
-            <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-            <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEES OVERTIME (EXCEL SHEET 5)</h2>
+            <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
+            <h2 className="text-sm font-semibold text-slate-700 mt-0.5">CONTRACT EMPLOYEES OVERTIME (EXCEL SHEET 5)</h2>
             <p className="text-[11px] text-slate-500 font-mono">Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</p>
           </div>
 
@@ -1160,8 +1160,8 @@ function ContractPayrollContent() {
       {activeTab === 'net-payment' && (
         <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
           <div className="text-center border-b border-slate-200 pb-3 mb-4">
-            <h1 className="text-xl font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-            <h2 className="text-xs font-semibold text-slate-600 mt-0.5">CONTRACT EMPLOYEE SALARY, OVERTIME & EFFICIENCY (EXCEL SHEET 7)</h2>
+            <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
+            <h2 className="text-sm font-semibold text-slate-700 mt-0.5">CONTRACT EMPLOYEE SALARY, OVERTIME & EFFICIENCY (EXCEL SHEET 7)</h2>
             <p className="text-[11px] text-slate-500 font-mono">Statement for Month: {formatPayrollMonthLabel(selectedMonth)} (1 to {daysInMonth} Full Settlement)</p>
           </div>
 

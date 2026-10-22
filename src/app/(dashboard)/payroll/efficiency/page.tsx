@@ -315,8 +315,8 @@ export default function TechnicalEfficiencyPage() {
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
         <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
-          <h1 className="text-xl font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">TECHNICAL STAFF EFFICIENCY INCENTIVE SHEET</h2>
+          <h1 className="text-lg font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-400 mt-0.5">TECHNICAL STAFF EFFICIENCY INCENTIVE SHEET</h2>
           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
             Statement for Month: {formatPayrollMonthLabel(selectedMonth)}
           </p>

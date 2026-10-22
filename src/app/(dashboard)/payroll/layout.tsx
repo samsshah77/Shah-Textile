@@ -3,6 +3,7 @@ import { FloorSaveAlerts } from '@/components/floor/FloorSaveAlerts'
 import { FinanceReadonly } from '@/components/shared/FinanceReadonly'
 import { requireFinancePage } from '@/server/page-access'
 import { PayrollDirtyProvider } from '@/context/PayrollDirtyContext'
+import { ModuleTables } from '@/components/shared/ModuleTables'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,9 @@ export default async function PayrollLayout({ children }: { children: React.Reac
     <PayrollDirtyProvider>
       <div className="sara-module-content sara-payroll">
         <PayrollHydrate>
-          <FinanceReadonly>{children}</FinanceReadonly>
+          <FinanceReadonly>
+            <ModuleTables storageKey="sara.textSize.payroll">{children}</ModuleTables>
+          </FinanceReadonly>
         </PayrollHydrate>
         {/* Red banner when the server refuses a salary save (old tab / locked month). */}
         <FloorSaveAlerts eventName="payroll:save-problem" />

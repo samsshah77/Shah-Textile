@@ -206,7 +206,7 @@ function CostStatementContent() {
               </div>
             )}
             <div className="text-center border-b border-slate-200 pb-4 mb-6">
-              <h1 className="text-2xl font-bold uppercase tracking-wider">SARA TEXTILE</h1>
+              <h1 className="text-lg font-bold uppercase tracking-wider">SARA TEXTILE</h1>
               <h2 className="text-sm font-semibold text-slate-700">COST STATEMENT</h2>
               <p className="text-xs text-slate-500">
                 {editing ? (
