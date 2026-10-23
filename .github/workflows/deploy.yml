@@ -53,29 +53,28 @@ jobs:
           echo "Archive generated successfully:"
           ls -lh sara-build.zip
 
+      - name: 🔑 Setup SSH Key Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
       - name: 🚀 Transfer & Deploy via SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || secrets.FTP_SERVER }}
           SSH_USER: ${{ secrets.SSH_USER || 'root' }}
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/deploy_key
-          sed -i 's/\r$//' ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          # Clean any accidental whitespace or quotes
           TARGET_HOST=$(echo "$SSH_HOST" | tr -d '\r\n "'\''')
           TARGET_USER=$(echo "$SSH_USER" | tr -d '\r\n "'\''')
 
+          mkdir -p ~/.ssh
           ssh-keyscan -p 22 "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
           echo "Connecting as: '$TARGET_USER' to '$TARGET_HOST'..."
           echo "Transferring sara-build.zip and server.js via SCP..."
-          scp -i ~/.ssh/deploy_key -P 22 -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+          scp -P 22 -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
 
           echo "Extracting build and restarting Passenger via SSH..."
-          ssh -i ~/.ssh/deploy_key -p 22 -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
+          ssh -p 22 -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
             cd /var/www/vhosts/saratextilesweaving.com/httpdocs
             unzip -o -q sara-build.zip
             rm -f sara-build.zip
