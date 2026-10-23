@@ -53,20 +53,30 @@ jobs:
           echo "Archive generated successfully:"
           ls -lh sara-build.zip
 
-      - name: 🚀 Upload to Hostinger Plesk via Secure FTP
+      - name: 🚀 Transfer & Deploy via SSH
         env:
-          FTP_SERVER: ${{ secrets.FTP_SERVER }}
-          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          SSH_HOST: ${{ secrets.SSH_HOST || secrets.FTP_SERVER }}
+          SSH_USER: ${{ secrets.SSH_USER || 'root' }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          npm install basic-ftp --no-save
-          node scripts/deploy-ftp.js
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          sed -i 's/\r$//' ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p 22 "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: ⚡ Trigger Live Unpack & Process Restart
-        run: |
-          echo "Triggering live unpack on server..."
-          UNPACK_RESPONSE=$(curl -s -k "https://saratextilesweaving.com/deploy-unpack.php?key=sara_deploy_secret_key_2026" || curl -s -k "http://72.62.255.78/deploy-unpack.php?key=sara_deploy_secret_key_2026" || true)
-          echo "Server Response: $UNPACK_RESPONSE"
+          echo "Transferring sara-build.zip and server.js via SCP..."
+          scp -i ~/.ssh/deploy_key -P 22 sara-build.zip server.js "${SSH_USER}@${SSH_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+
+          echo "Extracting build and restarting Passenger via SSH..."
+          ssh -i ~/.ssh/deploy_key -p 22 "${SSH_USER}@${SSH_HOST}" "
+            cd /var/www/vhosts/saratextilesweaving.com/httpdocs
+            unzip -o -q sara-build.zip
+            rm -f sara-build.zip
+            mkdir -p tmp
+            touch tmp/restart.txt
+            echo '✅ Production build successfully unpacked and Passenger restarted!'
+          "
 
       - name: 🔐 Sync live RBAC permissions (accountant / roles)
         run: |
