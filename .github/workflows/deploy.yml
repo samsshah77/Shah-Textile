@@ -53,35 +53,61 @@ jobs:
           echo "Archive generated successfully:"
           ls -lh sara-build.zip
 
-      - name: 🔑 Setup SSH Key Agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
       - name: 🚀 Transfer & Deploy via SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || secrets.FTP_SERVER }}
           SSH_USER: ${{ secrets.SSH_USER || 'root' }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PASS: ${{ secrets.SSH_PASSWORD || secrets.FTP_PASSWORD }}
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
           TARGET_HOST=$(echo "$SSH_HOST" | tr -d '\r\n "'\''')
           TARGET_USER=$(echo "$SSH_USER" | tr -d '\r\n "'\''')
 
           mkdir -p ~/.ssh
           ssh-keyscan -p 22 "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          echo "Connecting as: '$TARGET_USER' to '$TARGET_HOST'..."
-          echo "Transferring sara-build.zip and server.js via SCP..."
-          scp -P 22 -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+          KEY_VALID=false
+          if [ -n "$SSH_KEY" ]; then
+            printf "%s\n" "$SSH_KEY" > ~/.ssh/deploy_key
+            sed -i 's/\r$//' ~/.ssh/deploy_key
+            echo "" >> ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            if ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null 2>&1; then
+              KEY_VALID=true
+              echo "✅ Valid SSH Key verified!"
+            else
+              echo "⚠️ SSH Key invalid format or public key provided. Will attempt Password..."
+            fi
+          fi
 
-          echo "Extracting build and restarting Passenger via SSH..."
-          ssh -p 22 -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
-            cd /var/www/vhosts/saratextilesweaving.com/httpdocs
-            unzip -o -q sara-build.zip
-            rm -f sara-build.zip
-            mkdir -p tmp
-            touch tmp/restart.txt
-            echo '✅ Production build successfully unpacked and Passenger restarted!'
-          "
+          if [ "$KEY_VALID" = true ]; then
+            echo "🚀 Connecting as '$TARGET_USER' to '$TARGET_HOST' using SSH Key..."
+            scp -P 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+            ssh -p 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
+              cd /var/www/vhosts/saratextilesweaving.com/httpdocs
+              unzip -o -q sara-build.zip
+              rm -f sara-build.zip
+              mkdir -p tmp
+              touch tmp/restart.txt
+              echo '✅ Production build successfully unpacked and Passenger restarted!'
+            "
+          elif [ -n "$SSH_PASS" ]; then
+            echo "🔑 Connecting as '$TARGET_USER' to '$TARGET_HOST' using Password (sshpass)..."
+            sshpass -p "$SSH_PASS" scp -P 22 -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+            sshpass -p "$SSH_PASS" ssh -p 22 -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
+              cd /var/www/vhosts/saratextilesweaving.com/httpdocs
+              unzip -o -q sara-build.zip
+              rm -f sara-build.zip
+              mkdir -p tmp
+              touch tmp/restart.txt
+              echo '✅ Production build successfully unpacked and Passenger restarted!'
+            "
+          else
+            echo "❌ ERROR: Neither a valid SSH Key nor Password was found!"
+            exit 1
+          fi
 
       - name: 🔐 Sync live RBAC permissions (accountant / roles)
         run: |
