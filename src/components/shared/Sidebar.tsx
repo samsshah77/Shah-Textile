@@ -16,6 +16,8 @@ interface NavLeaf {
   href: string
   icon: string
   activeCheck: (pathname: string, searchParams: URLSearchParams) => boolean
+  /** A sub-menu inside a group (Administration → Salary / Accounts for the admin). */
+  children?: NavLeaf[]
 }
 
 interface NavTree {
@@ -89,6 +91,12 @@ const FLOOR_ITEMS: NavLeaf[] = [
     icon: 'bi-exclamation-diamond',
     activeCheck: (p, sp) =>
       p === '/floor/production' && sp.get('tab') === 'fabric-fault',
+  },
+  {
+    title: 'Kamran Fault',
+    href: '/floor/fault-reports',
+    icon: 'bi-camera-video',
+    activeCheck: (p) => p.startsWith('/floor/fault-reports'),
   },
 ]
 
@@ -215,24 +223,67 @@ const PAYROLL_ITEMS: NavLeaf[] = [
 
 const ADMIN_ITEMS: NavLeaf[] = [
   {
-    title: 'Approvals',
-    href: '/admin/approvals',
-    icon: 'bi-check2-square',
-    activeCheck: (p) => p.startsWith('/admin/approvals'),
+    title: 'Users',
+    href: '/admin/users',
+    icon: 'bi-people',
+    activeCheck: (p) => p.startsWith('/admin/users') || p.startsWith('/admin/approvals'),
   },
   {
-    title: 'Roles',
+    title: 'Roles & Permissions',
     href: '/admin/roles',
     icon: 'bi-person-gear',
-    activeCheck: (p) => p.startsWith('/admin/roles'),
+    activeCheck: (p) => p.startsWith('/admin/roles') || p.startsWith('/admin/permissions'),
   },
   {
-    title: 'Permissions',
-    href: '/admin/permissions',
-    icon: 'bi-key',
-    activeCheck: (p) => p.startsWith('/admin/permissions'),
+    title: 'System',
+    href: '/admin/system',
+    icon: 'bi-hdd-stack',
+    activeCheck: (p) => p.startsWith('/admin/system'),
+  },
+  {
+    title: 'Audit log',
+    href: '/admin/audit',
+    icon: 'bi-clock-history',
+    activeCheck: (p) => p.startsWith('/admin/audit'),
   },
 ]
+
+const anyActive = (items: NavLeaf[]) => (p: string, sp: URLSearchParams) => items.some((i) => i.activeCheck(p, sp))
+
+const closeOnMobile = () => {
+  if (isSidebarMobileViewport()) closeSidebar()
+}
+
+/** One menu link, or a sub-menu (opens by itself when one of its pages is open). */
+function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: string; searchParams: URLSearchParams }) {
+  const active = item.activeCheck(pathname, searchParams)
+  if (!item.children) {
+    return (
+      <li className="nav-item">
+        <Link href={item.href} className={cn('nav-link', active && 'active')} onClick={closeOnMobile}>
+          <i className={cn('nav-icon bi', item.icon)} />
+          <p>{item.title}</p>
+        </Link>
+      </li>
+    )
+  }
+  return (
+    <li className={cn('nav-item', active && 'menu-open')}>
+      <a href="#" className={cn('nav-link', active && 'active')} onClick={(e) => e.preventDefault()}>
+        <i className={cn('nav-icon bi', item.icon)} />
+        <p>
+          {item.title}
+          <i className="nav-arrow bi bi-chevron-right" />
+        </p>
+      </a>
+      <ul className="nav nav-treeview ps-2">
+        {item.children.map((child) => (
+          <NavItem key={child.href} item={child} pathname={pathname} searchParams={searchParams} />
+        ))}
+      </ul>
+    </li>
+  )
+}
 
 function SidebarContent() {
   const pathname = usePathname()
@@ -265,7 +316,34 @@ function SidebarContent() {
         items: floorItems,
       },
     ]
-    if (!isQualityController && canViewAccounts) {
+    if (isAdmin) {
+      // Admin (Javed): Salary and Accounts live inside Administration.
+      list.push({
+        title: 'Administration',
+        icon: 'bi-shield-lock',
+        items: [
+          ...ADMIN_ITEMS,
+          ...(canViewAccounts
+            ? [
+                {
+                  title: 'Salary & Wages',
+                  href: '/payroll/synopsis',
+                  icon: 'bi-cash-stack',
+                  activeCheck: anyActive(PAYROLL_ITEMS),
+                  children: PAYROLL_ITEMS,
+                },
+                {
+                  title: 'Accounts',
+                  href: '/accounts/payables',
+                  icon: 'bi-calculator',
+                  activeCheck: anyActive(ACCOUNTS_ITEMS),
+                  children: ACCOUNTS_ITEMS,
+                },
+              ]
+            : []),
+        ],
+      })
+    } else if (!isQualityController && canViewAccounts) {
       list.push(
         {
           title: 'Accounts',
@@ -278,13 +356,6 @@ function SidebarContent() {
           items: PAYROLL_ITEMS,
         }
       )
-    }
-    if (isAdmin) {
-      list.push({
-        title: 'Administration',
-        icon: 'bi-shield-lock',
-        items: ADMIN_ITEMS,
-      })
     }
     return list
   }, [isQualityController, canViewAccounts, isAdmin, isAccountant])
@@ -357,23 +428,9 @@ function SidebarContent() {
                     </p>
                   </a>
                   <ul className="nav nav-treeview">
-                    {tree.items.map((item) => {
-                      const active = item.activeCheck(pathname, searchParams)
-                      return (
-                        <li className="nav-item" key={item.href}>
-                          <Link
-                            href={item.href}
-                            className={cn('nav-link', active && 'active')}
-                            onClick={() => {
-                              if (isSidebarMobileViewport()) closeSidebar()
-                            }}
-                          >
-                            <i className={cn('nav-icon bi', item.icon)} />
-                            <p>{item.title}</p>
-                          </Link>
-                        </li>
-                      )
-                    })}
+                    {tree.items.map((item) => (
+                      <NavItem key={item.href} item={item} pathname={pathname} searchParams={searchParams} />
+                    ))}
                   </ul>
                 </li>
               )

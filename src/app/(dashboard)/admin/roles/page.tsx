@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminTabs } from '@/components/admin/AdminTabs'
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -68,6 +69,7 @@ export default function RolesPage() {
 
   return (
     <main className="page-content !w-full !max-w-5xl !mx-0 !p-0">
+        <AdminTabs />
       <div className="page-title">
         <div>
           <p className="eyebrow">Administration</p>

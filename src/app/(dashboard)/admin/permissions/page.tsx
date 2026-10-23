@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminTabs } from '@/components/admin/AdminTabs'
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
@@ -90,6 +91,7 @@ export default function PermissionsPage() {
 
   return (
       <main className="page-content permission-page sara-module-content !w-full !max-w-6xl !mx-0 !p-0">
+        <AdminTabs />
         <div className="page-title">
           <div>
             <p className="eyebrow">Administration</p>

@@ -70,6 +70,7 @@ function resolveAccountsPage(pathname: string): string {
 function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
   if (pathname.startsWith('/floor/reports')) return 'Reports'
   if (pathname.startsWith('/floor/challan')) return 'Challan'
+  if (pathname.startsWith('/floor/fault-reports')) return 'Kamran Fault'
   if (pathname === '/floor/production' || pathname.startsWith('/floor/production')) {
     const tab = sp.get('tab')
     if (tab === 'looms') return 'Looms'
@@ -84,6 +85,9 @@ function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
 }
 
 function resolveAdminPage(pathname: string): string {
+  if (pathname.startsWith('/admin/users')) return 'Users'
+  if (pathname.startsWith('/admin/system')) return 'System'
+  if (pathname.startsWith('/admin/audit')) return 'Audit log'
   if (pathname.startsWith('/admin/approvals')) return 'Approvals'
   if (pathname.startsWith('/admin/roles')) return 'Roles'
   if (pathname.startsWith('/admin/permissions')) return 'Permissions'

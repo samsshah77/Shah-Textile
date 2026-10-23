@@ -6,6 +6,7 @@ import { UserStatus } from '@prisma/client'
 import { jsonError, readJson, validationError } from '@/lib/http'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/server/permissions'
+import { writeAudit } from '@/server/auditLog'
 
 export const runtime = 'nodejs'
 
@@ -156,6 +157,15 @@ export async function POST(request: NextRequest) {
       },
       include: { role: true },
     })
+    await writeAudit({
+      req: request,
+      actor: admin,
+      module: 'auth',
+      action: 'user.create',
+      entityKey: 'users',
+      entityId: user.id,
+      changes: { name: user.name, email: user.email, role: user.roleKey },
+    })
     return NextResponse.json({ success: true, user: mapUser(user) }, { status: 201 })
   } catch (error) {
     if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
@@ -229,6 +239,24 @@ export async function PATCH(request: NextRequest) {
       where: { id: parsed.data.userId },
       data,
       include: { role: true },
+    })
+    // Who changed which account — never the password itself.
+    const changed: Record<string, unknown> = {}
+    if (nextStatus) changed.status = nextStatus
+    if (parsed.data.name !== undefined) changed.name = parsed.data.name
+    if (parsed.data.email !== undefined) changed.email = parsed.data.email
+    if (nextRole) changed.role = nextRole
+    if (parsed.data.isActive !== undefined) changed.isActive = parsed.data.isActive
+    if (parsed.data.password !== undefined) changed.password = 'reset'
+    await writeAudit({
+      req: request,
+      actor: admin,
+      module: 'auth',
+      action: parsed.data.password !== undefined ? 'user.password-reset' : 'user.update',
+      entityKey: 'users',
+      entityId: user.id,
+      changes: changed,
+      meta: { user: user.name, email: user.email },
     })
     return NextResponse.json({ success: true, user: mapUser(user) })
   } catch (error) {

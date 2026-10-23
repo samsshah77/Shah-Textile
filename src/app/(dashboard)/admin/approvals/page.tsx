@@ -23,6 +23,7 @@ import { useAuth } from '@/context/AuthContext'
 import { RoleOption } from '@/types/auth'
 import { AlertModal, ModalType } from '@/components/ui/AlertModal'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { AdminTabs } from '@/components/admin/AdminTabs'
 
 interface AdminUser {
   id: string
@@ -220,6 +221,7 @@ export default function AdminApprovalsPage() {
   return (
     <div className="space-y-6 pb-16">
       
+      <AdminTabs />
       <PageHeader
         title="Staff Approvals"
         breadcrumbs={[

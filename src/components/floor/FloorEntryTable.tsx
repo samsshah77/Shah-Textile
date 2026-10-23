@@ -15,6 +15,7 @@ import {
   fabricFaultPreview,
 } from '@/components/floor/FabricFaultShiftDialog'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
+import { RegisterScanDialog, type RegisterScanPatch } from '@/components/floor/RegisterScanDialog'
 
 interface FloorEntryTableProps {
   entries: DailyLoomProductionEntry[]
@@ -71,6 +72,7 @@ export function FloorEntryTable({
   /** Loom# cell highlight while any field in that row is focused. */
   const [activeLoom, setActiveLoom] = useState<number | null>(null)
   const [faultDialogEntry, setFaultDialogEntry] = useState<DailyLoomProductionEntry | null>(null)
+  const [scanOpen, setScanOpen] = useState(false)
 
   const tableEdit = tableEditProp ?? tableEditLocal
   const setTableEdit = (next: boolean) => {
@@ -214,6 +216,23 @@ export function FloorEntryTable({
       },
       editor
     )
+  }
+
+  /** Rows checked on the register-photo review screen → the same edits as typing them. */
+  const applyScan = (patches: RegisterScanPatch[]) => {
+    let done = 0
+    for (const p of patches) {
+      const row =
+        entries.find((e) => e.loomNumber === p.loomNumber && segOf(e) === 1) ||
+        entries.find((e) => e.loomNumber === p.loomNumber)
+      if (!row) continue
+      const { loomNumber: _loom, ...patch } = p
+      void _loom
+      patchEntry(row, patch)
+      done++
+    }
+    setScanOpen(false)
+    setFeedbackMsg({ type: 'success', text: `Register photo se ${done} looms bhar diye. Table check kar lein, phir Finalize / Submit.` })
   }
 
   const handleRemovePart = (e: DailyLoomProductionEntry) => {
@@ -400,6 +419,18 @@ export function FloorEntryTable({
           )}
 
           {!toolbarInChrome && editToggle}
+          {canUserEdit && entries.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary"
+              disabled={isSubmitting}
+              title="Register ki photo se Weight, A, B bharein (check karne ke baad)"
+              onClick={() => setScanOpen(true)}
+            >
+              <i className="bi bi-camera me-1" />
+              Register se bharein
+            </button>
+          )}
           <ViewModeToggle mode={mode} onChange={setMode} />
           <button
             type="button"
@@ -789,6 +820,8 @@ export function FloorEntryTable({
           </table>
         </TablePanScroll>
       )}
+
+      {scanOpen && <RegisterScanDialog entries={entries} onApply={applyScan} onClose={() => setScanOpen(false)} />}
 
       <FabricFaultShiftDialog
         entry={faultDialogEntry}
