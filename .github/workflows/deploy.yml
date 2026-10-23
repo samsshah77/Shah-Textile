@@ -63,13 +63,19 @@ jobs:
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           sed -i 's/\r$//' ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p 22 "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
+          # Clean any accidental whitespace or quotes
+          TARGET_HOST=$(echo "$SSH_HOST" | tr -d '\r\n "'\''')
+          TARGET_USER=$(echo "$SSH_USER" | tr -d '\r\n "'\''')
+
+          ssh-keyscan -p 22 "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          echo "Connecting as: '$TARGET_USER' to '$TARGET_HOST'..."
           echo "Transferring sara-build.zip and server.js via SCP..."
-          scp -i ~/.ssh/deploy_key -P 22 sara-build.zip server.js "${SSH_USER}@${SSH_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+          scp -i ~/.ssh/deploy_key -P 22 -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
 
           echo "Extracting build and restarting Passenger via SSH..."
-          ssh -i ~/.ssh/deploy_key -p 22 "${SSH_USER}@${SSH_HOST}" "
+          ssh -i ~/.ssh/deploy_key -p 22 -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
             cd /var/www/vhosts/saratextilesweaving.com/httpdocs
             unzip -o -q sara-build.zip
             rm -f sara-build.zip
