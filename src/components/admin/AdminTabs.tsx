@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation'
 const TABS = [
   { href: '/admin/users', label: 'Users', icon: 'bi-people' },
   { href: '/admin/roles', label: 'Roles', icon: 'bi-person-gear' },
-  { href: '/admin/permissions', label: 'Permissions', icon: 'bi-key' },
   { href: '/admin/system', label: 'System', icon: 'bi-hdd-stack' },
   { href: '/admin/audit', label: 'Audit log', icon: 'bi-clock-history' },
 ]

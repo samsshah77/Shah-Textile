@@ -290,7 +290,7 @@ export default function AdminUsersPage() {
         </table>
       </div>
       <p className="form-text small mt-2">
-        Kaun kya dekh sakta hai, woh role se tay hota hai (Roles / Permissions tab). Salary aur Accounts sirf Tufail badal sakte hain, Javed sahab dekh sakte hain.
+        Role se tay hota hai ke kaun kya dekh sakta hai (Roles tab dekhein). Naya role Roles tab se banta hai. Salary aur Accounts sirf Tufail badal sakte hain, Javed sahab dekh sakte hain.
       </p>
 
       {resetFor && (

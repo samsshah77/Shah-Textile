@@ -26,6 +26,7 @@ import type { LoomCategory } from '@/types/loom'
 import type { DailyLoomProductionEntry } from '@/types/production'
 import { calculateProductionMetrics } from '@/types/production'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { fetchProductionReport } from '@/services/floorReportsClient'
 
 /** Same as Production sheet footer / Excel: Σ(A+B) ÷ Σ(100% Running) × 100 — not avg of %. */
 function dayRunningEfficiency(live: DailyLoomProductionEntry[]) {
@@ -91,6 +92,17 @@ function summarizeDay(live: DailyLoomProductionEntry[]) {
   }
 }
 
+/** YYYY-MM-DD plus / minus days (calendar days). */
+function shiftDays(dateStr: string, days: number) {
+  const d = new Date(`${dateStr}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** The chart shows the last 30 entered days. */
+const CHART_DAYS = 30
+const recentDays = (dates: string[]) => [...dates].sort().slice(-CHART_DAYS)
+
 function shortDay(dateStr: string) {
   try {
     return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-GB', {
@@ -126,11 +138,6 @@ export default function DashboardPage() {
     try {
       await hydrateFloorFromDb()
       await preloadFloorSheet(dateStr)
-      // Also preload known neighbour days for the mini chart (real sheets only)
-      const dates = listPersistedSheetDates()
-      setAvailableDates(dates)
-      await Promise.all(dates.map((d) => preloadFloorSheet(d)))
-
       const live = productionMastersService.hasPersistedSheet(dateStr)
         ? productionMastersService.buildSheetForDate(dateStr)
         : []
@@ -146,16 +153,16 @@ export default function DashboardPage() {
       })
       setModelBars(summary.modelBars)
 
-      const refreshed = listPersistedSheetDates()
-      setAvailableDates(refreshed)
+      setAvailableDates(listPersistedSheetDates())
+
+      // Chart: last 30 days up to the selected day, totals from the server in one request
+      // (the browser no longer loads every old sheet just to draw it).
+      const report = await fetchProductionReport(shiftDays(dateStr, -CHART_DAYS - 15), dateStr).catch(() => null)
       setDaySeries(
-        refreshed.map((d) => {
-          const rows = productionMastersService.hasPersistedSheet(d)
-            ? productionMastersService.buildSheetForDate(d)
-            : []
-          const m = rows.reduce((s, e) => s + (e.totalMeters || 0), 0)
-          return { label: shortDay(d), value: m }
-        })
+        recentDays((report?.byDay || []).filter((d) => d.meters > 0).map((d) => d.date)).map((d) => ({
+          label: shortDay(d),
+          value: Math.round(report!.byDay.find((x) => x.date === d)!.meters),
+        }))
       )
     } catch {
       setDay({
@@ -338,7 +345,7 @@ export default function DashboardPage() {
         <div className="col-lg-7">
           <div className="card h-100">
             <div className="card-header d-flex justify-content-between align-items-center">
-              <h3 className="card-title mb-0">Entered days (real sheets)</h3>
+              <h3 className="card-title mb-0">Production — aakhri {CHART_DAYS} din</h3>
               <Link href={sheetHref} className="small">
                 Production Sheet
               </Link>

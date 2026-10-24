@@ -43,6 +43,7 @@ next-env.d.ts
 *.zip
 ccc/
 scratch/
+public/uploads/
 
 # Local utility and seed scripts (stay local, never committed or deployed)
 scripts/check-*

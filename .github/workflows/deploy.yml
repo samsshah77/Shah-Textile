@@ -40,9 +40,12 @@ jobs:
           cp -r .next/static .next/standalone/.next/static
           cp -r prisma .next/standalone/prisma
 
-          # Ensure production server.js exists in standalone root
+          # Ensure production server.js and .bootstrap.cjs exist in standalone root
           if [ -f server.js ]; then
             cp server.js .next/standalone/server.js
+          fi
+          if [ -f .bootstrap.cjs ]; then
+            cp .bootstrap.cjs .next/standalone/.bootstrap.cjs
           fi
 
           # Archive only the standalone distribution (Ultra-lightweight ~25 MB!)
@@ -89,7 +92,7 @@ jobs:
 
           if [ "$KEY_VALID" = true ]; then
             echo "🚀 Connecting as '$TARGET_USER' to '$TARGET_HOST' using SSH Key..."
-            scp -P 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+            scp -P 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no sara-build.zip server.js .bootstrap.cjs "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
             ssh -p 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
               cd /var/www/vhosts/saratextilesweaving.com/httpdocs
               unzip -o -q sara-build.zip

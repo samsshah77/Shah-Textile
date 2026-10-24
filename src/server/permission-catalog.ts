@@ -111,6 +111,10 @@ export const ROLE_MODULE_ACTIONS: Record<string, Partial<Record<string, Permissi
     floor: ["VIEW", "CREATE", "UPDATE", "EXPORT"],
     quality: ["VIEW", "CREATE", "UPDATE", "APPROVE", "EXPORT"],
   },
+  fault: {
+    floor: ["VIEW", "CREATE"],
+    quality: ["VIEW", "CREATE"],
+  },
 };
 
 export const ROLE_RESOURCE_DENIES: Array<{

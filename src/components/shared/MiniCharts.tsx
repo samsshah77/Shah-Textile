@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { formatNumber } from '@/lib/utils'
 
@@ -49,7 +49,28 @@ function tipFromMouse(
   }
 }
 
-/** Compact SVG bar chart — no chart library. */
+/** Width of the chart's box, so the chart always fits it (no sideways scrolling). */
+function useBoxWidth(fallback = 520) {
+  const [width, setWidth] = useState(fallback)
+  const ref = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    const update = () => setWidth(Math.max(240, Math.floor(el.clientWidth)))
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return [ref, width] as const
+}
+
+/** Show every n-th label so labels never overlap (about 48 px each); first and last always shown. */
+function labelStep(count: number, width: number) {
+  const fit = Math.max(2, Math.floor(width / 48))
+  return Math.max(1, Math.ceil(count / fit))
+}
+const showLabel = (i: number, count: number, step: number) => i === count - 1 || (i % step === 0 && count - 1 - i >= step / 2)
+
+/** Compact SVG bar chart — no chart library. Fits its box; labels thin out when crowded. */
 export function SimpleBarChart({
   data,
   height = 160,
@@ -63,42 +84,40 @@ export function SimpleBarChart({
   valueSuffix?: string
 }) {
   const [tip, setTip] = useState<ChartTip>(null)
+  const [boxRef, width] = useBoxWidth()
   const max = Math.max(...data.map((d) => d.value), 1)
-  const gap = 6
-  const barW = data.length ? Math.max(10, Math.min(36, (520 - gap * data.length) / data.length)) : 20
-  const width = Math.max(280, data.length * (barW + gap) + 24)
-  const chartH = height - 28
+  const padX = 8
+  const slot = data.length ? (width - padX * 2) / data.length : width
+  const barW = Math.max(3, Math.min(36, slot * 0.7))
+  const chartH = height - 22
+  const step = labelStep(data.length, width)
 
   return (
-    <div className="w-100 overflow-auto" onMouseLeave={() => setTip(null)}>
-      <svg width={width} height={height} role="img" aria-label="Bar chart">
+    <div ref={boxRef} className="w-100" onMouseLeave={() => setTip(null)}>
+      <svg width={width} height={height} role="img" aria-label="Bar chart" style={{ display: 'block' }}>
+        <line x1={padX} x2={width - padX} y1={chartH} y2={chartH} stroke="#dee2e6" />
         {data.map((d, i) => {
           const h = (d.value / max) * (chartH - 8)
-          const x = 12 + i * (barW + gap)
-          const y = chartH - h
+          const cx = padX + slot * i + slot / 2
           return (
             <g key={`${d.label}-${i}`}>
               <rect
-                x={x}
-                y={y}
+                x={cx - barW / 2}
+                y={chartH - h}
                 width={barW}
                 height={Math.max(h, 1)}
-                rx={3}
+                rx={Math.min(3, barW / 3)}
                 fill={d.color || barColor}
                 opacity={0.9}
                 style={{ cursor: 'pointer' }}
                 onMouseEnter={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
                 onMouseMove={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
               />
-              <text
-                x={x + barW / 2}
-                y={height - 8}
-                textAnchor="middle"
-                fontSize={9}
-                fill="#6c757d"
-              >
-                {d.label}
-              </text>
+              {showLabel(i, data.length, step) && (
+                <text x={cx} y={height - 6} textAnchor="middle" fontSize={10} fill="#6c757d">
+                  {d.label}
+                </text>
+              )}
             </g>
           )
         })}
@@ -108,7 +127,7 @@ export function SimpleBarChart({
   )
 }
 
-/** Compact SVG line chart. */
+/** Compact SVG line chart. Fits its box; labels thin out when crowded. */
 export function SimpleLineChart({
   data,
   height = 160,
@@ -121,61 +140,43 @@ export function SimpleLineChart({
   valueSuffix?: string
 }) {
   const [tip, setTip] = useState<ChartTip>(null)
+  const [boxRef, width] = useBoxWidth()
   const max = Math.max(...data.map((d) => d.value), 1)
-  const padX = 16
-  const padY = 12
-  const width = Math.max(320, data.length * 28)
-  const chartH = height - 28
+  const padX = 24
+  const padY = 10
+  const chartH = height - 22
   const chartW = width - padX * 2
-
-  const points = useMemo(() => {
-    if (!data.length) return ''
-    return data
-      .map((d, i) => {
-        const x = padX + (data.length === 1 ? chartW / 2 : (i / (data.length - 1)) * chartW)
-        const y = padY + (1 - d.value / max) * (chartH - padY)
-        return `${x},${y}`
-      })
-      .join(' ')
-  }, [data, max, chartH, chartW])
+  const step = labelStep(data.length, width)
+  const xy = (i: number, v: number) => ({
+    x: padX + (data.length === 1 ? chartW / 2 : (i / (data.length - 1)) * chartW),
+    y: padY + (1 - v / max) * (chartH - padY),
+  })
+  const points = data.map((d, i) => xy(i, d.value)).map((p) => `${p.x},${p.y}`).join(' ')
+  const dot = data.length > 40 ? 2.5 : 4
 
   return (
-    <div className="w-100 overflow-auto" onMouseLeave={() => setTip(null)}>
-      <svg width={width} height={height} role="img" aria-label="Line chart">
-        <polyline
-          fill="none"
-          stroke={stroke}
-          strokeWidth={2.5}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          points={points}
-        />
+    <div ref={boxRef} className="w-100" onMouseLeave={() => setTip(null)}>
+      <svg width={width} height={height} role="img" aria-label="Line chart" style={{ display: 'block' }}>
+        <polyline fill="none" stroke={stroke} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" points={points} />
         {data.map((d, i) => {
-          const x = padX + (data.length === 1 ? chartW / 2 : (i / (data.length - 1)) * chartW)
-          const y = padY + (1 - d.value / max) * (chartH - padY)
+          const { x, y } = xy(i, d.value)
           return (
             <g key={`${d.label}-${i}`}>
               <circle
                 cx={x}
                 cy={y}
-                r={7}
+                r={Math.max(7, dot + 3)}
                 fill="transparent"
                 style={{ cursor: 'pointer' }}
                 onMouseEnter={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
                 onMouseMove={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
               />
-              <circle
-                cx={x}
-                cy={y}
-                r={4.5}
-                fill={stroke}
-                stroke="#fff"
-                strokeWidth={1.5}
-                style={{ pointerEvents: 'none' }}
-              />
-              <text x={x} y={height - 6} textAnchor="middle" fontSize={9} fill="#6c757d">
-                {d.label}
-              </text>
+              <circle cx={x} cy={y} r={dot} fill={stroke} stroke="#fff" strokeWidth={1.5} style={{ pointerEvents: 'none' }} />
+              {showLabel(i, data.length, step) && (
+                <text x={x} y={height - 6} textAnchor="middle" fontSize={10} fill="#6c757d">
+                  {d.label}
+                </text>
+              )}
             </g>
           )
         })}

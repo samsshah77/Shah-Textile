@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { QualityEndRecord } from '@/types/production'
 import { formatNumber, cn } from '@/lib/utils'
 import { Award, Download, CheckCircle2 } from 'lucide-react'
+import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfButton'
+import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 
 interface QualityEndTableProps {
   records: QualityEndRecord[]
@@ -11,6 +13,13 @@ interface QualityEndTableProps {
 
 export function QualityEndTable({ records }: QualityEndTableProps) {
   const totalProduction = records.reduce((s, r) => s + r.productionMeters, 0)
+
+  const whatsAppText = () =>
+    [
+      '*Sara Textile — Quality End Report*',
+      `Mukammal qualities: ${records.length}`,
+      `Kul production: ${totalProduction.toLocaleString()} m`,
+    ].join('\n')
 
   const exportCsv = () => {
     let csv = 'S.No,Quality Name,Quality End Date,Warp Yarn,Weft Yarn,Reed,Pick,Completed Production (m)\n'
@@ -41,18 +50,32 @@ export function QualityEndTable({ records }: QualityEndTableProps) {
               Sheet: Quality End Report • Monthly Quality Completion Register
             </h3>
             <p className="text-xs text-muted-foreground">
-              Officially closed weave runs, beam-out deliveries, and order fulfillment archives (September 2026).
+              Officially closed weave runs, beam-out deliveries, and order fulfillment archives.
             </p>
           </div>
         </div>
 
-        <button
-          onClick={exportCsv}
-          className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
-        >
-          <Download className="size-3.5 text-blue-600" />
-          <span>Export CSV</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportPdfButton
+            filename="Quality-End-Report"
+            sheetLabel="Quality End Report • Completion Register"
+            className="h-9 px-3 text-xs font-bold"
+          />
+
+          <WhatsAppShareButton
+            documentTitle="Quality End Report"
+            message={whatsAppText}
+            onDownloadPdf={() => exportSheetPdf('Quality-End-Report', 'Quality End Report • Completion Register')}
+          />
+
+          <button
+            onClick={exportCsv}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            <Download className="size-3.5 text-blue-600" />
+            <span>Export CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}

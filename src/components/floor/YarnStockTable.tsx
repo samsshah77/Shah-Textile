@@ -1,5 +1,6 @@
 'use client'
 
+import { YarnDateBalance } from '@/components/floor/YarnDateBalance'
 import { useMemo, useState } from 'react'
 import {
   LoomMaster,
@@ -23,7 +24,7 @@ import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
 export type WeightUnit = 'KG' | 'LBS'
-export type YarnViewMode = 'STOCK' | 'LEDGER'
+export type YarnViewMode = 'STOCK' | 'LEDGER' | 'BALANCE'
 export type YarnDateFilterMode = 'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'
 
 function parseDay(dateStr: string) {
@@ -448,6 +449,15 @@ export function YarnStockTable({
                 <i className="bi bi-journal-text me-1" />
                 Daily Movement Ledger ({allMovements.length})
               </button>
+              <button
+                type="button"
+                className={`btn ${activeView === 'BALANCE' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => setActiveView('BALANCE')}
+                title="Kisi din / hafte / mahine ka hisab: shuru ka stock, aya, gaya, aakhir ka stock"
+              >
+                <i className="bi bi-calendar-check me-1" />
+                Date-wise Hisab
+              </button>
             </div>
           </div>
 
@@ -798,6 +808,10 @@ export function YarnStockTable({
               </TablePanScroll>
             )}
           </>
+        )}
+
+        {activeView === 'BALANCE' && (
+          <YarnDateBalance yarn={yarn} movements={allMovements} range={dateRange} periodLabel={periodLabel} unit={unit} />
         )}
 
         {/* ============================================================== */}

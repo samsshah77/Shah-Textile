@@ -1,6 +1,8 @@
 'use client'
 
 import { ViewModeToggle } from '@/components/shared/ViewModeToggle'
+import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfButton'
+import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { QUALITY_MASTER_CSS } from '@/components/floor/quality/qualityMasterStyles'
 import { AddQualityModal } from '@/components/floor/quality/AddQualityModal'
 import type { QualityMasterTableProps } from '@/components/floor/quality/qualityMasterParts'
@@ -15,7 +17,7 @@ export { qualityStatusCounts, QualityStatusFilterBar, type QualityStatusFilter }
 
 export function QualityMasterTable(props: QualityMasterTableProps) {
   const t = useQualityMasterTable(props)
-  const { readOnly, toolbarInChrome, canEditProduction, emptyAddForm, addForm, setAddForm, endsFabricFilter, setEndsFabricFilter, mode, setMode, tableEdit, isAddModalOpen, setIsAddModalOpen, isEndedView, isArchiveView, warpOptions, weftOptions, cardTitle, editToggle, handleAddFormKeyDown, handleCreateQuality } = t
+  const { readOnly, toolbarInChrome, canEditProduction, emptyAddForm, addForm, setAddForm, endsFabricFilter, setEndsFabricFilter, mode, setMode, tableEdit, isAddModalOpen, setIsAddModalOpen, isEndedView, isArchiveView, warpOptions, weftOptions, cardTitle, editToggle, handleAddFormKeyDown, handleCreateQuality, sheetDate } = t
 
   return (
     <div className="card">
@@ -31,29 +33,42 @@ export function QualityMasterTable(props: QualityMasterTableProps) {
         </div>
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
           {isEndedView && (
-            <div className="btn-group btn-group-sm" role="group" aria-label="Fabric type filter">
-              <button
-                type="button"
-                className={`btn ${endsFabricFilter === 'ALL' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                onClick={() => setEndsFabricFilter('ALL')}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                className={`btn ${endsFabricFilter === 'Suiting' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                onClick={() => setEndsFabricFilter('Suiting')}
-              >
-                Suiting
-              </button>
-              <button
-                type="button"
-                className={`btn ${endsFabricFilter === 'Shirting' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                onClick={() => setEndsFabricFilter('Shirting')}
-              >
-                Shirting
-              </button>
-            </div>
+            <>
+              <div className="btn-group btn-group-sm" role="group" aria-label="Fabric type filter">
+                <button
+                  type="button"
+                  className={`btn ${endsFabricFilter === 'ALL' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                  onClick={() => setEndsFabricFilter('ALL')}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${endsFabricFilter === 'Suiting' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                  onClick={() => setEndsFabricFilter('Suiting')}
+                >
+                  Suiting
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${endsFabricFilter === 'Shirting' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                  onClick={() => setEndsFabricFilter('Shirting')}
+                >
+                  Shirting
+                </button>
+              </div>
+
+              <ExportPdfButton
+                filename={`Quality-Ends-Report-${sheetDate || ''}`}
+                sheetLabel="Quality Ends • Completion Register"
+              />
+
+              <WhatsAppShareButton
+                documentTitle="Quality Ends"
+                message={`*Sara Textile — Quality Ends*${sheetDate ? `\n${sheetDate}` : ''}`}
+                onDownloadPdf={() => exportSheetPdf(`Quality-Ends-Report-${sheetDate || ''}`, 'Quality Ends • Completion Register')}
+              />
+            </>
           )}
           {!toolbarInChrome && editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />

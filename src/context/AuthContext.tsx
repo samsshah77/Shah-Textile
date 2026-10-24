@@ -33,6 +33,7 @@ interface AuthContextType {
   canEditAccounts: boolean
   canViewProduction: boolean
   canEditProduction: boolean
+  isFaultInspector: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -41,6 +42,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: 'Main Admin',
   accountant: 'Accountant',
   quality_controller: 'Quality Controller',
+  fault: 'Floor Fault Inspector',
 }
 
 function toAppUser(raw: AuthUser & { roleLabel?: string; department?: string | null }): User {
@@ -134,11 +136,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(next)
       // Accountant needs Accounts/Payroll edit; production edit stays role-gated
       const role = (data.user.role || '').toLowerCase()
+      const isFault = role === 'fault' || data.user.email?.toLowerCase() === 'kamran@saratextile.com'
       setIsEditModeEnabled(role === 'accountant' || role === 'admin')
+      const targetUrl = isFault ? '/floor/fault-reports' : '/dashboard'
       if (typeof window !== 'undefined') {
-        window.location.assign('/dashboard')
+        window.location.assign(targetUrl)
       } else {
-        router.replace('/dashboard')
+        router.replace(targetUrl)
       }
       return { success: true }
     } catch (err: unknown) {
@@ -170,10 +174,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.role === 'admin'
   const isAccountant = user?.role?.toLowerCase() === 'accountant'
   const isQualityController = user?.role?.toLowerCase() === 'quality_controller'
+  const isFaultInspector = user?.role?.toLowerCase() === 'fault' || user?.email?.toLowerCase() === 'kamran@saratextile.com'
   // Accounts + Salary: Tufail edits, Javed (admin) views, nobody else (see accountsAccess.ts)
   const canViewAccounts = canViewFinance(user)
   const canEditAccounts = isAccountsController(user)
-  const canViewProduction = true
+  const canViewProduction = !isFaultInspector
   const canEditProduction = isAdmin || isQualityController
 
   return (
@@ -191,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAdmin,
         isAccountant,
         isQualityController,
+        isFaultInspector,
         isEditModeEnabled,
         toggleEditMode,
         setEditMode,

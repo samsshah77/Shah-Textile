@@ -24,7 +24,9 @@ import { ProductionDateFilterBar } from '@/components/floor/ProductionDateFilter
 import { NewDayProductionModal } from '@/components/floor/NewDayProductionModal'
 import { ProductionWorkspaceSkeleton } from '@/components/floor/ProductionSkeleton'
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
-import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfButton'
+import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
+import { productionWhatsAppText } from '@/lib/floor/shareText'
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
@@ -60,6 +62,7 @@ function ProductionWorkspaceContent() {
   const [beamEdit, setBeamEdit] = useState(false)
   const [beamAddOpen, setBeamAddOpen] = useState(false)
   const [entryEdit, setEntryEdit] = useState(false)
+  const [entryScanOpen, setEntryScanOpen] = useState(false)
   const [fabricFaultEdit, setFabricFaultEdit] = useState(false)
   const [yarnEdit, setYarnEdit] = useState(false)
   const [yarnAddOpen, setYarnAddOpen] = useState(false)
@@ -116,12 +119,14 @@ function ProductionWorkspaceContent() {
     loading,
   } = useProductionGrid()
 
-  // ?date=YYYY-MM-DD (e.g. from the Data Check page) opens that day once.
+  // ?date=YYYY-MM-DD (e.g. from the Data Check page or a WhatsApp link) opens that day once.
   const dateParam = searchParams.get('date')
+
   useEffect(() => {
     if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) setSelectedDate(dateParam)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateParam])
+
 
   // A locked production month is view-only for everyone (the server refuses changes too).
   const monthLocked = useFloorMonthLocked(selectedDate.slice(0, 7))
@@ -308,14 +313,25 @@ function ProductionWorkspaceContent() {
               )}
 
               {currentTab === 'entry' && canEditDay && (
-                <button
-                  type="button"
-                  className={`btn btn-sm ${entryEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
-                  onClick={() => setEntryEdit(!entryEdit)}
-                >
-                  <i className={`bi ${entryEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
-                  {entryEdit ? 'Done' : 'Edit'}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${entryEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
+                    onClick={() => setEntryEdit(!entryEdit)}
+                  >
+                    <i className={`bi ${entryEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
+                    {entryEdit ? 'Done' : 'Edit'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5 shadow-xs"
+                    onClick={() => setEntryScanOpen(true)}
+                    title="Register photo se Loom ke mutabiq Weight, Shift A aur Shift B auto-fill karein"
+                  >
+                    <i className="bi bi-camera-fill" />
+                    <span>Photo se Entry</span>
+                  </button>
+                </>
               )}
 
               {currentTab === 'fabric-fault' && canEditDay && (
@@ -382,11 +398,17 @@ function ProductionWorkspaceContent() {
                     type="button"
                     className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1.5"
                     onClick={() => setIsSheetExportOpen(true)}
-                    title="Save PDF, Print, Share via WhatsApp or Email"
+                    title="PDF save / print"
                   >
                     <i className="bi bi-file-earmark-pdf" />
                     <span>PDF</span>
                   </button>
+
+                  <WhatsAppShareButton
+                    documentTitle={`Production Sheet ${selectedDate}`}
+                    message={() => productionWhatsAppText(selectedDate, entries)}
+                    onDownloadPdf={() => exportSheetPdf(`Production-Sheet-${selectedDate}`, `Production Sheet - ${selectedDate}`)}
+                  />
                 </>
               ) : (
                 <ExportPdfButton
@@ -441,6 +463,8 @@ function ProductionWorkspaceContent() {
                 toolbarInChrome
                 tableEdit={entryEdit}
                 onTableEditChange={setEntryEdit}
+                scanOpen={entryScanOpen}
+                onScanOpenChange={setEntryScanOpen}
               />
             )}
 

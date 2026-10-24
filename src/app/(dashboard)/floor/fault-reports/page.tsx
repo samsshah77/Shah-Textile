@@ -8,6 +8,7 @@ type Report = {
   id: string
   date: string
   loomNumber: number
+  shift?: 'A' | 'B'
   text: string
   media: Media[]
   createdBy: string
@@ -70,7 +71,7 @@ function uploadFile(blob: Blob, name: string, onProgress: (p: number) => void): 
 
 /**
  * Kamran Fault — floor fault reports from the phone: pick a loom, take photos / video,
- * type or speak the fault, send. Everyone with Production access sees the day's list.
+ * type or speak the fault, send. Automatically updates the Fabric Fault page.
  */
 export default function FaultReportsPage() {
   const [date, setDate] = useState(today)
@@ -79,6 +80,7 @@ export default function FaultReportsPage() {
   const [filterLoom, setFilterLoom] = useState('')
 
   const [loom, setLoom] = useState('')
+  const [shift, setShift] = useState<'A' | 'B'>('A')
   const [text, setText] = useState('')
   const [pending, setPending] = useState<Pending[]>([])
   const [sending, setSending] = useState(false)
@@ -187,7 +189,13 @@ export default function FaultReportsPage() {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ date, loomNumber: Number(loom), text, media: ready.map((p) => ({ url: p.url, kind: p.kind })) }),
+        body: JSON.stringify({
+          date,
+          loomNumber: Number(loom),
+          shift,
+          text,
+          media: ready.map((p) => ({ url: p.url, kind: p.kind })),
+        }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Bheja nahi gaya')
@@ -195,7 +203,7 @@ export default function FaultReportsPage() {
       setPending([])
       setText('')
       setLoom('')
-      setFormMsg({ ok: true, text: `Loom ${json.report.loomNumber} ka fault bhej diya.` })
+      setFormMsg({ ok: true, text: `Loom ${json.report.loomNumber} (Shift ${json.report.shift || shift}) ka fault bhej diya — Fabric Fault page par update ho gaya.` })
       void load()
     } catch (e) {
       setFormMsg({ ok: false, text: e instanceof Error ? e.message : 'Bheja nahi gaya' })
@@ -240,18 +248,43 @@ export default function FaultReportsPage() {
       {data?.canPost && (
         <div className="card shadow-sm mb-4">
           <div className="card-body p-3">
-            <label className="form-label small fw-semibold mb-1" htmlFor="fault-loom">
-              Loom
-            </label>
-            <select id="fault-loom" className="form-select mb-3" value={loom} onChange={(e) => setLoom(e.target.value)}>
-              <option value="">— Loom chunein —</option>
-              {data.looms.map((l) => (
-                <option key={l.loomNumber} value={l.loomNumber}>
-                  Loom {l.loomNumber}
-                  {l.name && l.name !== String(l.loomNumber) ? ` · ${l.name}` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="row g-2 mb-3">
+              <div className="col-7 col-sm-8">
+                <label className="form-label small fw-semibold mb-1" htmlFor="fault-loom">
+                  Loom
+                </label>
+                <select id="fault-loom" className="form-select" value={loom} onChange={(e) => setLoom(e.target.value)}>
+                  <option value="">— Loom chunein —</option>
+                  {data.looms.map((l) => (
+                    <option key={l.loomNumber} value={l.loomNumber}>
+                      Loom {l.loomNumber}
+                      {l.name && l.name !== String(l.loomNumber) ? ` · ${l.name}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-5 col-sm-4">
+                <label className="form-label small fw-semibold mb-1">
+                  Shift
+                </label>
+                <div className="btn-group w-100" role="group" aria-label="Shift selection">
+                  <button
+                    type="button"
+                    className={`btn ${shift === 'A' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setShift('A')}
+                  >
+                    Shift A
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${shift === 'B' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setShift('B')}
+                  >
+                    Shift B
+                  </button>
+                </div>
+              </div>
+            </div>
 
             <div className="d-flex flex-wrap gap-2 mb-2">
               <input ref={photoRef} type="file" accept="image/*" capture="environment" className="d-none" aria-label="Photo lein" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
@@ -367,6 +400,9 @@ export default function FaultReportsPage() {
             <div className="card-body p-3">
               <div className="d-flex align-items-center gap-2 mb-2">
                 <span className="badge text-bg-primary fs-6">Loom {r.loomNumber}</span>
+                <span className={`badge fs-6 ${r.shift === 'B' ? 'bg-warning text-dark' : 'bg-info text-dark'}`}>
+                  Shift {r.shift || 'A'}
+                </span>
                 {loomName(r.loomNumber) && loomName(r.loomNumber) !== String(r.loomNumber) && (
                   <span className="small text-secondary">{loomName(r.loomNumber)}</span>
                 )}

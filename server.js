@@ -1,6 +1,13 @@
 // Production Server for Plesk Phusion Passenger & Next.js Standalone
 const path = require('path')
 
+// Cross-tenant isolation: load environment variables from ../.env.production
+try {
+  require('./.bootstrap.cjs')
+} catch (e) {
+  // .bootstrap.cjs is optional in development
+}
+
 process.env.NODE_ENV = 'production'
 process.chdir(__dirname)
 

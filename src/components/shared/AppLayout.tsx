@@ -15,17 +15,23 @@ import { NavigationProgress } from '@/components/shared/NavigationProgress'
 const BODY_ERP_CLASSES = ['layout-fixed', 'sidebar-expand-lg', 'bg-body-tertiary'] as const
 
 function MainContent({ children }: { children: React.ReactNode }) {
-  const { isQualityController } = useAuth()
+  const { isQualityController, isFaultInspector } = useAuth()
   const pathname = usePathname()
   const router = useRouter()
 
   useEffect(() => {
+    if (isFaultInspector) {
+      if (pathname !== '/floor/fault-reports') {
+        router.replace('/floor/fault-reports')
+      }
+      return
+    }
     if (isQualityController) {
       if (pathname.startsWith('/payroll') || pathname.startsWith('/accounts')) {
         router.replace('/dashboard')
       }
     }
-  }, [isQualityController, pathname, router])
+  }, [isQualityController, isFaultInspector, pathname, router])
 
   return (
     <main className="app-main bg-body-tertiary sara-app-main">

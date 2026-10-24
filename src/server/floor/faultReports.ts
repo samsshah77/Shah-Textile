@@ -12,6 +12,7 @@ export interface FaultReport {
   id: string
   date: string
   loomNumber: number
+  shift: 'A' | 'B'
   text: string
   media: FaultMedia[]
   createdBy: string
@@ -24,6 +25,7 @@ const DDL = [
     "id" TEXT PRIMARY KEY,
     "date" DATE NOT NULL,
     "loomNumber" INTEGER NOT NULL,
+    "shift" TEXT DEFAULT 'A',
     "text" TEXT NOT NULL DEFAULT '',
     "media" JSONB NOT NULL DEFAULT '[]'::jsonb,
     "createdBy" TEXT NOT NULL DEFAULT '',
@@ -31,6 +33,7 @@ const DDL = [
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "deletedAt" TIMESTAMP(3)
   )`,
+  `ALTER TABLE "floor_fault_reports" ADD COLUMN IF NOT EXISTS "shift" TEXT DEFAULT 'A'`,
   `CREATE INDEX IF NOT EXISTS "floor_fault_reports_date_idx" ON "floor_fault_reports"("date", "createdAt")`,
   `CREATE INDEX IF NOT EXISTS "floor_fault_reports_loom_idx" ON "floor_fault_reports"("loomNumber", "date")`,
 ]
@@ -52,6 +55,7 @@ type Row = {
   id: string
   date: Date | string
   loomNumber: number
+  shift?: string | null
   text: string
   media: unknown
   createdBy: string
@@ -71,6 +75,7 @@ function toReport(r: Row): FaultReport {
     id: r.id,
     date: ymd(r.date),
     loomNumber: Number(r.loomNumber),
+    shift: r.shift === 'B' ? 'B' : 'A',
     text: r.text || '',
     media: media.filter((m) => m && typeof m.url === 'string' && (m.kind === 'image' || m.kind === 'video')),
     createdBy: r.createdBy || '',
@@ -100,24 +105,32 @@ export async function listFaultReports(opts: { from: string; to: string; loom?: 
 export async function createFaultReport(input: {
   date: string
   loomNumber: number
+  shift?: 'A' | 'B'
   text: string
   media: FaultMedia[]
   createdBy: string
   createdById: string
 }): Promise<FaultReport> {
   await ensureFaultReportTable()
+  const shift = input.shift === 'B' ? 'B' : 'A'
   const id = `fr_${Date.now().toString(36)}${randomBytes(4).toString('hex')}`
   const rows = await prisma.$queryRawUnsafe<Row[]>(
-    `INSERT INTO "floor_fault_reports" ("id","date","loomNumber","text","media","createdBy","createdById","createdAt")
-     VALUES ($1, $2::date, $3, $4, $5::jsonb, $6, $7, (now() AT TIME ZONE 'UTC')) RETURNING *`,
+    `INSERT INTO "floor_fault_reports" ("id","date","loomNumber","shift","text","media","createdBy","createdById","createdAt")
+     VALUES ($1, $2::date, $3, $4, $5, $6::jsonb, $7, $8, (now() AT TIME ZONE 'UTC')) RETURNING *`,
     id,
     input.date,
     input.loomNumber,
+    shift,
     input.text,
     JSON.stringify(input.media),
     input.createdBy,
     input.createdById
   )
+
+  // Not copied into the production sheet: the Fabric Fault tab shows these reports beside
+  // the sheet's own faults, so a floor report never changes production rows (locks, hashes,
+  // approvals and the ledger stay exactly as Daily Entry left them).
+
   return toReport(rows[0])
 }
 

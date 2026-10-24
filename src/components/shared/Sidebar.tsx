@@ -92,13 +92,14 @@ const FLOOR_ITEMS: NavLeaf[] = [
     activeCheck: (p, sp) =>
       p === '/floor/production' && sp.get('tab') === 'fabric-fault',
   },
-  {
-    title: 'Kamran Fault',
-    href: '/floor/fault-reports',
-    icon: 'bi-camera-video',
-    activeCheck: (p) => p.startsWith('/floor/fault-reports'),
-  },
 ]
+
+const KAMRAN_FAULT_ITEM: NavLeaf = {
+  title: 'Kamran Fault',
+  href: '/floor/fault-reports',
+  icon: 'bi-camera-video',
+  activeCheck: (p) => p.startsWith('/floor/fault-reports'),
+}
 
 const ACCOUNTS_ITEMS: NavLeaf[] = [
   {
@@ -229,10 +230,10 @@ const ADMIN_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p.startsWith('/admin/users') || p.startsWith('/admin/approvals'),
   },
   {
-    title: 'Roles & Permissions',
+    title: 'Roles',
     href: '/admin/roles',
     icon: 'bi-person-gear',
-    activeCheck: (p) => p.startsWith('/admin/roles') || p.startsWith('/admin/permissions'),
+    activeCheck: (p) => p.startsWith('/admin/roles'),
   },
   {
     title: 'System',
@@ -288,7 +289,7 @@ function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: st
 function SidebarContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { isQualityController, canViewAccounts, isAdmin, isAccountant } = useAuth()
+  const { isQualityController, canViewAccounts, isAdmin, isAccountant, isFaultInspector } = useAuth()
 
   useEffect(() => {
     ensureSidebarOverlay()
@@ -305,6 +306,16 @@ function SidebarContent() {
   }, [pathname, searchParams])
 
   const trees: NavTree[] = useMemo(() => {
+    if (isFaultInspector) {
+      return [
+        {
+          title: 'Floor Fault',
+          icon: 'bi-camera-video',
+          items: [KAMRAN_FAULT_ITEM],
+        },
+      ]
+    }
+
     const floorItems = isAccountant
       ? FLOOR_ITEMS.filter((item) => item.title === 'Production Sheet')
       : FLOOR_ITEMS
@@ -358,14 +369,14 @@ function SidebarContent() {
       )
     }
     return list
-  }, [isQualityController, canViewAccounts, isAdmin, isAccountant])
+  }, [isQualityController, canViewAccounts, isAdmin, isAccountant, isFaultInspector])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
       <div className="sidebar-brand d-flex align-items-center justify-content-between pe-2">
-        <Link href="/dashboard" className="brand-link flex-grow-1">
+        <Link href={isFaultInspector ? "/floor/fault-reports" : "/dashboard"} className="brand-link flex-grow-1">
           <img
             src="/saratextile.png"
             alt="Sara Textile"
@@ -393,19 +404,23 @@ function SidebarContent() {
             role="navigation"
             data-accordion="false"
           >
-            <li className="nav-header">MAIN</li>
-            <li className="nav-item">
-              <Link
-                href="/dashboard"
-                className={cn('nav-link', isDashboard && 'active')}
-                onClick={() => {
-                  if (isSidebarMobileViewport()) closeSidebar()
-                }}
-              >
-                <i className="nav-icon bi bi-speedometer2" />
-                <p>Dashboard</p>
-              </Link>
-            </li>
+            {!isFaultInspector && (
+              <>
+                <li className="nav-header">MAIN</li>
+                <li className="nav-item">
+                  <Link
+                    href="/dashboard"
+                    className={cn('nav-link', isDashboard && 'active')}
+                    onClick={() => {
+                      if (isSidebarMobileViewport()) closeSidebar()
+                    }}
+                  >
+                    <i className="nav-icon bi bi-speedometer2" />
+                    <p>Dashboard</p>
+                  </Link>
+                </li>
+              </>
+            )}
 
             {trees.map((tree) => {
               const groupActive = tree.items.some((item) =>

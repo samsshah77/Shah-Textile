@@ -20,6 +20,12 @@ const ROLE_META: Record<string, { label: string; department: string; description
     description: "Access to manage salaries, invoices, payroll, and financial reports.",
     canSignup: true,
   },
+  fault: {
+    label: "Floor Fault Inspector",
+    department: "Floor & Quality Control",
+    description: "Kamran Fault: loom faults with photo / video / note. Cannot change production numbers.",
+    canSignup: false,
+  },
   quality_controller: {
     label: "Quality Controller",
     department: "Floor & Quality Control",

@@ -291,14 +291,14 @@ function HeaderContent() {
               </li>
               {isAdmin && (
                 <li className="user-footer">
-                  <Link href="/admin/approvals" className="btn btn-default btn-flat btn-sm">
-                    Approvals
+                  <Link href="/admin/users" className="btn btn-default btn-flat btn-sm">
+                    Users
                     {pendingCount > 0 && (
                       <span className="badge text-bg-warning ms-1">{pendingCount}</span>
                     )}
                   </Link>
-                  <Link href="/admin/roles" className="btn btn-default btn-flat btn-sm float-end">
-                    Roles
+                  <Link href="/admin/system" className="btn btn-default btn-flat btn-sm float-end">
+                    System
                   </Link>
                 </li>
               )}
@@ -311,14 +311,6 @@ function HeaderContent() {
                 >
                   {isLoggingOut ? 'Signing Out...' : 'Sign Out'}
                 </button>
-                {isAdmin && (
-                  <Link
-                    href="/admin/permissions"
-                    className="btn btn-default btn-flat btn-sm float-end"
-                  >
-                    Permissions
-                  </Link>
-                )}
               </li>
             </ul>
           </li>

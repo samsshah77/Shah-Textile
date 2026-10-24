@@ -40,11 +40,18 @@ export function useProductionGrid() {
   const [dateReady, setDateReady] = useState(false)
 
   useEffect(() => {
-    const today = getProductionToday()
-    setSelectedDateState(today)
-    setSelectedMonth(today.slice(0, 7) || getProductionTodayMonth())
+    let initialDate = getProductionToday()
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search)
+      const qDate = sp.get('date')
+      if (qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)) {
+        initialDate = qDate
+      }
+    }
+    setSelectedDateState(initialDate)
+    setSelectedMonth(initialDate.slice(0, 7) || getProductionTodayMonth())
     try {
-      sessionStorage.setItem(FLOOR_DATE_KEY, today)
+      sessionStorage.setItem(FLOOR_DATE_KEY, initialDate)
     } catch {
       // ignore
     }

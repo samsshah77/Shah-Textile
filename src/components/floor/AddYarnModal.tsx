@@ -13,6 +13,9 @@ function sanitizeKg(raw: string): string {
   return `${cleaned.slice(0, dot + 1)}${cleaned.slice(dot + 1).replace(/\./g, '').slice(0, 2)}`
 }
 
+/** "20/1 Pv-China" and "20/1-pv china" are the same yarn. */
+const yarnKey = (s: string) => s.toLowerCase().replace(/[\s\-_.]+/g, '')
+
 function roundToTwo(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
@@ -41,6 +44,8 @@ export function AddYarnModal({
   const [bagCountText, setBagCountText] = useState('5')
   const [bagKg, setBagKg] = useState<string[]>(Array(5).fill(''))
   const [error, setError] = useState<string | null>(null)
+  const [showSuggest, setShowSuggest] = useState(false)
+  const [suggestIndex, setSuggestIndex] = useState(0)
 
   const bagInputRefs = useRef<(HTMLInputElement | null)[]>([])
 
@@ -72,6 +77,28 @@ export function AddYarnModal({
     })
   }
 
+  /** Existing yarns that match what is typed (anywhere in the name), best first. */
+  const suggestions = useMemo(() => {
+    const k = yarnKey(yarnType)
+    const list = existingYarns.filter((y) => y.yarnType.trim())
+    if (!k) return list.slice(0, 8)
+    return list
+      .filter((y) => yarnKey(y.yarnType).includes(k))
+      .sort((a, b) => Number(yarnKey(b.yarnType).startsWith(k)) - Number(yarnKey(a.yarnType).startsWith(k)))
+      .slice(0, 8)
+  }, [existingYarns, yarnType])
+  /** The stock row this arrival goes into (same name, ignoring spaces / dashes / case). */
+  const matchedYarn = useMemo(() => {
+    const k = yarnKey(yarnType)
+    return k ? existingYarns.find((y) => yarnKey(y.yarnType) === k) || null : null
+  }, [existingYarns, yarnType])
+
+  const pickYarn = (y: YarnMaster) => {
+    setYarnType(y.yarnType)
+    setShowSuggest(false)
+    setError(null)
+  }
+
   // Weight Calculations
   const numericWeights = useMemo(
     () => bagKg.map((v) => roundToTwo(parseFloat(v) || 0)),
@@ -95,7 +122,8 @@ export function AddYarnModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = yarnType.trim()
+    // Same yarn typed a little differently → add to the existing stock row, not a new one.
+    const trimmed = matchedYarn ? matchedYarn.yarnType : yarnType.trim()
     if (!trimmed) {
       setError('Please enter or select a yarn quality.')
       return
@@ -162,29 +190,69 @@ export function AddYarnModal({
                   <label className="form-label small fw-semibold sara-add-beam-label mb-1">
                     Yarn / Quality
                   </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="e.g. 20/1 Pv China"
-                    list="sara-existing-yarn-list"
-                    value={yarnType}
-                    onChange={(e) => {
-                      setYarnType(e.target.value)
-                      setError(null)
-                    }}
-                    autoFocus
-                    required
-                  />
-                  {existingYarns.length > 0 && (
-                    <datalist id="sara-existing-yarn-list">
-                      {existingYarns.map((y) => (
-                        <option
-                          key={y.id}
-                          value={y.yarnType}
-                          label={`Stock: ${y.balanceKg.toFixed(2)} kg`}
-                        />
-                      ))}
-                    </datalist>
+                  <div className="position-relative">
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. 20/1 Pv China"
+                      autoComplete="off"
+                      role="combobox"
+                      aria-expanded={showSuggest && suggestions.length > 0}
+                      aria-controls="sara-yarn-suggest"
+                      value={yarnType}
+                      onChange={(e) => {
+                        setYarnType(e.target.value)
+                        setShowSuggest(true)
+                        setSuggestIndex(0)
+                        setError(null)
+                      }}
+                      onFocus={() => setShowSuggest(true)}
+                      onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
+                      onKeyDown={(e) => {
+                        if (!showSuggest || suggestions.length === 0) return
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          setSuggestIndex((i) => Math.min(suggestions.length - 1, i + 1))
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          setSuggestIndex((i) => Math.max(0, i - 1))
+                        } else if (e.key === 'Enter' && yarnType.trim() && !matchedYarn) {
+                          e.preventDefault()
+                          pickYarn(suggestions[suggestIndex] || suggestions[0])
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          e.nativeEvent.stopImmediatePropagation()
+                          setShowSuggest(false)
+                        }
+                      }}
+                      autoFocus
+                      required
+                    />
+                    {showSuggest && suggestions.length > 0 && !matchedYarn && (
+                      <ul id="sara-yarn-suggest" role="listbox" className="list-group position-absolute w-100 shadow-sm" style={{ zIndex: 5, maxHeight: 240, overflowY: 'auto' }}>
+                        {suggestions.map((y, i) => (
+                          <li key={y.id} role="option" aria-selected={i === suggestIndex}>
+                            <button
+                              type="button"
+                              className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1.5 small ${i === suggestIndex ? 'active' : ''}`}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => pickYarn(y)}
+                            >
+                              <span className="fw-semibold">{y.yarnType}</span>
+                              <span className={i === suggestIndex ? '' : 'text-secondary'}>Stock {Number(y.balanceKg || 0).toFixed(2)} kg</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  {yarnType.trim() && (
+                    <div className={`form-text small ${matchedYarn ? 'text-success' : 'text-secondary'}`}>
+                      {matchedYarn
+                        ? `"${matchedYarn.yarnType}" pehle se hai (stock ${Number(matchedYarn.balanceKg || 0).toFixed(2)} kg) — yeh maal usi mein jama hoga.`
+                        : 'Naya yarn banega.'}
+                    </div>
                   )}
                 </div>
 

@@ -31,6 +31,8 @@ interface FloorEntryTableProps {
   toolbarInChrome?: boolean
   tableEdit?: boolean
   onTableEditChange?: (next: boolean) => void
+  scanOpen?: boolean
+  onScanOpenChange?: (open: boolean) => void
 }
 
 const DEFAULT_WIDTHS: Record<string, number> = {
@@ -60,6 +62,8 @@ export function FloorEntryTable({
   toolbarInChrome = false,
   tableEdit: tableEditProp,
   onTableEditChange,
+  scanOpen: scanOpenProp,
+  onScanOpenChange,
 }: FloorEntryTableProps) {
   const { user, isAdmin, isQualityController } = useAuth()
   const { showConfirm, showSuccessSoon, showError } = useAlertDialog()
@@ -72,7 +76,13 @@ export function FloorEntryTable({
   /** Loom# cell highlight while any field in that row is focused. */
   const [activeLoom, setActiveLoom] = useState<number | null>(null)
   const [faultDialogEntry, setFaultDialogEntry] = useState<DailyLoomProductionEntry | null>(null)
-  const [scanOpen, setScanOpen] = useState(false)
+  const [scanOpenLocal, setScanOpenLocal] = useState(false)
+
+  const scanOpen = scanOpenProp ?? scanOpenLocal
+  const setScanOpen = (next: boolean) => {
+    onScanOpenChange?.(next)
+    if (scanOpenProp === undefined) setScanOpenLocal(next)
+  }
 
   const tableEdit = tableEditProp ?? tableEditLocal
   const setTableEdit = (next: boolean) => {

@@ -39,12 +39,14 @@ export async function POST(request: NextRequest) {
   const loomNumber = Number(body?.loomNumber)
   const text = typeof body?.text === 'string' ? body.text.trim().slice(0, 2000) : ''
   const media = cleanMedia(body?.media)
+  const shift = body?.shift === 'B' ? 'B' : 'A'
   if (!isYmd(body?.date)) return NextResponse.json({ error: 'Date ghalat hai' }, { status: 400 })
   if (!Number.isInteger(loomNumber) || loomNumber <= 0) return NextResponse.json({ error: 'Loom chunein' }, { status: 400 })
   if (!text && media.length === 0) return NextResponse.json({ error: 'Photo / video ya fault likhein' }, { status: 400 })
   const report = await createFaultReport({
     date: body.date as string,
     loomNumber,
+    shift,
     text,
     media,
     createdBy: check.user.name || check.user.email || '',
