@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
@@ -15,6 +15,13 @@ export default function LoginPage() {
   const { refresh } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("expired")) {
+      setInfo("Your session has expired. Please sign in again.");
+    }
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,6 +75,12 @@ export default function LoginPage() {
         </div>
         <div className="card-body login-card-body">
           <p className="login-box-msg">Sign in to start your session</p>
+          {info ? (
+            <div className="alert alert-warning py-2 mb-3 text-center" role="alert">
+              <i className="bi bi-exclamation-triangle-fill me-2" />
+              {info}
+            </div>
+          ) : null}
           <form onSubmit={submit}>
             <label className="visually-hidden" htmlFor="loginEmail">
               Email

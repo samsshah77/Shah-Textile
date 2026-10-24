@@ -20,6 +20,7 @@ import {
 } from '@/constants/productionCalendar'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { rememberQualityAssignFlash } from '@/lib/qualityAssignFlash'
+import { handleSessionExpired, isSessionExpired } from '@/lib/authGuard'
 
 const FLOOR_DATE_KEY = 'sara_floor_selected_date'
 
@@ -186,11 +187,24 @@ export function useProductionGrid() {
   // what is really saved; a day with edits still on their way to the server is left alone.
   useEffect(() => {
     let active = true
+    let interval: NodeJS.Timeout | null = null
+
+    const stop = () => {
+      active = false
+      if (interval) clearInterval(interval)
+    }
+
+    const onExpired = () => stop()
+    window.addEventListener('auth:session-expired', onExpired)
+
     const syncLatest = async () => {
-      if (typeof window === 'undefined') return
+      if (typeof window === 'undefined' || !active || isSessionExpired()) {
+        stop()
+        return
+      }
       try {
         await preloadFloorSheet(selectedDate, { force: true })
-        if (active && productionMastersService.hasPersistedSheet(selectedDate)) {
+        if (active && !isSessionExpired() && productionMastersService.hasPersistedSheet(selectedDate)) {
           setEntries(productionMastersService.buildSheetForDate(selectedDate, { skipPersist: true }))
         }
       } catch {
@@ -198,14 +212,14 @@ export function useProductionGrid() {
       }
     }
 
-    const interval = setInterval(syncLatest, 15000)
+    interval = setInterval(syncLatest, 15000)
     const handleFocus = () => { void syncLatest() }
     window.addEventListener('focus', handleFocus)
 
     return () => {
-      active = false
-      clearInterval(interval)
+      stop()
       window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('auth:session-expired', onExpired)
     }
   }, [selectedDate])
 

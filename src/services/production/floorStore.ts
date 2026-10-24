@@ -42,6 +42,7 @@ import {
 import type {
   RowHashes,
 } from '@/lib/floor/rowSync'
+import { handleSessionExpired, isSessionExpired } from '@/lib/authGuard'
 
 export const KEY_LOOMS = 'sara_textile_loom_master_v8'
 export const KEY_BEAMS = 'sara_textile_beam_master_v9'
@@ -370,7 +371,7 @@ export async function refreshFloorMastersFromDb(): Promise<void> {
 export async function loadSheetFromDb(
   dateStr: string
 ): Promise<{ entries: DailyLoomProductionEntry[]; hashes: RowHashes } | null> {
-  if (!isClient()) return null
+  if (!isClient() || isSessionExpired()) return null
   try {
     const res = await fetch('/api/floor/store', {
       method: 'POST',
@@ -378,6 +379,10 @@ export async function loadSheetFromDb(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getSheet', date: dateStr }),
     })
+    if (res.status === 401 || res.status === 403 || (res.redirected && res.url.includes('/login'))) {
+      handleSessionExpired()
+      return null
+    }
     const data = await res.json()
     if (data?.ok && Array.isArray(data.entries)) return { entries: data.entries, hashes: data.hashes || {} }
   } catch {
@@ -388,7 +393,7 @@ export async function loadSheetFromDb(
 
 /** Load every saved production day into memory so Quality overall / Beam Track see all days. */
 export async function preloadAllFloorSheets(): Promise<void> {
-  if (!isClient()) return
+  if (!isClient() || isSessionExpired()) return
   try {
     const res = await fetch('/api/floor/store', {
       method: 'POST',
@@ -396,6 +401,10 @@ export async function preloadAllFloorSheets(): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getAllSheets' }),
     })
+    if (res.status === 401 || res.status === 403 || (res.redirected && res.url.includes('/login'))) {
+      handleSessionExpired()
+      return
+    }
     const data = await res.json()
     if (!data?.ok || !Array.isArray(data.sheets)) return
     for (const sheet of data.sheets as { date?: string; entries?: DailyLoomProductionEntry[]; hashes?: RowHashes }[]) {

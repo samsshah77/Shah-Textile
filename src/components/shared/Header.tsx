@@ -9,6 +9,7 @@ import { UserRole } from '@/types/auth'
 import { toggleSidebar } from '@/lib/sidebarToggle'
 import { getCalendarToday } from '@/constants/productionCalendar'
 import { hydratePayrollFromDb, payrollService } from '@/services/payrollService'
+import { handleSessionExpired, isSessionExpired } from '@/lib/authGuard'
 
 function formatHeaderDate(dateStr: string) {
   try {
@@ -178,9 +179,29 @@ function HeaderContent() {
 
   useEffect(() => {
     if (!isAdmin) return
+    let active = true
+    let interval: NodeJS.Timeout | null = null
+
+    const stop = () => {
+      active = false
+      if (interval) clearInterval(interval)
+    }
+
+    const onExpired = () => stop()
+    window.addEventListener('auth:session-expired', onExpired)
+
     const fetchPendingCount = async () => {
+      if (!active || isSessionExpired()) {
+        stop()
+        return
+      }
       try {
         const res = await fetch('/api/admin/users?status=PENDING')
+        if (res.status === 401 || res.status === 403 || (res.redirected && res.url.includes('/login'))) {
+          stop()
+          handleSessionExpired()
+          return
+        }
         const data = await res.json()
         if (data.success && data.counts) {
           setPendingCount(data.counts.pending || 0)
@@ -189,9 +210,13 @@ function HeaderContent() {
         // ignore
       }
     }
+
     fetchPendingCount()
-    const interval = setInterval(fetchPendingCount, 15000)
-    return () => clearInterval(interval)
+    interval = setInterval(fetchPendingCount, 15000)
+    return () => {
+      stop()
+      window.removeEventListener('auth:session-expired', onExpired)
+    }
   }, [isAdmin])
 
   const roleLabel = (role?: UserRole) => {
