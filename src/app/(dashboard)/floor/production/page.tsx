@@ -27,6 +27,10 @@ import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfButton'
 import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { productionWhatsAppText } from '@/lib/floor/shareText'
+import {
+  generateProductionPdfBase64,
+  downloadProductionPdf,
+} from '@/lib/floor/generateProductionPdf'
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
@@ -407,7 +411,8 @@ function ProductionWorkspaceContent() {
                   <WhatsAppShareButton
                     documentTitle={`Production Sheet ${selectedDate}`}
                     message={() => productionWhatsAppText(selectedDate, entries)}
-                    onDownloadPdf={() => exportSheetPdf(`Production-Sheet-${selectedDate}`, `Production Sheet - ${selectedDate}`)}
+                    onDownloadPdf={() => downloadProductionPdf(entries, selectedDate)}
+                    getPdfAttachment={() => generateProductionPdfBase64(entries, selectedDate)}
                   />
                 </>
               ) : (

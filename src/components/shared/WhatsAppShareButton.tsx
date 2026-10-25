@@ -9,10 +9,18 @@ export interface WhatsAppShareButtonProps {
   message: string | (() => string)
   onDownloadPdf?: () => void
   className?: string
+  /** Automatic PDF document attachment builder for server-side WhatsApp transmission */
+  getPdfAttachment?: () => Promise<{ base64: string; filename: string } | null> | { base64: string; filename: string } | null
 }
 
 /** The one WhatsApp button used on every page — same look as the other toolbar buttons. */
-export function WhatsAppShareButton({ documentTitle, message, onDownloadPdf, className = '' }: WhatsAppShareButtonProps) {
+export function WhatsAppShareButton({
+  documentTitle,
+  message,
+  onDownloadPdf,
+  className = '',
+  getPdfAttachment,
+}: WhatsAppShareButtonProps) {
   const [text, setText] = useState<string | null>(null)
   return (
     <>
@@ -25,7 +33,15 @@ export function WhatsAppShareButton({ documentTitle, message, onDownloadPdf, cla
         <i className="bi bi-whatsapp" />
         <span>WhatsApp</span>
       </button>
-      <WhatsAppShareModal isOpen={text !== null} onClose={() => setText(null)} documentTitle={documentTitle} defaultMessage={text || ''} onDownloadPdf={onDownloadPdf} />
+      <WhatsAppShareModal
+        isOpen={text !== null}
+        onClose={() => setText(null)}
+        documentTitle={documentTitle}
+        defaultMessage={text || ''}
+        onDownloadPdf={onDownloadPdf}
+        getPdfAttachment={getPdfAttachment}
+      />
     </>
   )
 }
+

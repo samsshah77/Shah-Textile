@@ -11,24 +11,27 @@ function dayLabel(date: string) {
   }
 }
 
-/** Short WhatsApp text for one day's production sheet (numbers as on the sheet, plus a link). */
+/** Clean WhatsApp summary text for one day's production sheet (numbers + PDF attachment notice). */
 export function productionWhatsAppText(date: string, rows: DailyLoomProductionEntry[]): string {
   const s = summarizeProductionDay(rows)
-  const origin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
-    ? window.location.origin
-    : 'https://saratextilesweaving.com'
-  const viewLink = `${origin}/floor/production?tab=sheet&date=${date}`
-  const printLink = `${origin}/floor/production?tab=sheet&date=${date}&print=1`
   const lines = [
-    `*Sara Textile — Production Sheet*`,
+    `*Sara Textile Weaving Mill*`,
+    `📄 *Daily Loom Production Sheet*`,
     dayLabel(date),
-    ``,
-    `Production: *${n(s.meters)} m* (A ${n(s.shiftA)} / B ${n(s.shiftB)})`,
-    `Efficiency: ${Math.round(s.efficiency)}% · 24h: ${Math.round(s.efficiency24)}%`,
-    `Looms chal rahe: ${s.running} / ${s.looms}`,
+    `─────────────────────────`,
+    `📊 *Total Production:* *${n(s.meters)} m*`,
+    `   • Shift A: ${n(s.shiftA)} m`,
+    `   • Shift B: ${n(s.shiftB)} m`,
+    `⚡ *Running Efficiency:* *${Math.round(s.efficiency)}%* (24h: ${Math.round(s.efficiency24)}%)`,
+    `🏭 *Active Looms:* ${s.running} / ${s.looms} Running`,
   ]
-  if (s.weightKg > 0) lines.push(`Weight: ${n(s.weightKg)} kg`)
-  if (s.stopped.length) lines.push(`Running nahi: ${s.stopped.map((x) => `${x.loom} (${x.status})`).join(', ')}`)
-  lines.push(``, `🔗 *View Sheet:* ${viewLink}`, `🖨️ *Print / Save PDF:* ${printLink}`)
+  if (s.weightKg > 0) lines.push(`⚖️ *Total Weight:* ${n(s.weightKg)} kg`)
+  if (s.stopped.length) {
+    lines.push(`⚠️ *Stopped Looms (${s.stopped.length}):*`)
+    for (const x of s.stopped) {
+      lines.push(`   • L-${String(x.loom).padStart(2, '0')}: ${x.status}${x.remarks ? ` (${x.remarks})` : ''}`)
+    }
+  }
+  lines.push(`─────────────────────────`, `📌 *Attached:* Detailed Loom Production Sheet (.pdf)`)
   return lines.join('\n')
 }

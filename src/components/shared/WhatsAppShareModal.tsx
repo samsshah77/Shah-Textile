@@ -41,6 +41,8 @@ export interface WhatsAppShareModalProps {
   defaultMessage: string
   /** When set, a "PDF save karein" button is shown. */
   onDownloadPdf?: () => void
+  /** Automatic PDF document attachment builder for server-side WhatsApp transmission */
+  getPdfAttachment?: () => Promise<{ base64: string; filename: string } | null> | { base64: string; filename: string } | null
 }
 
 export function WhatsAppShareModal({
@@ -49,6 +51,7 @@ export function WhatsAppShareModal({
   documentTitle,
   defaultMessage,
   onDownloadPdf,
+  getPdfAttachment,
 }: WhatsAppShareModalProps) {
   if (!isOpen) return null
   return (
@@ -58,6 +61,7 @@ export function WhatsAppShareModal({
       documentTitle={documentTitle}
       defaultMessage={defaultMessage}
       onDownloadPdf={onDownloadPdf}
+      getPdfAttachment={getPdfAttachment}
     />
   )
 }
@@ -67,6 +71,7 @@ function ShareBody({
   documentTitle,
   defaultMessage,
   onDownloadPdf,
+  getPdfAttachment,
 }: Omit<WhatsAppShareModalProps, 'isOpen'>) {
   const [number, setNumber] = useState('')
   const [message, setMessage] = useState(defaultMessage)
@@ -79,8 +84,31 @@ function ShareBody({
   const [directError, setDirectError] = useState<string | null>(null)
   const [showQRModal, setShowQRModal] = useState(false)
 
-  // Attached PDF file to send directly
+  // Auto-generated PDF attachment & manual file attachment
+  const [autoPdf, setAutoPdf] = useState<{ base64: string; filename: string } | null>(null)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
+  const [showCustomUpload, setShowCustomUpload] = useState(false)
+
+  // Load auto-generated PDF if builder provided
+  useEffect(() => {
+    if (!getPdfAttachment) return
+    let live = true
+    setGeneratingPdf(true)
+    Promise.resolve(getPdfAttachment())
+      .then((res) => {
+        if (live && res) setAutoPdf(res)
+      })
+      .catch((err) => {
+        console.error('[whatsapp-pdf]', err)
+      })
+      .finally(() => {
+        if (live) setGeneratingPdf(false)
+      })
+    return () => {
+      live = false
+    }
+  }, [getPdfAttachment])
 
   // Check server connection status on mount
   useEffect(() => {
@@ -122,6 +150,8 @@ function ShareBody({
 
     try {
       let fileBase64: string | undefined
+      const sendFilename =
+        attachedFile?.name || autoPdf?.filename || `${documentTitle.replace(/\s+/g, '_')}.pdf`
 
       if (attachedFile) {
         const buffer = await attachedFile.arrayBuffer()
@@ -131,6 +161,8 @@ function ShareBody({
           binary += String.fromCharCode(bytes[i])
         }
         fileBase64 = btoa(binary)
+      } else if (autoPdf) {
+        fileBase64 = autoPdf.base64
       }
 
       const res = await fetch('/api/whatsapp/send', {
@@ -141,7 +173,7 @@ function ShareBody({
           number: to,
           text: message.trim(),
           fileBase64,
-          filename: attachedFile?.name || `${documentTitle.replace(/\s+/g, '_')}.pdf`,
+          filename: sendFilename,
           mimeType: attachedFile?.type || 'application/pdf',
           caption: message.trim(),
         }),
@@ -279,56 +311,114 @@ function ShareBody({
                 />
               </div>
 
-              {/* PDF Document Attachment Box */}
-              <div className="p-2.5 rounded bg-light border mb-2">
-                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1.5">
-                  <div className="small fw-semibold text-secondary d-flex align-items-center gap-1">
-                    <i className="bi bi-file-earmark-pdf text-danger" />
-                    Direct PDF File Attach Karein (Server se send karne ke liye):
+              {/* PDF Document Attachment Section */}
+              {generatingPdf ? (
+                <div className="p-2.5 rounded bg-light border mb-2 d-flex align-items-center gap-2 text-primary small">
+                  <span className="spinner-border spinner-border-sm" role="status" />
+                  <span>📄 Production Sheet PDF generate ho raha hai...</span>
+                </div>
+              ) : autoPdf && !attachedFile ? (
+                <div className="p-2.5 rounded bg-success-subtle border border-success-subtle mb-2">
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div className="d-flex align-items-center gap-2">
+                      <i className="bi bi-file-earmark-pdf-fill text-danger fs-4" />
+                      <div>
+                        <div className="fw-bold small text-success-emphasis">{autoPdf.filename}</div>
+                        <div className="text-secondary" style={{ fontSize: 11 }}>
+                          <i className="bi bi-check-circle-fill text-success me-1" />
+                          Auto-Attached • Direct WhatsApp par real <strong>.pdf</strong> document deliver hoga
+                        </div>
+                      </div>
+                    </div>
+                    <div className="d-flex align-items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-outline-success py-1 px-2 rounded-pill"
+                        onClick={() => {
+                          const a = document.createElement('a')
+                          a.href = autoPdf.base64
+                          a.download = autoPdf.filename
+                          a.click()
+                        }}
+                        title="PDF copy apne computer me save karein"
+                      >
+                        <i className="bi bi-download me-1" />
+                        Save Copy
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-link text-secondary text-decoration-none py-1 px-1"
+                        onClick={() => setShowCustomUpload((v) => !v)}
+                        title="Doosri custom file attach karein"
+                      >
+                        {showCustomUpload ? 'Hide' : 'Doosri file?'}
+                      </button>
+                    </div>
                   </div>
-                  {onDownloadPdf && (
-                    <button
-                      type="button"
-                      className="btn btn-xs btn-outline-secondary py-0.5 px-2"
-                      onClick={onDownloadPdf}
-                      title="Pehle PDF apne computer mein save karein"
-                    >
-                      <i className="bi bi-download me-1" />
-                      PDF Download Karein
-                    </button>
+
+                  {showCustomUpload && (
+                    <div className="mt-2 pt-2 border-top">
+                      <label className="form-label small text-secondary mb-1">Custom PDF Chunein:</label>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="form-control form-control-sm"
+                        onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
+                      />
+                    </div>
                   )}
                 </div>
+              ) : (
+                <div className="p-2.5 rounded bg-light border mb-2">
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1.5">
+                    <div className="small fw-semibold text-secondary d-flex align-items-center gap-1">
+                      <i className="bi bi-file-earmark-pdf text-danger" />
+                      Direct PDF File Attach Karein (Server se send karne ke liye):
+                    </div>
+                    {onDownloadPdf && (
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-outline-secondary py-0.5 px-2"
+                        onClick={onDownloadPdf}
+                        title="Pehle PDF apne computer mein save karein"
+                      >
+                        <i className="bi bi-download me-1" />
+                        PDF Download Karein
+                      </button>
+                    )}
+                  </div>
 
-                <div className="d-flex align-items-center gap-2">
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    className="form-control form-control-sm"
-                    onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
-                  />
-                  {attachedFile && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-danger py-0 px-2"
-                      onClick={() => setAttachedFile(null)}
-                      title="File hatayein"
-                    >
-                      ×
-                    </button>
+                  <div className="d-flex align-items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="form-control form-control-sm"
+                      onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
+                    />
+                    {attachedFile && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger py-0 px-2"
+                        onClick={() => setAttachedFile(null)}
+                        title="File hatayein"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  {attachedFile ? (
+                    <div className="small text-success mt-1.5 d-flex align-items-center gap-1">
+                      <i className="bi bi-check2-circle" />
+                      <strong>Attached:</strong> {attachedFile.name} ({(attachedFile.size / 1024).toFixed(1)} KB) — yeh file direct WhatsApp par deliver hogi!
+                    </div>
+                  ) : (
+                    <div className="form-text small mt-1" style={{ fontSize: 11 }}>
+                      PDF document direct WhatsApp par bhejne ke liye file attach karein.
+                    </div>
                   )}
                 </div>
-
-                {attachedFile ? (
-                  <div className="small text-success mt-1.5 d-flex align-items-center gap-1">
-                    <i className="bi bi-check2-circle" />
-                    <strong>Attached:</strong> {attachedFile.name} ({(attachedFile.size / 1024).toFixed(1)} KB) — yeh file direct WhatsApp par deliver hogi!
-                  </div>
-                ) : (
-                  <div className="form-text small mt-1" style={{ fontSize: 11 }}>
-                    Agar PDF document direct WhatsApp par bhejni hai to &quot;PDF Download&quot; karke yahan attach karein.
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             {/* Modal Footer */}

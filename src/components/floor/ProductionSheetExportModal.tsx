@@ -3,6 +3,9 @@
 import { exportSheetPdf } from '@/components/shared/ExportPdfButton'
 import { FileDown, Printer, X, Info } from 'lucide-react'
 
+import type { DailyLoomProductionEntry } from '@/types/production'
+import { downloadProductionPdf } from '@/lib/floor/generateProductionPdf'
+
 export type SheetTextSize = 'normal' | 'large' | 'xlarge'
 
 interface ProductionSheetExportModalProps {
@@ -11,13 +14,14 @@ interface ProductionSheetExportModalProps {
   sheetDate: string
   textSize?: SheetTextSize
   onChangeTextSize?: (size: SheetTextSize) => void
-  entries?: unknown[]
+  entries?: DailyLoomProductionEntry[]
 }
 
 export function ProductionSheetExportModal({
   isOpen,
   onClose,
   sheetDate,
+  entries,
 }: ProductionSheetExportModalProps) {
   if (!isOpen) return null
 
@@ -32,7 +36,11 @@ export function ProductionSheetExportModal({
 
   const handleSavePdf = () => {
     onClose()
-    exportSheetPdf(`Production-Sheet-${sheetDate}`, `Production Sheet - ${formattedDate}`)
+    if (entries && entries.length > 0) {
+      downloadProductionPdf(entries, sheetDate)
+    } else {
+      exportSheetPdf(`Production-Sheet-${sheetDate}`, `Production Sheet - ${formattedDate}`)
+    }
   }
 
   const handlePrint = () => {
