@@ -63,17 +63,21 @@ jobs:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_PASS: ${{ secrets.SSH_PASSWORD || secrets.FTP_PASSWORD }}
         run: |
-          # Install sshpass only if needed and avoid mirror failures
-          if ! command -v sshpass >/dev/null 2>&1; then
-            sudo apt-get update -y || true
-            sudo apt-get install -y --no-install-recommends sshpass || true
-          fi
-
           TARGET_HOST=$(echo "$SSH_HOST" | tr -d '\r\n "'\''')
           TARGET_USER=$(echo "$SSH_USER" | tr -d '\r\n "'\''')
 
+          echo "🚀 Deploying to: ${TARGET_HOST:-'<HOST NOT SET>'}"
+          echo "👤 Deploy user: ${TARGET_USER:-'<USER NOT SET>'}"
+          echo "🔑 SSH Key provided: $([ -n "$SSH_KEY" ] && echo 'YES' || echo 'NO')"
+          echo "🔒 Password provided: $([ -n "$SSH_PASS" ] && echo 'YES' || echo 'NO')"
+
+          if [ -z "$TARGET_HOST" ]; then
+            echo "❌ ERROR: Target host is empty. Please verify GitHub Secrets (SSH_HOST or FTP_SERVER)."
+            exit 1
+          fi
+
           mkdir -p ~/.ssh
-          ssh-keyscan -p 22 "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -p 22 "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
           KEY_VALID=false
           if [ -n "$SSH_KEY" ]; then
@@ -90,14 +94,14 @@ jobs:
               KEY_VALID=true
               echo "✅ Valid SSH Key verified!"
             else
-              echo "⚠️ SSH Key invalid format or public key provided. Will attempt Password..."
+              echo "⚠️ SSH Key invalid format. Will attempt password authentication..."
             fi
           fi
 
           if [ "$KEY_VALID" = true ]; then
             echo "🚀 Connecting as '$TARGET_USER' to '$TARGET_HOST' using SSH Key..."
-            scp -P 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no sara-build.zip server.js .bootstrap.cjs "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
-            ssh -p 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
+            scp -P 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sara-build.zip server.js .bootstrap.cjs "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+            ssh -p 22 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${TARGET_USER}@${TARGET_HOST}" "
               cd /var/www/vhosts/saratextilesweaving.com/httpdocs
               unzip -o -q sara-build.zip
               rm -f sara-build.zip
@@ -106,18 +110,41 @@ jobs:
               echo '✅ Production build successfully unpacked and Passenger restarted!'
             "
           elif [ -n "$SSH_PASS" ]; then
-            echo "🔑 Connecting as '$TARGET_USER' to '$TARGET_HOST' using Password (sshpass)..."
-            sshpass -p "$SSH_PASS" scp -P 22 -o StrictHostKeyChecking=no sara-build.zip server.js "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
-            sshpass -p "$SSH_PASS" ssh -p 22 -o StrictHostKeyChecking=no "${TARGET_USER}@${TARGET_HOST}" "
-              cd /var/www/vhosts/saratextilesweaving.com/httpdocs
-              unzip -o -q sara-build.zip
-              rm -f sara-build.zip
-              mkdir -p tmp
-              touch tmp/restart.txt
-              echo '✅ Production build successfully unpacked and Passenger restarted!'
-            "
+            echo "🔑 Connecting as '$TARGET_USER' to '$TARGET_HOST' using Password (native OpenSSH askpass)..."
+            # Setup native OpenSSH askpass (Zero external dependencies, immune to apt mirror glitches!)
+            cat << 'EOF' > /tmp/deploy_askpass.sh
+#!/bin/sh
+printf '%s\n' "$SSH_PASS"
+EOF
+            chmod 700 /tmp/deploy_askpass.sh
+            export SSH_ASKPASS="/tmp/deploy_askpass.sh"
+            export SSH_ASKPASS_REQUIRE="force"
+
+            # Check if sshpass is also available as secondary helper
+            if command -v sshpass >/dev/null 2>&1; then
+              sshpass -p "$SSH_PASS" scp -P 22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sara-build.zip server.js .bootstrap.cjs "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/"
+              sshpass -p "$SSH_PASS" ssh -p 22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${TARGET_USER}@${TARGET_HOST}" "
+                cd /var/www/vhosts/saratextilesweaving.com/httpdocs
+                unzip -o -q sara-build.zip
+                rm -f sara-build.zip
+                mkdir -p tmp
+                touch tmp/restart.txt
+                echo '✅ Production build successfully unpacked and Passenger restarted!'
+              "
+            else
+              setsid -w scp -P 22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sara-build.zip server.js .bootstrap.cjs "${TARGET_USER}@${TARGET_HOST}:/var/www/vhosts/saratextilesweaving.com/httpdocs/" < /dev/null
+              setsid -w ssh -p 22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${TARGET_USER}@${TARGET_HOST}" "
+                cd /var/www/vhosts/saratextilesweaving.com/httpdocs
+                unzip -o -q sara-build.zip
+                rm -f sara-build.zip
+                mkdir -p tmp
+                touch tmp/restart.txt
+                echo '✅ Production build successfully unpacked and Passenger restarted!'
+              " < /dev/null
+            fi
+            rm -f /tmp/deploy_askpass.sh
           else
-            echo "❌ ERROR: Neither a valid SSH Key nor Password was found!"
+            echo "❌ ERROR: Neither a valid SSH Key nor Password was found in GitHub Secrets!"
             exit 1
           fi
 
