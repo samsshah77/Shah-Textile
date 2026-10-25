@@ -48,7 +48,7 @@ services:
   # Persistent session, direct PDF/media & text delivery
   # -------------------------------------------------------------
   whatsapp:
-    image: atendai/evolution-api:v1.8.2
+    image: evoapicloud/evolution-api:v1.8.2
     container_name: sara-whatsapp-gateway
     restart: always
     ports:
