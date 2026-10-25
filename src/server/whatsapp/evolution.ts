@@ -149,7 +149,7 @@ export async function sendWhatsAppDocument({
   const rawBase64 = base64.includes(',') ? base64.split(',')[1].trim() : base64.trim()
   const mediaPayload = `data:${mimeType};base64,${rawBase64}`
 
-  const sendPayload = async (mediaValue: string) => {
+  const sendPayload = async (body: Record<string, unknown>) => {
     return await fetch(`${baseUrl}/message/sendMedia/${encodeURIComponent(instance)}`, {
       method: 'POST',
       headers: {
@@ -157,25 +157,60 @@ export async function sendWhatsAppDocument({
         apikey: apiKey,
       },
       signal: AbortSignal.timeout(35000),
-      body: JSON.stringify({
-        number: cleanNum,
-        mediatype: 'document',
-        mimetype: mimeType,
-        caption: caption || '',
-        media: mediaValue,
-        fileName: filename,
-        filename: filename,
-        delay: 800,
-      }),
+      body: JSON.stringify(body),
     })
   }
 
-  // Attempt with standard clean Data URI first, fallback to raw base64 if needed
-  let res = await sendPayload(mediaPayload)
+  // 1. Primary: Evolution API Baileys schema with mediaMessage container (strictly required by server)
+  let res = await sendPayload({
+    number: cleanNum,
+    options: {
+      delay: 800,
+      presence: 'composing',
+    },
+    mediaMessage: {
+      mediatype: 'document',
+      mimetype: mimeType,
+      caption: caption || '',
+      media: mediaPayload,
+      fileName: filename,
+    },
+  })
+
+  // 2. Retry with rawBase64 inside mediaMessage if status 400
   if (!res.ok && res.status === 400) {
-    const retryRes = await sendPayload(rawBase64).catch(() => null)
+    const retryRes = await sendPayload({
+      number: cleanNum,
+      options: {
+        delay: 800,
+        presence: 'composing',
+      },
+      mediaMessage: {
+        mediatype: 'document',
+        mimetype: mimeType,
+        caption: caption || '',
+        media: rawBase64,
+        fileName: filename,
+      },
+    }).catch(() => null)
     if (retryRes && retryRes.ok) {
       res = retryRes
+    }
+  }
+
+  // 3. Fallback: flat schema if still 400
+  if (!res.ok && res.status === 400) {
+    const flatRes = await sendPayload({
+      number: cleanNum,
+      mediatype: 'document',
+      mimetype: mimeType,
+      caption: caption || '',
+      media: mediaPayload,
+      fileName: filename,
+      delay: 800,
+    }).catch(() => null)
+    if (flatRes && flatRes.ok) {
+      res = flatRes
     }
   }
 
@@ -203,7 +238,7 @@ export async function sendWhatsAppDocument({
   return { success: true, messageId: data?.key?.id }
 }
 
-/** Send direct text message to a recipient number via Evolution API v1 */
+/** Send direct text message to a recipient number via Evolution API */
 export async function sendWhatsAppText({
   number,
   text,
@@ -217,19 +252,41 @@ export async function sendWhatsAppText({
     throw new Error('Valid WhatsApp phone number chahiye (e.g. 0300 1234567)')
   }
 
-  const res = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instance)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: apiKey,
+  const sendTextPayload = async (body: Record<string, unknown>) => {
+    return await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instance)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: apiKey,
+      },
+      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify(body),
+    })
+  }
+
+  // 1. Primary: Evolution API textMessage container
+  let res = await sendTextPayload({
+    number: cleanNum,
+    options: {
+      delay: 600,
+      presence: 'composing',
     },
-    signal: AbortSignal.timeout(15000),
-    body: JSON.stringify({
+    textMessage: {
+      text,
+    },
+  })
+
+  // 2. Fallback: flat schema if 400
+  if (!res.ok && res.status === 400) {
+    const flatRes = await sendTextPayload({
       number: cleanNum,
       text,
       delay: 600,
-    }),
-  })
+    }).catch(() => null)
+    if (flatRes && flatRes.ok) {
+      res = flatRes
+    }
+  }
 
   const data = (await res.json().catch(() => null)) as {
     key?: { id?: string }
