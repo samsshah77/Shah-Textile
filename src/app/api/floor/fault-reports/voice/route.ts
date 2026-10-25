@@ -15,7 +15,7 @@ const isWav = (b: Buffer) => b.length > 44 && b.subarray(0, 4).toString('ascii')
 export async function POST(request: NextRequest) {
   const check = await faultUser(request, 'CREATE')
   if (check.error) return check.error
-  if (!voiceEnabled()) return NextResponse.json({ error: 'Awaz se likhna abhi on nahi (server par Gemini key nahi).' }, { status: 503 })
+  if (!voiceEnabled()) return NextResponse.json({ error: 'Awaz se likhna abhi on nahi (server par Groq ya Gemini key nahi).' }, { status: 503 })
   let form: FormData
   try {
     form = await request.formData()
@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
     console.error('[fault-voice]', status, e instanceof Error ? e.message : e)
     const message =
       status === 401 || status === 403
-        ? 'Server ki Gemini key ghalat hai.'
+        ? 'Server ki AI key (Groq / Gemini) ghalat hai.'
         : status === 429
-          ? 'Gemini ki aaj ki hadd poori. Likh kar bhejein.'
+          ? 'AI service ki hadd / quota poora. Likh kar bhejein.'
           : 'Awaz se likhna abhi nahi hua — likh kar bhejein.'
     return NextResponse.json({ error: message }, { status: 502 })
   }

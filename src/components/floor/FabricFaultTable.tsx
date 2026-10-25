@@ -12,6 +12,11 @@ import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { cn } from '@/lib/utils'
 
+import {
+  FabricFaultMediaDialog,
+  type FloorFaultReportItem,
+} from '@/components/floor/FabricFaultMediaDialog'
+
 interface FabricFaultTableProps {
   entries: DailyLoomProductionEntry[]
   selectedDate: string
@@ -23,20 +28,57 @@ interface FabricFaultTableProps {
   canEdit?: boolean
 }
 
-/** A floor fault report (Kamran Fault page) — shown here read-only, never written into the sheet. */
-type FloorReport = { id: string; loomNumber: number; shift?: 'A' | 'B'; text: string; media: unknown[]; createdBy: string }
-
-function ReportLines({ list }: { list: FloorReport[] }) {
+function ReportLines({
+  list,
+  onOpenMedia,
+}: {
+  list: FloorFaultReportItem[]
+  onOpenMedia: () => void
+}) {
   if (list.length === 0) return null
   return (
-    <div className="mt-1">
-      {list.map((r) => (
-        <div key={r.id} className="small text-primary-emphasis">
-          <i className="bi bi-camera-video me-1" />
-          <span className="fw-semibold">{r.createdBy || 'Floor'}:</span> {r.text || '(sirf photo / video)'}
-          {r.media?.length ? <span className="text-secondary"> · {r.media.length} file</span> : null}
-        </div>
-      ))}
+    <div className="mt-1.5 d-flex flex-column gap-1">
+      {list.map((r, i) => {
+        const photoCount = r.media?.filter((m) => m.kind === 'image').length || 0
+        const videoCount = r.media?.filter((m) => m.kind === 'video').length || 0
+        const hasMedia = photoCount > 0 || videoCount > 0
+
+        return (
+          <div
+            key={r.id || i}
+            className="p-1 px-1.5 rounded bg-white bg-opacity-75 border small text-primary-emphasis d-flex flex-wrap align-items-center justify-content-between gap-1 shadow-xs"
+          >
+            <div className="d-flex align-items-center gap-1 text-truncate" style={{ maxWidth: '78%' }}>
+              <i className="bi bi-camera-video text-primary flex-shrink-0" />
+              <span className="fw-semibold text-dark">{r.createdBy || 'Floor'}:</span>
+              <span className="text-truncate">{r.text || '(sirf photo / video)'}</span>
+            </div>
+            {hasMedia ? (
+              <button
+                type="button"
+                className="btn btn-xs btn-outline-primary py-0 px-1.5 d-inline-flex align-items-center gap-1 rounded-pill"
+                style={{ fontSize: '11px', whiteSpace: 'nowrap' }}
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onOpenMedia()
+                }}
+                title="Photo / Video dialog mein dekhein"
+              >
+                {photoCount > 0 && (
+                  <span>
+                    <i className="bi bi-camera" /> {photoCount}
+                  </span>
+                )}
+                {videoCount > 0 && (
+                  <span>
+                    <i className="bi bi-play-circle" /> {videoCount}
+                  </span>
+                )}
+              </button>
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -55,7 +97,8 @@ export function FabricFaultTable({
   const [onlyWithFault, setOnlyWithFault] = useState(true)
   const [search, setSearch] = useState('')
   const [faultDialogEntry, setFaultDialogEntry] = useState<DailyLoomProductionEntry | null>(null)
-  const [reports, setReports] = useState<FloorReport[]>([])
+  const [reports, setReports] = useState<FloorFaultReportItem[]>([])
+  const [mediaModalTarget, setMediaModalTarget] = useState<{ loomNumber: number; qualityName?: string } | null>(null)
 
   useEffect(() => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate || '')) return
@@ -133,11 +176,10 @@ export function FabricFaultTable({
         <div className="small text-secondary">
           Date: <strong>{selectedDate}</strong> — Shift A / B alag dialog se.
           {reports.length > 0 && (
-            <>
-              {' '}
-              <i className="bi bi-camera-video text-primary" /> {reports.length} floor report —{' '}
-              <Link href="/floor/fault-reports">photo / video dekhein</Link>
-            </>
+            <span className="badge text-bg-light border ms-1 py-1 px-2 text-dark">
+              <i className="bi bi-camera-video text-primary me-1" />
+              {reports.length} floor report{reports.length > 1 ? 's' : ''} (photos/videos table me)
+            </span>
           )}
         </div>
       </div>
@@ -175,8 +217,8 @@ export function FabricFaultTable({
                 <th className="px-2" style={{ minWidth: 140 }}>
                   Shift B
                 </th>
-                <th className="px-2 text-center" style={{ width: 88 }}>
-                  Edit
+                <th className="px-2 text-center" style={{ width: 100 }}>
+                  Action
                 </th>
               </tr>
             </thead>
@@ -184,6 +226,10 @@ export function FabricFaultTable({
               {rows.map((e) => {
                 const seg = e.segmentIndex && e.segmentIndex > 1 ? ` · P${e.segmentIndex}` : ''
                 const { shiftA, shiftB } = resolveShiftFaults(e)
+                const hasMedia = reports.some(
+                  (r) => r.loomNumber === e.loomNumber && (r.media?.length || 0) > 0
+                )
+
                 return (
                   <tr key={e.id || `${e.loomNumber}-${e.segmentIndex || 1}`}>
                     <td className="fw-semibold px-2">
@@ -197,20 +243,44 @@ export function FabricFaultTable({
                     <td className="small px-2">{e.status || '—'}</td>
                     <td className="small px-2" style={{ whiteSpace: 'pre-wrap' }}>
                       {shiftA.trim() || (reportsFor(e, 'A').length ? '' : '—')}
-                      <ReportLines list={reportsFor(e, 'A')} />
+                      <ReportLines
+                        list={reportsFor(e, 'A')}
+                        onOpenMedia={() =>
+                          setMediaModalTarget({ loomNumber: e.loomNumber, qualityName: e.qualityName })
+                        }
+                      />
                     </td>
                     <td className="small px-2" style={{ whiteSpace: 'pre-wrap' }}>
                       {shiftB.trim() || (reportsFor(e, 'B').length ? '' : '—')}
-                      <ReportLines list={reportsFor(e, 'B')} />
+                      <ReportLines
+                        list={reportsFor(e, 'B')}
+                        onOpenMedia={() =>
+                          setMediaModalTarget({ loomNumber: e.loomNumber, qualityName: e.qualityName })
+                        }
+                      />
                     </td>
                     <td className="px-1 text-center">
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-primary py-0"
-                        onClick={() => setFaultDialogEntry(e)}
-                      >
-                        {canEdit ? 'Edit' : 'View'}
-                      </button>
+                      <div className="d-flex align-items-center justify-content-center gap-1">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary py-0"
+                          onClick={() => setFaultDialogEntry(e)}
+                        >
+                          {canEdit ? 'Edit' : 'View'}
+                        </button>
+                        {hasMedia && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-info py-0 px-1.5 text-white"
+                            title="Floor Photos & Videos dekhein"
+                            onClick={() =>
+                              setMediaModalTarget({ loomNumber: e.loomNumber, qualityName: e.qualityName })
+                            }
+                          >
+                            <i className="bi bi-camera-video" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -222,15 +292,32 @@ export function FabricFaultTable({
                     Sheet par row nahi — sirf floor report
                   </td>
                   <td className="small px-2">
-                    <ReportLines list={reports.filter((r) => r.loomNumber === n && (r.shift || 'A') === 'A')} />
+                    <ReportLines
+                      list={reports.filter((r) => r.loomNumber === n && (r.shift || 'A') === 'A')}
+                      onOpenMedia={() =>
+                        setMediaModalTarget({ loomNumber: n, qualityName: 'Floor report' })
+                      }
+                    />
                   </td>
                   <td className="small px-2">
-                    <ReportLines list={reports.filter((r) => r.loomNumber === n && r.shift === 'B')} />
+                    <ReportLines
+                      list={reports.filter((r) => r.loomNumber === n && r.shift === 'B')}
+                      onOpenMedia={() =>
+                        setMediaModalTarget({ loomNumber: n, qualityName: 'Floor report' })
+                      }
+                    />
                   </td>
                   <td className="px-1 text-center">
-                    <Link href="/floor/fault-reports" className="btn btn-sm btn-outline-secondary py-0">
-                      View
-                    </Link>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-info py-0 text-white"
+                      onClick={() =>
+                        setMediaModalTarget({ loomNumber: n, qualityName: 'Floor report' })
+                      }
+                    >
+                      <i className="bi bi-camera-video me-1" />
+                      View Media
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -243,6 +330,8 @@ export function FabricFaultTable({
         entry={faultDialogEntry}
         open={Boolean(faultDialogEntry)}
         canEdit={canEdit}
+        selectedDate={selectedDate}
+        existingReports={reports.filter((r) => r.loomNumber === faultDialogEntry?.loomNumber)}
         onClose={() => setFaultDialogEntry(null)}
         onSave={(patch) => {
           if (!faultDialogEntry) return
@@ -251,6 +340,22 @@ export function FabricFaultTable({
             segmentIndex: faultDialogEntry.segmentIndex,
           })
         }}
+        onReportCreated={() => {
+          if (!selectedDate) return
+          fetch(`/api/floor/fault-reports?date=${selectedDate}`, { credentials: 'same-origin', cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : { reports: [] }))
+            .then((d) => setReports(Array.isArray(d.reports) ? d.reports : []))
+            .catch(() => {})
+        }}
+      />
+
+      <FabricFaultMediaDialog
+        open={Boolean(mediaModalTarget)}
+        loomNumber={mediaModalTarget?.loomNumber ?? null}
+        qualityName={mediaModalTarget?.qualityName}
+        date={selectedDate}
+        reports={reports}
+        onClose={() => setMediaModalTarget(null)}
       />
     </div>
   )

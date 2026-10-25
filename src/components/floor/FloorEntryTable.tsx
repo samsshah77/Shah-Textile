@@ -837,6 +837,7 @@ export function FloorEntryTable({
         entry={faultDialogEntry}
         open={Boolean(faultDialogEntry)}
         canEdit={canEdit}
+        selectedDate={selectedDate}
         onClose={() => setFaultDialogEntry(null)}
         onSave={(patch) => {
           if (!faultDialogEntry) return
