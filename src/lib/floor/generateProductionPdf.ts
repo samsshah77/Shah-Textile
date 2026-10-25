@@ -31,9 +31,27 @@ function formatDisplayDate(dateStr: string): string {
   }
 }
 
+function formatShortDate(dateStr: string): string {
+  try {
+    const d = new Date(`${dateStr}T12:00:00`)
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    const weekday = d.toLocaleDateString('en-US', { weekday: 'long' })
+    return `${dd}/${mm}/${yyyy}  ${weekday}`
+  } catch {
+    return dateStr
+  }
+}
+
 function modelOf(e: DailyLoomProductionEntry): LoomCategory {
   const c = (e.category || e.model || 'G6200') as LoomCategory
   return MODEL_ORDER.includes(c) ? c : 'G6200'
+}
+
+function efficiencyFromMeters(actual: number, target: number): string {
+  if (!target) return '0%'
+  return `${Math.round((actual / target) * 100)}%`
 }
 
 interface SectionSum {
@@ -89,7 +107,7 @@ export interface GeneratePdfOptions {
 
 /**
  * Generates an executive, print-ready landscape A4 PDF of the Daily Loom Production Sheet.
- * Works seamlessly in client-side Next.js as well as Node environments.
+ * Perfectly reflects all 24 columns from the live Production Sheet table.
  */
 export function buildProductionPdf(
   entries: DailyLoomProductionEntry[],
@@ -102,9 +120,9 @@ export function buildProductionPdf(
     format: 'a4',
   })
 
-  const company = options?.companyName || 'SARA TEXTILE WEAVING MILL'
-  const unit = options?.millUnit || 'Weaving Division • Loom Floor Operations'
+  const company = options?.companyName || 'SARA TEXTILE'
   const summary = summarizeProductionDay(entries)
+  const shortDateHeader = formatShortDate(sheetDate)
   const formattedDate = formatDisplayDate(sheetDate)
   const nowStamp = new Date().toLocaleString('en-GB', {
     day: '2-digit',
@@ -114,35 +132,39 @@ export function buildProductionPdf(
     minute: '2-digit',
   })
 
-  // 1. Top Header Brand Bar
-  doc.setFillColor(15, 23, 42) // slate-900 / navy
-  doc.rect(8, 7, 281, 19, 'F')
-
-  doc.setTextColor(255, 255, 255)
+  // 1. Clean Company Header (No heavy dark background box — clean white paper aesthetic)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(13)
-  doc.text(company, 13, 14)
+  doc.setFontSize(15)
+  doc.setTextColor(15, 23, 42) // slate-900
+  doc.text(company, 148.5, 11.5, { align: 'center' })
 
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(71, 85, 105) // slate-600
+  doc.text('DAILY LOOM PRODUCTION SHEET', 148.5, 16, { align: 'center' })
+
+  // Left side: Date & Day
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(30, 41, 59)
+  doc.text(shortDateHeader, 6, 15.5)
+
+  // Right side: Generation metadata
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
-  doc.setTextColor(203, 213, 225) // slate-300
-  doc.text(unit, 13, 19.5)
+  doc.setTextColor(100, 116, 139)
+  doc.text(`Printed: ${nowStamp}`, 291, 15.5, { align: 'right' })
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(255, 255, 255)
-  doc.text('DAILY LOOM PRODUCTION & EFFICIENCY REPORT', 282, 14, { align: 'right' })
+  // Subtle clean divider line
+  doc.setDrawColor(203, 213, 225) // slate-300
+  doc.setLineWidth(0.35)
+  doc.line(6, 18, 291, 18)
 
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(226, 232, 240) // slate-200
-  doc.text(`Date: ${formattedDate}  |  Printed: ${nowStamp}`, 282, 19.5, { align: 'right' })
-
-  // 2. KPI Summary Boxes (Across 281mm width: 6 equal cards of ~44mm each)
-  const kpiY = 28
-  const cardW = 44.5
-  const cardH = 12
-  const gap = 2.8
+  // 2. KPI Summary Boxes (Across 285mm width: 6 equal cards of 45mm each, 3mm gap)
+  const kpiY = 20.5
+  const cardW = 45
+  const cardH = 11
+  const gap = 3
 
   const kpis = [
     {
@@ -184,56 +206,58 @@ export function buildProductionPdf(
   ]
 
   kpis.forEach((kpi, idx) => {
-    const cardX = 8 + idx * (cardW + gap)
-    // Box background
-    doc.setFillColor(248, 250, 252) // slate-50
+    const cardX = 6 + idx * (cardW + gap)
+    // Box background: clean white with subtle light grey border
+    doc.setFillColor(255, 255, 255)
     doc.setDrawColor(226, 232, 240) // slate-200
     doc.roundedRect(cardX, kpiY, cardW, cardH, 1, 1, 'FD')
 
-    // Left accent pill
-    doc.setFillColor(kpi.color[0], kpi.color[1], kpi.color[2])
-    doc.rect(cardX, kpiY, 1.5, cardH, 'F')
-
     // Title
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(5.5)
+    doc.setFontSize(5.3)
     doc.setTextColor(100, 116, 139) // slate-500
-    doc.text(kpi.title, cardX + 3.5, kpiY + 3.2)
+    doc.text(kpi.title, cardX + 3, kpiY + 3.2)
 
     // Main Value
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8.5)
     doc.setTextColor(15, 23, 42) // slate-900
-    doc.text(kpi.value, cardX + 3.5, kpiY + 7.5)
+    doc.text(kpi.value, cardX + 3, kpiY + 7)
 
     // Subtitle
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(5.5)
+    doc.setFontSize(5.2)
     doc.setTextColor(100, 116, 139)
-    doc.text(kpi.sub, cardX + 3.5, kpiY + 10.5)
+    doc.text(kpi.sub, cardX + 3, kpiY + 9.8)
   })
 
-  // 3. Prepare Table Rows & Model Sections
+  // 3. Prepare All 24 Table Columns Matching the Production Sheet Table
   const tableHead = [
     [
       'L#',
-      'Model',
       'Quality Name',
       'Type',
       'Warp',
       'Weft',
-      'RPM',
+      'Rpm',
+      'Reed',
       'Pick',
-      'Roller',
-      '100%',
-      'Shift A',
-      'Shift B',
-      'Total',
-      'Eff %',
-      'Loss',
-      '24h %',
-      'Status / Remarks / Faults',
-      'Lot',
+      'Width',
+      'Gsm',
+      'L#',
+      'Hours\nRoller',
+      'Running\n100%',
+      'Actual\nShift A',
+      'Actual\nShift B',
+      'Total\nA + B',
+      'Running H\nEfficiency',
+      'Running\nLoss',
+      '24 Hours\n100%',
+      '24 Hours\nEfficiency',
+      '24 Hours\nLoss',
+      'Remarks',
+      'L#',
+      'SW #',
     ],
   ]
 
@@ -262,6 +286,7 @@ export function buildProductionPdf(
   interface TableRowMeta {
     type: RowType
     isProblem?: boolean
+    isQualityEnded?: boolean
     model?: LoomCategory
   }
 
@@ -277,6 +302,7 @@ export function buildProductionPdf(
   let grandAB = 0
   let grandLossRun = 0
   let grandTheo24 = 0
+  let grandLoss24 = 0
   let grandCount = 0
 
   for (const model of MODEL_ORDER) {
@@ -287,63 +313,63 @@ export function buildProductionPdf(
     const countLooms = new Set(rows.map((r) => r.loomNumber)).size
     tableBody.push([
       `--- ${model} SECTION (${countLooms} LOOMS) ---`,
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
+      '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
     ])
     rowMeta.push({ type: 'model-head', model })
 
     for (const e of rows) {
-      const seg = e.segmentIndex ?? 1
-      const loomLabel = seg > 1 ? `L-${String(e.loomNumber).padStart(2, '0')} (P${seg})` : `L-${String(e.loomNumber).padStart(2, '0')}`
+      const seg = Math.max(1, Math.floor(Number(e.segmentIndex) || 1))
+      const loomLabel = seg > 1 ? `${e.loomNumber}·${seg}` : String(e.loomNumber)
       const condition = resolveLoomCondition(e.status, e.remarks)
       const isProblem = condition !== 'RUNNING'
       const qualityEnded = isQualityEndedSheetRow(e)
 
       const faultNote = fabricFaultPreview(e).trim()
-      let remarkCombined = e.remarks || ''
-      if (qualityEnded) remarkCombined = 'Quality Ended'
-      else if (isProblem && !remarkCombined) remarkCombined = LOOM_STATUS_LABEL[condition] || condition
-
-      if (faultNote) {
-        remarkCombined = remarkCombined ? `${remarkCombined} | Fault: ${faultNote}` : `Fault: ${faultNote}`
+      let remarkCombined = e.remarks?.trim() || ''
+      if (qualityEnded) {
+        remarkCombined = 'Quality Ended'
+      } else if (isProblem && !remarkCombined) {
+        remarkCombined = LOOM_STATUS_LABEL[condition] || condition
+      } else if (!remarkCombined) {
+        remarkCombined = '—'
       }
+
+      if (faultNote && !qualityEnded) {
+        remarkCombined = remarkCombined !== '—' ? `${remarkCombined} | Fault: ${faultNote}` : `Fault: ${faultNote}`
+      }
+
+      const gsmStr = typeof e.gsm === 'number' && e.gsm > 0 ? e.gsm.toFixed(2) : (e.gsm || '—')
+      const rollerStr = e.rollerHours != null ? Number(e.rollerHours).toFixed(2) : '0.00'
+      const effRunStr = num(e.efficiencyPercentage, 0)
+      const eff24Str = num(e.efficiency24h, 0)
 
       tableBody.push([
         loomLabel,
-        model,
         (e.qualityName || '—').trim(),
         (e.fabricType || '—').trim(),
         (e.warpYarn || '—').trim(),
         (e.weftYarn || '—').trim(),
-        e.rpm || '—',
-        e.pick || '—',
-        e.rollerHours != null ? e.rollerHours.toFixed(1) : '—',
+        e.rpm ?? '—',
+        e.reed ?? '—',
+        e.pick ?? '—',
+        e.widthInch ?? '—',
+        gsmStr,
+        loomLabel,
+        rollerStr,
         num(e.runningTheoretical),
         num(e.shiftAMeters),
         num(e.shiftBMeters),
         num(e.totalMeters),
-        e.efficiencyPercentage != null ? `${Math.round(e.efficiencyPercentage)}%` : '—',
+        effRunStr,
         num(e.stopLossMeters),
-        e.efficiency24h != null ? `${Math.round(e.efficiency24h)}%` : '—',
-        remarkCombined || (isProblem ? LOOM_STATUS_LABEL[condition] : 'RUNNING'),
+        num(e.theoretical24h),
+        eff24Str,
+        num(e.loss24h),
+        remarkCombined,
+        loomLabel,
         (e.lot || '—').trim(),
       ])
-      rowMeta.push({ type: 'data', isProblem })
+      rowMeta.push({ type: 'data', isProblem, isQualityEnded: qualityEnded })
     }
 
     // Subtotal Row for Model
@@ -357,104 +383,120 @@ export function buildProductionPdf(
     grandAB += sub.ab
     grandLossRun += sub.lossRun
     grandTheo24 += sub.theo24
+    grandLoss24 += sub.loss24
     grandCount += sub.count
-
-    const subEff = sub.runningTheo > 0 ? `${Math.round((sub.ab / sub.runningTheo) * 100)}%` : '—'
-    const subEff24 = sub.theo24 > 0 ? `${Math.round((sub.ab / sub.theo24) * 100)}%` : '—'
 
     tableBody.push([
       `Subtotal ${model}`,
-      `${rows.length} rows`,
+      `${rows.length} entries`,
       '',
       '',
       '',
+      num(sub.rpm),
       '',
-      Math.round(sub.rpm / Math.max(sub.count, 1)),
-      Math.round(sub.pick / Math.max(sub.count, 1)),
-      sub.roller.toFixed(1),
+      num(sub.pick),
+      '',
+      '',
+      '',
+      num(sub.roller, 2),
       num(sub.runningTheo),
       num(sub.a),
       num(sub.b),
       num(sub.ab),
-      subEff,
+      efficiencyFromMeters(sub.ab, sub.runningTheo),
       num(sub.lossRun),
-      subEff24,
+      num(sub.theo24),
+      efficiencyFromMeters(sub.ab, sub.theo24),
+      num(sub.loss24),
+      '',
       '',
       '',
     ])
     rowMeta.push({ type: 'model-subtotal', model })
   }
 
-  // Grand Total Row
-  const grandEff = grandTheoRun > 0 ? `${Math.round((grandAB / grandTheoRun) * 100)}%` : '—'
-  const grandEff24 = grandTheo24 > 0 ? `${Math.round((grandAB / grandTheo24) * 100)}%` : '—'
-
+  // Factory Total / Average Row
   tableBody.push([
-    'FACTORY TOTAL / AVG',
-    `${summary.looms} Looms`,
+    'Total / Average',
+    `${summary.looms} Looms Total`,
     '',
     '',
     '',
+    num(grandRpm),
     '',
-    Math.round(grandRpm / Math.max(grandCount, 1)),
-    Math.round(grandPick / Math.max(grandCount, 1)),
-    grandRoller.toFixed(1),
+    num(grandPick),
+    '',
+    '',
+    '',
+    num(grandRoller, 2),
     num(grandTheoRun),
     num(grandA),
     num(grandB),
     num(grandAB),
-    grandEff,
+    efficiencyFromMeters(grandAB, grandTheoRun),
     num(grandLossRun),
-    grandEff24,
+    num(grandTheo24),
+    efficiencyFromMeters(grandAB, grandTheo24),
+    num(grandLoss24),
     `${summary.running} Running | ${summary.stopped.length} Stopped`,
+    '',
     '',
   ])
   rowMeta.push({ type: 'grand-total' })
 
-  // 4. Render Table with autoTable
+  // 4. Render Table with autoTable (Exact 285mm printable width matching A4 landscape)
   autoTable(doc, {
-    startY: 42,
+    startY: 34,
     head: tableHead,
     body: tableBody,
-    margin: { left: 8, right: 8, top: 12, bottom: 18 },
+    margin: { left: 6, right: 6, top: 10, bottom: 10 },
     theme: 'plain',
-    tableWidth: 'auto',
+    tableWidth: 285,
     styles: {
       font: 'helvetica',
-      fontSize: 6.2,
-      cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+      fontSize: 5.1,
+      cellPadding: { top: 1.0, bottom: 1.0, left: 0.6, right: 0.6 },
       lineWidth: 0.1,
-      lineColor: [226, 232, 240], // slate-200
+      lineColor: [203, 213, 225], // slate-300
       textColor: [30, 41, 59], // slate-800
       overflow: 'ellipsize',
     },
     headStyles: {
-      fillColor: [30, 41, 59], // slate-800
-      textColor: [255, 255, 255],
+      fillColor: [241, 245, 249], // slate-100
+      textColor: [15, 23, 42], // slate-900
       fontStyle: 'bold',
-      fontSize: 6.2,
+      fontSize: 5.1,
       halign: 'center',
-      cellPadding: { top: 1.8, bottom: 1.8, left: 1, right: 1 },
+      valign: 'middle',
+      cellPadding: { top: 1.6, bottom: 1.6, left: 0.6, right: 0.6 },
+      lineWidth: 0.15,
+      lineColor: [148, 163, 184], // slate-400
     },
     columnStyles: {
-      0: { fontStyle: 'bold', halign: 'center' }, // Loom
-      1: { halign: 'center' }, // Model
-      2: { fontStyle: 'bold' }, // Quality
-      3: { halign: 'center' }, // Type
-      4: {}, // Warp
-      5: {}, // Weft
-      6: { halign: 'right' }, // RPM
-      7: { halign: 'right' }, // Pick
-      8: { halign: 'right' }, // Roller
-      9: { halign: 'right' }, // 100% Theo
-      10: { halign: 'right' }, // Shift A
-      11: { halign: 'right' }, // Shift B
-      12: { halign: 'right', fontStyle: 'bold' }, // Total
-      13: { halign: 'right', fontStyle: 'bold' }, // Eff %
-      14: { halign: 'right', textColor: [100, 116, 139] }, // Loss
-      15: { halign: 'right' }, // 24h Eff %
-      16: {}, // Remarks / Faults
-      17: { halign: 'center' }, // Lot
+      0: { cellWidth: 7.5, fontStyle: 'bold', halign: 'center' }, // L#
+      1: { cellWidth: 25, fontStyle: 'bold' }, // Quality Name
+      2: { cellWidth: 12, halign: 'center' }, // Type
+      3: { cellWidth: 18.5 }, // Warp
+      4: { cellWidth: 18.5 }, // Weft
+      5: { cellWidth: 8, halign: 'right' }, // Rpm
+      6: { cellWidth: 8, halign: 'right' }, // Reed
+      7: { cellWidth: 8, halign: 'right' }, // Pick
+      8: { cellWidth: 8, halign: 'right' }, // Width
+      9: { cellWidth: 9.5, halign: 'right' }, // Gsm
+      10: { cellWidth: 6.5, fontStyle: 'bold', halign: 'center', fillColor: [238, 242, 255] }, // L# mid
+      11: { cellWidth: 9.5, halign: 'right' }, // Hours Roller
+      12: { cellWidth: 11, halign: 'right' }, // Running 100%
+      13: { cellWidth: 10, halign: 'right' }, // Shift A
+      14: { cellWidth: 10, halign: 'right' }, // Shift B
+      15: { cellWidth: 11, halign: 'right', fontStyle: 'bold' }, // Total A+B
+      16: { cellWidth: 10, halign: 'right' }, // Running Eff
+      17: { cellWidth: 10, halign: 'right', textColor: [100, 116, 139] }, // Running Loss
+      18: { cellWidth: 11, halign: 'right' }, // 24 Hours 100%
+      19: { cellWidth: 10, halign: 'right' }, // 24 Hours Eff
+      20: { cellWidth: 10, halign: 'right', textColor: [100, 116, 139] }, // 24 Hours Loss
+      21: { cellWidth: 22 }, // Remarks
+      22: { cellWidth: 6.5, fontStyle: 'bold', halign: 'center', fillColor: [238, 242, 255] }, // L# end
+      23: { cellWidth: 18.5, halign: 'center' }, // SW #
     },
     didParseCell(data) {
       const rowIndex = data.row.index
@@ -462,29 +504,31 @@ export function buildProductionPdf(
       if (!meta) return
 
       if (meta.type === 'model-head') {
-        data.cell.styles.fillColor = [241, 245, 249] // slate-100
+        data.cell.styles.fillColor = [226, 232, 240] // slate-200
         data.cell.styles.textColor = [30, 58, 138] // blue-900
         data.cell.styles.fontStyle = 'bold'
-        data.cell.styles.fontSize = 6.4
+        data.cell.styles.fontSize = 5.8
         if (data.column.index === 0) {
-          data.cell.colSpan = 18
+          data.cell.colSpan = 24
         }
       } else if (meta.type === 'model-subtotal') {
         data.cell.styles.fillColor = [248, 250, 252] // slate-50
         data.cell.styles.fontStyle = 'bold'
         data.cell.styles.textColor = [15, 23, 42]
         data.cell.styles.lineWidth = 0.2
-        data.cell.styles.lineColor = [203, 213, 225]
+        data.cell.styles.lineColor = [148, 163, 184]
       } else if (meta.type === 'grand-total') {
         data.cell.styles.fillColor = [15, 23, 42] // slate-900
         data.cell.styles.textColor = [255, 255, 255]
         data.cell.styles.fontStyle = 'bold'
-        data.cell.styles.fontSize = 6.8
+        data.cell.styles.fontSize = 5.8
       } else if (meta.type === 'data') {
-        if (meta.isProblem) {
-          // Soft tint for stopped / problem looms
-          data.cell.styles.fillColor = [254, 242, 242] // red-50
-          if (data.column.index === 16 || data.column.index === 0) {
+        if (meta.isQualityEnded) {
+          data.cell.styles.fillColor = [241, 245, 249] // muted slate
+          data.cell.styles.textColor = [100, 116, 139]
+        } else if (meta.isProblem) {
+          data.cell.styles.fillColor = [254, 242, 242] // soft red-50
+          if (data.column.index === 21 || data.column.index === 0) {
             data.cell.styles.textColor = [185, 28, 28] // red-700
             data.cell.styles.fontStyle = 'bold'
           }
@@ -493,7 +537,7 @@ export function buildProductionPdf(
     },
   })
 
-  // 5. Signatures & Verification Block (At bottom of page)
+  // 5. Minimal Footer (Page number & confidentiality — signature lines completely removed)
   const totalPages = (doc as unknown as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages()
 
   for (let p = 1; p <= totalPages; p++) {
@@ -501,25 +545,16 @@ export function buildProductionPdf(
     const pageH = 210
 
     // Footer divider line
-    doc.setDrawColor(203, 213, 225)
-    doc.setLineWidth(0.3)
-    doc.line(8, pageH - 14, 289, pageH - 14)
+    doc.setDrawColor(226, 232, 240)
+    doc.setLineWidth(0.25)
+    doc.line(6, pageH - 7, 291, pageH - 7)
 
-    // Signatures
+    // Footer Note & Page Number
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
-    doc.setTextColor(71, 85, 105)
-
-    doc.text('Prepared By: ___________________ (Floor Incharge)', 10, pageH - 9)
-    doc.text('Checked By: ___________________ (Shift Supervisor)', 90, pageH - 9)
-    doc.text('Verified By: ___________________ (Fabric Inspector)', 170, pageH - 9)
-    doc.text('Approved By: ___________________ (Factory Manager)', 240, pageH - 9)
-
-    // Page number & disclaimer
     doc.setFontSize(6)
     doc.setTextColor(148, 163, 184)
     doc.text(
-      `Sara Textile Weaving ERP • Confidential Floor Production Document • Page ${p} of ${totalPages}`,
+      `Sara Textile ERP • Daily Loom Production Sheet • ${formattedDate} • Page ${p} of ${totalPages}`,
       148.5,
       pageH - 4,
       { align: 'center' }
