@@ -24,6 +24,7 @@ export function evolutionConfig() {
 export function cleanWhatsAppNumber(raw: string): string {
   const digits = raw.replace(/\D/g, '')
   if (!digits) return ''
+  if (digits.startsWith('0092')) return `92${digits.slice(4)}`
   if (digits.startsWith('03') && digits.length === 11) return `92${digits.slice(1)}`
   if (digits.length === 10 && digits.startsWith('3')) return `92${digits}`
   return digits
@@ -124,7 +125,7 @@ export async function getWhatsAppStatus(): Promise<WhatsAppConnectionStatus> {
   }
 }
 
-/** Send direct PDF / document to a recipient number */
+/** Send direct PDF / document to a recipient number via Evolution API v1 */
 export async function sendWhatsAppDocument({
   number,
   filename,
@@ -144,41 +145,65 @@ export async function sendWhatsAppDocument({
     throw new Error('Valid WhatsApp phone number chahiye (e.g. 0300 1234567)')
   }
 
-  const mediaPayload = base64.startsWith('data:')
-    ? base64
-    : `data:${mimeType};base64,${base64}`
+  // Extract raw base64 data, stripping any non-standard parameters (e.g. jsPDF's ;filename=generated.pdf)
+  const rawBase64 = base64.includes(',') ? base64.split(',')[1].trim() : base64.trim()
+  const mediaPayload = `data:${mimeType};base64,${rawBase64}`
 
-  const res = await fetch(`${baseUrl}/message/sendMedia/${encodeURIComponent(instance)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: apiKey,
-    },
-    signal: AbortSignal.timeout(30000),
-    body: JSON.stringify({
-      number: cleanNum,
-      options: {
-        delay: 800,
-        presence: 'composing',
+  const sendPayload = async (mediaValue: string) => {
+    return await fetch(`${baseUrl}/message/sendMedia/${encodeURIComponent(instance)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: apiKey,
       },
-      mediaMessage: {
+      signal: AbortSignal.timeout(35000),
+      body: JSON.stringify({
+        number: cleanNum,
         mediatype: 'document',
-        fileName: filename,
+        mimetype: mimeType,
         caption: caption || '',
-        media: mediaPayload,
-      },
-    }),
-  })
+        media: mediaValue,
+        fileName: filename,
+        filename: filename,
+        delay: 800,
+      }),
+    })
+  }
 
-  const data = (await res.json().catch(() => null)) as { key?: { id?: string }; error?: string } | null
+  // Attempt with standard clean Data URI first, fallback to raw base64 if needed
+  let res = await sendPayload(mediaPayload)
+  if (!res.ok && res.status === 400) {
+    const retryRes = await sendPayload(rawBase64).catch(() => null)
+    if (retryRes && retryRes.ok) {
+      res = retryRes
+    }
+  }
+
+  const data = (await res.json().catch(() => null)) as {
+    key?: { id?: string }
+    error?: string
+    message?: string | string[]
+    response?: { message?: string | string[] }
+  } | null
+
   if (!res.ok) {
-    throw new Error(data?.error || `Failed to send WhatsApp document (HTTP ${res.status})`)
+    const rawMsg = data?.response?.message || data?.message || data?.error
+    let errorMsg = Array.isArray(rawMsg)
+      ? rawMsg.join(', ')
+      : typeof rawMsg === 'string'
+        ? rawMsg
+        : `Failed to send WhatsApp document (HTTP ${res.status})`
+
+    if (/connection|session|closed|not connected|disconnected/i.test(errorMsg)) {
+      errorMsg = 'WhatsApp phone server se linked nahi hai. Pehle QR Code scan karke connect karein.'
+    }
+    throw new Error(errorMsg)
   }
 
   return { success: true, messageId: data?.key?.id }
 }
 
-/** Send direct text message to a recipient number */
+/** Send direct text message to a recipient number via Evolution API v1 */
 export async function sendWhatsAppText({
   number,
   text,
@@ -201,19 +226,30 @@ export async function sendWhatsAppText({
     signal: AbortSignal.timeout(15000),
     body: JSON.stringify({
       number: cleanNum,
-      options: {
-        delay: 600,
-        presence: 'composing',
-      },
-      textMessage: {
-        text,
-      },
+      text,
+      delay: 600,
     }),
   })
 
-  const data = (await res.json().catch(() => null)) as { key?: { id?: string }; error?: string } | null
+  const data = (await res.json().catch(() => null)) as {
+    key?: { id?: string }
+    error?: string
+    message?: string | string[]
+    response?: { message?: string | string[] }
+  } | null
+
   if (!res.ok) {
-    throw new Error(data?.error || `Failed to send WhatsApp text (HTTP ${res.status})`)
+    const rawMsg = data?.response?.message || data?.message || data?.error
+    let errorMsg = Array.isArray(rawMsg)
+      ? rawMsg.join(', ')
+      : typeof rawMsg === 'string'
+        ? rawMsg
+        : `Failed to send WhatsApp text (HTTP ${res.status})`
+
+    if (/connection|session|closed|not connected|disconnected/i.test(errorMsg)) {
+      errorMsg = 'WhatsApp phone server se linked nahi hai. Pehle QR Code scan karke connect karein.'
+    }
+    throw new Error(errorMsg)
   }
 
   return { success: true, messageId: data?.key?.id }
