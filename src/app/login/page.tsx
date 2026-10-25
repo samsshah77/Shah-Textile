@@ -4,6 +4,7 @@ import Image from "next/image";
 import { FormEvent, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { Eye, EyeOff } from "lucide-react";
 
 function safeRedirect(value: string | null, role: string) {
   if (value?.startsWith("/") && !value.startsWith("//")) return value;
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("expired")) {
@@ -107,16 +109,28 @@ export default function LoginPage() {
               <input
                 id="loginPassword"
                 name="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 className="form-control"
                 placeholder="Password"
                 autoComplete="current-password"
                 maxLength={256}
                 required
               />
-              <div className="input-group-text">
-                <span className="bi bi-lock-fill" />
-              </div>
+              <button
+                type="button"
+                className="input-group-text"
+                style={{ cursor: "pointer", borderLeft: 0 }}
+                onClick={() => setShowPassword((prev) => !prev)}
+                title={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <EyeOff size={18} className="text-secondary" />
+                ) : (
+                  <Eye size={18} className="text-secondary" />
+                )}
+              </button>
             </div>
             {error ? (
               <div className="alert alert-danger py-2" role="alert">
