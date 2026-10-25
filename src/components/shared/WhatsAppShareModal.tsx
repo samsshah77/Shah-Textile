@@ -4,31 +4,38 @@ import { useEffect, useState } from 'react'
 import { WhatsAppQRModal } from './WhatsAppQRModal'
 import type { WhatsAppConnectionStatus } from '@/server/whatsapp/evolution'
 
-const SAVED_KEY = 'sara_whatsapp_numbers_v2'
+export interface SavedContact {
+  name: string
+  number: string
+}
 
-/** Numbers this browser has sent to before (kept only on this device). */
-function savedNumbers(): string[] {
+const CONTACTS_KEY = 'sara_whatsapp_contacts_v1'
+
+function getSavedContacts(): SavedContact[] {
+  if (typeof window === 'undefined') return []
   try {
-    const v = JSON.parse(window.localStorage.getItem(SAVED_KEY) || '[]')
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 10) : []
+    const raw = window.localStorage.getItem(CONTACTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }
 }
 
-function remember(num: string) {
+function persistContacts(list: SavedContact[]) {
   try {
-    const list = [num, ...savedNumbers().filter((x) => x !== num)].slice(0, 10)
-    window.localStorage.setItem(SAVED_KEY, JSON.stringify(list))
+    window.localStorage.setItem(CONTACTS_KEY, JSON.stringify(list))
   } catch {
-    /* storage blocked */
+    /* localStorage blocked */
   }
 }
 
-/** 0300 1234567 / +92 300 1234567 → 923001234567 (what wa.me & Evolution API need). */
+/** Standardize Pakistan and international numbers: 0300 1234567 -> 923001234567 */
 export function formatWhatsAppNumber(raw: string): string {
   const d = raw.replace(/\D/g, '')
   if (!d) return ''
+  if (d.startsWith('0092')) return `92${d.slice(4)}`
   if (d.startsWith('03') && d.length === 11) return `92${d.slice(1)}`
   if (d.length === 10 && d.startsWith('3')) return `92${d}`
   return d
@@ -39,9 +46,7 @@ export interface WhatsAppShareModalProps {
   onClose: () => void
   documentTitle: string
   defaultMessage: string
-  /** When set, a "PDF save karein" button is shown. */
   onDownloadPdf?: () => void
-  /** Automatic PDF document attachment builder for server-side WhatsApp transmission */
   getPdfAttachment?: () => Promise<{ base64: string; filename: string } | null> | { base64: string; filename: string } | null
 }
 
@@ -70,40 +75,47 @@ function ShareBody({
   onClose,
   documentTitle,
   defaultMessage,
-  onDownloadPdf,
   getPdfAttachment,
 }: Omit<WhatsAppShareModalProps, 'isOpen'>) {
+  const [contacts, setContacts] = useState<SavedContact[]>([])
+  const [selectedContactIdx, setSelectedContactIdx] = useState<string>('')
   const [number, setNumber] = useState('')
   const [message, setMessage] = useState(defaultMessage)
-  const [saved] = useState(savedNumbers)
 
-  // Direct server WhatsApp status & sending states
+  // Save new contact states
+  const [showSaveContact, setShowSaveContact] = useState(false)
+  const [newContactName, setNewContactName] = useState('')
+
+  // Server WhatsApp status & sending states
   const [serverStatus, setServerStatus] = useState<WhatsAppConnectionStatus | null>(null)
   const [sendingDirect, setSendingDirect] = useState(false)
   const [directSuccess, setDirectSuccess] = useState(false)
   const [directError, setDirectError] = useState<string | null>(null)
   const [showQRModal, setShowQRModal] = useState(false)
 
-  // Auto-generated PDF attachment & manual file attachment
+  // Auto-generated PDF attachment
   const [autoPdf, setAutoPdf] = useState<{ base64: string; filename: string } | null>(null)
-  const [generatingPdf, setGeneratingPdf] = useState(false)
-  const [attachedFile, setAttachedFile] = useState<File | null>(null)
-  const [showCustomUpload, setShowCustomUpload] = useState(false)
 
-  // Load auto-generated PDF if builder provided
+  // Load saved contacts on mount
+  useEffect(() => {
+    const list = getSavedContacts()
+    setContacts(list)
+    if (list.length > 0) {
+      setSelectedContactIdx('0')
+      setNumber(list[0].number)
+    }
+  }, [])
+
+  // Load auto-generated PDF attachment quietly in background
   useEffect(() => {
     if (!getPdfAttachment) return
     let live = true
-    setGeneratingPdf(true)
     Promise.resolve(getPdfAttachment())
       .then((res) => {
         if (live && res) setAutoPdf(res)
       })
       .catch((err) => {
         console.error('[whatsapp-pdf]', err)
-      })
-      .finally(() => {
-        if (live) setGeneratingPdf(false)
       })
     return () => {
       live = false
@@ -124,23 +136,60 @@ function ShareBody({
     }
   }, [])
 
-  // Send via standard wa.me fallback
-  const sendViaWeb = () => {
-    const to = formatWhatsAppNumber(number)
-    if (to) remember(number.trim())
-    window.open(
-      `https://wa.me/${to}?text=${encodeURIComponent(message.trim())}`,
-      '_blank',
-      'noopener,noreferrer'
-    )
-    onClose()
+  // Handle contact selection from dropdown
+  const handleSelectContact = (val: string) => {
+    setSelectedContactIdx(val)
+    if (val === '') {
+      // Manual custom number
+      setNumber('')
+    } else {
+      const idx = parseInt(val, 10)
+      if (!isNaN(idx) && contacts[idx]) {
+        setNumber(contacts[idx].number)
+      }
+    }
+    setShowSaveContact(false)
   }
+
+  // Save new contact
+  const handleSaveContact = () => {
+    const trimmedName = newContactName.trim()
+    const trimmedNum = number.trim()
+    if (!trimmedName || !trimmedNum) return
+
+    const updated = [{ name: trimmedName, number: trimmedNum }, ...contacts.filter((c) => c.number !== trimmedNum)]
+    persistContacts(updated)
+    setContacts(updated)
+    setSelectedContactIdx('0')
+    setNewContactName('')
+    setShowSaveContact(false)
+  }
+
+  // Delete saved contact
+  const handleDeleteContact = () => {
+    const idx = parseInt(selectedContactIdx, 10)
+    if (isNaN(idx) || !contacts[idx]) return
+    const contactToDelete = contacts[idx]
+    const updated = contacts.filter((_, i) => i !== idx)
+    persistContacts(updated)
+    setContacts(updated)
+    setSelectedContactIdx('')
+    if (number === contactToDelete.number) {
+      setNumber('')
+    }
+  }
+
+  // Check if current number is already saved
+  const cleanCurrentNum = formatWhatsAppNumber(number)
+  const isAlreadySaved = contacts.some(
+    (c) => formatWhatsAppNumber(c.number) === cleanCurrentNum && cleanCurrentNum.length >= 10
+  )
 
   // Send direct document or message via VPS Evolution API
   const sendViaServer = async () => {
     const to = formatWhatsAppNumber(number)
     if (!to || to.length < 10) {
-      setDirectError('Pehle valid WhatsApp number likhein (e.g. 0300 1234567)')
+      setDirectError('Pehle valid WhatsApp number darj karein (e.g. 0300 1234567)')
       return
     }
 
@@ -149,21 +198,7 @@ function ShareBody({
     setDirectSuccess(false)
 
     try {
-      let fileBase64: string | undefined
-      const sendFilename =
-        attachedFile?.name || autoPdf?.filename || `${documentTitle.replace(/\s+/g, '_')}.pdf`
-
-      if (attachedFile) {
-        const buffer = await attachedFile.arrayBuffer()
-        const bytes = new Uint8Array(buffer)
-        let binary = ''
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i])
-        }
-        fileBase64 = btoa(binary)
-      } else if (autoPdf) {
-        fileBase64 = autoPdf.base64
-      }
+      const sendFilename = autoPdf?.filename || `${documentTitle.replace(/\s+/g, '_')}.pdf`
 
       const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
@@ -172,9 +207,9 @@ function ShareBody({
         body: JSON.stringify({
           number: to,
           text: message.trim(),
-          fileBase64,
+          fileBase64: autoPdf?.base64,
           filename: sendFilename,
-          mimeType: attachedFile?.type || 'application/pdf',
+          mimeType: 'application/pdf',
           caption: message.trim(),
         }),
       })
@@ -184,16 +219,15 @@ function ShareBody({
         throw new Error(data?.error || `Server error (${res.status})`)
       }
 
-      remember(number.trim())
       setDirectSuccess(true)
       setTimeout(() => {
         onClose()
-      }, 2000)
+      }, 1800)
     } catch (err) {
       setDirectError(
         err instanceof Error
           ? err.message
-          : 'Server se WhatsApp nahi ja saka. Purana tareeqa use karein.'
+          : 'Server se WhatsApp nahi ja saka. Connection check karein.'
       )
     } finally {
       setSendingDirect(false)
@@ -210,41 +244,40 @@ function ShareBody({
         style={{ background: 'rgba(15,23,42,.45)', zIndex: 1050 }}
         onClick={onClose}
       >
-        <div className="modal-dialog modal-dialog-centered modal-lg" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-content border-0 shadow-lg">
+        <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content border-0 shadow-lg rounded-3">
             {/* Modal Header */}
-            <div className="modal-header py-2 px-3 bg-light border-bottom">
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                <h5 id="wa-title" className="modal-title fs-6 fw-bold mb-0">
-                  <i className="bi bi-whatsapp text-success me-1" /> WhatsApp — {documentTitle}
+            <div className="modal-header py-2.5 px-3 bg-light border-bottom">
+              <div className="d-flex align-items-center gap-2">
+                <h5 id="wa-title" className="modal-title fs-6 fw-bold mb-0 text-dark">
+                  <i className="bi bi-whatsapp text-success me-1.5" /> WhatsApp — {documentTitle}
                 </h5>
                 {serverStatus?.connected ? (
-                  <span className="badge text-bg-success px-2 py-1 small">
-                    <i className="bi bi-check-circle me-1" /> Server Connected
+                  <span className="badge text-bg-success px-2 py-0.5" style={{ fontSize: 10.5 }}>
+                    <i className="bi bi-check-circle me-1" /> Connected
                   </span>
-                ) : serverStatus?.configured ? (
+                ) : (
                   <button
                     type="button"
                     className="btn btn-xs btn-outline-warning py-0 px-2 rounded-pill"
                     onClick={() => setShowQRModal(true)}
                     title="QR Code scan karke phone link karein"
+                    style={{ fontSize: 10.5 }}
                   >
-                    <i className="bi bi-qr-code me-1" /> QR Link Chahiye
+                    <i className="bi bi-qr-code me-1" /> QR Link
                   </button>
-                ) : (
-                  <span className="badge text-bg-secondary px-2 py-1 small">Web Mode</span>
                 )}
               </div>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
             </div>
 
             {/* Modal Body */}
-            <div className="modal-body px-3 py-3">
+            <div className="modal-body px-3.5 py-3">
               {directSuccess && (
                 <div className="alert alert-success d-flex align-items-center gap-2 py-2 px-3 mb-3">
                   <i className="bi bi-check-circle-fill fs-5" />
                   <div>
-                    <strong>Kamyabi!</strong> WhatsApp par direct bhej diya gaya hai.
+                    <strong>Kamyabi!</strong> WhatsApp par direct deliver ho gaya hai.
                   </div>
                 </div>
               )}
@@ -261,168 +294,130 @@ function ShareBody({
                       className="btn btn-xs btn-outline-danger ms-2 py-0"
                       onClick={() => setShowQRModal(true)}
                     >
-                      QR Scan Karein
+                      QR Scan
                     </button>
                   )}
                 </div>
               )}
 
-              {/* Number Input */}
+              {/* Saved Contacts & Number Input */}
               <div className="mb-3">
-                <label className="form-label small fw-semibold mb-1" htmlFor="wa-number">
-                  Recipient Number (WhatsApp Number):
-                </label>
+                <div className="d-flex align-items-center justify-content-between mb-1">
+                  <label className="form-label small fw-semibold mb-0" htmlFor="wa-number">
+                    Recipient (WhatsApp Number):
+                  </label>
+                  {contacts.length > 0 && selectedContactIdx !== '' && (
+                    <button
+                      type="button"
+                      className="btn btn-link text-danger p-0 text-decoration-none small"
+                      style={{ fontSize: 11 }}
+                      onClick={handleDeleteContact}
+                      title="Is contact ko list se hatayein"
+                    >
+                      <i className="bi bi-trash3 me-0.5" /> Contact Hatayein
+                    </button>
+                  )}
+                </div>
+
+                {/* Contacts Picker Dropdown */}
+                {contacts.length > 0 && (
+                  <select
+                    className="form-select form-select-sm mb-2"
+                    value={selectedContactIdx}
+                    onChange={(e) => handleSelectContact(e.target.value)}
+                  >
+                    <option value="">-- Naya Number Likhein --</option>
+                    {contacts.map((c, i) => (
+                      <option key={`${c.number}-${i}`} value={String(i)}>
+                        {c.name} ({c.number})
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Direct Number Input */}
                 <div className="input-group input-group-sm">
-                  <span className="input-group-text bg-light">
-                    <i className="bi bi-telephone text-success" />
+                  <span className="input-group-text bg-light text-success">
+                    <i className="bi bi-telephone" />
                   </span>
                   <input
                     id="wa-number"
                     className="form-control"
                     inputMode="tel"
-                    placeholder="0300 1234567 ya +92 300 1234567"
-                    list="wa-saved"
+                    placeholder="e.g. 0325 5246937"
                     value={number}
-                    onChange={(e) => setNumber(e.target.value)}
+                    onChange={(e) => {
+                      setNumber(e.target.value)
+                      setSelectedContactIdx('')
+                    }}
                   />
                 </div>
-                <datalist id="wa-saved">
-                  {saved.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
-                <div className="form-text small" style={{ fontSize: 11 }}>
-                  Pakistan numbers: <code>0300 1234567</code> khud <code>923001234567</code> ban jate hain.
-                </div>
+
+                {/* Inline Save Contact Prompt */}
+                {number.trim().length >= 10 && !isAlreadySaved && (
+                  <div className="mt-1.5">
+                    {!showSaveContact ? (
+                      <button
+                        type="button"
+                        className="btn btn-link text-primary p-0 text-decoration-none small"
+                        style={{ fontSize: 11.5 }}
+                        onClick={() => setShowSaveContact(true)}
+                      >
+                        <i className="bi bi-person-plus me-1" />
+                        Is number ko naam ke sath save karein
+                      </button>
+                    ) : (
+                      <div className="d-flex align-items-center gap-1.5 p-1.5 bg-light rounded border mt-1">
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          placeholder="Naam (e.g. Director / Malik Sahib)"
+                          value={newContactName}
+                          onChange={(e) => setNewContactName(e.target.value)}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary py-1 px-2.5 shrink-0"
+                          onClick={handleSaveContact}
+                          disabled={!newContactName.trim()}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary py-1 px-2 shrink-0"
+                          onClick={() => {
+                            setShowSaveContact(false)
+                            setNewContactName('')
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Message Input */}
-              <div className="mb-3">
+              <div className="mb-1">
                 <label className="form-label small fw-semibold mb-1" htmlFor="wa-message">
                   Report Summary / Message:
                 </label>
                 <textarea
                   id="wa-message"
                   className="form-control form-control-sm font-monospace"
-                  rows={6}
+                  rows={5}
                   style={{ fontSize: 12.5 }}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                 />
               </div>
-
-              {/* PDF Document Attachment Section */}
-              {generatingPdf ? (
-                <div className="p-2.5 rounded bg-light border mb-2 d-flex align-items-center gap-2 text-primary small">
-                  <span className="spinner-border spinner-border-sm" role="status" />
-                  <span>📄 Production Sheet PDF generate ho raha hai...</span>
-                </div>
-              ) : autoPdf && !attachedFile ? (
-                <div className="p-2.5 rounded bg-success-subtle border border-success-subtle mb-2">
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <div className="d-flex align-items-center gap-2">
-                      <i className="bi bi-file-earmark-pdf-fill text-danger fs-4" />
-                      <div>
-                        <div className="fw-bold small text-success-emphasis">{autoPdf.filename}</div>
-                        <div className="text-secondary" style={{ fontSize: 11 }}>
-                          <i className="bi bi-check-circle-fill text-success me-1" />
-                          Auto-Attached • Direct WhatsApp par real <strong>.pdf</strong> document deliver hoga
-                        </div>
-                      </div>
-                    </div>
-                    <div className="d-flex align-items-center gap-1.5">
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-outline-success py-1 px-2 rounded-pill"
-                        onClick={() => {
-                          const a = document.createElement('a')
-                          a.href = autoPdf.base64
-                          a.download = autoPdf.filename
-                          a.click()
-                        }}
-                        title="PDF copy apne computer me save karein"
-                      >
-                        <i className="bi bi-download me-1" />
-                        Save Copy
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-link text-secondary text-decoration-none py-1 px-1"
-                        onClick={() => setShowCustomUpload((v) => !v)}
-                        title="Doosri custom file attach karein"
-                      >
-                        {showCustomUpload ? 'Hide' : 'Doosri file?'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {showCustomUpload && (
-                    <div className="mt-2 pt-2 border-top">
-                      <label className="form-label small text-secondary mb-1">Custom PDF Chunein:</label>
-                      <input
-                        type="file"
-                        accept=".pdf,application/pdf"
-                        className="form-control form-control-sm"
-                        onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-2.5 rounded bg-light border mb-2">
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1.5">
-                    <div className="small fw-semibold text-secondary d-flex align-items-center gap-1">
-                      <i className="bi bi-file-earmark-pdf text-danger" />
-                      Direct PDF File Attach Karein (Server se send karne ke liye):
-                    </div>
-                    {onDownloadPdf && (
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-outline-secondary py-0.5 px-2"
-                        onClick={onDownloadPdf}
-                        title="Pehle PDF apne computer mein save karein"
-                      >
-                        <i className="bi bi-download me-1" />
-                        PDF Download Karein
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="d-flex align-items-center gap-2">
-                    <input
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      className="form-control form-control-sm"
-                      onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
-                    />
-                    {attachedFile && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-danger py-0 px-2"
-                        onClick={() => setAttachedFile(null)}
-                        title="File hatayein"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-
-                  {attachedFile ? (
-                    <div className="small text-success mt-1.5 d-flex align-items-center gap-1">
-                      <i className="bi bi-check2-circle" />
-                      <strong>Attached:</strong> {attachedFile.name} ({(attachedFile.size / 1024).toFixed(1)} KB) — yeh file direct WhatsApp par deliver hogi!
-                    </div>
-                  ) : (
-                    <div className="form-text small mt-1" style={{ fontSize: 11 }}>
-                      PDF document direct WhatsApp par bhejne ke liye file attach karein.
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Modal Footer */}
-            <div className="modal-footer py-2 px-3 bg-light border-top d-flex flex-wrap justify-content-between gap-2">
+            <div className="modal-footer py-2 px-3.5 bg-light border-top d-flex justify-content-between align-items-center">
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary"
@@ -432,40 +427,25 @@ function ShareBody({
                 Cancel
               </button>
 
-              <div className="d-flex align-items-center gap-2">
-                {/* Fallback Option */}
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-success"
-                  onClick={sendViaWeb}
-                  disabled={!message.trim() || sendingDirect}
-                  title="WhatsApp Web / App khol kar link bhejega"
-                >
-                  <i className="bi bi-box-arrow-up-right me-1" />
-                  WhatsApp Web Kholein
-                </button>
-
-                {/* Direct Server Send Option */}
-                <button
-                  type="button"
-                  className="btn btn-sm btn-success px-3 d-inline-flex align-items-center gap-1.5 shadow-sm"
-                  onClick={sendViaServer}
-                  disabled={!number.trim() || sendingDirect}
-                  title="Server direct samne wale ke number par PDF/message deliver karega"
-                >
-                  {sendingDirect ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm" role="status" />
-                      Bhej raha hai…
-                    </>
-                  ) : (
-                    <>
-                      <i className="bi bi-send-fill" />
-                      Direct Bhejein (Server 🚀)
-                    </>
-                  )}
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-success px-3.5 d-inline-flex align-items-center gap-1.5 shadow-sm"
+                onClick={sendViaServer}
+                disabled={!number.trim() || sendingDirect}
+                title="Server direct WhatsApp par report aur PDF deliver karega"
+              >
+                {sendingDirect ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm" role="status" />
+                    Bhej raha hai…
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-send-fill" />
+                    Direct Bhejein (Server 🚀)
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
