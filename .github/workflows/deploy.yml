@@ -112,10 +112,8 @@ jobs:
           elif [ -n "$SSH_PASS" ]; then
             echo "🔑 Connecting as '$TARGET_USER' to '$TARGET_HOST' using Password (native OpenSSH askpass)..."
             # Setup native OpenSSH askpass (Zero external dependencies, immune to apt mirror glitches!)
-            cat << 'EOF' > /tmp/deploy_askpass.sh
-#!/bin/sh
-printf '%s\n' "$SSH_PASS"
-EOF
+            echo '#!/bin/sh' > /tmp/deploy_askpass.sh
+            echo 'printf "%s\n" "$SSH_PASS"' >> /tmp/deploy_askpass.sh
             chmod 700 /tmp/deploy_askpass.sh
             export SSH_ASKPASS="/tmp/deploy_askpass.sh"
             export SSH_ASKPASS_REQUIRE="force"
