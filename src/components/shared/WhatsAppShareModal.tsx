@@ -89,6 +89,7 @@ function ShareBody({
   // Server WhatsApp status & sending states
   const [serverStatus, setServerStatus] = useState<WhatsAppConnectionStatus | null>(null)
   const [sendingDirect, setSendingDirect] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
   const [directSuccess, setDirectSuccess] = useState(false)
   const [directError, setDirectError] = useState<string | null>(null)
   const [showQRModal, setShowQRModal] = useState(false)
@@ -176,6 +177,31 @@ function ShareBody({
     setSelectedContactIdx('')
     if (number === contactToDelete.number) {
       setNumber('')
+    }
+  }
+
+  // Disconnect / logout current WhatsApp account to connect a new one
+  const handleDisconnect = async () => {
+    if (!window.confirm('Kya aap is WhatsApp number ko disconnect karke naya phone link karna chahte hain?')) {
+      return
+    }
+    setDisconnecting(true)
+    setDirectError(null)
+    try {
+      const res = await fetch('/api/whatsapp/status', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.error || `Disconnect failed (${res.status})`)
+      }
+      setServerStatus(data?.status || null)
+      setShowQRModal(true)
+    } catch (err) {
+      setDirectError(err instanceof Error ? err.message : 'Phone disconnect nahi ho saka.')
+    } finally {
+      setDisconnecting(false)
     }
   }
 
@@ -267,6 +293,71 @@ function ShareBody({
 
             {/* Modal Body */}
             <div className="modal-body px-3.5 py-3">
+              {/* Sender Account Info & Disconnect / Cancel Banner */}
+              <div
+                className="p-2.5 mb-3 rounded-2 border d-flex align-items-center justify-content-between flex-wrap gap-2"
+                style={{
+                  background: serverStatus?.connected ? 'rgba(25, 135, 84, 0.08)' : 'rgba(255, 193, 7, 0.1)',
+                  borderColor: serverStatus?.connected ? 'rgba(25, 135, 84, 0.25)' : 'rgba(255, 193, 7, 0.35)',
+                }}
+              >
+                <div className="d-flex align-items-center gap-2">
+                  <i className={`bi ${serverStatus?.connected ? 'bi-whatsapp text-success' : 'bi-exclamation-circle text-warning'} fs-5`} />
+                  <div>
+                    <div className="small fw-bold text-dark" style={{ fontSize: 12 }}>
+                      {serverStatus?.connected ? (
+                        <>
+                          Sender (Bhejne Wala):{' '}
+                          <span className="text-success fw-bold">
+                            {serverStatus.ownerNumber ? serverStatus.ownerNumber : 'Connected WhatsApp Phone'}
+                          </span>
+                        </>
+                      ) : (
+                        'Koi Phone Connected Nahi Hai'
+                      )}
+                    </div>
+                    <div className="text-secondary" style={{ fontSize: 10.5 }}>
+                      {serverStatus?.connected
+                        ? 'Is number se recipient ko message aur PDF deliver hoga'
+                        : 'WhatsApp se report bhejne ke liye QR Code scan karein'}
+                    </div>
+                  </div>
+                </div>
+
+                {serverStatus?.connected ? (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-outline-danger py-1 px-2.5 d-inline-flex align-items-center gap-1 shadow-sm"
+                    style={{ fontSize: 11 }}
+                    onClick={handleDisconnect}
+                    disabled={disconnecting}
+                    title="Is phone ko disconnect karke doosra number connect karein"
+                  >
+                    {disconnecting ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" />
+                        Disconnecting…
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-x-circle" />
+                        Cancel / Phone Badlein
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-primary py-1 px-2.5 d-inline-flex align-items-center gap-1 shadow-sm"
+                    style={{ fontSize: 11 }}
+                    onClick={() => setShowQRModal(true)}
+                  >
+                    <i className="bi bi-qr-code" />
+                    QR Scan Karein
+                  </button>
+                )}
+              </div>
+
               {directSuccess && (
                 <div className="alert alert-success d-flex align-items-center gap-2 py-2 px-3 mb-3">
                   <i className="bi bi-check-circle-fill fs-5" />
@@ -422,23 +513,24 @@ function ShareBody({
               </button>
 
               <div className="d-flex align-items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1.5"
-                  onClick={() => setShowQRModal(true)}
-                  title="QR Code scan karke phone link ya change karein"
-                  disabled={sendingDirect}
-                >
-                  <i className="bi bi-qr-code" />
-                  <span>{serverStatus?.connected ? 'Phone Badlein (QR)' : 'QR Code Scan'}</span>
-                </button>
+                {!serverStatus?.connected && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1.5"
+                    onClick={() => setShowQRModal(true)}
+                    disabled={sendingDirect}
+                  >
+                    <i className="bi bi-qr-code" />
+                    <span>QR Code Scan</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
                   className="btn btn-sm btn-success px-3.5 d-inline-flex align-items-center gap-1.5 shadow-sm"
                   onClick={sendViaServer}
-                  disabled={!number.trim() || sendingDirect}
-                  title="Direct WhatsApp par report aur PDF deliver karega"
+                  disabled={!number.trim() || sendingDirect || !serverStatus?.connected}
+                  title={serverStatus?.connected ? 'Direct WhatsApp par report aur PDF deliver karega' : 'Pehle phone connect karein'}
                 >
                   {sendingDirect ? (
                     <>

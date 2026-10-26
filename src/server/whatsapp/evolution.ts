@@ -10,6 +10,7 @@ export interface WhatsAppConnectionStatus {
   state: 'open' | 'connecting' | 'close' | 'offline'
   qrcode?: string
   instanceName: string
+  ownerNumber?: string
   error?: string
 }
 
@@ -80,18 +81,70 @@ export async function getWhatsAppStatus(): Promise<WhatsAppConnectionStatus> {
     }
 
     const stateData = (await stateRes.json().catch(() => null)) as {
-      instance?: { state?: string }
+      instance?: { state?: string; owner?: string; ownerJid?: string }
       state?: string
+      owner?: string
+      ownerJid?: string
     } | null
 
     const state = (stateData?.instance?.state || stateData?.state || 'close').toLowerCase()
 
     if (state === 'open') {
+      let ownerNumber: string | undefined
+      const parseOwner = (val: unknown): string | undefined => {
+        if (typeof val !== 'string') return undefined
+        const digits = val.split('@')[0].split(':')[0].replace(/\D/g, '')
+        if (!digits || digits.length < 10) return undefined
+        if (digits.startsWith('92') && digits.length === 12) {
+          return `0${digits.slice(2, 5)} ${digits.slice(5)}`
+        }
+        return digits
+      }
+
+      const rawOwner =
+        stateData?.instance?.ownerJid ||
+        stateData?.instance?.owner ||
+        stateData?.ownerJid ||
+        stateData?.owner
+
+      ownerNumber = parseOwner(rawOwner)
+
+      if (!ownerNumber) {
+        try {
+          const fetchRes = await fetch(`${baseUrl}/instance/fetchInstances`, {
+            method: 'GET',
+            headers: { apikey: apiKey },
+            signal: AbortSignal.timeout(3000),
+            cache: 'no-store',
+          })
+          if (fetchRes.ok) {
+            const list = (await fetchRes.json().catch(() => null)) as unknown
+            if (Array.isArray(list)) {
+              const current = list.find(
+                (item: Record<string, unknown>) =>
+                  (item?.name || item?.instanceName || (item?.instance as Record<string, unknown> | undefined)?.instanceName) === instance
+              )
+              if (current) {
+                ownerNumber = parseOwner(
+                  current?.ownerJid ||
+                  current?.owner ||
+                  (current?.instance as Record<string, unknown> | undefined)?.ownerJid ||
+                  (current?.instance as Record<string, unknown> | undefined)?.owner
+                )
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
       return {
         configured: true,
         connected: true,
         state: 'open',
         instanceName: instance,
+        ownerNumber,
       }
     }
 
@@ -310,4 +363,28 @@ export async function sendWhatsAppText({
   }
 
   return { success: true, messageId: data?.key?.id }
+}
+
+/** Disconnect / Logout WhatsApp instance session so a new number can be scanned */
+export async function logoutWhatsAppInstance(): Promise<{ success: boolean; error?: string }> {
+  const { baseUrl, apiKey, instance } = evolutionConfig()
+  try {
+    const res = await fetch(`${baseUrl}/instance/logout/${encodeURIComponent(instance)}`, {
+      method: 'DELETE',
+      headers: { apikey: apiKey },
+      signal: AbortSignal.timeout(10000),
+    })
+
+    if (!res.ok && res.status !== 404) {
+      const data = (await res.json().catch(() => null)) as { response?: { message?: string }; error?: string } | null
+      throw new Error(data?.response?.message || data?.error || `Logout failed (${res.status})`)
+    }
+
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to disconnect WhatsApp instance',
+    }
+  }
 }
