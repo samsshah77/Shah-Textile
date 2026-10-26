@@ -257,15 +257,9 @@ function ShareBody({
                     <i className="bi bi-check-circle me-1" /> Connected
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-outline-warning py-0 px-2 rounded-pill"
-                    onClick={() => setShowQRModal(true)}
-                    title="QR Code scan karke phone link karein"
-                    style={{ fontSize: 10.5 }}
-                  >
-                    <i className="bi bi-qr-code me-1" /> QR Link
-                  </button>
+                  <span className="badge text-bg-secondary px-2 py-0.5" style={{ fontSize: 10.5 }}>
+                    <i className="bi bi-exclamation-circle me-1" /> Not Connected
+                  </span>
                 )}
               </div>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
@@ -427,25 +421,38 @@ function ShareBody({
                 Cancel
               </button>
 
-              <button
-                type="button"
-                className="btn btn-sm btn-success px-3.5 d-inline-flex align-items-center gap-1.5 shadow-sm"
-                onClick={sendViaServer}
-                disabled={!number.trim() || sendingDirect}
-                title="Server direct WhatsApp par report aur PDF deliver karega"
-              >
-                {sendingDirect ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm" role="status" />
-                    Bhej raha hai…
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-send-fill" />
-                    Direct Bhejein (Server 🚀)
-                  </>
-                )}
-              </button>
+              <div className="d-flex align-items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1.5"
+                  onClick={() => setShowQRModal(true)}
+                  title="QR Code scan karke phone link ya change karein"
+                  disabled={sendingDirect}
+                >
+                  <i className="bi bi-qr-code" />
+                  <span>{serverStatus?.connected ? 'Phone Badlein (QR)' : 'QR Code Scan'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-sm btn-success px-3.5 d-inline-flex align-items-center gap-1.5 shadow-sm"
+                  onClick={sendViaServer}
+                  disabled={!number.trim() || sendingDirect}
+                  title="Direct WhatsApp par report aur PDF deliver karega"
+                >
+                  {sendingDirect ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm" role="status" />
+                      Bhej raha hai…
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-send-fill" />
+                      Direct Bhejein 🚀
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
