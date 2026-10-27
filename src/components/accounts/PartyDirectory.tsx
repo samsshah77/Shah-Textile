@@ -2,20 +2,31 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { PlusCircle, Search, Download, Printer, Eye, Pencil, X, AlertTriangle } from 'lucide-react'
+import { PlusCircle, Search, Download, Printer, Pencil, X, AlertTriangle } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
-import { monthLabel, rs, qty } from '@/lib/accounts/util'
+import { monthLabel, rs } from '@/lib/accounts/util'
 import type { CostBucket, Party, PartyKind, PartySummary, PayAccount } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, MonthPicker } from '@/components/accounts/ui'
+import { useResizableColumns } from '@/hooks/useResizableColumns'
+import { ResizableTh } from '@/components/shared/ResizableTh'
 
 const BUCKET_LABEL: Record<CostBucket, string> = {
   MACHINERY: 'Machinery Parts',
   ELECTRIC: 'Electric / Maint.',
   REPAIR: 'Repair',
+}
+
+const DEFAULT_DIRECTORY_WIDTHS: Record<string, number> = {
+  serialNo: 50,
+  name: 280,
+  category: 180,
+  costBucket: 220,
+  purchases: 160,
+  actions: 80,
 }
 
 /**
@@ -33,6 +44,19 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
   const [showRemoved, setShowRemoved] = useState(false)
   const [showIdle, setShowIdle] = useState(false)
   const [editing, setEditing] = useState<Party | 'new' | null>(null)
+
+  const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
+    `party_directory_${kind.toLowerCase()}_v1`,
+    DEFAULT_DIRECTORY_WIDTHS
+  )
+  const tableMinWidth = useMemo(
+    () =>
+      Object.entries(widths).reduce(
+        (sum, [key, w]) => (key === 'actions' && !canEditAccounts ? sum : sum + w),
+        0
+      ),
+    [widths, canEditAccounts]
+  )
 
   const noun = kind === 'WORKSHOP' ? 'Workshop' : 'Trader'
   const base = kind === 'WORKSHOP' ? '/accounts/workshops' : '/accounts/traders'
@@ -52,9 +76,9 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
   const exportCSV = () => {
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
     const csv = [
-      ['S.No', 'Name', 'Category', 'Cost block', 'Bills', 'Items', 'Purchases', 'Paid', 'Balance', 'Remarks'].join(','),
+      ['S.No', `${noun} Name`, 'Category', 'Cost block', 'Purchases'].join(','),
       ...shown.map((r, i) =>
-        [i + 1, r.party.name, r.party.category, BUCKET_LABEL[r.party.costBucket], r.bills, r.items, r.purchases, r.paid, r.balance, r.party.remarks]
+        [i + 1, r.party.name, r.party.category, BUCKET_LABEL[r.party.costBucket], r.purchases]
           .map(esc)
           .join(',')
       ),
@@ -63,6 +87,7 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     a.download = `${noun}s_${month}.csv`
     a.click()
+    URL.revokeObjectURL(a.href)
   }
 
   return (
@@ -109,41 +134,114 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
               />
             </div>
             <div className="flex items-center gap-4">
-            {month !== 'all' && (
-              <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                <input type="checkbox" checked={showIdle} onChange={(e) => setShowIdle(e.target.checked)} />
-                Is mahine bina bill walay bhi dikhayein
-              </label>
-            )}
-            {removedCount > 0 && (
-              <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                <input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
-                Removed bhi dikhayein ({removedCount})
-              </label>
-            )}
+              {month !== 'all' && (
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input type="checkbox" checked={showIdle} onChange={(e) => setShowIdle(e.target.checked)} />
+                  Is mahine bina bill walay bhi dikhayein
+                </label>
+              )}
+              {removedCount > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
+                  Removed bhi dikhayein ({removedCount})
+                </label>
+              )}
+              <span className="text-xs text-slate-500 font-semibold">
+                {shown.length} {noun.toLowerCase()}s
+              </span>
+              <button
+                type="button"
+                onClick={resetAllWidths}
+                className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
+                title="Reset column widths to default"
+              >
+                Reset widths
+              </button>
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left border-collapse text-xs">
+            <table
+              className="w-full text-left border-collapse text-xs"
+              style={{ tableLayout: 'fixed', minWidth: `${tableMinWidth}px` }}
+            >
+              <colgroup>
+                <col style={{ width: widths.serialNo }} />
+                <col style={{ width: widths.name }} />
+                <col style={{ width: widths.category }} />
+                <col style={{ width: widths.costBucket }} />
+                <col style={{ width: widths.purchases }} />
+                {canEditAccounts && <col className="print:hidden" style={{ width: widths.actions }} />}
+              </colgroup>
               <thead>
                 <tr className="bg-slate-100 font-bold uppercase text-[10px] text-slate-700 border-b-2 border-slate-800">
-                  <th className="py-2.5 px-3 text-center w-12">S.No</th>
-                  <th className="py-2.5 px-3">{noun} Name</th>
-                  <th className="py-2.5 px-3">Category</th>
-                  <th className="py-2.5 px-3">Cost block</th>
-                  <th className="py-2.5 px-3 text-center">Bills</th>
-                  <th className="py-2.5 px-3 text-center">Items</th>
-                  <th className="py-2.5 px-3 text-right">Purchases</th>
-                  <th className="py-2.5 px-3 text-right">Paid</th>
-                  <th className="py-2.5 px-3 text-right">Balance</th>
-                  <th className="py-2.5 px-3">Remarks</th>
-                  <th className="py-2.5 px-3 text-center print:hidden w-24">Actions</th>
+                  <ResizableTh
+                    columnKey="serialNo"
+                    width={widths.serialNo}
+                    minWidth={36}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="py-2.5 px-3 text-center"
+                  >
+                    S.No
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="name"
+                    width={widths.name}
+                    minWidth={150}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="py-2.5 px-3"
+                  >
+                    {noun} Name
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="category"
+                    width={widths.category}
+                    minWidth={100}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="py-2.5 px-3"
+                  >
+                    Category
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="costBucket"
+                    width={widths.costBucket}
+                    minWidth={120}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="py-2.5 px-3"
+                  >
+                    Cost block
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="purchases"
+                    width={widths.purchases}
+                    minWidth={110}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className="py-2.5 px-3 text-right"
+                  >
+                    Purchases
+                  </ResizableTh>
+                  {canEditAccounts && (
+                    <ResizableTh
+                      columnKey="actions"
+                      width={widths.actions}
+                      minWidth={50}
+                      onResize={setColumnWidth}
+                      onReset={resetColumnWidth}
+                      className="py-2.5 px-3 text-center print:hidden"
+                    >
+                      Actions
+                    </ResizableTh>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {shown.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-10 text-center text-muted-foreground">
+                    <td colSpan={canEditAccounts ? 6 : 5} className="py-10 text-center text-muted-foreground">
                       {month === 'all' || showIdle ? `Koi ${noun.toLowerCase()} nahi mila.` : `${period} mein kisi ${noun.toLowerCase()} ka bill nahi.`}
                     </td>
                   </tr>
@@ -160,26 +258,20 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
                       </td>
                       <td className="py-2 px-3 text-slate-600">{r.party.category || '-'}</td>
                       <td className="py-2 px-3 text-slate-600">{BUCKET_LABEL[r.party.costBucket]}</td>
-                      <td className="py-2 px-3 text-center font-mono">{r.bills}</td>
-                      <td className="py-2 px-3 text-center font-mono">{qty(r.items)}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">{rs(r.purchases)}</td>
-                      <td className="py-2 px-3 text-right font-mono text-emerald-700">{rs(r.paid)}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">{rs(r.balance)}</td>
-                      <td className="py-2 px-3 text-slate-500 max-w-[200px] truncate" title={r.party.remarks}>
-                        {r.party.remarks || '-'}
-                      </td>
-                      <td className="py-2 px-3 text-center print:hidden">
-                        <div className="flex items-center justify-center gap-1">
-                          <Link href={`${base}/${r.party.slug}?month=${month}`} className="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-[#0066cc]" title="Ledger" aria-label={`Open ${r.party.name} ledger`}>
-                            <Eye className="size-3.5" />
-                          </Link>
-                          {canEditAccounts && (
-                            <button type="button" onClick={() => setEditing(r.party)} className="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-[#0066cc] cursor-pointer" title="Edit" aria-label={`Edit ${r.party.name}`}>
-                              <Pencil className="size-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{rs(r.purchases)}</td>
+                      {canEditAccounts && (
+                        <td className="py-2 px-3 text-center print:hidden">
+                          <button
+                            type="button"
+                            onClick={() => setEditing(r.party)}
+                            className="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-[#0066cc] cursor-pointer"
+                            title={`Edit ${r.party.name}`}
+                            aria-label={`Edit ${r.party.name}`}
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
@@ -187,12 +279,8 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
               <tfoot>
                 <tr className="bg-slate-200 font-black border-t-2 border-slate-800">
                   <td colSpan={4} className="py-2.5 px-3 text-right uppercase">Total ({period})</td>
-                  <td className="py-2.5 px-3 text-center font-mono">{tot((r) => r.bills)}</td>
-                  <td className="py-2.5 px-3 text-center font-mono">{qty(tot((r) => r.items))}</td>
-                  <td className="py-2.5 px-3 text-right font-mono text-[#0066cc]">{rs(tot((r) => r.purchases))}</td>
-                  <td className="py-2.5 px-3 text-right font-mono">{rs(tot((r) => r.paid))}</td>
-                  <td className="py-2.5 px-3 text-right font-mono">{rs(tot((r) => r.balance))}</td>
-                  <td colSpan={2} />
+                  <td className="py-2.5 px-3 text-right font-mono text-[#0066cc] font-bold">{rs(tot((r) => r.purchases))}</td>
+                  {canEditAccounts && <td className="print:hidden" />}
                 </tr>
               </tfoot>
             </table>

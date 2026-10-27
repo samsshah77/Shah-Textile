@@ -1,20 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { WhatsAppQRModal } from './WhatsAppQRModal'
-import type { WhatsAppConnectionStatus } from '@/server/whatsapp/evolution'
+import { useState } from 'react'
 
 export interface SavedContact {
   name: string
   number: string
 }
 
-const CONTACTS_KEY = 'sara_whatsapp_contacts_v1'
+export interface SavedEmailContact {
+  name: string
+  email: string
+}
 
-function getSavedContacts(): SavedContact[] {
+const WA_CONTACTS_KEY = 'sara_whatsapp_contacts_v1'
+const EMAIL_CONTACTS_KEY = 'sara_email_contacts_v1'
+
+function getSavedWaContacts(): SavedContact[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = window.localStorage.getItem(CONTACTS_KEY)
+    const raw = window.localStorage.getItem(WA_CONTACTS_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed : []
@@ -23,9 +27,29 @@ function getSavedContacts(): SavedContact[] {
   }
 }
 
-function persistContacts(list: SavedContact[]) {
+function persistWaContacts(list: SavedContact[]) {
   try {
-    window.localStorage.setItem(CONTACTS_KEY, JSON.stringify(list))
+    window.localStorage.setItem(WA_CONTACTS_KEY, JSON.stringify(list))
+  } catch {
+    /* localStorage blocked */
+  }
+}
+
+function getSavedEmailContacts(): SavedEmailContact[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(EMAIL_CONTACTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function persistEmailContacts(list: SavedEmailContact[]) {
+  try {
+    window.localStorage.setItem(EMAIL_CONTACTS_KEY, JSON.stringify(list))
   } catch {
     /* localStorage blocked */
   }
@@ -75,168 +99,150 @@ function ShareBody({
   onClose,
   documentTitle,
   defaultMessage,
+  onDownloadPdf,
   getPdfAttachment,
 }: Omit<WhatsAppShareModalProps, 'isOpen'>) {
-  const [contacts, setContacts] = useState<SavedContact[]>([])
-  const [selectedContactIdx, setSelectedContactIdx] = useState<string>('')
-  const [number, setNumber] = useState('')
+  // Tabs: 'whatsapp' or 'email'
+  const [activeTab, setActiveTab] = useState<'whatsapp' | 'email'>('whatsapp')
+
+  // WhatsApp states
+  const [waContacts, setWaContacts] = useState<SavedContact[]>(() => getSavedWaContacts())
+  const [selectedWaIdx, setSelectedWaIdx] = useState<string>(() => (waContacts.length ? '0' : ''))
+  const [number, setNumber] = useState(() => waContacts[0]?.number || '')
   const [message, setMessage] = useState(defaultMessage)
+  const [showSaveWaContact, setShowSaveWaContact] = useState(false)
+  const [newWaContactName, setNewWaContactName] = useState('')
+  const [copied, setCopied] = useState(false)
 
-  // Save new contact states
-  const [showSaveContact, setShowSaveContact] = useState(false)
-  const [newContactName, setNewContactName] = useState('')
+  // Email states
+  const [emailContacts, setEmailContacts] = useState<SavedEmailContact[]>(() => getSavedEmailContacts())
+  const [selectedEmailIdx, setSelectedEmailIdx] = useState<string>(() => (emailContacts.length ? '0' : ''))
+  const [emailAddress, setEmailAddress] = useState(() => emailContacts[0]?.email || '')
+  const [emailSubject, setEmailSubject] = useState(() => `${documentTitle} — Sara Textile`)
+  const [emailBody, setEmailBody] = useState(defaultMessage)
+  const [showSaveEmailContact, setShowSaveEmailContact] = useState(false)
+  const [newEmailContactName, setNewEmailContactName] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailSuccess, setEmailSuccess] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
 
-  // Server WhatsApp status & sending states
-  const [serverStatus, setServerStatus] = useState<WhatsAppConnectionStatus | null>(null)
-  const [sendingDirect, setSendingDirect] = useState(false)
-  const [disconnecting, setDisconnecting] = useState(false)
-  const [directSuccess, setDirectSuccess] = useState(false)
-  const [directError, setDirectError] = useState<string | null>(null)
-  const [showQRModal, setShowQRModal] = useState(false)
-
-  // Auto-generated PDF attachment
-  const [autoPdf, setAutoPdf] = useState<{ base64: string; filename: string } | null>(null)
-
-  // Load saved contacts on mount
-  useEffect(() => {
-    const list = getSavedContacts()
-    setContacts(list)
-    if (list.length > 0) {
-      setSelectedContactIdx('0')
-      setNumber(list[0].number)
-    }
-  }, [])
-
-  // Load auto-generated PDF attachment quietly in background
-  useEffect(() => {
-    if (!getPdfAttachment) return
-    let live = true
-    Promise.resolve(getPdfAttachment())
-      .then((res) => {
-        if (live && res) setAutoPdf(res)
-      })
-      .catch((err) => {
-        console.error('[whatsapp-pdf]', err)
-      })
-    return () => {
-      live = false
-    }
-  }, [getPdfAttachment])
-
-  // Check server connection status on mount
-  useEffect(() => {
-    let live = true
-    fetch('/api/whatsapp/status', { credentials: 'same-origin', cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (live && data) setServerStatus(data)
-      })
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [])
-
-  // Handle contact selection from dropdown
-  const handleSelectContact = (val: string) => {
-    setSelectedContactIdx(val)
+  // WhatsApp contact select
+  const handleSelectWaContact = (val: string) => {
+    setSelectedWaIdx(val)
     if (val === '') {
-      // Manual custom number
       setNumber('')
     } else {
       const idx = parseInt(val, 10)
-      if (!isNaN(idx) && contacts[idx]) {
-        setNumber(contacts[idx].number)
+      if (!isNaN(idx) && waContacts[idx]) {
+        setNumber(waContacts[idx].number)
       }
     }
-    setShowSaveContact(false)
+    setShowSaveWaContact(false)
   }
 
-  // Save new contact
-  const handleSaveContact = () => {
-    const trimmedName = newContactName.trim()
+  // Save WhatsApp contact
+  const handleSaveWaContact = () => {
+    const trimmedName = newWaContactName.trim()
     const trimmedNum = number.trim()
     if (!trimmedName || !trimmedNum) return
 
-    const updated = [{ name: trimmedName, number: trimmedNum }, ...contacts.filter((c) => c.number !== trimmedNum)]
-    persistContacts(updated)
-    setContacts(updated)
-    setSelectedContactIdx('0')
-    setNewContactName('')
-    setShowSaveContact(false)
+    const updated = [{ name: trimmedName, number: trimmedNum }, ...waContacts.filter((c) => c.number !== trimmedNum)]
+    persistWaContacts(updated)
+    setWaContacts(updated)
+    setSelectedWaIdx('0')
+    setNewWaContactName('')
+    setShowSaveWaContact(false)
   }
 
-  // Delete saved contact
-  const handleDeleteContact = () => {
-    const idx = parseInt(selectedContactIdx, 10)
-    if (isNaN(idx) || !contacts[idx]) return
-    const contactToDelete = contacts[idx]
-    const updated = contacts.filter((_, i) => i !== idx)
-    persistContacts(updated)
-    setContacts(updated)
-    setSelectedContactIdx('')
+  // Delete WhatsApp contact
+  const handleDeleteWaContact = () => {
+    const idx = parseInt(selectedWaIdx, 10)
+    if (isNaN(idx) || !waContacts[idx]) return
+    const contactToDelete = waContacts[idx]
+    const updated = waContacts.filter((_, i) => i !== idx)
+    persistWaContacts(updated)
+    setWaContacts(updated)
+    setSelectedWaIdx('')
     if (number === contactToDelete.number) {
       setNumber('')
     }
   }
 
-  // Disconnect / logout current WhatsApp account to connect a new one
-  const handleDisconnect = async () => {
-    if (!window.confirm('Kya aap is WhatsApp number ko disconnect karke naya phone link karna chahte hain?')) {
-      return
-    }
-    setDisconnecting(true)
-    setDirectError(null)
-    try {
-      const res = await fetch('/api/whatsapp/status', {
-        method: 'DELETE',
-        credentials: 'same-origin',
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        throw new Error(data?.error || `Disconnect failed (${res.status})`)
+  // Email contact select
+  const handleSelectEmailContact = (val: string) => {
+    setSelectedEmailIdx(val)
+    if (val === '') {
+      setEmailAddress('')
+    } else {
+      const idx = parseInt(val, 10)
+      if (!isNaN(idx) && emailContacts[idx]) {
+        setEmailAddress(emailContacts[idx].email)
       }
-      setServerStatus(data?.status || null)
-      setShowQRModal(true)
-    } catch (err) {
-      setDirectError(err instanceof Error ? err.message : 'Phone disconnect nahi ho saka.')
-    } finally {
-      setDisconnecting(false)
+    }
+    setShowSaveEmailContact(false)
+  }
+
+  // Save Email contact
+  const handleSaveEmailContact = () => {
+    const trimmedName = newEmailContactName.trim()
+    const trimmedEmail = emailAddress.trim().toLowerCase()
+    if (!trimmedName || !trimmedEmail) return
+
+    const updated = [{ name: trimmedName, email: trimmedEmail }, ...emailContacts.filter((c) => c.email !== trimmedEmail)]
+    persistEmailContacts(updated)
+    setEmailContacts(updated)
+    setSelectedEmailIdx('0')
+    setNewEmailContactName('')
+    setShowSaveEmailContact(false)
+  }
+
+  // Delete Email contact
+  const handleDeleteEmailContact = () => {
+    const idx = parseInt(selectedEmailIdx, 10)
+    if (isNaN(idx) || !emailContacts[idx]) return
+    const contactToDelete = emailContacts[idx]
+    const updated = emailContacts.filter((_, i) => i !== idx)
+    persistEmailContacts(updated)
+    setEmailContacts(updated)
+    setSelectedEmailIdx('')
+    if (emailAddress === contactToDelete.email) {
+      setEmailAddress('')
     }
   }
 
-  // Check if current number is already saved
-  const cleanCurrentNum = formatWhatsAppNumber(number)
-  const isAlreadySaved = contacts.some(
-    (c) => formatWhatsAppNumber(c.number) === cleanCurrentNum && cleanCurrentNum.length >= 10
-  )
+  // Copy message
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
-  // Send direct document or message via VPS Evolution API
-  const sendViaServer = async () => {
-    const to = formatWhatsAppNumber(number)
-    if (!to || to.length < 10) {
-      setDirectError('Pehle valid WhatsApp number darj karein (e.g. 0300 1234567)')
+  // Send Email via Server (Free SMTP)
+  const handleSendEmail = async () => {
+    const trimmedEmail = emailAddress.trim()
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setEmailError('Pehle valid recipient email address darj karein.')
       return
     }
 
-    setSendingDirect(true)
-    setDirectError(null)
-    setDirectSuccess(false)
+    setSendingEmail(true)
+    setEmailError(null)
+    setEmailSuccess(false)
 
     try {
+      const autoPdf = getPdfAttachment ? await Promise.resolve(getPdfAttachment()) : null
       const sendFilename = autoPdf?.filename || `${documentTitle.replace(/\s+/g, '_')}.pdf`
 
-      const res = await fetch('/api/whatsapp/send', {
+      const res = await fetch('/api/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-          number: to,
-          text: message.trim(),
+          to: trimmedEmail,
+          subject: emailSubject.trim() || documentTitle,
+          text: emailBody.trim(),
           fileBase64: autoPdf?.base64,
           filename: sendFilename,
-          mimeType: 'application/pdf',
-          caption: message.trim(),
         }),
       })
 
@@ -245,323 +251,466 @@ function ShareBody({
         throw new Error(data?.error || `Server error (${res.status})`)
       }
 
-      setDirectSuccess(true)
+      setEmailSuccess(true)
       setTimeout(() => {
         onClose()
-      }, 1800)
+      }, 2000)
     } catch (err) {
-      setDirectError(
-        err instanceof Error
-          ? err.message
-          : 'Server se WhatsApp nahi ja saka. Connection check karein.'
-      )
+      setEmailError(err instanceof Error ? err.message : 'Email bheji nahi ja saki.')
     } finally {
-      setSendingDirect(false)
+      setSendingEmail(false)
     }
   }
 
-  return (
-    <>
-      <div
-        className="modal fade show d-block d-print-none"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="wa-title"
-        style={{ background: 'rgba(15,23,42,.45)', zIndex: 1050 }}
-        onClick={onClose}
-      >
-        <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-          <div className="modal-content border-0 shadow-lg rounded-3">
-            {/* Modal Header */}
-            <div className="modal-header py-2.5 px-3 bg-light border-bottom">
-              <div className="d-flex align-items-center gap-2">
-                <h5 id="wa-title" className="modal-title fs-6 fw-bold mb-0 text-dark">
-                  <i className="bi bi-whatsapp text-success me-1.5" /> WhatsApp — {documentTitle}
-                </h5>
-                {serverStatus?.connected ? (
-                  <span className="badge text-bg-success px-2 py-0.5" style={{ fontSize: 10.5 }}>
-                    <i className="bi bi-check-circle me-1" /> Connected
-                  </span>
-                ) : (
-                  <span className="badge text-bg-secondary px-2 py-0.5" style={{ fontSize: 10.5 }}>
-                    <i className="bi bi-exclamation-circle me-1" /> Not Connected
-                  </span>
-                )}
-              </div>
-              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
-            </div>
+  // WhatsApp Web link
+  const cleanCurrentNum = formatWhatsAppNumber(number)
+  const waLink = `https://wa.me/${cleanCurrentNum}?text=${encodeURIComponent(message)}`
+  const isWaAlreadySaved = waContacts.some(
+    (c) => formatWhatsAppNumber(c.number) === cleanCurrentNum && cleanCurrentNum.length >= 10
+  )
 
-            {/* Modal Body */}
-            <div className="modal-body px-3.5 py-3">
-              {/* Sender Account Info & Disconnect / Cancel Banner */}
-              <div
-                className="p-2.5 mb-3 rounded-2 border d-flex align-items-center justify-content-between flex-wrap gap-2"
-                style={{
-                  background: serverStatus?.connected ? 'rgba(25, 135, 84, 0.08)' : 'rgba(255, 193, 7, 0.1)',
-                  borderColor: serverStatus?.connected ? 'rgba(25, 135, 84, 0.25)' : 'rgba(255, 193, 7, 0.35)',
-                }}
-              >
-                <div className="d-flex align-items-center gap-2">
-                  <i className={`bi ${serverStatus?.connected ? 'bi-whatsapp text-success' : 'bi-exclamation-circle text-warning'} fs-5`} />
+  // Email mailto fallback link
+  const mailtoLink = `mailto:${encodeURIComponent(emailAddress.trim())}?subject=${encodeURIComponent(
+    emailSubject
+  )}&body=${encodeURIComponent(emailBody)}`
+  const isEmailAlreadySaved = emailContacts.some(
+    (c) => c.email.toLowerCase() === emailAddress.trim().toLowerCase()
+  )
+
+  return (
+    <div
+      className="modal fade show d-block d-print-none"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="share-title"
+      style={{ background: 'rgba(15,23,42,.45)', zIndex: 1050 }}
+      onClick={onClose}
+    >
+      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-content border-0 shadow-lg rounded-3">
+          {/* Modal Header with Tabs */}
+          <div className="modal-header py-2.5 px-3 bg-light border-bottom d-flex align-items-center justify-content-between">
+            <div className="d-flex align-items-center gap-2">
+              <h5 id="share-title" className="modal-title fs-6 fw-bold mb-0 text-dark">
+                Report Share — {documentTitle}
+              </h5>
+            </div>
+            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="px-3 pt-2 bg-light border-bottom">
+            <ul className="nav nav-tabs card-header-tabs" role="tablist">
+              <li className="nav-item">
+                <button
+                  type="button"
+                  className={`nav-link py-1.5 px-3 fw-bold small ${activeTab === 'whatsapp' ? 'active text-success' : 'text-secondary'}`}
+                  onClick={() => setActiveTab('whatsapp')}
+                >
+                  <i className="bi bi-whatsapp me-1.5" /> WhatsApp (Direct)
+                </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  type="button"
+                  className={`nav-link py-1.5 px-3 fw-bold small ${activeTab === 'email' ? 'active text-primary' : 'text-secondary'}`}
+                  onClick={() => setActiveTab('email')}
+                >
+                  <i className="bi bi-envelope-at me-1.5" /> Email (100% Free)
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          {/* Modal Body */}
+          <div className="modal-body px-3.5 py-3">
+            {/* WHATSAPP TAB */}
+            {activeTab === 'whatsapp' && (
+              <div>
+                {/* Safe WhatsApp notice banner */}
+                <div
+                  className="p-2 mb-3 rounded-2 border d-flex align-items-center gap-2"
+                  style={{ background: 'rgba(25, 135, 84, 0.08)', borderColor: 'rgba(25, 135, 84, 0.25)' }}
+                >
+                  <i className="bi bi-shield-check text-success fs-5" />
                   <div>
                     <div className="small fw-bold text-dark" style={{ fontSize: 12 }}>
-                      {serverStatus?.connected ? (
-                        <>
-                          Sender (Bhejne Wala):{' '}
-                          <span className="text-success fw-bold">
-                            {serverStatus.ownerNumber ? serverStatus.ownerNumber : 'Connected WhatsApp Phone'}
-                          </span>
-                        </>
-                      ) : (
-                        'Koi Phone Connected Nahi Hai'
-                      )}
+                      Official WhatsApp Web / Mobile Sharing
                     </div>
                     <div className="text-secondary" style={{ fontSize: 10.5 }}>
-                      {serverStatus?.connected
-                        ? 'Is number se recipient ko message aur PDF deliver hoga'
-                        : 'WhatsApp se report bhejne ke liye QR Code scan karein'}
+                      100% Mehfooz Tareeqa — is mein number ban hone ka bilkul koi khatra nahi hai.
                     </div>
                   </div>
                 </div>
 
-                {serverStatus?.connected ? (
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-outline-danger py-1 px-2.5 d-inline-flex align-items-center gap-1 shadow-sm"
-                    style={{ fontSize: 11 }}
-                    onClick={handleDisconnect}
-                    disabled={disconnecting}
-                    title="Is phone ko disconnect karke doosra number connect karein"
-                  >
-                    {disconnecting ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm" role="status" />
-                        Disconnecting…
-                      </>
-                    ) : (
-                      <>
-                        <i className="bi bi-x-circle" />
-                        Cancel / Phone Badlein
-                      </>
+                {/* Saved Contacts & Number Input */}
+                <div className="mb-3">
+                  <div className="d-flex align-items-center justify-content-between mb-1">
+                    <label className="form-label small fw-semibold mb-0" htmlFor="wa-number">
+                      Recipient (WhatsApp Number):
+                    </label>
+                    {waContacts.length > 0 && selectedWaIdx !== '' && (
+                      <button
+                        type="button"
+                        className="btn btn-link text-danger p-0 text-decoration-none small"
+                        style={{ fontSize: 11 }}
+                        onClick={handleDeleteWaContact}
+                        title="Is contact ko list se hatayein"
+                      >
+                        <i className="bi bi-trash3 me-0.5" /> Contact Hatayein
+                      </button>
                     )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-primary py-1 px-2.5 d-inline-flex align-items-center gap-1 shadow-sm"
-                    style={{ fontSize: 11 }}
-                    onClick={() => setShowQRModal(true)}
-                  >
-                    <i className="bi bi-qr-code" />
-                    QR Scan Karein
-                  </button>
-                )}
-              </div>
-
-              {directSuccess && (
-                <div className="alert alert-success d-flex align-items-center gap-2 py-2 px-3 mb-3">
-                  <i className="bi bi-check-circle-fill fs-5" />
-                  <div>
-                    <strong>Kamyabi!</strong> WhatsApp par direct deliver ho gaya hai.
                   </div>
-                </div>
-              )}
 
-              {directError && (
-                <div className="alert alert-danger d-flex align-items-center justify-content-between py-2 px-3 mb-3 small">
-                  <div>
-                    <i className="bi bi-exclamation-triangle-fill me-1" />
-                    {directError}
-                  </div>
-                  {serverStatus && !serverStatus.connected && (
-                    <button
-                      type="button"
-                      className="btn btn-xs btn-outline-danger ms-2 py-0"
-                      onClick={() => setShowQRModal(true)}
+                  {waContacts.length > 0 && (
+                    <select
+                      className="form-select form-select-sm mb-2"
+                      value={selectedWaIdx}
+                      onChange={(e) => handleSelectWaContact(e.target.value)}
                     >
-                      QR Scan
-                    </button>
+                      <option value="">-- Naya Number Likhein --</option>
+                      {waContacts.map((c, i) => (
+                        <option key={`${c.number}-${i}`} value={String(i)}>
+                          {c.name} ({c.number})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  <div className="input-group input-group-sm">
+                    <span className="input-group-text bg-light text-success">
+                      <i className="bi bi-telephone" />
+                    </span>
+                    <input
+                      id="wa-number"
+                      className="form-control"
+                      inputMode="tel"
+                      placeholder="e.g. 0325 5246937"
+                      value={number}
+                      onChange={(e) => {
+                        setNumber(e.target.value)
+                        setSelectedWaIdx('')
+                      }}
+                    />
+                  </div>
+
+                  {number.trim().length >= 10 && !isWaAlreadySaved && (
+                    <div className="mt-1.5">
+                      {!showSaveWaContact ? (
+                        <button
+                          type="button"
+                          className="btn btn-link text-primary p-0 text-decoration-none small"
+                          style={{ fontSize: 11.5 }}
+                          onClick={() => setShowSaveWaContact(true)}
+                        >
+                          <i className="bi bi-person-plus me-1" />
+                          Is number ko naam ke sath save karein
+                        </button>
+                      ) : (
+                        <div className="d-flex align-items-center gap-1.5 p-1.5 bg-light rounded border mt-1">
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            placeholder="Naam (e.g. Director / Malik Sahib)"
+                            value={newWaContactName}
+                            onChange={(e) => setNewWaContactName(e.target.value)}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary py-1 px-2.5 shrink-0"
+                            onClick={handleSaveWaContact}
+                            disabled={!newWaContactName.trim()}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary py-1 px-2 shrink-0"
+                            onClick={() => {
+                              setShowSaveWaContact(false)
+                              setNewWaContactName('')
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
 
-              {/* Saved Contacts & Number Input */}
-              <div className="mb-3">
-                <div className="d-flex align-items-center justify-content-between mb-1">
-                  <label className="form-label small fw-semibold mb-0" htmlFor="wa-number">
-                    Recipient (WhatsApp Number):
-                  </label>
-                  {contacts.length > 0 && selectedContactIdx !== '' && (
+                {/* Message Input */}
+                <div className="mb-1">
+                  <div className="d-flex align-items-center justify-content-between mb-1">
+                    <label className="form-label small fw-semibold mb-0" htmlFor="wa-message">
+                      Report Message:
+                    </label>
                     <button
                       type="button"
-                      className="btn btn-link text-danger p-0 text-decoration-none small"
+                      className="btn btn-link p-0 text-decoration-none text-secondary small"
                       style={{ fontSize: 11 }}
-                      onClick={handleDeleteContact}
-                      title="Is contact ko list se hatayein"
+                      onClick={handleCopy}
                     >
-                      <i className="bi bi-trash3 me-0.5" /> Contact Hatayein
+                      <i className={`bi ${copied ? 'bi-check2 text-success' : 'bi-clipboard'}`} />{' '}
+                      {copied ? 'Copied!' : 'Copy Text'}
                     </button>
+                  </div>
+                  <textarea
+                    id="wa-message"
+                    className="form-control form-control-sm font-monospace"
+                    rows={5}
+                    style={{ fontSize: 12 }}
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* EMAIL TAB */}
+            {activeTab === 'email' && (
+              <div>
+                {/* Free Email notice banner */}
+                <div
+                  className="p-2 mb-3 rounded-2 border d-flex align-items-center gap-2"
+                  style={{ background: 'rgba(13, 110, 253, 0.08)', borderColor: 'rgba(13, 110, 253, 0.25)' }}
+                >
+                  <i className="bi bi-gift-fill text-primary fs-5" />
+                  <div>
+                    <div className="small fw-bold text-dark" style={{ fontSize: 12 }}>
+                      100% Free Email Delivery (Zero Subscription)
+                    </div>
+                    <div className="text-secondary" style={{ fontSize: 10.5 }}>
+                      Direct email pe report aur PDF send karein bina kisi extra fees ke.
+                    </div>
+                  </div>
+                </div>
+
+                {emailSuccess && (
+                  <div className="alert alert-success d-flex align-items-center gap-2 py-2 px-3 mb-3 small">
+                    <i className="bi bi-check-circle-fill fs-5" />
+                    <div>
+                      <strong>Kamyabi!</strong> Email PDF attachment ke sath deliver ho gayi hai.
+                    </div>
+                  </div>
+                )}
+
+                {emailError && (
+                  <div className="alert alert-warning py-2 px-3 mb-3 small">
+                    <div className="d-flex align-items-center gap-2 mb-1">
+                      <i className="bi bi-exclamation-triangle-fill text-warning fs-6" />
+                      <strong>Notice:</strong> {emailError}
+                    </div>
+                    <div className="mt-1 d-flex align-items-center gap-2">
+                      <a href={mailtoLink} className="btn btn-xs btn-outline-primary py-0.5 px-2" style={{ fontSize: 11 }}>
+                        <i className="bi bi-box-arrow-up-right me-1" /> Apne Gmail / Outlook mein kholein
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {/* Saved Email Contacts & Input */}
+                <div className="mb-3">
+                  <div className="d-flex align-items-center justify-content-between mb-1">
+                    <label className="form-label small fw-semibold mb-0" htmlFor="email-to">
+                      Recipient Email Address:
+                    </label>
+                    {emailContacts.length > 0 && selectedEmailIdx !== '' && (
+                      <button
+                        type="button"
+                        className="btn btn-link text-danger p-0 text-decoration-none small"
+                        style={{ fontSize: 11 }}
+                        onClick={handleDeleteEmailContact}
+                        title="Is contact ko list se hatayein"
+                      >
+                        <i className="bi bi-trash3 me-0.5" /> Email Hatayein
+                      </button>
+                    )}
+                  </div>
+
+                  {emailContacts.length > 0 && (
+                    <select
+                      className="form-select form-select-sm mb-2"
+                      value={selectedEmailIdx}
+                      onChange={(e) => handleSelectEmailContact(e.target.value)}
+                    >
+                      <option value="">-- Naya Email Address Likhein --</option>
+                      {emailContacts.map((c, i) => (
+                        <option key={`${c.email}-${i}`} value={String(i)}>
+                          {c.name} ({c.email})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  <div className="input-group input-group-sm">
+                    <span className="input-group-text bg-light text-primary">
+                      <i className="bi bi-envelope" />
+                    </span>
+                    <input
+                      id="email-to"
+                      type="email"
+                      className="form-control"
+                      placeholder="e.g. director@company.com"
+                      value={emailAddress}
+                      onChange={(e) => {
+                        setEmailAddress(e.target.value)
+                        setSelectedEmailIdx('')
+                      }}
+                    />
+                  </div>
+
+                  {emailAddress.includes('@') && emailAddress.includes('.') && !isEmailAlreadySaved && (
+                    <div className="mt-1.5">
+                      {!showSaveEmailContact ? (
+                        <button
+                          type="button"
+                          className="btn btn-link text-primary p-0 text-decoration-none small"
+                          style={{ fontSize: 11.5 }}
+                          onClick={() => setShowSaveEmailContact(true)}
+                        >
+                          <i className="bi bi-person-plus me-1" />
+                          Is email ko naam ke sath save karein
+                        </button>
+                      ) : (
+                        <div className="d-flex align-items-center gap-1.5 p-1.5 bg-light rounded border mt-1">
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            placeholder="Naam (e.g. Accounts Manager)"
+                            value={newEmailContactName}
+                            onChange={(e) => setNewEmailContactName(e.target.value)}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary py-1 px-2.5 shrink-0"
+                            onClick={handleSaveEmailContact}
+                            disabled={!newEmailContactName.trim()}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary py-1 px-2 shrink-0"
+                            onClick={() => {
+                              setShowSaveEmailContact(false)
+                              setNewEmailContactName('')
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
-                {/* Contacts Picker Dropdown */}
-                {contacts.length > 0 && (
-                  <select
-                    className="form-select form-select-sm mb-2"
-                    value={selectedContactIdx}
-                    onChange={(e) => handleSelectContact(e.target.value)}
-                  >
-                    <option value="">-- Naya Number Likhein --</option>
-                    {contacts.map((c, i) => (
-                      <option key={`${c.number}-${i}`} value={String(i)}>
-                        {c.name} ({c.number})
-                      </option>
-                    ))}
-                  </select>
-                )}
-
-                {/* Direct Number Input */}
-                <div className="input-group input-group-sm">
-                  <span className="input-group-text bg-light text-success">
-                    <i className="bi bi-telephone" />
-                  </span>
+                {/* Email Subject */}
+                <div className="mb-2">
+                  <label className="form-label small fw-semibold mb-1" htmlFor="email-subject">
+                    Subject:
+                  </label>
                   <input
-                    id="wa-number"
-                    className="form-control"
-                    inputMode="tel"
-                    placeholder="e.g. 0325 5246937"
-                    value={number}
-                    onChange={(e) => {
-                      setNumber(e.target.value)
-                      setSelectedContactIdx('')
-                    }}
+                    id="email-subject"
+                    className="form-control form-control-sm"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
                   />
                 </div>
 
-                {/* Inline Save Contact Prompt */}
-                {number.trim().length >= 10 && !isAlreadySaved && (
-                  <div className="mt-1.5">
-                    {!showSaveContact ? (
-                      <button
-                        type="button"
-                        className="btn btn-link text-primary p-0 text-decoration-none small"
-                        style={{ fontSize: 11.5 }}
-                        onClick={() => setShowSaveContact(true)}
-                      >
-                        <i className="bi bi-person-plus me-1" />
-                        Is number ko naam ke sath save karein
-                      </button>
-                    ) : (
-                      <div className="d-flex align-items-center gap-1.5 p-1.5 bg-light rounded border mt-1">
-                        <input
-                          type="text"
-                          className="form-control form-control-sm"
-                          placeholder="Naam (e.g. Director / Malik Sahib)"
-                          value={newContactName}
-                          onChange={(e) => setNewContactName(e.target.value)}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary py-1 px-2.5 shrink-0"
-                          onClick={handleSaveContact}
-                          disabled={!newContactName.trim()}
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-secondary py-1 px-2 shrink-0"
-                          onClick={() => {
-                            setShowSaveContact(false)
-                            setNewContactName('')
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* Email Body */}
+                <div className="mb-1">
+                  <label className="form-label small fw-semibold mb-1" htmlFor="email-body">
+                    Email Content:
+                  </label>
+                  <textarea
+                    id="email-body"
+                    className="form-control form-control-sm font-monospace"
+                    rows={4}
+                    style={{ fontSize: 12 }}
+                    value={emailBody}
+                    onChange={(e) => setEmailBody(e.target.value)}
+                  />
+                </div>
+
+                {/* PDF Attached indicator */}
+                <div className="mt-2 text-secondary small d-flex align-items-center gap-1.5">
+                  <i className="bi bi-paperclip text-primary fs-6" />
+                  <span>
+                    Report PDF attachment khud ba khud email ke sath attach ho kar send hogi.
+                  </span>
+                </div>
               </div>
+            )}
+          </div>
 
-              {/* Message Input */}
-              <div className="mb-1">
-                <label className="form-label small fw-semibold mb-1" htmlFor="wa-message">
-                  Report Summary / Message:
-                </label>
-                <textarea
-                  id="wa-message"
-                  className="form-control form-control-sm font-monospace"
-                  rows={5}
-                  style={{ fontSize: 12.5 }}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-              </div>
-            </div>
+          {/* Modal Footer */}
+          <div className="modal-footer py-2 px-3.5 bg-light border-top d-flex justify-content-between align-items-center">
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose} disabled={sendingEmail}>
+              Cancel
+            </button>
 
-            {/* Modal Footer */}
-            <div className="modal-footer py-2 px-3.5 bg-light border-top d-flex justify-content-between align-items-center">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary"
-                onClick={onClose}
-                disabled={sendingDirect}
-              >
-                Cancel
-              </button>
-
-              <div className="d-flex align-items-center gap-2">
-                {!serverStatus?.connected && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1.5"
-                    onClick={() => setShowQRModal(true)}
-                    disabled={sendingDirect}
-                  >
-                    <i className="bi bi-qr-code" />
-                    <span>QR Code Scan</span>
-                  </button>
-                )}
-
+            <div className="d-flex align-items-center gap-2">
+              {onDownloadPdf && (
                 <button
                   type="button"
-                  className="btn btn-sm btn-success px-3.5 d-inline-flex align-items-center gap-1.5 shadow-sm"
-                  onClick={sendViaServer}
-                  disabled={!number.trim() || sendingDirect || !serverStatus?.connected}
-                  title={serverStatus?.connected ? 'Direct WhatsApp par report aur PDF deliver karega' : 'Pehle phone connect karein'}
+                  className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1.5"
+                  onClick={onDownloadPdf}
+                  disabled={sendingEmail}
+                  title="PDF apne computer par download karein"
                 >
-                  {sendingDirect ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm" role="status" />
-                      Bhej raha hai…
-                    </>
-                  ) : (
-                    <>
-                      <i className="bi bi-send-fill" />
-                      Direct Bhejein 🚀
-                    </>
-                  )}
+                  <i className="bi bi-file-earmark-pdf" />
+                  <span>PDF Save Karein</span>
                 </button>
-              </div>
+              )}
+
+              {activeTab === 'whatsapp' ? (
+                <a
+                  className="btn btn-sm btn-success px-3.5 d-inline-flex align-items-center gap-1.5 shadow-sm"
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="WhatsApp Web ya App mein message open karein"
+                >
+                  <i className="bi bi-whatsapp" />
+                  <span>WhatsApp Kholein</span>
+                </a>
+              ) : (
+                <div className="d-flex align-items-center gap-1.5">
+                  <a
+                    className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                    href={mailtoLink}
+                    title="Apne system ke email client (Gmail / Outlook) se bhejein"
+                  >
+                    <i className="bi bi-box-arrow-up-right" />
+                    <span>Email App Kholein</span>
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary px-3 d-inline-flex align-items-center gap-1.5 shadow-sm"
+                    onClick={handleSendEmail}
+                    disabled={!emailAddress.trim() || sendingEmail}
+                  >
+                    {sendingEmail ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" />
+                        Bhej raha hai…
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-send-fill" />
+                        Email Bhejein
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* QR Code Modal for linking phone */}
-      <WhatsAppQRModal
-        isOpen={showQRModal}
-        onClose={() => setShowQRModal(false)}
-        onConnected={() => {
-          setShowQRModal(false)
-          fetch('/api/whatsapp/status', { credentials: 'same-origin', cache: 'no-store' })
-            .then((r) => r.ok && r.json())
-            .then((d) => d && setServerStatus(d))
-            .catch(() => {})
-        }}
-      />
-    </>
+    </div>
   )
 }

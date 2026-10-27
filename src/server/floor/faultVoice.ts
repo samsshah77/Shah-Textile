@@ -6,7 +6,7 @@
 
 export const voiceEnabled = () => Boolean(process.env.GROQ_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim())
 
-export const VOICE_PROMPT = `You are listening to a short voice note from a weaving mill (Sara Textile) floor inspector
+export const VOICE_PROMPT = `You are listening to a short voice note from a weaving mill floor inspector
 about a fabric fault on one loom. Write what was said in Roman Urdu (Urdu in English letters, the way
 people type on WhatsApp in Pakistan), e.g. "dono taraf kinare tight chale hain, 2 jagah double pick".
 Rules: keep weaving words as said (double pick, crack, jaala, kinara, taar, thaan, shot, reed, beam).
@@ -25,7 +25,7 @@ async function askGroq(audio: Buffer, mimeType: string): Promise<string> {
   form.append('response_format', 'json')
   form.append(
     'prompt',
-    'Pakistani weaving mill (Sara Textile), Roman Urdu: dono taraf kinare tight chale hain, 2 jagah double pick, crack, jaala, kinara, taar, thaan, shot, reed, beam, shift A, shift B'
+    'Pakistani weaving mill, Roman Urdu: dono taraf kinare tight chale hain, 2 jagah double pick, crack, jaala, kinara, taar, thaan, shot, reed, beam, shift A, shift B'
   )
 
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {

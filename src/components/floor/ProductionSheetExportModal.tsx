@@ -4,7 +4,6 @@ import { exportSheetPdf } from '@/components/shared/ExportPdfButton'
 import { FileDown, Printer, X, Info } from 'lucide-react'
 
 import type { DailyLoomProductionEntry } from '@/types/production'
-import { downloadProductionPdf } from '@/lib/floor/generateProductionPdf'
 
 export type SheetTextSize = 'normal' | 'large' | 'xlarge'
 
@@ -37,7 +36,7 @@ export function ProductionSheetExportModal({
   const handleSavePdf = () => {
     onClose()
     if (entries && entries.length > 0) {
-      downloadProductionPdf(entries, sheetDate)
+      void import('@/lib/floor/generateProductionPdf').then((m) => m.downloadProductionPdf(entries, sheetDate))
     } else {
       exportSheetPdf(`Production-Sheet-${sheetDate}`, `Production Sheet - ${formattedDate}`)
     }

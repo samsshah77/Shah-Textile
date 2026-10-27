@@ -26,12 +26,12 @@ export function WhatsAppShareButton({
     <>
       <button
         type="button"
-        className={`btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1 d-print-none ${className}`}
+        className={`btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1.5 d-print-none ${className}`}
         onClick={() => setText(typeof message === 'function' ? message() : message)}
-        title="WhatsApp par bhejein"
+        title="WhatsApp ya Email par bhejein"
       >
         <i className="bi bi-whatsapp" />
-        <span>WhatsApp</span>
+        <span>WhatsApp / Email</span>
       </button>
       <WhatsAppShareModal
         isOpen={text !== null}

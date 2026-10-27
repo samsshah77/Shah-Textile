@@ -1,6 +1,5 @@
 /** Beam master: mount / unmount, sizing, beam end and beam track. (Part of productionMastersService — no behaviour change.) */
 import {
-  PRODUCTION_TODAY,
   getProductionToday,
 } from '@/constants/productionCalendar'
 import {
@@ -102,12 +101,14 @@ export const beamsMethods = {
     if (patch.swLot !== undefined && next?.usedInLoom) {
       const loomNum = Number(next.usedInLoom)
       if (Number.isFinite(loomNum) && loomNum > 0) {
-        const day = String(opts?.sheetDate || getProductionToday()).slice(0, 10)
-        const lot = beamDailyEntryLot(next)
-        this.updateSheetEntry(day, loomNum, { lot })
-        // Also stamp today so Daily Entry always shows the same Sw#.
         const today = getProductionToday()
-        if (today !== day) this.updateSheetEntry(today, loomNum, { lot })
+        const mountDay = String(next.mountedOn || '').slice(0, 10)
+        const lot = beamDailyEntryLot(next)
+        // The beam's Sw# belongs to the days it is on the loom — never a day before its mount.
+        const days = new Set([String(opts?.sheetDate || today).slice(0, 10), today])
+        for (const day of days) {
+          if (!mountDay || day >= mountDay) this.updateSheetEntry(day, loomNum, { lot })
+        }
       }
     }
     return beams
@@ -203,7 +204,7 @@ export const beamsMethods = {
    * Mount beam on loom. Blocked only if another beam is already on that loom.
    * Loom status aap Looms tab se khud change kar sakte ho.
    */
-  mountBeam(this: ProductionMastersService, beamNo: string, loomNumber: number, dateStr: string = PRODUCTION_TODAY): MountBeamResult {
+  mountBeam(this: ProductionMastersService, beamNo: string, loomNumber: number, dateStr: string = getProductionToday()): MountBeamResult {
     const current = this.getBeams()
     const beam = current.find((b) => b.beamNo === beamNo)
     if (!beam) {
@@ -326,7 +327,7 @@ export const beamsMethods = {
    * Declare beam EMPTY: unmount + send to Sizing for rework.
    */
   declareBeamEmpty(this: ProductionMastersService, beamNo: string, dateStr?: string): BeamMaster[] {
-    const today = dateStr || PRODUCTION_TODAY
+    const today = dateStr || getProductionToday()
     return this.updateBeam(beamNo, {
       usedInLoom: null,
       location: 'SIZING',

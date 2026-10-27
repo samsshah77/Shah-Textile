@@ -15,9 +15,8 @@ import {
 } from '@/services/payrollService'
 import { EmployeeProfile, EmployeeStatus } from '@/types/payroll'
 import { useAuth } from '@/context/AuthContext'
-import { AlertModal } from '@/components/ui/AlertModal'
 import { formatCurrency, formatNumber, cn } from '@/lib/utils'
-import { ArrowLeft, Clock, Loader2, Pencil, Trash2, UserPlus, UserX, X, History } from 'lucide-react'
+import { ArrowLeft, Clock, Loader2, Pencil, UserPlus, UserX, X, History } from 'lucide-react'
 import { ProfileAvatar } from '@/components/payroll/ProfileAvatar'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { EmployeeSalaryHistoryModal } from '@/components/payroll/EmployeeSalaryHistoryModal'
@@ -79,7 +78,6 @@ export function EmployeeProfileForm({
   const [resignRemarks, setResignRemarks] = useState('')
   const [showRejoinConfirm, setShowRejoinConfirm] = useState(false)
   const [rejoinDoj, setRejoinDoj] = useState(() => new Date().toISOString().slice(0, 10))
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showSalaryHistory, setShowSalaryHistory] = useState(false)
   /** Edit mode page starts locked until user clicks corner Edit. Register starts open. */
   const [isFormEditing, setIsFormEditing] = useState(mode === 'create')
@@ -1012,27 +1010,17 @@ export function EmployeeProfileForm({
               Resign
             </button>
           ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setRejoinDoj(new Date().toISOString().slice(0, 10))
-                  setShowRejoinConfirm(true)
-                }}
-                className="erp-btn-secondary text-xs !text-emerald-700 !border-emerald-200 hover:!bg-emerald-50"
-              >
-                <UserPlus className="size-3.5" />
-                Re-Join
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(true)}
-                className="erp-btn-secondary text-xs !text-rose-700 !border-rose-200 hover:!bg-rose-50"
-              >
-                <Trash2 className="size-3.5" />
-                Delete
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => {
+                setRejoinDoj(new Date().toISOString().slice(0, 10))
+                setShowRejoinConfirm(true)
+              }}
+              className="erp-btn-secondary text-xs !text-emerald-700 !border-emerald-200 hover:!bg-emerald-50"
+            >
+              <UserPlus className="size-3.5" />
+              Re-Join
+            </button>
           )}
         </div>
       )}
@@ -1160,26 +1148,6 @@ export function EmployeeProfileForm({
         </div>
       )}
 
-      <AlertModal
-        isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={async () => {
-          if (!editingEmployee) return
-          try {
-            await payrollService.deleteEmployeeAsync(editingEmployee.id)
-            setShowDeleteConfirm(false)
-            router.push('/payroll/profiles?tab=RESIGNED')
-          } catch (err) {
-            setShowDeleteConfirm(false)
-            setError(err instanceof Error ? err.message : 'Delete failed.')
-          }
-        }}
-        title="Confirm delete profile"
-        message={`Permanently delete resigned profile "${editingEmployee?.name || 'this employee'}"? Ye seed se wapas nahi aayega.`}
-        confirmText="Delete profile"
-        type="confirm"
-        danger
-      />
 
       {showSalaryHistory && editingEmployee && (
         <EmployeeSalaryHistoryModal

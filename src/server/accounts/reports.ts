@@ -134,7 +134,7 @@ export function partyLedger(
     const effect = payableEffect(p)
     const label =
       p.kind === 'OPENING'
-        ? 'Purana baqi (ERP se pehle)'
+        ? 'Purana Hisab (Opening Balance)'
         : p.kind === 'ADJUSTMENT'
           ? 'Adjustment'
           : 'Payment'
@@ -207,16 +207,24 @@ export function pettyStatement(
   opening: number,
   lock: MonthLock
 ): PettyCashStatement {
-  let balance = opening
+  const openingEntry = entries.find((e) => e.kind === 'OPENING')
+  const effectiveOpening = openingEntry ? openingEntry.debit : opening
+  let balance = effectiveOpening
   const rows = entries.map((e) => {
+    if (e.kind === 'OPENING') {
+      return { ...e, balance: effectiveOpening }
+    }
     balance += e.debit - e.credit
     return { ...e, balance }
   })
   return {
     month,
-    opening,
+    opening: effectiveOpening,
     entries: rows,
-    totalIn: sum(entries, (e) => e.debit),
+    totalIn: sum(
+      entries.filter((e) => e.kind === 'CASH_IN'),
+      (e) => e.debit
+    ),
     totalOut: sum(entries, (e) => e.credit),
     closing: balance,
     expenseOut: sum(

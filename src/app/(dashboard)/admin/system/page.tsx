@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { AdminTabs } from '@/components/admin/AdminTabs'
-import { WhatsAppQRModal } from '@/components/shared/WhatsAppQRModal'
 
 type SystemInfo = {
   server: { time: string; timeZone: string; startedAt: string; node: string; memoryMb: number }
@@ -39,7 +38,6 @@ export default function AdminSystemPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [showQRModal, setShowQRModal] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -209,16 +207,9 @@ export default function AdminSystemPage() {
                       </td>
                     </tr>
                     <tr>
-                      <td>WhatsApp Server Gateway</td>
+                      <td>WhatsApp & Email Sharing</td>
                       <td className="text-end">
-                        <button
-                          type="button"
-                          className="btn btn-xs btn-outline-success py-0 px-2 rounded-pill"
-                          onClick={() => setShowQRModal(true)}
-                        >
-                          <i className="bi bi-whatsapp me-1" />
-                          Link Phone / QR
-                        </button>
+                        <Status ok={true}>Direct WA & Free Email</Status>
                       </td>
                     </tr>
                     <tr>
@@ -270,11 +261,6 @@ export default function AdminSystemPage() {
           </p>
         </>
       )}
-
-      <WhatsAppQRModal
-        isOpen={showQRModal}
-        onClose={() => setShowQRModal(false)}
-      />
     </div>
   )
 }

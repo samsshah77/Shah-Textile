@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { startDayOnServer } from '@/server/floor/dayBuild'
+import { ensureBeamHistoryTable, recordBeamChanges } from '@/server/floor/beamHistory'
 import { SESSION_COOKIE, verifySession } from '@/lib/session'
 import { currentUser } from '@/server/current-user'
 import {
@@ -190,6 +191,8 @@ export async function GET(req: NextRequest) {
       await dbSaveYarnMovements(seed.movements)
       await dbSaveQualities(seed.qualities)
     }
+    // Starting point of the beam day-history (first load after deploy only).
+    await ensureBeamHistoryTable().catch((err) => console.error('[beamHistory] setup failed', err))
 
     const [lists, yarn, issuances, movements, monthLocks] = await Promise.all([
       listsWithHashes(),
@@ -382,6 +385,7 @@ export async function POST(req: NextRequest) {
       if (!beam) {
         return NextResponse.json({ ok: false, error: 'Beam not found' }, { status: 404 })
       }
+      await recordBeamChanges([{ before: beforeBeam ?? null, after: beam }])
       await writeAudit({ req, actor: writer, module: 'floor', action: 'patchBeam', entityKey: KEY_BEAMS, entityId: beamNo, before: beforeBeam ? [beforeBeam] : [], after: [beam] })
       return NextResponse.json({ ok: true, beam, sync: await syncFor(KEY_BEAMS, [beamNo]) })
     }
@@ -392,6 +396,7 @@ export async function POST(req: NextRequest) {
       parse(beamRowSchema, beam)
       const beforeBeam = (await dbGetBeams()).find((b) => b.beamNo === beam.beamNo)
       const saved = await dbUpsertBeam(beam)
+      await recordBeamChanges([{ before: beforeBeam ?? null, after: saved }])
       await writeAudit({ req, actor: writer, module: 'floor', action: 'upsertBeam', entityKey: KEY_BEAMS, entityId: String(beam.beamNo), before: beforeBeam ? [beforeBeam] : [], after: [saved] })
       return NextResponse.json({ ok: true, beam: saved, sync: await syncFor(KEY_BEAMS, [saved.beamNo]) })
     }
@@ -401,6 +406,7 @@ export async function POST(req: NextRequest) {
       if (!beamNo) return bad('beamNo required')
       const beforeBeam = (await dbGetBeams()).find((b) => b.beamNo === beamNo)
       await dbDeleteBeam(beamNo)
+      if (beforeBeam) await recordBeamChanges([{ before: beforeBeam, after: null }])
       await writeAudit({ req, actor: writer, module: 'floor', action: 'deleteBeam', entityKey: KEY_BEAMS, entityId: beamNo, before: beforeBeam ? [beforeBeam] : [], after: [] })
       return NextResponse.json({ ok: true, sync: await syncFor(KEY_BEAMS, [], [beamNo]) })
     }

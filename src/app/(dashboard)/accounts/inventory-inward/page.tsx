@@ -13,8 +13,26 @@ import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { BillEditorModal } from '@/components/accounts/BillEditorModal'
 import { LoadState, LockControl, MonthPicker, partyTint, machineBadge, useSaveStatus } from '@/components/accounts/ui'
+import { closeSidebar } from '@/lib/sidebarToggle'
+import { useResizableColumns } from '@/hooks/useResizableColumns'
+import { ResizableTh } from '@/components/shared/ResizableTh'
 
 type Row = { bill: Bill; line: BillLine; party?: Party; first: boolean; last: boolean; span: number; group: number; balance: number }
+
+const DEFAULT_INWARD_WIDTHS: Record<string, number> = {
+  serialNo: 44,
+  date: 92,
+  billNo: 84,
+  inwardNo: 72,
+  party: 190,
+  description: 250,
+  machine: 90,
+  qty: 62,
+  rate: 90,
+  total: 108,
+  balance: 116,
+  actions: 145,
+}
 
 /**
  * Daily Inward & Expenses — the month's purchase book. Every bill is saved on the
@@ -35,6 +53,16 @@ function DailyInwardContent() {
   const [editor, setEditor] = useState<{ bill?: Bill } | null>(null)
   const [editingLine, setEditingLine] = useState<string | null>(null)
   const save = useSaveStatus()
+
+  const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
+    'inward_expenses_v2',
+    DEFAULT_INWARD_WIDTHS
+  )
+
+  const tableMinWidth = useMemo(
+    () => Object.values(widths).reduce((sum, w) => sum + w, 0),
+    [widths]
+  )
 
   const locked = Boolean(book?.lock.locked)
   const canEdit = canEditAccounts && !locked
@@ -141,7 +169,10 @@ function DailyInwardContent() {
               {canEdit && (
                 <button
                   type="button"
-                  onClick={() => setEditor({})}
+                  onClick={() => {
+                    closeSidebar()
+                    setEditor({})
+                  }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0066cc] hover:bg-[#0052a3] text-white shadow-xs cursor-pointer !min-h-9 !h-9"
                 >
                   <PlusCircle className="size-4" />
@@ -207,24 +238,35 @@ function DailyInwardContent() {
               <span className="text-xs font-semibold text-muted-foreground">
                 {rows.length} items · {new Set(rows.map((r) => r.bill.id)).size} bills
               </span>
+              <button
+                type="button"
+                onClick={resetAllWidths}
+                className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
+                title="Reset column widths to default"
+              >
+                Reset widths
+              </button>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left border-collapse text-xs border border-slate-400 dark:border-slate-600" style={{ tableLayout: 'fixed' }}>
+            <table
+              className="w-full text-left border-collapse text-xs border border-slate-400 dark:border-slate-600"
+              style={{ tableLayout: 'fixed', minWidth: `${tableMinWidth}px` }}
+            >
               <colgroup>
-                <col style={{ width: 40 }} />
-                <col style={{ width: 88 }} />
-                <col style={{ width: 70 }} />
-                <col style={{ width: 62 }} />
-                <col style={{ width: 180 }} />
-                <col />
-                <col style={{ width: 86 }} />
-                <col style={{ width: 56 }} />
-                <col style={{ width: 90 }} />
-                <col style={{ width: 104 }} />
-                <col style={{ width: 112 }} />
-                <col className="print:hidden" style={{ width: 92 }} />
+                <col style={{ width: widths.serialNo }} />
+                <col style={{ width: widths.date }} />
+                <col style={{ width: widths.billNo }} />
+                <col style={{ width: widths.inwardNo }} />
+                <col style={{ width: widths.party }} />
+                <col style={{ width: widths.description }} />
+                <col style={{ width: widths.machine }} />
+                <col style={{ width: widths.qty }} />
+                <col style={{ width: widths.rate }} />
+                <col style={{ width: widths.total }} />
+                <col style={{ width: widths.balance }} />
+                <col className="print:hidden" style={{ width: widths.actions }} />
               </colgroup>
               <thead>
                 <tr className="bg-slate-200/90 dark:bg-slate-800">
@@ -234,12 +276,126 @@ function DailyInwardContent() {
                   </th>
                 </tr>
                 <tr className="bg-slate-100 dark:bg-slate-800 font-bold uppercase text-[10px] border-b-2 border-slate-800">
-                  {['S.No', 'Date', 'Bill No', 'Inw #', 'Party Name', 'Description', 'Machine', 'Qty', 'Rate', 'Total', 'Balance'].map((h, i) => (
-                    <th key={h} className={cn(cell, 'py-2 px-1', i >= 8 ? 'text-right' : i === 5 ? 'text-left px-2' : 'text-center')}>
-                      {h}
-                    </th>
-                  ))}
-                  <th className={cn(cell, 'py-2 px-1 text-center print:hidden')}>Actions</th>
+                  <ResizableTh
+                    columnKey="serialNo"
+                    width={widths.serialNo}
+                    minWidth={36}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center')}
+                  >
+                    S.No
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="date"
+                    width={widths.date}
+                    minWidth={75}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center')}
+                  >
+                    Date
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="billNo"
+                    width={widths.billNo}
+                    minWidth={65}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center')}
+                  >
+                    Bill No
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="inwardNo"
+                    width={widths.inwardNo}
+                    minWidth={55}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center')}
+                  >
+                    Inw #
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="party"
+                    width={widths.party}
+                    minWidth={120}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center')}
+                  >
+                    Party Name
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="description"
+                    width={widths.description}
+                    minWidth={140}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-2 text-left')}
+                  >
+                    Description
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="machine"
+                    width={widths.machine}
+                    minWidth={70}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center')}
+                  >
+                    Machine
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="qty"
+                    width={widths.qty}
+                    minWidth={50}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center')}
+                  >
+                    Qty
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="rate"
+                    width={widths.rate}
+                    minWidth={70}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-right')}
+                  >
+                    Rate
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="total"
+                    width={widths.total}
+                    minWidth={85}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-right')}
+                  >
+                    Total
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="balance"
+                    width={widths.balance}
+                    minWidth={90}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-right')}
+                  >
+                    Balance
+                  </ResizableTh>
+                  <ResizableTh
+                    columnKey="actions"
+                    width={widths.actions}
+                    minWidth={120}
+                    onResize={setColumnWidth}
+                    onReset={resetColumnWidth}
+                    className={cn(cell, 'py-2 px-1 text-center print:hidden')}
+                  >
+                    Actions
+                  </ResizableTh>
                 </tr>
               </thead>
               <tbody>
@@ -373,27 +529,53 @@ function DailyInwardContent() {
                         </td>
                         <td className={cn(cell, 'py-1 px-1 text-right font-mono font-bold', lastCls(r))}>{rs(r.line.amount)}</td>
                         <td className={cn(cell, 'py-1 px-1 text-right font-mono font-bold', lastCls(r))}>{rs(r.balance)}</td>
-                        <td className={cn(cell, 'py-1 px-1 text-center print:hidden', lastCls(r))}>
+                        <td className={cn(cell, 'py-1 px-1.5 text-center print:hidden', lastCls(r))}>
                           {canEdit && (
-                            <div className="flex items-center justify-center gap-0.5">
-                              <button type="button" onClick={() => addLine(r)} className="rounded p-1 text-emerald-600 hover:bg-emerald-50 cursor-pointer" title={`Add item to bill ${r.bill.billNo || '-'}`} aria-label="Add item to this bill">
+                            <div className="flex items-center justify-center gap-1 flex-nowrap whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => addLine(r)}
+                                className="inline-flex items-center justify-center size-6 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:text-emerald-700 cursor-pointer transition-colors"
+                                title={`Add item to bill ${r.bill.billNo || '-'}`}
+                                aria-label="Add item to this bill"
+                              >
                                 <Plus className="size-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingLine(editing ? null : r.line.id)}
-                                className={cn('rounded p-1 cursor-pointer', editing ? 'bg-blue-100 text-[#0066cc]' : 'text-slate-500 hover:bg-blue-50 hover:text-[#0066cc]')}
+                                className={cn(
+                                  'inline-flex items-center justify-center size-6 rounded cursor-pointer transition-colors',
+                                  editing
+                                    ? 'bg-blue-100 text-[#0066cc] dark:bg-blue-950 dark:text-blue-300'
+                                    : 'text-slate-500 hover:bg-blue-50 hover:text-[#0066cc] dark:hover:bg-slate-800 dark:hover:text-blue-400'
+                                )}
                                 title={editing ? 'Done' : 'Edit this item'}
                                 aria-label="Edit item"
                               >
                                 <Pencil className="size-3.5" />
                               </button>
-                              <button type="button" onClick={() => removeLine(r)} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 cursor-pointer" title="Delete item" aria-label="Delete item">
+                              <button
+                                type="button"
+                                onClick={() => removeLine(r)}
+                                className="inline-flex items-center justify-center size-6 rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 cursor-pointer transition-colors"
+                                title="Delete item"
+                                aria-label="Delete item"
+                              >
                                 <Trash2 className="size-3.5" />
                               </button>
                               {r.first && (
-                                <button type="button" onClick={() => setEditor({ bill: r.bill })} className="rounded px-1 text-[10px] font-bold text-slate-600 hover:bg-slate-100 cursor-pointer" title="Edit whole bill (date, bill no., party, all items)">
-                                  Bill
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    closeSidebar()
+                                    setEditor({ bill: r.bill })
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                                  title="Edit whole bill (date, bill no., party, all items)"
+                                >
+                                  <Receipt className="size-3 text-blue-600 dark:text-blue-400" />
+                                  <span>Bill</span>
                                 </button>
                               )}
                             </div>

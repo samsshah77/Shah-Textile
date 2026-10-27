@@ -14,6 +14,19 @@ import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, MonthPicker } from '@/components/accounts/ui'
 import { PartyForm } from '@/components/accounts/PartyDirectory'
+import { useResizableColumns } from '@/hooks/useResizableColumns'
+import { ResizableTh } from '@/components/shared/ResizableTh'
+
+const DEFAULT_LEDGER_WIDTHS: Record<string, number> = {
+  serialNo: 48,
+  date: 96,
+  billNo: 240,
+  bill: 110,
+  paid: 110,
+  balance: 120,
+  status: 120,
+  actions: 70,
+}
 
 /**
  * A bill's item lines shown as one row (like the Excel khata): date, bill no, bill amount,
@@ -54,6 +67,11 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
   const back = kind === 'WORKSHOP' ? '/accounts/workshops' : '/accounts/traders'
   const period = month === 'all' ? 'All months' : monthLabel(month)
   const cell = 'border border-slate-400 dark:border-slate-600'
+  const { widths, setColumnWidth, resetColumnWidth, resetAllWidths } = useResizableColumns(
+    'party_ledger_v1',
+    DEFAULT_LEDGER_WIDTHS
+  )
+  const tableMinWidth = Object.values(widths).reduce((a, b) => a + b, 0)
 
   const removePayment = async (id: string, version: number) => {
     if (!window.confirm('Yeh entry delete karein?')) return
@@ -80,9 +98,9 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                     type="button"
                     onClick={() => setPaying('OPENING')}
                     className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer"
-                    title="ERP se pehle ka baqi (purane register / Excel se)"
+                    title="ERP se pehle ka hisab (Opening balance / purane register se)"
                   >
-                    Purana baqi
+                    Purana Hisab
                   </button>
                   <button type="button" onClick={() => setEditing(true)} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                     <Pencil className="size-3.5" /> Edit party
@@ -106,12 +124,12 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
               {(
                 [
-                  ...(ledger.opening ? [['Pichla baqi (b/f)', ledger.opening, 'text-slate-600']] : []),
-                  ...(ledger.summary.opening ? [['Purana baqi', ledger.summary.opening, 'text-amber-700']] : []),
+                  ...(ledger.opening ? [['Balance b/f', ledger.opening, 'text-slate-600']] : []),
+                  ...(ledger.summary.opening ? [['Purana Hisab', ledger.summary.opening, 'text-amber-700']] : []),
                   ['Bills', ledger.summary.purchases, 'text-slate-900'],
                   ['Paid', ledger.summary.paid, 'text-emerald-700'],
                   ...(ledger.summary.adjusted ? [['Adjustments', ledger.summary.adjusted, 'text-sky-700']] : []),
-                  ['Baqi', ledger.opening + ledger.summary.balance, 'text-[#0066cc]'],
+                  ['Balance', ledger.opening + ledger.summary.balance, 'text-[#0066cc]'],
                 ] as Array<[string, number, string]>
               ).map(([label, value, cls]) => (
                 <div key={label as string} className="erp-card p-3">
@@ -120,7 +138,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                 </div>
               ))}
               <div className="erp-card p-3">
-                <div className="text-[10px] font-bold uppercase text-slate-500">Purana baqi bill</div>
+                <div className="text-[10px] font-bold uppercase text-slate-500">Purana Pending Bill</div>
                 {ledger.oldestUnpaid ? (
                   <div className="text-sm font-black font-mono text-rose-700">
                     {ledger.oldestUnpaid} <span className="text-[11px] font-bold">({ageLabel(ledger.oldestUnpaid)})</span>
@@ -137,18 +155,117 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                   {ledger.party.name} · {ledger.party.kind === 'WORKSHOP' ? 'Workshop' : 'Trader'} · {period}
                   {!ledger.party.active && <span className="ml-2 text-rose-600">(removed from list)</span>}
                 </h2>
-                <span className="text-xs text-slate-500">{ledger.summary.bills} bills</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">{ledger.summary.bills} bills</span>
+                  <button
+                    type="button"
+                    onClick={resetAllWidths}
+                    className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
+                    title="Reset column widths to default"
+                  >
+                    Reset widths
+                  </button>
+                </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-xs border-collapse">
+                <table
+                  className="w-full text-xs border-collapse"
+                  style={{ tableLayout: 'fixed', minWidth: `${tableMinWidth}px` }}
+                >
+                  <colgroup>
+                    <col style={{ width: widths.serialNo }} />
+                    <col style={{ width: widths.date }} />
+                    <col style={{ width: widths.billNo }} />
+                    <col style={{ width: widths.bill }} />
+                    <col style={{ width: widths.paid }} />
+                    <col style={{ width: widths.balance }} />
+                    <col style={{ width: widths.status }} />
+                    {canEditAccounts && <col className="print:hidden" style={{ width: widths.actions }} />}
+                  </colgroup>
                   <thead>
                     <tr className="bg-slate-100 font-bold uppercase text-[10px]">
-                      {['S.No', 'Date', 'Bill No', 'Bill', 'Paid', 'Balance', 'Bill status'].map((h, i) => (
-                        <th key={h} className={cn(cell, 'py-2 px-2', i === 2 ? 'text-left' : i >= 3 && i <= 5 ? 'text-right' : 'text-center')}>
-                          {h}
-                        </th>
-                      ))}
-                      {canEditAccounts && <th className={cn(cell, 'print:hidden w-10')} />}
+                      <ResizableTh
+                        columnKey="serialNo"
+                        width={widths.serialNo}
+                        minWidth={36}
+                        onResize={setColumnWidth}
+                        onReset={resetColumnWidth}
+                        className={cn(cell, 'py-2 px-2 text-center')}
+                      >
+                        S.No
+                      </ResizableTh>
+                      <ResizableTh
+                        columnKey="date"
+                        width={widths.date}
+                        minWidth={75}
+                        onResize={setColumnWidth}
+                        onReset={resetColumnWidth}
+                        className={cn(cell, 'py-2 px-2 text-center')}
+                      >
+                        Date
+                      </ResizableTh>
+                      <ResizableTh
+                        columnKey="billNo"
+                        width={widths.billNo}
+                        minWidth={120}
+                        onResize={setColumnWidth}
+                        onReset={resetColumnWidth}
+                        className={cn(cell, 'py-2 px-2 text-left')}
+                      >
+                        Bill No
+                      </ResizableTh>
+                      <ResizableTh
+                        columnKey="bill"
+                        width={widths.bill}
+                        minWidth={80}
+                        onResize={setColumnWidth}
+                        onReset={resetColumnWidth}
+                        className={cn(cell, 'py-2 px-2 text-right')}
+                      >
+                        Bill
+                      </ResizableTh>
+                      <ResizableTh
+                        columnKey="paid"
+                        width={widths.paid}
+                        minWidth={80}
+                        onResize={setColumnWidth}
+                        onReset={resetColumnWidth}
+                        className={cn(cell, 'py-2 px-2 text-right')}
+                      >
+                        Paid
+                      </ResizableTh>
+                      <ResizableTh
+                        columnKey="balance"
+                        width={widths.balance}
+                        minWidth={80}
+                        onResize={setColumnWidth}
+                        onReset={resetColumnWidth}
+                        className={cn(cell, 'py-2 px-2 text-right')}
+                      >
+                        Balance
+                      </ResizableTh>
+                      <ResizableTh
+                        columnKey="status"
+                        width={widths.status}
+                        minWidth={90}
+                        onResize={setColumnWidth}
+                        onReset={resetColumnWidth}
+                        className={cn(cell, 'py-2 px-2 text-center')}
+                      >
+                        Bill status
+                      </ResizableTh>
+                      {canEditAccounts && (
+                        <ResizableTh
+                          columnKey="actions"
+                          width={widths.actions}
+                          minWidth={50}
+                          onResize={setColumnWidth}
+                          onReset={resetColumnWidth}
+                          className={cn(cell, 'print:hidden py-2 px-2 text-center')}
+                        >
+                          Actions
+                        </ResizableTh>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -156,7 +273,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                       <tr className="bg-amber-50/60 italic">
                         <td className={cn(cell, 'px-2 text-center')}>-</td>
                         <td className={cn(cell, 'px-2 text-center')} />
-                        <td className={cn(cell, 'px-2')}>Balance b/f — pichle mahinon ka baqi</td>
+                        <td className={cn(cell, 'px-2')}>Balance b/f — Pichla Hisab</td>
                         <td className={cell} colSpan={2} />
                         <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(ledger.opening)}</td>
                         <td className={cell} />
@@ -248,7 +365,7 @@ function BillStatusChip({ s }: { s: BillClearance }) {
   if (s.status === 'PARTLY')
     return (
       <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`${rs(s.cleared)} paid`}>
-        Baqi {rs(s.due)}
+        Balance {rs(s.due)}
       </span>
     )
   return <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">Unpaid</span>
@@ -314,10 +431,10 @@ export function PaymentForm({
     ? existing.kind === 'PAYMENT'
       ? 'Payment badlein'
       : existing.kind === 'OPENING'
-        ? 'Purana baqi badlein'
+        ? 'Purana Hisab badlein'
         : 'Adjustment badlein'
     : opening
-      ? 'Purana baqi (ERP se pehle ka)'
+      ? 'Purana Hisab (Opening Balance)'
       : 'Payment'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
@@ -325,12 +442,12 @@ export function PaymentForm({
         <h3 className="font-bold text-sm">{title}</h3>
         {!existing && !opening && (
           <p className="text-[11px] text-slate-500">
-            Jitni raqam di — poori ya aadhi. Ye sab se purane bill se kat-ti hai; baqi apne aap hisab ho jata hai.
+            Jitni raqam di — poori ya aadhi. Ye sab se purane bill se kat-ti hai; balance apne aap hisab ho jata hai.
           </p>
         )}
         {opening && (
           <p className="text-[11px] text-slate-500">
-            July 2026 se pehle ka jo baqi purane register / Excel mein tha. Hum ne dena hai to seedhi raqam (jaise 25000);
+            July 2026 se pehle ka jo hisab purane register / Excel mein tha. Hum ne dena hai to seedhi raqam (jaise 25000);
             party ko advance diya hua hai to minus mein (jaise -5000). Ye sab se pehle wala bill maana jata hai.
           </p>
         )}

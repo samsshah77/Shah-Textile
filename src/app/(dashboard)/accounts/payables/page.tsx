@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext'
 
 /**
  * Payables — how much each trader / workshop is owed. Payments come later and in parts,
- * so a payment clears the oldest bills first; "Purana baqi bill" shows since when money
+ * so a payment clears the oldest bills first; "Purana Pending Bill" shows since when money
  * is due. Bills come from Daily Inward; payments are entered on the party's page.
  */
 export default function PayablesPage() {
@@ -36,7 +36,7 @@ export default function PayablesPage() {
     )
   }, [data, onlyOwed, kind, q])
   const tot = (f: (r: PayablesReport['rows'][number]) => number) => rows.reduce((t, r) => t + f(r), 0)
-  // Purana baqi (before July 2026) + Bills (from July, set-offs taken off) − Paid = Baqi.
+  // Purana Hisab (before July 2026) + Bills (from July, set-offs taken off) − Paid = Balance.
   const billed = (r: PayablesReport['rows'][number]) => r.purchases - r.adjusted
 
   const cell = 'border border-slate-300 dark:border-slate-700'
@@ -44,7 +44,7 @@ export default function PayablesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Payables"
-        subtitle="Har trader / workshop ka baqi. Payment purane bill se pehle kat-ti hai — is liye dikhta hai ke kab se paise baqi hain."
+        subtitle="Har trader / workshop ka balance hisab. Payment purane bill se pehle kat-ti hai — is liye dikhta hai ke kab se paise pending hain."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className="h-9 rounded-md border border-slate-300 bg-background px-2 text-xs font-semibold">
@@ -54,7 +54,7 @@ export default function PayablesPage() {
             </select>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
               <input type="checkbox" checked={onlyOwed} onChange={(e) => setOnlyOwed(e.target.checked)} />
-              Sirf jin ka baqi hai
+              Sirf pending balance walay
             </label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -73,10 +73,10 @@ export default function PayablesPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(
                 [
-                  ['Purana baqi', tot((r) => r.opening), 'text-amber-700'],
+                  ['Purana Hisab', tot((r) => r.opening), 'text-amber-700'],
                   ['Bills (July se)', tot(billed), 'text-slate-900'],
                   ['Paid', tot((r) => r.paid), 'text-emerald-700'],
-                  ['Kul baqi', tot((r) => r.balance), 'text-[#0066cc]'],
+                  ['Total Balance', tot((r) => r.balance), 'text-[#0066cc]'],
                 ] as Array<[string, number, string]>
               ).map(([label, value, cls]) => (
                 <div key={label} className="erp-card p-3">
@@ -90,7 +90,7 @@ export default function PayablesPage() {
               <table className="w-full min-w-[820px] border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-[10px] font-bold uppercase">
-                    {['S.No', 'Party', 'Purana baqi', 'Bills (July se)', 'Paid', 'Baqi', 'Purana baqi bill', 'Akhri payment'].map((h, i) => (
+                    {['S.No', 'Party', 'Purana Hisab', 'Bills (July se)', 'Paid', 'Balance', 'Purana Pending Bill', 'Akhri Payment'].map((h, i) => (
                       <th key={h} className={cn(cell, 'px-2 py-2', i === 1 ? 'text-left' : i >= 2 && i <= 5 ? 'text-right' : 'text-center')}>
                         {h}
                       </th>
@@ -124,8 +124,8 @@ export default function PayablesPage() {
                                   type="button"
                                   onClick={() => setEditOpening(r)}
                                   className="p-0.5 text-slate-400 hover:text-sky-700 cursor-pointer print:hidden"
-                                  aria-label={`${r.party.name}: purana baqi ${r.opening ? 'badlein' : 'daalein'}`}
-                                  title={r.opening ? 'Purana baqi badlein' : 'Purana baqi daalein (July 2026 se pehle ka)'}
+                                  aria-label={`${r.party.name}: purana hisab ${r.opening ? 'badlein' : 'daalein'}`}
+                                  title={r.opening ? 'Purana Hisab badlein' : 'Purana Hisab daalein (July 2026 se pehle ka)'}
                                 >
                                   <Pencil className="size-3" />
                                 </button>
@@ -178,7 +178,7 @@ export default function PayablesPage() {
             <p className="text-[11px] text-slate-500 print:hidden">
               Bills Daily Inward se aate hain. Payment party ke naam par click kar ke &quot;Payment&quot; se daalein (tareekh, raqam, tasveer).
               Aadhi payment bhi chalegi — wo sab se purane bill se kat-ti hai. Hisab July 2026 se hai: is se pehle ka jo
-              dena tha wo &quot;Purana baqi&quot; mein ✏️ se daalein.
+              dena tha wo &quot;Purana Hisab&quot; mein ✏️ se daalein.
             </p>
             {editOpening && (
               <PaymentForm

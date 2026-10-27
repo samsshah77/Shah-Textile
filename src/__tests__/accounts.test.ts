@@ -163,6 +163,24 @@ describe('party reports', () => {
     ], 200, { month: '2026-09', locked: false })
     expect([s.closing, s.expenseOut, s.entries[0].balance]).toEqual([400, 300, 1200])
   })
+  it('petty statement uses explicit OPENING entry and separates cash in', () => {
+    const s = pettyStatement(
+      '2026-10',
+      [
+        { id: '1', month: '2026-10', date: '2026-10-01', description: 'Balance b/f', kind: 'OPENING', debit: 6420, credit: 0, sortOrder: 1, version: 1 },
+        { id: '2', month: '2026-10', date: '2026-10-03', description: 'Bank Cash', kind: 'CASH_IN', debit: 75000, credit: 0, sortOrder: 2, version: 1 },
+        { id: '3', month: '2026-10', date: '2026-10-04', description: 'Tape', kind: 'EXPENSE', debit: 0, credit: 1450, sortOrder: 3, version: 1 },
+      ],
+      0,
+      { month: '2026-10', locked: false }
+    )
+    expect(s.opening).toBe(6420)
+    expect(s.totalIn).toBe(75000)
+    expect(s.totalOut).toBe(1450)
+    expect(s.closing).toBe(79970)
+    expect(s.entries[0].balance).toBe(6420)
+    expect(s.entries[1].balance).toBe(81420)
+  })
 })
 
 describe('Cost Statement', () => {

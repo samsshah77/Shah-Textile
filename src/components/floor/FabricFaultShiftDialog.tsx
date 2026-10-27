@@ -9,6 +9,7 @@ import {
 } from '@/components/floor/FabricFaultMultiInput'
 import { startVoiceNote, type VoiceRecording } from '@/lib/voiceNote'
 import type { FloorFaultReportItem } from '@/components/floor/FabricFaultMediaDialog'
+import { getCalendarToday } from '@/constants/productionCalendar'
 
 /** Build searchable `fabricFault` summary from per-shift lines (keeps old field alive). */
 export function buildFabricFaultSummary(
@@ -196,6 +197,10 @@ export function FabricFaultShiftDialog({
     }
   }, [open, entry, initialReports, selectedDate])
 
+  // Hooks stay above the early return so their order never changes between renders.
+  const [editingReportId, setEditingReportId] = useState<string | null>(null)
+  const [editingReportText, setEditingReportText] = useState('')
+
   if (!open || !entry) return null
 
   const seg =
@@ -267,6 +272,46 @@ export function FabricFaultShiftDialog({
     }
   }
 
+  const handleDeleteReport = async (reportId: string) => {
+    if (!window.confirm('Yeh fault report delete karein?')) return
+    try {
+      const res = await fetch(`/api/floor/fault-reports/${reportId}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Delete fail ho gaya')
+      }
+      setExistingReports((prev) => prev.filter((r) => r.id !== reportId))
+      onReportCreated?.()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Report delete nahi ho saki')
+    }
+  }
+
+  const handleSaveEditReport = async (reportId: string) => {
+    try {
+      const res = await fetch(`/api/floor/fault-reports/${reportId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ text: editingReportText.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Update fail ho gaya')
+      }
+      setExistingReports((prev) =>
+        prev.map((r) => (r.id === reportId ? { ...r, text: editingReportText.trim() } : r))
+      )
+      setEditingReportId(null)
+      onReportCreated?.()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Report update nahi ho saki')
+    }
+  }
+
   const handleSave = async () => {
     if (!canEdit) {
       onClose()
@@ -285,39 +330,60 @@ export function FabricFaultShiftDialog({
     })
 
     // 2. If new media files were attached by Ahmar / Javed Sir, create corresponding fault reports
-    const targetDate = selectedDate || new Date().toISOString().slice(0, 10)
+    // Uses Pakistan local wall-clock date (never slips to previous day between midnight & 5am)
+    const targetDate = selectedDate || getCalendarToday()
     let reportCreated = false
 
     if (pendingMediaA.length > 0) {
-      await fetch('/api/floor/fault-reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          date: targetDate,
-          loomNumber: entry.loomNumber,
-          shift: 'A',
-          text: a || 'Fabric fault entry',
-          media: pendingMediaA.map((m) => ({ url: m.url, kind: m.kind })),
-        }),
-      }).catch(() => {})
-      reportCreated = true
+      try {
+        const resA = await fetch('/api/floor/fault-reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            date: targetDate,
+            loomNumber: entry.loomNumber,
+            shift: 'A',
+            text: a || 'Fabric fault entry',
+            media: pendingMediaA.map((m) => ({ url: m.url, kind: m.kind })),
+          }),
+        })
+        if (!resA.ok) {
+          const errData = await resA.json().catch(() => null)
+          throw new Error(errData?.error || `Shift A photo report save nahi ho saki (${resA.status})`)
+        }
+        reportCreated = true
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Shift A photo report save nahi ho saki')
+        setSaving(false)
+        return
+      }
     }
 
     if (pendingMediaB.length > 0) {
-      await fetch('/api/floor/fault-reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          date: targetDate,
-          loomNumber: entry.loomNumber,
-          shift: 'B',
-          text: b || 'Fabric fault entry',
-          media: pendingMediaB.map((m) => ({ url: m.url, kind: m.kind })),
-        }),
-      }).catch(() => {})
-      reportCreated = true
+      try {
+        const resB = await fetch('/api/floor/fault-reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            date: targetDate,
+            loomNumber: entry.loomNumber,
+            shift: 'B',
+            text: b || 'Fabric fault entry',
+            media: pendingMediaB.map((m) => ({ url: m.url, kind: m.kind })),
+          }),
+        })
+        if (!resB.ok) {
+          const errData = await resB.json().catch(() => null)
+          throw new Error(errData?.error || `Shift B photo report save nahi ho saki (${resB.status})`)
+        }
+        reportCreated = true
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Shift B photo report save nahi ho saki')
+        setSaving(false)
+        return
+      }
     }
 
     if (reportCreated) {
@@ -512,7 +578,64 @@ export function FabricFaultShiftDialog({
                           </div>
                           {reportsA.map((r) => (
                             <div key={r.id} className="small mb-1.5 pb-1 border-bottom border-primary-subtle last:border-0">
-                              <span className="fw-semibold text-dark">{r.createdBy}:</span> {r.text || '(sirf photo/video)'}
+                              <div className="d-flex align-items-center justify-content-between gap-1">
+                                <span className="fw-semibold text-dark">{r.createdBy}:</span>
+                                {canEdit && (
+                                  <div className="d-flex align-items-center gap-1">
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-link text-primary p-0"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => {
+                                        setEditingReportId(r.id)
+                                        setEditingReportText(r.text)
+                                      }}
+                                      title="Edit report note"
+                                    >
+                                      <i className="bi bi-pencil" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-link text-danger p-0 ms-1"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => void handleDeleteReport(r.id)}
+                                      title="Delete report"
+                                    >
+                                      <i className="bi bi-trash" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              {editingReportId === r.id ? (
+                                <div className="mt-1 d-flex flex-column gap-1">
+                                  <input
+                                    className="form-control form-control-sm py-0.5 px-1.5"
+                                    style={{ fontSize: 11 }}
+                                    value={editingReportText}
+                                    onChange={(e) => setEditingReportText(e.target.value)}
+                                  />
+                                  <div className="d-flex gap-1">
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-primary py-0 px-2"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => void handleSaveEditReport(r.id)}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-outline-secondary py-0 px-1.5"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => setEditingReportId(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>{r.text || '(sirf photo/video)'}</div>
+                              )}
                               {r.media?.length > 0 && (
                                 <div className="d-flex flex-wrap gap-1.5 mt-1">
                                   {r.media.map((m, mi) => (
@@ -679,7 +802,64 @@ export function FabricFaultShiftDialog({
                           </div>
                           {reportsB.map((r) => (
                             <div key={r.id} className="small mb-1.5 pb-1 border-bottom border-warning-subtle last:border-0">
-                              <span className="fw-semibold text-dark">{r.createdBy}:</span> {r.text || '(sirf photo/video)'}
+                              <div className="d-flex align-items-center justify-content-between gap-1">
+                                <span className="fw-semibold text-dark">{r.createdBy}:</span>
+                                {canEdit && (
+                                  <div className="d-flex align-items-center gap-1">
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-link text-primary p-0"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => {
+                                        setEditingReportId(r.id)
+                                        setEditingReportText(r.text)
+                                      }}
+                                      title="Edit report note"
+                                    >
+                                      <i className="bi bi-pencil" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-link text-danger p-0 ms-1"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => void handleDeleteReport(r.id)}
+                                      title="Delete report"
+                                    >
+                                      <i className="bi bi-trash" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              {editingReportId === r.id ? (
+                                <div className="mt-1 d-flex flex-column gap-1">
+                                  <input
+                                    className="form-control form-control-sm py-0.5 px-1.5"
+                                    style={{ fontSize: 11 }}
+                                    value={editingReportText}
+                                    onChange={(e) => setEditingReportText(e.target.value)}
+                                  />
+                                  <div className="d-flex gap-1">
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-primary py-0 px-2"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => void handleSaveEditReport(r.id)}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-xs btn-outline-secondary py-0 px-1.5"
+                                      style={{ fontSize: 11 }}
+                                      onClick={() => setEditingReportId(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>{r.text || '(sirf photo/video)'}</div>
+                              )}
                               {r.media?.length > 0 && (
                                 <div className="d-flex flex-wrap gap-1.5 mt-1">
                                   {r.media.map((m, mi) => (

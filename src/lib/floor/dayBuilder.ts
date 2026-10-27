@@ -7,7 +7,7 @@
 import type { LoomStatus } from '@/types/loom'
 import { calculateProductionMetrics, type DailyLoomProductionEntry } from '@/types/production'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
-import { beamDailyEntryLot } from '@/services/beamTrack'
+import { beamDailyEntryLot, normalizeBeamLotKey } from '@/services/beamTrack'
 import { beamOnLoom, getMountedBeamsOnLoom } from '@/services/production/loomBeamHelpers'
 import type { BeamMaster, LoomMaster, QualityMaster, YarnLoomIssuance, YarnMaster } from '@/services/production/masterTypes'
 import { normalizeQualityStatus } from '@/services/production/masterTypes'
@@ -62,6 +62,32 @@ export function loomRecipe(
   }
 }
 
+/**
+ * SW # of a loom on one day. The mounted beam owns it (read-only in Daily Entry), but only
+ * from its mount date on: a beam mounted today never paints the days before. On those days
+ * the lot saved that day stays (the beam that was on the loom then), minus any lot of a
+ * beam that only came on later (rows saved before this rule could carry it).
+ */
+export function lotForDay(
+  loomNumber: number,
+  dateStr: string,
+  beams: BeamMaster[],
+  savedLot: string | null | undefined
+): string {
+  const mounted = getMountedBeamsOnLoom(beams, loomNumber)
+  const mountedBy = (b: BeamMaster) => !b.mountedOn || String(b.mountedOn).slice(0, 10) <= dateStr
+  const onDay = mounted.filter(mountedBy)
+  if (onDay.length) return onDay.map((b) => beamDailyEntryLot(b)).filter(Boolean).join(' + ')
+  const later = new Set(
+    mounted.map((b) => normalizeBeamLotKey(beamDailyEntryLot(b))).filter(Boolean)
+  )
+  return String(savedLot || '')
+    .split('+')
+    .map((p) => p.trim())
+    .filter((p) => p && !later.has(normalizeBeamLotKey(p)))
+    .join(' + ')
+}
+
 export interface DayBuildInput {
   dateStr: string
   /** The mill's today (Asia/Karachi). */
@@ -83,7 +109,6 @@ export function buildDayRows(input: DayBuildInput): DailyLoomProductionEntry[] {
 
   const primaryEntries = looms.map((loom) => {
     const saved = prevByKey.get(sheetRowKey(loom.loomNumber, 1))
-    const beam = beams.find((b) => beamOnLoom(b, loom.loomNumber))
     const live = input.recipe(loom)
     const prior = input.prior(loom.loomNumber)
     // A "Quality Ended" row saved on a day when the loom was still running a quality (e.g. the
@@ -240,10 +265,7 @@ export function buildDayRows(input: DayBuildInput): DailyLoomProductionEntry[] {
       shiftBMeters: shiftB,
       loomNumber: loom.loomNumber,
     })
-    const mountedBeams = getMountedBeamsOnLoom(beams, loom.loomNumber)
-    const fromBeam = mountedBeams.map((b) => beamDailyEntryLot(b)).filter(Boolean).join(' + ')
-    // Mounted beam owns SW # (read-only in Daily Entry). Beam Identity is never the lot.
-    const lot = fromBeam || (beam ? beamDailyEntryLot(beam) : '')
+    const lot = lotForDay(loom.loomNumber, dateStr, beams, prev?.lot)
 
     const built: DailyLoomProductionEntry = {
       id: sheetEntryId(dateStr, loom.loomNumber, 1),

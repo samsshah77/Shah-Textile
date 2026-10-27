@@ -1,12 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Receipt, X, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { lineAmount, monthLabel, slugifyPartyName, rs } from '@/lib/accounts/util'
 import { MACHINE_OPTIONS, type Bill, type Party, type PartyKind } from '@/lib/accounts/types'
 import { accountsApi, type LineDraft } from '@/services/accounts/accountsApi'
 import { PictureStrip } from '@/components/shared/PictureStrip'
+import { closeSidebar } from '@/lib/sidebarToggle'
 
 type Draft = { key: string; id?: string; description: string; machine: string; quantity: string; rate: string }
 
@@ -35,6 +36,11 @@ export function BillEditorModal({
 }) {
   const party = bill ? parties.find((p) => p.id === bill.partyId) : undefined
   const today = new Date().toISOString().slice(0, 10)
+
+  useEffect(() => {
+    closeSidebar()
+  }, [])
+
   const [date, setDate] = useState(bill?.date || (today.startsWith(month) ? today : `${month}-01`))
   const [billNo, setBillNo] = useState(bill?.billNo || '')
   const [inwardNo, setInwardNo] = useState(bill?.inwardNo || suggestedInwardNo || '')

@@ -43,28 +43,6 @@ services:
       - prod
       - full
 
-  # -------------------------------------------------------------
-  # WhatsApp Gateway Service (Evolution API)
-  # Persistent session, direct PDF/media & text delivery
-  # -------------------------------------------------------------
-  whatsapp:
-    image: evoapicloud/evolution-api:v1.8.2
-    container_name: sara-whatsapp-gateway
-    restart: always
-    ports:
-      - "8080:8080"
-    environment:
-      - SERVER_URL=http://localhost:8080
-      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-sara_evolution_secret_key_2026}
-      - LOG_LEVEL=ERROR,WARN,INFO
-      - DEL_INSTANCE=false
-    volumes:
-      - evolution_instances:/evolution/instances
-    profiles:
-      - prod
-      - full
-      - whatsapp
-
 volumes:
   postgres_data:
-  evolution_instances:
+

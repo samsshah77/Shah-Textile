@@ -146,6 +146,32 @@ export async function deleteFaultReport(id: string): Promise<void> {
   await prisma.$executeRawUnsafe(`UPDATE "floor_fault_reports" SET "deletedAt" = (now() AT TIME ZONE 'UTC') WHERE "id" = $1`, id)
 }
 
+/** Edit an existing report (text, loom number, or shift). */
+export async function updateFaultReport(
+  id: string,
+  patch: { text?: string; loomNumber?: number; shift?: 'A' | 'B' }
+): Promise<FaultReport | null> {
+  await ensureFaultReportTable()
+  const existing = await getFaultReport(id)
+  if (!existing) return null
+
+  const newText = patch.text !== undefined ? patch.text : existing.text
+  const newLoom = patch.loomNumber !== undefined ? patch.loomNumber : existing.loomNumber
+  const newShift = patch.shift !== undefined ? (patch.shift === 'B' ? 'B' : 'A') : existing.shift
+
+  const rows = await prisma.$queryRawUnsafe<Row[]>(
+    `UPDATE "floor_fault_reports"
+     SET "text" = $1, "loomNumber" = $2, "shift" = $3
+     WHERE "id" = $4 AND "deletedAt" IS NULL
+     RETURNING *`,
+    newText,
+    newLoom,
+    newShift,
+    id
+  )
+  return rows[0] ? toReport(rows[0]) : null
+}
+
 /** Loom numbers for the dropdown (active looms first). */
 export async function loomChoices(): Promise<Array<{ loomNumber: number; name: string }>> {
   try {

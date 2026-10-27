@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { startVoiceNote, type VoiceRecording } from '@/lib/voiceNote'
+import { getCalendarToday } from '@/constants/productionCalendar'
 
 type Media = { url: string; kind: 'image' | 'video' }
 type Report = {
@@ -25,10 +26,7 @@ type Data = {
 /** A picture / video picked on the phone, uploading or uploaded. */
 type Pending = { key: string; kind: 'image' | 'video'; preview: string; progress: number; url?: string; error?: string }
 
-const today = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+const today = () => getCalendarToday()
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit' })
 
 /** Phone photos are 4–12 MB; 2000 px JPEG keeps every fault visible at a fraction of the size. */
@@ -89,6 +87,14 @@ export default function FaultReportsPage() {
   const [rec, setRec] = useState<VoiceRecording | null>(null)
   const [recSeconds, setRecSeconds] = useState(0)
   const [voiceBusy, setVoiceBusy] = useState(false)
+
+  const [editingReport, setEditingReport] = useState<{
+    id: string
+    loomNumber: number
+    shift: 'A' | 'B'
+    text: string
+  } | null>(null)
+  const [updating, setUpdating] = useState(false)
 
   const photoRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLInputElement>(null)
@@ -212,12 +218,59 @@ export default function FaultReportsPage() {
     }
   }
 
+  const canManageReport = useCallback(
+    (r: Report) => Boolean(data?.canPost || data?.me?.isAdmin || data?.me?.id === r.createdById),
+    [data]
+  )
+
+  const startEdit = (r: Report) => {
+    setEditingReport({
+      id: r.id,
+      loomNumber: r.loomNumber,
+      shift: r.shift || 'A',
+      text: r.text || '',
+    })
+  }
+
+  const cancelEdit = () => {
+    setEditingReport(null)
+  }
+
+  const saveEdit = async () => {
+    if (!editingReport) return
+    setUpdating(true)
+    try {
+      const res = await fetch(`/api/floor/fault-reports/${editingReport.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          loomNumber: Number(editingReport.loomNumber),
+          shift: editingReport.shift,
+          text: editingReport.text.trim(),
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Update fail ho gaya')
+      setEditingReport(null)
+      await load()
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Update nahi ho saka')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   const remove = async (r: Report) => {
-    if (!window.confirm(`Loom ${r.loomNumber} ki yeh entry hata dein?`)) return
-    const res = await fetch(`/api/floor/fault-reports/${r.id}`, { method: 'DELETE', credentials: 'same-origin' })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) window.alert(json.error || 'Nahi hata')
-    void load()
+    if (!window.confirm(`Loom ${r.loomNumber} (Shift ${r.shift || 'A'}) ki yeh entry hata dein?`)) return
+    try {
+      const res = await fetch(`/api/floor/fault-reports/${r.id}`, { method: 'DELETE', credentials: 'same-origin' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Nahi hata')
+      await load()
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Nahi hata')
+    }
   }
 
   const shown = useMemo(
@@ -409,10 +462,27 @@ export default function FaultReportsPage() {
                 <span className="small text-secondary ms-auto">
                   {timeOf(r.createdAt)} · {r.createdBy}
                 </span>
-                {(data?.me.isAdmin || (data?.me.id === r.createdById && date === today())) && (
-                  <button type="button" className="btn btn-sm btn-link text-danger p-0 ms-1" aria-label="Entry hatayein" onClick={() => void remove(r)}>
-                    <i className="bi bi-trash" />
-                  </button>
+                {canManageReport(r) && (
+                  <div className="btn-group btn-group-sm ms-2">
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary py-0 px-2"
+                      aria-label="Edit entry"
+                      title="Edit fault"
+                      onClick={() => (editingReport?.id === r.id ? cancelEdit() : startEdit(r))}
+                    >
+                      <i className={`bi ${editingReport?.id === r.id ? 'bi-x-lg' : 'bi-pencil'}`} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger py-0 px-2"
+                      aria-label="Delete entry"
+                      title="Delete fault"
+                      onClick={() => void remove(r)}
+                    >
+                      <i className="bi bi-trash" />
+                    </button>
+                  </div>
                 )}
               </div>
               {r.media.length > 0 && (
@@ -429,7 +499,73 @@ export default function FaultReportsPage() {
                   )}
                 </div>
               )}
-              {r.text && <div style={{ whiteSpace: 'pre-wrap' }}>{r.text}</div>}
+              {editingReport?.id === r.id ? (
+                <div className="mt-2 p-3 border rounded bg-light">
+                  <div className="row g-2 mb-2">
+                    <div className="col-6 col-sm-4">
+                      <label className="form-label small fw-semibold mb-1">Loom</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={editingReport.loomNumber}
+                        onChange={(e) => setEditingReport({ ...editingReport, loomNumber: Number(e.target.value) })}
+                      >
+                        {data?.looms.map((l) => (
+                          <option key={l.loomNumber} value={l.loomNumber}>
+                            Loom {l.loomNumber} {l.name && l.name !== String(l.loomNumber) ? `(${l.name})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-6 col-sm-4">
+                      <label className="form-label small fw-semibold mb-1">Shift</label>
+                      <div className="btn-group btn-group-sm w-100">
+                        <button
+                          type="button"
+                          className={`btn ${editingReport.shift === 'A' ? 'btn-primary' : 'btn-outline-primary'}`}
+                          onClick={() => setEditingReport({ ...editingReport, shift: 'A' })}
+                        >
+                          Shift A
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${editingReport.shift === 'B' ? 'btn-primary' : 'btn-outline-primary'}`}
+                          onClick={() => setEditingReport({ ...editingReport, shift: 'B' })}
+                        >
+                          Shift B
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <label className="form-label small fw-semibold mb-1">Fault Note</label>
+                  <textarea
+                    className="form-control form-control-sm mb-2"
+                    rows={3}
+                    value={editingReport.text}
+                    onChange={(e) => setEditingReport({ ...editingReport, text: e.target.value })}
+                    placeholder="Fault note..."
+                  />
+                  <div className="d-flex justify-content-end gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={cancelEdit}
+                      disabled={updating}
+                    >
+                      Radd karein
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-success"
+                      onClick={() => void saveEdit()}
+                      disabled={updating}
+                    >
+                      {updating ? 'Mehfooz ho raha hai…' : 'Mehfooz karein'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                r.text && <div style={{ whiteSpace: 'pre-wrap' }}>{r.text}</div>
+              )}
             </div>
           </div>
         ))}

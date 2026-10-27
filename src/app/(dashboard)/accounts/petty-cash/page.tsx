@@ -93,7 +93,7 @@ function PettyCashContent() {
       <LoadState loading={loading} error={error} hasData={Boolean(st)}>
         {st && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 print:hidden">
               {[
                 ['Balance b/f', st.opening],
                 ['Cash in', st.totalIn],
@@ -123,18 +123,20 @@ function PettyCashContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="bg-amber-50/60 italic">
-                      <td className={cn(cell, 'text-center')}>-</td>
-                      <td className={cn(cell, 'px-2 font-mono')}>{month}-01</td>
-                      <td className={cn(cell, 'px-2')}>Balance b/f</td>
-                      <td className={cell} />
-                      <td className={cell} />
-                      <td className={cell} />
-                      <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(st.opening)}</td>
-                      {canEdit && <td className={cn(cell, 'print:hidden')} />}
-                    </tr>
+                    {!st.entries.some((e) => e.kind === 'OPENING') && (
+                      <tr className="bg-amber-50/60 italic">
+                        <td className={cn(cell, 'text-center')}>-</td>
+                        <td className={cn(cell, 'px-2 font-mono')}>{month}-01</td>
+                        <td className={cn(cell, 'px-2')}>Balance b/f</td>
+                        <td className={cell} />
+                        <td className={cell} />
+                        <td className={cell} />
+                        <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(st.opening)}</td>
+                        {canEdit && <td className={cn(cell, 'print:hidden')} />}
+                      </tr>
+                    )}
                     {st.entries.map((e, i) => (
-                      <tr key={e.id} className={i % 2 ? 'bg-slate-50/60' : ''}>
+                      <tr key={e.id} className={cn(i % 2 ? 'bg-slate-50/60' : '', e.kind === 'OPENING' && 'bg-amber-50/70 font-semibold')}>
                         <td className={cn(cell, 'text-center font-mono text-slate-500')}>{i + 1}</td>
                         <td className={cn(cell, 'px-1')}>
                           {canEdit ? (

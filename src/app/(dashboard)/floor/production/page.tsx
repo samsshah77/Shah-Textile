@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
+import { useBeamsAsOf } from '@/hooks/useBeamsAsOf'
+import { getProductionToday } from '@/constants/productionCalendar'
 import { ProductionSheetTable, type SheetTextSize } from '@/components/floor/ProductionSheetTable'
 import { FloorEntryTable } from '@/components/floor/FloorEntryTable'
 import { FabricFaultTable } from '@/components/floor/FabricFaultTable'
@@ -24,13 +26,11 @@ import { ProductionDateFilterBar } from '@/components/floor/ProductionDateFilter
 import { NewDayProductionModal } from '@/components/floor/NewDayProductionModal'
 import { ProductionWorkspaceSkeleton } from '@/components/floor/ProductionSkeleton'
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
-import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfButton'
+import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { productionWhatsAppText } from '@/lib/floor/shareText'
-import {
-  generateProductionPdfBase64,
-  downloadProductionPdf,
-} from '@/lib/floor/generateProductionPdf'
+// jsPDF (~350 KB) loads only when a PDF is actually made.
+const loadProductionPdf = () => import('@/lib/floor/generateProductionPdf')
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
@@ -194,7 +194,9 @@ function ProductionWorkspaceContent() {
   const isYarnTab = currentTab === 'yarn'
   const isBeamsTab = currentTab === 'beams'
   const isQualityTab = currentTab === 'quality'
-  const beamCounts = useMemo(() => beamStockCounts(beams), [beams])
+  // Beams tab follows the date like the other tabs: a past day is read-only history.
+  const beamsView = useBeamsAsOf(selectedDate, beams, isBeamsTab)
+  const beamCounts = useMemo(() => beamStockCounts(beamsView.beams), [beamsView.beams])
   const qualityCounts = useMemo(
     () => qualityStatusCounts(qualities, selectedDate),
     [qualities, selectedDate]
@@ -212,6 +214,15 @@ function ProductionWorkspaceContent() {
                   filter={qualityStatusFilter}
                   onChange={setQualityStatusFilter}
                   counts={qualityCounts}
+                />
+              )}
+              {isBeamsTab && (
+                <DateStepper
+                  size="sm"
+                  value={selectedDate}
+                  ariaLabel="Beams date"
+                  allowFuture={false}
+                  onChange={setSelectedDate}
                 />
               )}
               {isBeamsTab && (
@@ -296,7 +307,7 @@ function ProductionWorkspaceContent() {
                 </>
               )}
 
-              {isBeamsTab && canEditProduction && (
+              {isBeamsTab && canEditProduction && !beamsView.isPast && (
                 <>
                   <button
                     type="button"
@@ -411,8 +422,8 @@ function ProductionWorkspaceContent() {
                   <WhatsAppShareButton
                     documentTitle={`Production Sheet ${selectedDate}`}
                     message={() => productionWhatsAppText(selectedDate, entries)}
-                    onDownloadPdf={() => downloadProductionPdf(entries, selectedDate)}
-                    getPdfAttachment={() => generateProductionPdfBase64(entries, selectedDate)}
+                    onDownloadPdf={() => void loadProductionPdf().then((m) => m.downloadProductionPdf(entries, selectedDate))}
+                    getPdfAttachment={() => loadProductionPdf().then((m) => m.generateProductionPdfBase64(entries, selectedDate))}
                   />
                 </>
               ) : (
@@ -514,9 +525,23 @@ function ProductionWorkspaceContent() {
               />
             )}
 
+            {currentTab === 'beams' && beamsView.isPast && (
+              <div className="alert alert-info py-2 px-3 mb-2 d-flex flex-wrap align-items-center gap-2" role="status">
+                <i className="bi bi-clock-history" />
+                <span>
+                  <strong>{getFormattedDateLabel(selectedDate)}</strong> ki halat — sirf dekhne ke liye.
+                  {beamsView.loading ? ' Load ho raha hai…' : ''}
+                  {beamsView.error ? ` ${beamsView.error}` : ''}
+                </span>
+                <button type="button" className="btn btn-sm btn-outline-primary ms-auto" onClick={() => setSelectedDate(getProductionToday())}>
+                  Aaj par jayen
+                </button>
+              </div>
+            )}
+
             {currentTab === 'beams' && (
               <BeamMasterTable
-                beams={beams}
+                beams={beamsView.beams}
                 looms={looms}
                 qualities={qualities}
                 selectedDate={selectedDate}
@@ -527,11 +552,11 @@ function ProductionWorkspaceContent() {
                 onReceiveFromSizing={receiveBeamFromSizing}
                 onSendToSizing={sendBeamToSizing}
                 onDelete={deleteBeam}
-                readOnly={!canEditProduction}
+                readOnly={!canEditProduction || beamsView.isPast}
                 filter={beamFilter}
                 onFilterChange={setBeamFilter}
                 toolbarInChrome
-                tableEdit={beamEdit}
+                tableEdit={beamEdit && !beamsView.isPast}
                 onTableEditChange={setBeamEdit}
                 addModalOpen={beamAddOpen}
                 onAddModalOpenChange={setBeamAddOpen}

@@ -41,6 +41,7 @@ import { loadQualityRefs, stampQualityIds } from '@/server/qualityStamp'
 import { refreshProductionDay, rebuildProductionLedger } from '@/server/productionLedger'
 import { assertDateOpen } from '@/server/floor/locks'
 import type { BeamMaster, LoomMaster, QualityMaster } from '@/services/productionMastersService'
+import { recordBeamChanges, type BeamChange } from '@/server/floor/beamHistory'
 import type { DailyLoomProductionEntry } from '@/types/production'
 
 type Tx = Prisma.TransactionClient
@@ -151,7 +152,9 @@ export async function applyListChanges(cs: ListChangeSet): Promise<RowSyncResult
   const key = cs.key
   const { upsertIds, ids } = listIds(cs)
   if (ids.length === 0) return { key, rows: [], hashes: {}, deleted: [], changed: false }
-  await inTx((tx) => applyListChangesTx(tx, cs))
+  const beamChanges: BeamChange[] = []
+  await inTx((tx) => applyListChangesTx(tx, cs, beamChanges))
+  await recordBeamChanges(beamChanges)
   if (key === FLOOR_KEYS.QUALITY && cs.upserts.length) await rebuildProductionLedger()
   const deleted = cs.deletes.map((d) => d.id)
   const out = await syncFor(key, upsertIds, deleted)
@@ -159,7 +162,7 @@ export async function applyListChanges(cs: ListChangeSet): Promise<RowSyncResult
 }
 
 /** The list part of a save, inside the caller's transaction. */
-async function applyListChangesTx(tx: Tx, cs: ListChangeSet): Promise<void> {
+async function applyListChangesTx(tx: Tx, cs: ListChangeSet, beamChanges?: BeamChange[]): Promise<void> {
   const key = cs.key
   const { ids } = listIds(cs)
   if (ids.length === 0) return
@@ -190,9 +193,13 @@ async function applyListChangesTx(tx: Tx, cs: ListChangeSet): Promise<void> {
         const b = parseRow<BeamMaster>(beamRowSchema, u.row, `Beam ${rowIdOf(key, u.row)}`)
         const beamNo = String(b.beamNo).trim()
         const data = beamWriteData({ ...b, beamNo }, prevRaw.get(beamNo))
-        await tx.floorBeam.upsert({ where: { beamNo }, create: { beamNo, ...data }, update: data })
+        const saved = await tx.floorBeam.upsert({ where: { beamNo }, create: { beamNo, ...data }, update: data })
+        beamChanges?.push({ before: stored.get(beamNo) ?? null, after: beamRowToMaster(saved) })
       }
-      if (cs.deletes.length) await tx.floorBeam.deleteMany({ where: { beamNo: { in: cs.deletes.map((d) => d.id) } } })
+      if (cs.deletes.length) {
+        await tx.floorBeam.deleteMany({ where: { beamNo: { in: cs.deletes.map((d) => d.id) } } })
+        for (const d of cs.deletes) if (stored.has(d.id)) beamChanges?.push({ before: stored.get(d.id)!, after: null })
+      }
     } else {
       const stored = new Map((await tx.floorQuality.findMany({ where: { id: { in: ids } } })).map((r) => [r.id, qualityRowToMaster(r)]))
       check(cs, stored)
@@ -364,13 +371,15 @@ export async function applyBatch(
   for (const l of lists) listIds(l)
 
   const dayIds = new Map<string, { ids: string[]; before: DailyLoomProductionEntry[] }>()
+  const beamChanges: BeamChange[] = []
   await inTx(async (tx) => {
-    for (const l of lists) await applyListChangesTx(tx, l)
+    for (const l of lists) await applyListChangesTx(tx, l, beamChanges)
     // Quality ids / ended runs as they are after the list changes of this same batch.
     const ctx = await sheetContext(tx)
     for (const d of days) dayIds.set(d.date, await applySheetRowsTx(tx, d.date, d.rows, actor, ctx))
   })
 
+  await recordBeamChanges(beamChanges)
   if (lists.some((l) => l.key === FLOOR_KEYS.QUALITY && l.upserts.length)) await rebuildProductionLedger()
   else for (const d of days) await refreshProductionDay(d.date)
 

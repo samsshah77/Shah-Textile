@@ -379,7 +379,7 @@ export async function loadSheetFromDb(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getSheet', date: dateStr }),
     })
-    if (res.status === 401 || res.status === 403 || (res.redirected && res.url.includes('/login'))) {
+    if (res.status === 401 || (res.redirected && res.url.includes('/login'))) {
       handleSessionExpired()
       return null
     }
@@ -401,7 +401,7 @@ export async function preloadAllFloorSheets(): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getAllSheets' }),
     })
-    if (res.status === 401 || res.status === 403 || (res.redirected && res.url.includes('/login'))) {
+    if (res.status === 401 || (res.redirected && res.url.includes('/login'))) {
       handleSessionExpired()
       return
     }
