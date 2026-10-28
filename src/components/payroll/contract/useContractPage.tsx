@@ -60,7 +60,7 @@ export const DEFAULT_CONTRACT_NET_WIDTHS = {
 
 /** State, data and handlers of the page (moved out of page.tsx; behaviour unchanged). */
 export function useContractPage() {
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')

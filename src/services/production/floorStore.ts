@@ -95,7 +95,7 @@ export async function persistBeamPatch(
   patch: Partial<
     Pick<
       BeamMaster,
-      'swLot' | 'qualityId' | 'beamRepeat' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'
+      'swLot' | 'qualityId' | 'beamRepeat' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads' | 'parkedNearLoom'
     >
   >
 ): Promise<boolean> {

@@ -13,7 +13,7 @@ export interface MonthLockBannerProps {
 }
 
 export function MonthLockButton({ month, onStatusChange, className = '' }: MonthLockBannerProps) {
-  const { canEditAccounts, user } = useAuth()
+  const { canEditPayroll: canEditAccounts, user } = useAuth()
   const [isProcessing, setIsProcessing] = useState(false)
   const [showConfirmLock, setShowConfirmLock] = useState(false)
   const [showConfirmUnlock, setShowConfirmUnlock] = useState(false)

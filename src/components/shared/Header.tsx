@@ -90,6 +90,7 @@ function resolveAdminPage(pathname: string): string {
   if (pathname.startsWith('/admin/system')) return 'System'
   if (pathname.startsWith('/admin/audit')) return 'Audit log'
   if (pathname.startsWith('/admin/quality-archive')) return 'Quality Archive'
+  if (pathname.startsWith('/admin/access')) return 'Permissions'
   if (pathname.startsWith('/admin/approvals')) return 'Approvals'
   if (pathname.startsWith('/admin/roles')) return 'Roles'
   if (pathname.startsWith('/admin/permissions')) return 'Permissions'
@@ -152,6 +153,9 @@ function HeaderContent() {
     }
     if (pathname.startsWith('/admin')) {
       return { section: 'Administration', page: resolveAdminPage(pathname) }
+    }
+    if (pathname.startsWith('/quality-archive')) {
+      return { section: 'Administration', page: 'Quality Archive' }
     }
     if (pathname.startsWith('/dashboard')) {
       return { section: 'Dashboard', page: null as string | null }

@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { cleanMedia, createFaultReport, listFaultReports, loomChoices } from '@/server/floor/faultReports'
 import { faultUser, isYmd } from '@/server/floor/faultAccess'
-import { hasPermission } from '@/server/permissions'
+import { allows } from '@/lib/access'
 import { voiceEnabled } from '@/server/floor/faultVoice'
 
 export const runtime = 'nodejs'
@@ -17,11 +17,8 @@ export async function GET(request: NextRequest) {
   const to = sp.get('to') || date
   if (!isYmd(from) || !isYmd(to)) return NextResponse.json({ error: 'date chahiye (YYYY-MM-DD)' }, { status: 400 })
   const loom = Number(sp.get('loom')) || undefined
-  const [reports, looms, canPost] = await Promise.all([
-    listFaultReports({ from, to, loom }),
-    loomChoices(),
-    hasPermission(check.user.id, { moduleKey: 'floor', resourceKey: 'production_entries', action: 'CREATE' }),
-  ])
+  const [reports, looms] = await Promise.all([listFaultReports({ from, to, loom }), loomChoices()])
+  const canPost = allows(check.access, 'fault_reports', 'edit')
   return NextResponse.json({
     reports,
     looms,

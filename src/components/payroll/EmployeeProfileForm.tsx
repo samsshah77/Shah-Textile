@@ -64,7 +64,7 @@ export function EmployeeProfileForm({
   onSaved,
   onCancelHref = '/payroll/profiles',
 }: Props) {
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [notFound, setNotFound] = useState(false)

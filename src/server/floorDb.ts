@@ -73,6 +73,7 @@ export function beamRowToMaster(row: {
   qualityId?: string | null
   swLot?: string | null
   beamRepeat?: string | null
+  parkedNearLoom?: string | null
 }): BeamMaster {
   const usedInLoom = row.usedInLoom
   const fillStatus = (row.fillStatus === 'EMPTY' ? 'EMPTY' : 'FULL') as BeamMaster['fillStatus']
@@ -94,6 +95,7 @@ export function beamRowToMaster(row: {
     qualityId: row.qualityId ?? null,
     swLot: row.swLot ?? null,
     beamRepeat: row.beamRepeat ?? null,
+    parkedNearLoom: row.parkedNearLoom ?? null,
   }
 }
 
@@ -171,7 +173,10 @@ export async function dbGetBeams(): Promise<BeamMaster[]> {
   return rows.map(beamRowToMaster)
 }
 
-export function beamWriteData(b: BeamMaster, prev?: { swLot: string | null; qualityId: string | null; beamRepeat: string | null } | null) {
+export function beamWriteData(
+  b: BeamMaster,
+  prev?: { swLot: string | null; qualityId: string | null; beamRepeat: string | null; parkedNearLoom?: string | null } | null
+) {
   const swLotIncoming =
     b.swLot != null && String(b.swLot).trim() !== '' ? String(b.swLot).trim() : undefined
   const qualityIdIncoming =
@@ -182,6 +187,11 @@ export function beamWriteData(b: BeamMaster, prev?: { swLot: string | null; qual
     b.beamRepeat != null && String(b.beamRepeat).trim() !== ''
       ? String(b.beamRepeat).trim()
       : undefined
+  // "Kept behind loom" only while the beam lies in the store. Like Sw#, a full-list save
+  // without the field keeps the stored value; it is cleared through patchBeam.
+  const inStore = !b.usedInLoom && (b.location || 'STORE') === 'STORE'
+  const parkedIncoming =
+    b.parkedNearLoom != null && String(b.parkedNearLoom).trim() !== '' ? String(b.parkedNearLoom).trim() : undefined
   const base = {
     warp: b.warp || '',
     reed: b.reed ?? 60,
@@ -198,6 +208,7 @@ export function beamWriteData(b: BeamMaster, prev?: { swLot: string | null; qual
     swLot: swLotIncoming ?? prev?.swLot ?? null,
     qualityId: qualityIdIncoming ?? prev?.qualityId ?? null,
     beamRepeat: beamRepeatIncoming ?? prev?.beamRepeat ?? null,
+    parkedNearLoom: inStore ? (parkedIncoming ?? prev?.parkedNearLoom ?? null) : null,
   }
   return base
 }
@@ -207,7 +218,7 @@ export async function dbUpsertBeam(beam: BeamMaster): Promise<BeamMaster> {
   if (!beam?.beamNo) throw new Error('beamNo required')
   const prev = await prisma.floorBeam.findUnique({
     where: { beamNo: beam.beamNo },
-    select: { swLot: true, qualityId: true, beamRepeat: true },
+    select: { swLot: true, qualityId: true, beamRepeat: true, parkedNearLoom: true },
   })
   const data = beamWriteData(beam, prev)
   try {
@@ -243,10 +254,11 @@ export async function dbSaveBeams(beams: BeamMaster[]): Promise<void> {
     swLot: string | null
     qualityId: string | null
     beamRepeat: string | null
+    parkedNearLoom?: string | null
   }>
   try {
     existing = await prisma.floorBeam.findMany({
-      select: { beamNo: true, swLot: true, qualityId: true, beamRepeat: true },
+      select: { beamNo: true, swLot: true, qualityId: true, beamRepeat: true, parkedNearLoom: true },
     })
   } catch {
     const rows = await prisma.floorBeam.findMany({
@@ -302,7 +314,7 @@ export async function dbPatchBeam(
   patch: Partial<
     Pick<
       BeamMaster,
-      'swLot' | 'qualityId' | 'beamRepeat' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads'
+      'swLot' | 'qualityId' | 'beamRepeat' | 'warp' | 'reed' | 'width' | 'length' | 'loomType' | 'totalThreads' | 'parkedNearLoom'
     >
   >
 ): Promise<BeamMaster | null> {
@@ -324,6 +336,12 @@ export async function dbPatchBeam(
     data.beamRepeat =
       patch.beamRepeat != null && String(patch.beamRepeat).trim() !== ''
         ? String(patch.beamRepeat).trim()
+        : null
+  }
+  if (patch.parkedNearLoom !== undefined) {
+    data.parkedNearLoom =
+      patch.parkedNearLoom != null && String(patch.parkedNearLoom).trim() !== ''
+        ? String(patch.parkedNearLoom).trim()
         : null
   }
   if (patch.warp !== undefined) data.warp = patch.warp

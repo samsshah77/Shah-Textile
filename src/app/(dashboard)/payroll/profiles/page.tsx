@@ -40,7 +40,7 @@ const HR_TABS = [
 ]
 
 function EmployeeProfilesContent() {
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get('search') || ''

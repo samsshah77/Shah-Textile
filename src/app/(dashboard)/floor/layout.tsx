@@ -1,11 +1,12 @@
-import { requirePagePermission } from '@/server/page-access'
+import { requireAreaPage } from '@/server/page-access'
+import { PRODUCTION_AREAS } from '@/lib/access'
 import { FloorSaveAlerts } from '@/components/floor/FloorSaveAlerts'
 
 export const dynamic = 'force-dynamic'
 
-/** Soft gate for Floor module — VIEW on production_entries. */
+/** Floor pages: View on any production tab, Kamran Fault or Tracking (Administration → Permissions). */
 export default async function FloorLayout({ children }: { children: React.ReactNode }) {
-  await requirePagePermission('floor', 'production_entries')
+  await requireAreaPage([...PRODUCTION_AREAS, 'fault_reports', 'tracking'], '/floor/production')
   return (
     <>
       {children}

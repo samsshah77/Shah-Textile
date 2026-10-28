@@ -26,7 +26,7 @@ import { usePrintOrientation } from '@/hooks/usePrintOrientation'
  * amount it is the "Cash in" total of Accounts › Petty Cash. Locked month: view only.
  */
 function PettyInflowCell({ month, fortnight, amount }: { month: string; fortnight: '1-15' | '16-31'; amount: number }) {
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const typed = payrollService.getTypedPettyCashInflow(month, fortnight)
   const fromAccounts = payrollService.getAccountsPettyCashInflow(month, fortnight)
   const editable = canEditAccounts && !isMonthLocked(month)

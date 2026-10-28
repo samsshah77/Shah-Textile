@@ -14,7 +14,7 @@ export default async function PayrollLayout({ children }: { children: React.Reac
     <PayrollDirtyProvider>
       <div className="sara-module-content sara-payroll">
         <PayrollHydrate>
-          <FinanceReadonly>
+          <FinanceReadonly area="payroll">
             <ModuleTables storageKey="sara.textSize.payroll">{children}</ModuleTables>
           </FinanceReadonly>
         </PayrollHydrate>

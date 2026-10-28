@@ -233,6 +233,8 @@ model FloorBeam {
   swLot          String?
   /** Optional beam repeat label/value — empty allowed. */
   beamRepeat     String?
+  /** In the store: loom it is kept behind (In Stock tab). */
+  parkedNearLoom String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

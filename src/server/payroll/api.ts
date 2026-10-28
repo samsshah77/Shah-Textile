@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@/server/current-user'
-import { canViewFinance, isAccountsController } from '@/lib/accountsAccess'
+import { accessFor } from '@/server/userAccess'
+import { allows } from '@/lib/access'
 import { writeAudit } from '@/server/auditLog'
 import { getPayrollSeedStore } from '@/data/payrollSeeds'
 import type { ChangeSet } from '@/lib/payroll/sync'
@@ -29,7 +30,7 @@ export async function loadSalaryStore(): Promise<Record<string, unknown>> {
 type Ctx = { req: NextRequest; actor: PayrollActor }
 
 /**
- * Login required; reading for Tufail + Javed, writing for Tufail only; old data
+ * Login required; reading / writing as set on Administration → Permissions; old data
  * copied first; refusals become clear JSON errors.
  */
 export function payrollHandler(fn: (ctx: Ctx) => Promise<unknown>, opts: { write?: boolean } = {}) {
@@ -37,11 +38,12 @@ export function payrollHandler(fn: (ctx: Ctx) => Promise<unknown>, opts: { write
     try {
       const actor = await currentUser(req)
       if (!actor) return NextResponse.json({ ok: false, error: 'Login required.' }, { status: 401 })
-      const who = { ...actor, role: actor.roleKey }
-      if (!canViewFinance(who))
-        return NextResponse.json({ ok: false, error: 'Salary sirf Tufail aur Javed sahab dekh sakte hain.' }, { status: 403 })
-      if (opts.write && !isAccountsController(who))
-        return NextResponse.json({ ok: false, error: 'Salary mein tabdeeli sirf Tufail kar sakte hain (baqi ke liye view only).' }, { status: 403 })
+      // Administration → Permissions decides who may see / change Salary.
+      const { access } = await accessFor(actor)
+      if (!allows(access, 'payroll', 'view'))
+        return NextResponse.json({ ok: false, error: 'Salary dekhne ki ijazat nahi.' }, { status: 403 })
+      if (opts.write && !allows(access, 'payroll', 'edit'))
+        return NextResponse.json({ ok: false, error: 'Salary mein tabdeeli ki ijazat nahi (view only).' }, { status: 403 })
       await ensureSalaryDataReady()
       const data = await fn({ req, actor })
       return NextResponse.json({ ok: true, ...(data as object) })

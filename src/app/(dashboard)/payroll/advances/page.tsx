@@ -48,7 +48,7 @@ const cleanRemarkValue = (val?: string) =>
   isApprovedAdvanceRemark(val) ? '' : (val || '')
 
 export default function SalaryAdvancesPage() {
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, showError, modals } = usePayrollModals()
   const [advances, setAdvances] = useState<AdvanceRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])

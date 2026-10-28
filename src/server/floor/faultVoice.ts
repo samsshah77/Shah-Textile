@@ -84,7 +84,9 @@ async function askGroq(audio: Buffer, mimeType: string): Promise<string> {
 }
 
 async function askGemini(audio: Buffer, mimeType: string): Promise<string> {
-  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-flash-latest'
+  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.6-flash'
+  // Writing down a voice note needs little "thinking" (Gemini 3 defaults to medium, which is slow).
+  const thinking = /^gemini-3/.test(model) ? { thinkingConfig: { thinkingLevel: 'low' } } : {}
   const res = await fetch(`${geminiBase()}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     signal: AbortSignal.timeout(90_000),
@@ -95,6 +97,7 @@ async function askGemini(audio: Buffer, mimeType: string): Promise<string> {
         responseMimeType: 'application/json',
         responseSchema: { type: 'OBJECT', properties: { text: { type: 'STRING' } }, required: ['text'] },
         temperature: 0,
+        ...thinking,
       },
     }),
   })

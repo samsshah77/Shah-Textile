@@ -4,8 +4,8 @@ import path from 'path'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/server/current-user'
-import { hasPermission } from '@/server/permissions'
-import { isAccountsController } from '@/lib/accountsAccess'
+import { accessFor } from '@/server/userAccess'
+import { allows } from '@/lib/access'
 import { sniffImage } from '@/server/imageSniff'
 
 export const runtime = 'nodejs'
@@ -26,8 +26,10 @@ const KINDS = {
 type Kind = keyof typeof KINDS
 
 async function mayUpload(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>, kind: Kind): Promise<boolean> {
-  if (kind === 'loom') return hasPermission(user.id, { moduleKey: 'floor', resourceKey: 'production_entries', action: 'UPDATE' })
-  return isAccountsController({ ...user, role: user.roleKey })
+  const { access } = await accessFor(user)
+  if (kind === 'loom') return allows(access, 'prod_looms', 'edit')
+  if (kind === 'profile') return allows(access, 'payroll', 'edit')
+  return allows(access, 'accounts', 'edit')
 }
 
 /** Same-origin upload — saves under public/uploads/<kind> on the server. */

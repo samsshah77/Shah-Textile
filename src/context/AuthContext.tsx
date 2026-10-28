@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { User, UserRole } from '@/types/auth'
-import { canViewFinance, isAccountsController } from '@/lib/accountsAccess'
+import { PRODUCTION_AREAS, allows, allowsAny, noAccess, type AccessArea, type AccessMap } from '@/lib/access'
 
 export type AuthUser = {
   id: string
@@ -11,6 +11,7 @@ export type AuthUser = {
   email: string
   role: string
   department: string | null
+  access?: AccessMap
 }
 
 interface AuthContextType {
@@ -31,9 +32,15 @@ interface AuthContextType {
   setEditMode: (enabled: boolean) => void
   canViewAccounts: boolean
   canEditAccounts: boolean
+  canViewPayroll: boolean
+  canEditPayroll: boolean
   canViewProduction: boolean
   canEditProduction: boolean
   isFaultInspector: boolean
+  /** Administration → Permissions for this person. */
+  access: AccessMap
+  canView: (area: AccessArea) => boolean
+  canEdit: (area: AccessArea) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -54,6 +61,7 @@ function toAppUser(raw: AuthUser & { roleLabel?: string; department?: string | n
     role,
     roleLabel: raw.roleLabel || ROLE_LABELS[role] || role.replaceAll('_', ' '),
     department: raw.department || 'Sara Textile',
+    access: raw.access,
   }
 }
 
@@ -175,11 +183,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAccountant = user?.role?.toLowerCase() === 'accountant'
   const isQualityController = user?.role?.toLowerCase() === 'quality_controller'
   const isFaultInspector = user?.role?.toLowerCase() === 'fault' || user?.email?.toLowerCase() === 'kamran@saratextile.com'
-  // Accounts + Salary: Tufail edits, Javed (admin) views, nobody else (see accountsAccess.ts)
-  const canViewAccounts = canViewFinance(user)
-  const canEditAccounts = isAccountsController(user)
-  const canViewProduction = !isFaultInspector
-  const canEditProduction = isAdmin || isQualityController
+  // Everything below comes from Administration → Permissions (the server works it out;
+  // a person nobody has changed keeps the access they always had).
+  const access = user?.access || noAccess()
+  const canView = (area: AccessArea) => allows(access, area, 'view')
+  const canEdit = (area: AccessArea) => allows(access, area, 'edit')
+  const canViewAccounts = canView('accounts')
+  const canEditAccounts = canEdit('accounts')
+  const canViewPayroll = canView('payroll')
+  const canEditPayroll = canEdit('payroll')
+  const canViewProduction = allowsAny(access, PRODUCTION_AREAS, 'view')
+  const canEditProduction = allowsAny(access, PRODUCTION_AREAS, 'edit')
 
   return (
     <AuthContext.Provider
@@ -202,8 +216,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setEditMode,
         canViewAccounts,
         canEditAccounts,
+        canViewPayroll,
+        canEditPayroll,
         canViewProduction,
         canEditProduction,
+        access,
+        canView,
+        canEdit,
       }}
     >
       {children}

@@ -116,6 +116,11 @@ export function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): Beam
     b.beamRepeat != null && String(b.beamRepeat).trim() !== ''
       ? String(b.beamRepeat).trim()
       : null
+  // Only a beam lying in the store has a "kept behind loom" place.
+  const parkedNearLoom =
+    !usedInLoom && location === 'STORE' && b.parkedNearLoom != null && String(b.parkedNearLoom).trim() !== ''
+      ? String(b.parkedNearLoom).trim()
+      : null
   return {
     beamNo: b.beamNo,
     warp: simplifyWarpName(b.warp),
@@ -137,6 +142,7 @@ export function normalizeBeam(b: Partial<BeamMaster> & { beamNo: string }): Beam
     qualityId,
     swLot,
     beamRepeat,
+    parkedNearLoom,
   }
 }
 

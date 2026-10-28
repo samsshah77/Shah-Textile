@@ -27,6 +27,7 @@ import type { DailyLoomProductionEntry } from '@/types/production'
 import { calculateProductionMetrics } from '@/types/production'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { fetchProductionReport } from '@/services/floorReportsClient'
+import { useAuth } from '@/context/AuthContext'
 
 /** Same as Production sheet footer / Excel: Σ(A+B) ÷ Σ(100% Running) × 100 — not avg of %. */
 function dayRunningEfficiency(live: DailyLoomProductionEntry[]) {
@@ -115,6 +116,9 @@ function shortDay(dateStr: string) {
 }
 
 export default function DashboardPage() {
+  // "Total Tracking" links only for people who may open Tracking (Administration → Permissions).
+  const { canView } = useAuth()
+  const trackingOk = canView('tracking')
   const productionToday = getProductionToday()
   const productionYesterday = getProductionYesterday()
   /** Open on Today — yesterday user khud select karega. */
@@ -210,10 +214,10 @@ export default function DashboardPage() {
   }
 
   const sheetHref = '/floor/production?tab=sheet'
-  const trackingHref = '/floor/reports/total'
-  const shiftTrackingHref = '/floor/reports/total?view=shifts'
-  const efficiencyTrackingHref = '/floor/reports/total?view=efficiency'
-  const activeTrackingHref = '/floor/reports/total?view=active'
+  const trackingHref = trackingOk ? '/floor/reports/total' : undefined
+  const shiftTrackingHref = trackingOk ? '/floor/reports/total?view=shifts' : undefined
+  const efficiencyTrackingHref = trackingOk ? '/floor/reports/total?view=efficiency' : undefined
+  const activeTrackingHref = trackingOk ? '/floor/reports/total?view=active' : undefined
 
   return (
     <>
@@ -299,7 +303,7 @@ export default function DashboardPage() {
             biIcon="bi-speedometer2"
             colorVariant="primary"
             href={trackingHref}
-            footerLabel="Total Tracking"
+            footerLabel={trackingOk ? 'Total Tracking' : ' '}
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -314,7 +318,7 @@ export default function DashboardPage() {
             biIcon="bi-columns-gap"
             colorVariant="success"
             href={shiftTrackingHref}
-            footerLabel="Total Tracking"
+            footerLabel={trackingOk ? 'Total Tracking' : ' '}
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -325,7 +329,7 @@ export default function DashboardPage() {
             biIcon="bi-percent"
             colorVariant="warning"
             href={efficiencyTrackingHref}
-            footerLabel="Total Tracking"
+            footerLabel={trackingOk ? 'Total Tracking' : ' '}
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -336,7 +340,7 @@ export default function DashboardPage() {
             biIcon="bi-gear-wide-connected"
             colorVariant="info"
             href={activeTrackingHref}
-            footerLabel="Total Tracking"
+            footerLabel={trackingOk ? 'Total Tracking' : ' '}
           />
         </div>
       </div>

@@ -8,7 +8,8 @@ const TABS = [
   { href: '/admin/roles', label: 'Roles', icon: 'bi-person-gear' },
   { href: '/admin/system', label: 'System', icon: 'bi-hdd-stack' },
   { href: '/admin/audit', label: 'Audit log', icon: 'bi-clock-history' },
-  { href: '/admin/quality-archive', label: 'Quality Archive', icon: 'bi-archive' },
+  { href: '/quality-archive', label: 'Quality Archive', icon: 'bi-archive' },
+  { href: '/admin/access', label: 'Permissions', icon: 'bi-toggles' },
 ]
 
 /** One tab strip for every Administration page. */

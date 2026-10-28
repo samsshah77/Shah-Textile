@@ -18,6 +18,7 @@ import {
   qualityRunOwnsSheetEntry,
 } from '@/services/productionMastersService'
 import { formatNumber } from '@/lib/utils'
+import { useAuth } from '@/context/AuthContext'
 import {
   getProductionTodayMonth,
   PRODUCTION_START,
@@ -1043,6 +1044,11 @@ function ProductionTotalTrackingContent() {
 }
 
 export default function ProductionTotalTrackingPage() {
+  const { user, canView } = useAuth()
+  // Administration → Permissions: Tracking can be hidden for a person.
+  if (user && !canView('tracking')) {
+    return <div className="alert alert-secondary m-3">Tracking dekhne ki ijazat nahi.</div>
+  }
   return (
     <Suspense
       fallback={

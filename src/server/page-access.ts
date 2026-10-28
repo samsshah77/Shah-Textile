@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { resolvePermission } from "@/server/permissions";
-import { canViewFinance } from "@/lib/accountsAccess";
+import { publicUserSelect } from "@/server/current-user";
+import { accessFor } from "@/server/userAccess";
+import { allowsAny, type AccessArea } from "@/lib/access";
 
 export async function requirePagePermission(moduleKey: string, resourceKey: string) {
   try {
@@ -57,15 +59,22 @@ export async function requirePagePermission(moduleKey: string, resourceKey: stri
 }
 
 /**
- * Accounts / Salary pages: on top of the module permission, only Tufail (edit) and
- * Javed (view) may open them — everyone else is sent to /forbidden.
+ * A page that belongs to one or more Permission areas (Administration → Permissions):
+ * the person needs at least View on one of them, else /forbidden.
  */
-export async function requireFinancePage(moduleKey: "accounts" | "payroll", resourceKey: string) {
-  const user = await requirePagePermission(moduleKey, resourceKey);
-  const full = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { id: true, email: true, name: true, roleKey: true },
-  });
-  if (!canViewFinance(full ? { ...full, role: full.roleKey } : null)) redirect("/forbidden");
-  return user;
+export async function requireAreaPage(areas: AccessArea[], loginPath: string) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const claims = token ? await verifySession(token) : null;
+  if (!claims) redirect(`/login?redirect=${encodeURIComponent(loginPath)}`);
+  const user = await prisma.user.findUnique({ where: { id: claims!.userId }, select: publicUserSelect });
+  if (!user?.isActive || user.status !== "APPROVED") redirect(`/login?redirect=${encodeURIComponent(loginPath)}`);
+  const { access } = await accessFor(user!);
+  if (!allowsAny(access, areas, "view")) redirect("/forbidden");
+  return user!;
+}
+
+/** Accounts / Salary pages: View on that module (Administration → Permissions), else /forbidden. */
+export async function requireFinancePage(moduleKey: "accounts" | "payroll", _resourceKey?: string) {
+  return requireAreaPage([moduleKey], `/${moduleKey}`);
 }

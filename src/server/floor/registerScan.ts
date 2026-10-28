@@ -162,16 +162,33 @@ async function askClaude(base64: string, mediaType: string): Promise<unknown> {
 }
 
 async function askGemini(base64: string, mediaType: string): Promise<unknown> {
-  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-flash-latest'
-  const res = await fetch(`${geminiBase()}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.6-flash'
+  // Gemini 3 models "think" (medium) before answering by default — most of the wait. Reading
+  // register digits needs little of it, so ask for low. (Older models don't take this field.)
+  const thinking = /^gemini-3/.test(model) ? { thinkingConfig: { thinkingLevel: 'low' } } : {}
+  let res = await fetch(`${geminiBase()}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     signal: AbortSignal.timeout(TIMEOUT_MS),
     headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY!.trim() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mediaType, data: base64 } }, { text: SCAN_PROMPT }] }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA, temperature: 0 },
+      generationConfig: { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA, temperature: 0, ...thinking },
     }),
   })
+
+  // Automatic high-availability fallback if primary model experiences temporary load/error
+  if (!res.ok && (res.status === 503 || res.status === 404 || res.status === 429) && model !== 'gemini-3.5-flash-lite') {
+    res = await fetch(`${geminiBase()}/v1beta/models/gemini-3.5-flash-lite:generateContent`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY!.trim() },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mediaType, data: base64 } }, { text: SCAN_PROMPT }] }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA, temperature: 0 },
+      }),
+    })
+  }
+
   const body = (await res.json().catch(() => null)) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
     error?: { message?: string }

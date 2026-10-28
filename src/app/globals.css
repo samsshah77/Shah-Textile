@@ -1386,12 +1386,10 @@ tr:hover .sara-serial-arrows {
     break-after: auto !important;
   }
 
-  thead {
-    display: table-header-group !important;
-  }
-
+  /* Heading row once at the top and the total row once at the end — not repeated on every page */
+  thead,
   tfoot {
-    display: table-footer-group !important;
+    display: table-row-group !important;
   }
 
   th,

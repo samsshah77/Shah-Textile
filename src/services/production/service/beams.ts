@@ -75,6 +75,7 @@ export const beamsMethods = {
     // Sw# must hit DB immediately — also stamps Daily Entry SW # when mounted.
     if (
       patch.swLot !== undefined ||
+      patch.parkedNearLoom !== undefined ||
       patch.qualityId !== undefined ||
       patch.beamRepeat !== undefined ||
       patch.warp !== undefined ||
@@ -86,6 +87,7 @@ export const beamsMethods = {
     ) {
       void persistBeamPatch(beamNo, {
         ...(patch.swLot !== undefined ? { swLot: next?.swLot ?? null } : {}),
+        ...(patch.parkedNearLoom !== undefined ? { parkedNearLoom: next?.parkedNearLoom ?? null } : {}),
         ...(patch.qualityId !== undefined ? { qualityId: next?.qualityId ?? null } : {}),
         ...(patch.beamRepeat !== undefined ? { beamRepeat: next?.beamRepeat ?? null } : {}),
         ...(patch.warp !== undefined ? { warp: next?.warp } : {}),

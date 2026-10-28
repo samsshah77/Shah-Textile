@@ -54,6 +54,7 @@ export const beamRowSchema = z.looseObject({
   qualityId: optStr(120),
   swLot: optStr(120),
   beamRepeat: optStr(120),
+  parkedNearLoom: optStr(40),
 })
 
 export const qualityRowSchema = z.looseObject({

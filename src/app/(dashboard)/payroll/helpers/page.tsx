@@ -55,7 +55,7 @@ const DEFAULT_HELPER_WIDTHS = {
 function HelpersPayrollContent() {
   const sheetPrint = usePrintOrientation('helpers')
   const signatureBox = useSignatureBoxHeight('helpers', 58)
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const router = useRouter()
   const pathname = usePathname()

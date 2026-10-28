@@ -2,15 +2,15 @@
 
 import { useAuth } from '@/context/AuthContext'
 
-/** Locks Accounts/Salary inputs for everyone except Tufail. */
-export function FinanceReadonly({ children }: { children: React.ReactNode }) {
-  const { canEditAccounts, canViewAccounts } = useAuth()
-  if (canEditAccounts || !canViewAccounts) return <>{children}</>
+/** Locks the inputs of Accounts / Salary for people who may only view it (Administration → Permissions). */
+export function FinanceReadonly({ area, children }: { area: 'accounts' | 'payroll'; children: React.ReactNode }) {
+  const { canEdit, canView } = useAuth()
+  if (canEdit(area) || !canView(area)) return <>{children}</>
 
   return (
     <div className="sara-finance-readonly">
       <div className="alert alert-secondary py-2 mb-3" role="status">
-        View only. Accounts and Salary are controlled by Tufail.
+        View only — {area === 'accounts' ? 'Accounts' : 'Salary'} mein tabdeeli ki ijazat nahi.
       </div>
       {children}
     </div>

@@ -208,7 +208,7 @@ export default function FaultReportsPage() {
       pending.forEach((p) => URL.revokeObjectURL(p.preview))
       setPending([])
       setText('')
-      setLoom('')
+      // Loom (and shift) stay selected, so the next fault on the same loom needs no re-select
       setFormMsg({ ok: true, text: `Loom ${json.report.loomNumber} (Shift ${json.report.shift || shift}) ka fault bhej diya — Fabric Fault page par update ho gaya.` })
       void load()
     } catch (e) {

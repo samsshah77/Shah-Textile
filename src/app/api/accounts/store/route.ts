@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@/server/current-user'
-import { canViewFinance } from '@/lib/accountsAccess'
+import { accessFor } from '@/server/userAccess'
+import { allows } from '@/lib/access'
 import { dbAccountsGetAll } from '@/server/accountsDb'
 import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
 
@@ -10,8 +11,8 @@ export async function GET(req: NextRequest) {
   try {
     const actor = await currentUser(req)
     if (!actor) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
-    if (!canViewFinance({ ...actor, role: actor.roleKey }))
-      return NextResponse.json({ ok: false, error: 'Accounts sirf Tufail aur Javed sahab dekh sakte hain.' }, { status: 403 })
+    if (!allows((await accessFor(actor)).access, 'accounts', 'view'))
+      return NextResponse.json({ ok: false, error: 'Accounts dekhne ki ijazat nahi.' }, { status: 403 })
     await ensureFloorPayrollTables()
     const store = await dbAccountsGetAll()
     return NextResponse.json({ ok: true, store })

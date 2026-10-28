@@ -48,7 +48,7 @@ const DEFAULT_EFFICIENCY_WIDTHS = {
 export default function TechnicalEfficiencyPage() {
   const sheetPrint = usePrintOrientation('efficiency')
   const { askConfirm, showSuccess, modals } = usePayrollModals()
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const [incentiveList, setIncentiveList] = useState<EfficiencyIncentiveRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())

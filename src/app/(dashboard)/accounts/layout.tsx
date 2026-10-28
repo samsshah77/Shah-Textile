@@ -10,7 +10,7 @@ export default async function AccountsLayout({ children }: { children: React.Rea
   await requireFinancePage('accounts', 'financial_reports')
   return (
     <div className="sara-module-content">
-      <FinanceReadonly>
+      <FinanceReadonly area="accounts">
         <AccountsHydrate>
           <ModuleTables storageKey="sara.textSize.accounts">{children}</ModuleTables>
         </AccountsHydrate>

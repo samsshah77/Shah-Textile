@@ -1,16 +1,20 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import type { PermissionAction } from '@prisma/client'
 import { currentUser } from '@/server/current-user'
-import { hasPermission } from '@/server/permissions'
+import { accessFor } from '@/server/userAccess'
+import { allowsAny } from '@/lib/access'
 
-/** Fault reports: VIEW to see, CREATE to send (Kamran, Ahmer, Javed). */
-export async function faultUser(request: NextRequest, action: PermissionAction) {
+/**
+ * Fault reports (Administration → Permissions): View on "Kamran Fault" or "Fabric Fault" to
+ * see them, Edit on either to send / change one (the Fabric Fault dialog sends them too).
+ */
+export async function faultUser(request: NextRequest, action: 'VIEW' | 'CREATE') {
   const user = await currentUser(request)
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  const ok = await hasPermission(user.id, { moduleKey: 'floor', resourceKey: 'production_entries', action })
+  const { access } = await accessFor(user)
+  const ok = allowsAny(access, ['fault_reports', 'prod_fabric_fault'], action === 'CREATE' ? 'edit' : 'view')
   if (!ok) return { error: NextResponse.json({ error: 'Is kaam ki ijazat nahi.' }, { status: 403 }) }
-  return { user }
+  return { user, access }
 }
 
 export const isYmd = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)

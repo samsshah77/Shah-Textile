@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ZodError, type ZodType } from 'zod'
 import { currentUser } from '@/server/current-user'
-import { canViewFinance, isAccountsController } from '@/lib/accountsAccess'
+import { accessFor } from '@/server/userAccess'
+import { allows } from '@/lib/access'
 import { writeAudit } from '@/server/auditLog'
 import { dbAccountsGetAll } from '@/server/accountsDb'
 import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
@@ -67,11 +68,12 @@ export function accountsHandler(
     try {
       const actor = await currentUser(req)
       if (!actor) return NextResponse.json({ ok: false, error: 'Login required.' }, { status: 401 })
-      const who = { ...actor, role: actor.roleKey }
-      if (!canViewFinance(who))
-        return NextResponse.json({ ok: false, error: 'Accounts sirf Tufail aur Javed sahab dekh sakte hain.' }, { status: 403 })
-      if (opts.write && !isAccountsController(who))
-        return NextResponse.json({ ok: false, error: 'Accounts mein tabdeeli sirf Tufail kar sakte hain (baqi ke liye view only).' }, { status: 403 })
+      // Administration → Permissions decides who may see / change Accounts.
+      const { access } = await accessFor(actor)
+      if (!allows(access, 'accounts', 'view'))
+        return NextResponse.json({ ok: false, error: 'Accounts dekhne ki ijazat nahi.' }, { status: 403 })
+      if (opts.write && !allows(access, 'accounts', 'edit'))
+        return NextResponse.json({ ok: false, error: 'Accounts mein tabdeeli ki ijazat nahi (view only).' }, { status: 403 })
       await ensureImported()
       const params = (await route?.params) || {}
       const data = await fn({ req, actor, params })

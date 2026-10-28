@@ -63,7 +63,7 @@ const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
 export default function StaffSalariesPage() {
   const sheetPrint = usePrintOrientation('staff')
   const signatureBox = useSignatureBoxHeight('staff')
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const [staffList, setStaffList] = useState<StaffSalaryRecord[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])

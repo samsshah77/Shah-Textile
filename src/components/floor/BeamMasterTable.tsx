@@ -124,6 +124,7 @@ function SwLotCell({
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 110,
+  parked: 110,
   location: 165,
   swLot: 150,
   beamRepeat: 110,
@@ -333,11 +334,13 @@ export function BeamMasterTable({
   const activeLooms = looms.filter((l) => l.isActive)
   const compactTab = isCompactBeamTab(filter)
   /** Empty Beam keeps Machine Type; other compact cols stay hidden. */
-  const tableColCount = compactTab ? 6 : 12
+  /** In Stock only: which loom the beam is kept behind (typed by the floor in-charge). */
+  const showParked = filter === 'IN_STOCK'
+  const tableColCount = compactTab ? 6 : showParked ? 13 : 12
   const visibleColKeys = useMemo(() => {
-    if (!compactTab) return Object.keys(DEFAULT_WIDTHS)
+    if (!compactTab) return Object.keys(DEFAULT_WIDTHS).filter((k) => k !== 'parked' || showParked)
     return ['beam', 'swLot', 'beamRepeat', 'machine', 'status', 'track']
-  }, [compactTab])
+  }, [compactTab, showParked])
   const tableMinWidthVisible = useMemo(
     () => visibleColKeys.reduce((sum, k) => sum + (widths[k] || 80), 0),
     [visibleColKeys, widths]
@@ -795,6 +798,11 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="beam" width={widths.beam} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Beam Identity
                 </ResizableTh>
+                {showParked && (
+                  <ResizableTh columnKey="parked" width={widths.parked} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+                    Loom ke peeche
+                  </ResizableTh>
+                )}
                 {!compactTab && (
                   <ResizableTh columnKey="location" width={widths.location} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                     Location / Loom
@@ -856,6 +864,23 @@ export function BeamMasterTable({
                       className={editActive ? 'sara-edit-row' : undefined}
                     >
                       <td className="fw-semibold px-2">{b.beamNo}</td>
+                      {showParked && (
+                        <td className="px-1">
+                          {editActive ? (
+                            <TextCellInput
+                              className="form-control form-control-sm"
+                              value={b.parkedNearLoom || ''}
+                              placeholder="Loom #"
+                              inputMode="numeric"
+                              navRow={rowIdx}
+                              navCol={7}
+                              onValueChange={(v) => patchBeam(b, { parkedNearLoom: v.trim() || null })}
+                            />
+                          ) : (
+                            <span className="small px-1">{b.parkedNearLoom ? `Loom ${b.parkedNearLoom}` : '—'}</span>
+                          )}
+                        </td>
+                      )}
                       {!compactTab && (
                         <td className="px-1">{renderLocationSelect(b, opsEdit)}</td>
                       )}

@@ -56,7 +56,7 @@ export const DEFAULT_WEAVER_NET_WIDTHS = {
 
 /** State, data and handlers of the page (moved out of page.tsx; behaviour unchanged). */
 export function useWeaversPage() {
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, showError, modals } = usePayrollModals()
   const router = useRouter()
   const pathname = usePathname()

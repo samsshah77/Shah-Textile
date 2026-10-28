@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
+import type { AccessArea } from '@/lib/access'
 import {
   closeSidebar,
   ensureSidebarOverlay,
@@ -248,12 +249,32 @@ const ADMIN_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p.startsWith('/admin/audit'),
   },
   {
-    title: 'Quality Archive',
-    href: '/admin/quality-archive',
-    icon: 'bi-archive',
-    activeCheck: (p) => p.startsWith('/admin/quality-archive'),
+    title: 'Permissions',
+    href: '/admin/access',
+    icon: 'bi-toggles',
+    activeCheck: (p) => p.startsWith('/admin/access'),
   },
 ]
+
+const QUALITY_ARCHIVE_ITEM: NavLeaf = {
+  title: 'Quality Archive',
+  href: '/quality-archive',
+  icon: 'bi-archive',
+  activeCheck: (p) => p.startsWith('/quality-archive') || p.startsWith('/admin/quality-archive'),
+}
+
+/** Which Permission area each Production menu entry belongs to ("any" = any production tab). */
+const FLOOR_ITEM_AREA: Record<string, AccessArea | 'any'> = {
+  'Daily Entry': 'prod_entry',
+  'Production Sheet': 'prod_sheet',
+  Looms: 'prod_looms',
+  Beams: 'prod_beams',
+  'Yarn Stock': 'prod_yarn',
+  Quality: 'prod_quality',
+  Tracking: 'tracking',
+  'Data Check': 'prod_entry',
+  'Fabric Fault': 'prod_fabric_fault',
+}
 
 const anyActive = (items: NavLeaf[]) => (p: string, sp: URLSearchParams) => items.some((i) => i.activeCheck(p, sp))
 
@@ -295,7 +316,7 @@ function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: st
 function SidebarContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { isQualityController, canViewAccounts, isAdmin, isAccountant, isFaultInspector } = useAuth()
+  const { canViewAccounts, canViewPayroll, canViewProduction, canView, isAdmin } = useAuth()
 
   useEffect(() => {
     ensureSidebarOverlay()
@@ -311,8 +332,20 @@ function SidebarContent() {
     }
   }, [pathname, searchParams])
 
+  // Menu follows Administration → Permissions: a hidden area is not in the menu.
+  const showFault = canView('fault_reports')
+  const showTracking = canView('tracking')
+  const showArchive = canView('quality_archive')
+  const areaKey = FLOOR_ITEMS.map((i) => {
+    const area = FLOOR_ITEM_AREA[i.title]
+    return area === 'any' ? (canViewProduction ? 1 : 0) : area && canView(area) ? 1 : 0
+  }).join('')
+  /** Only the fault page (Kamran): the old "Floor Fault" menu. */
+  const faultOnly = showFault && !canViewProduction && !showTracking
+  const showDashboard = canViewProduction || showTracking
+
   const trees: NavTree[] = useMemo(() => {
-    if (isFaultInspector) {
+    if (faultOnly) {
       return [
         {
           title: 'Floor Fault',
@@ -322,17 +355,33 @@ function SidebarContent() {
       ]
     }
 
-    const floorItems = isAccountant
-      ? FLOOR_ITEMS.filter((item) => item.title === 'Production Sheet')
-      : FLOOR_ITEMS
+    const floorItems = [
+      ...FLOOR_ITEMS.filter((_, idx) => areaKey[idx] === '1'),
+      ...(showFault ? [KAMRAN_FAULT_ITEM] : []),
+    ]
+    const payrollTree: NavLeaf = {
+      title: 'Salary & Wages',
+      href: '/payroll/synopsis',
+      icon: 'bi-cash-stack',
+      activeCheck: anyActive(PAYROLL_ITEMS),
+      children: PAYROLL_ITEMS,
+    }
+    const accountsTree: NavLeaf = {
+      title: 'Accounts',
+      href: '/accounts/payables',
+      icon: 'bi-calculator',
+      activeCheck: anyActive(ACCOUNTS_ITEMS),
+      children: ACCOUNTS_ITEMS,
+    }
 
-    const list: NavTree[] = [
-      {
+    const list: NavTree[] = []
+    if (floorItems.length) {
+      list.push({
         title: 'Production',
         icon: 'bi-buildings',
         items: floorItems,
-      },
-    ]
+      })
+    }
     if (isAdmin) {
       // Admin (Javed): Salary and Accounts live inside Administration.
       list.push({
@@ -340,49 +389,25 @@ function SidebarContent() {
         icon: 'bi-shield-lock',
         items: [
           ...ADMIN_ITEMS,
-          ...(canViewAccounts
-            ? [
-                {
-                  title: 'Salary & Wages',
-                  href: '/payroll/synopsis',
-                  icon: 'bi-cash-stack',
-                  activeCheck: anyActive(PAYROLL_ITEMS),
-                  children: PAYROLL_ITEMS,
-                },
-                {
-                  title: 'Accounts',
-                  href: '/accounts/payables',
-                  icon: 'bi-calculator',
-                  activeCheck: anyActive(ACCOUNTS_ITEMS),
-                  children: ACCOUNTS_ITEMS,
-                },
-              ]
-            : []),
+          ...(showArchive ? [QUALITY_ARCHIVE_ITEM] : []),
+          ...(canViewPayroll ? [payrollTree] : []),
+          ...(canViewAccounts ? [accountsTree] : []),
         ],
       })
-    } else if (!isQualityController && canViewAccounts) {
-      list.push(
-        {
-          title: 'Accounts',
-          icon: 'bi-calculator',
-          items: ACCOUNTS_ITEMS,
-        },
-        {
-          title: 'Salary & Wages',
-          icon: 'bi-cash-stack',
-          items: PAYROLL_ITEMS,
-        }
-      )
+    } else {
+      if (canViewAccounts) list.push({ title: 'Accounts', icon: 'bi-calculator', items: ACCOUNTS_ITEMS })
+      if (canViewPayroll) list.push({ title: 'Salary & Wages', icon: 'bi-cash-stack', items: PAYROLL_ITEMS })
+      if (showArchive) list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
     }
     return list
-  }, [isQualityController, canViewAccounts, isAdmin, isAccountant, isFaultInspector])
+  }, [faultOnly, areaKey, showFault, showArchive, canViewAccounts, canViewPayroll, isAdmin])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
       <div className="sidebar-brand d-flex align-items-center justify-content-between pe-2">
-        <Link href={isFaultInspector ? "/floor/fault-reports" : "/dashboard"} className="brand-link flex-grow-1">
+        <Link href={showDashboard ? "/dashboard" : showFault ? "/floor/fault-reports" : "/dashboard"} className="brand-link flex-grow-1">
           <img
             src="/saratextile.png"
             alt="Sara Textile"
@@ -410,7 +435,7 @@ function SidebarContent() {
             role="navigation"
             data-accordion="false"
           >
-            {!isFaultInspector && (
+            {showDashboard && (
               <>
                 <li className="nav-header">MAIN</li>
                 <li className="nav-item">

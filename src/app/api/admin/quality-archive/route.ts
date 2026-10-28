@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/server/adminAccess'
+import { requireAccess } from '@/server/userAccess'
 import { writeAudit } from '@/server/auditLog'
 import { archiveSealed, listArchive, looksLikeXlsx, previewArchiveFile, saveArchiveBatch } from '@/server/archive/qualityArchive'
 
@@ -12,7 +13,8 @@ const deny = () => NextResponse.json({ error: 'Quality Archive sirf admin dekh s
 
 /** The archived quality lines (read-only) and whether the one-time import is done. */
 export async function GET(request: NextRequest) {
-  if (!(await requireAdminUser(request))) return deny()
+  // Reading: View on "Quality Archive" (Administration → Permissions). Saving stays admin-only.
+  if ((await requireAccess(request, 'quality_archive', 'view')).error) return deny()
   const { files, rows } = await listArchive()
   return NextResponse.json({ sealed: files.length > 0, files: files.map(({ id, fileName, year }) => ({ id, fileName, year })), rows })
 }

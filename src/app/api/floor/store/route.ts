@@ -31,7 +31,8 @@ import {
   dbSetSheetApproval,
 } from '@/server/floorDb'
 import { buildFloorSeedPayload } from '@/server/floorSeed'
-import { hasPermission } from '@/server/permissions'
+import { accessFor } from '@/server/userAccess'
+import { PRODUCTION_AREAS, allowsAny } from '@/lib/access'
 import { writeAudit } from '@/server/auditLog'
 import { rebuildProductionLedger } from '@/server/productionLedger'
 import { FloorGuardError, rowMeters, keepStoredApproval, sheetIsApproved } from '@/server/floorGuards'
@@ -86,16 +87,16 @@ async function requireSession(req: NextRequest) {
 
 type FloorActor = NonNullable<Awaited<ReturnType<typeof currentUser>>>
 
-/** Floor edits need UPDATE on floor/production_entries (QC + admin by default; accountant is view-only). */
+/**
+ * Floor edits need Edit on at least one production tab (Administration → Permissions).
+ * The tabs share the same saves (a beam mount writes the day's Sw #, a loom status writes the
+ * day row …), so the server checks "may change production" and each tab is locked on screen.
+ */
 async function requireFloorWriter(req: NextRequest): Promise<FloorActor | null> {
   const user = await currentUser(req)
   if (!user) return null
-  const allowed = await hasPermission(user.id, {
-    moduleKey: 'floor',
-    resourceKey: 'production_entries',
-    action: 'UPDATE',
-  })
-  return allowed ? user : null
+  const { access } = await accessFor(user)
+  return allowsAny(access, PRODUCTION_AREAS, 'edit') ? user : null
 }
 
 function forbidden() {

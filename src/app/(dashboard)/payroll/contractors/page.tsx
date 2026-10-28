@@ -74,7 +74,7 @@ function cycleLabel(month: string, cycle: ContractorCycle): string {
 function ContractorsPayrollContent() {
   const sheetPrint = usePrintOrientation('contractors')
   const signatureBox = useSignatureBoxHeight('contractors', 58)
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const router = useRouter()
   const pathname = usePathname()

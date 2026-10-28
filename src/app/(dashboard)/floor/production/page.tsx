@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
-import { useBeamsAsOf } from '@/hooks/useBeamsAsOf'
-import { getProductionToday } from '@/constants/productionCalendar'
 import { ProductionSheetTable, type SheetTextSize } from '@/components/floor/ProductionSheetTable'
 import { FloorEntryTable } from '@/components/floor/FloorEntryTable'
 import { FabricFaultTable } from '@/components/floor/FabricFaultTable'
@@ -33,6 +31,7 @@ import { productionWhatsAppText } from '@/lib/floor/shareText'
 const loadProductionPdf = () => import('@/lib/floor/generateProductionPdf')
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
+import { PRODUCTION_TAB_AREA } from '@/lib/access'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
 import { DateStepper } from '@/components/floor/DateStepper'
 import { FloorMonthLockBar, useFloorMonthLocked } from '@/components/floor/FloorMonthLock'
@@ -52,7 +51,11 @@ function ProductionWorkspaceContent() {
             ? 'quality'
             : rawTab
 
-  const { isAccountant, canEditProduction, isAdmin } = useAuth()
+  const { canEditProduction, isAdmin, canView, canEdit, user } = useAuth()
+  // Administration → Permissions: each tab is Hide / View / Edit for this person.
+  const tabArea = PRODUCTION_TAB_AREA[currentTab]
+  const tabEdit = tabArea ? canEdit(tabArea) : canEditProduction
+  const tabViewOnly = Boolean(tabArea && canView(tabArea) && !canEdit(tabArea))
   const { setDateLabel } = useFloorDateLabel()
   const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
   const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
@@ -73,12 +76,14 @@ function ProductionWorkspaceContent() {
   const [sheetTextSize, setSheetTextSize] = useState<SheetTextSize>('normal')
   const [isSheetExportOpen, setIsSheetExportOpen] = useState(false)
 
-  // Accountant: Production Sheet only (view)
+  // A hidden tab opens the first tab this person may see.
   useEffect(() => {
-    if (isAccountant && currentTab !== 'sheet') {
-      router.replace('/floor/production')
-    }
-  }, [isAccountant, currentTab, router])
+    if (!user || !tabArea || canView(tabArea)) return
+    const first = ['sheet', 'entry', 'fabric-fault', 'looms', 'beams', 'yarn', 'quality'].find((t) =>
+      canView(PRODUCTION_TAB_AREA[t])
+    )
+    if (first) router.replace(first === 'sheet' ? '/floor/production' : `/floor/production?tab=${first}`)
+  }, [user, tabArea, canView, router])
 
   const {
     looms,
@@ -134,7 +139,7 @@ function ProductionWorkspaceContent() {
 
   // A locked production month is view-only for everyone (the server refuses changes too).
   const monthLocked = useFloorMonthLocked(selectedDate.slice(0, 7))
-  const canEditDay = canEditProduction && !monthLocked
+  const canEditDay = tabEdit && !monthLocked
 
   const getFormattedDateLabel = (dateStr: string) => {
     try {
@@ -194,9 +199,10 @@ function ProductionWorkspaceContent() {
   const isYarnTab = currentTab === 'yarn'
   const isBeamsTab = currentTab === 'beams'
   const isQualityTab = currentTab === 'quality'
-  // Beams tab follows the date like the other tabs: a past day is read-only history.
-  const beamsView = useBeamsAsOf(selectedDate, beams, isBeamsTab)
-  const beamCounts = useMemo(() => beamStockCounts(beamsView.beams), [beamsView.beams])
+  // Beams tab always shows the beams as they are now and stays editable on any date; a mount /
+  // take-off done while a past date is selected is dated that day. (Beam changes are still
+  // recorded day-wise on the server — floor_beam_history.)
+  const beamCounts = useMemo(() => beamStockCounts(beams), [beams])
   const qualityCounts = useMemo(
     () => qualityStatusCounts(qualities, selectedDate),
     [qualities, selectedDate]
@@ -266,7 +272,7 @@ function ProductionWorkspaceContent() {
             </div>
 
             <div className="d-flex flex-wrap align-items-center gap-2 ms-auto">
-              {isQualityTab && canEditProduction && qualityStatusFilter === 'ACTIVE' && (
+              {isQualityTab && tabEdit && qualityStatusFilter === 'ACTIVE' && (
                 <>
                   <button
                     type="button"
@@ -287,7 +293,7 @@ function ProductionWorkspaceContent() {
                 </>
               )}
 
-              {currentTab === 'looms' && canEditProduction && (
+              {currentTab === 'looms' && tabEdit && (
                 <>
                   <button
                     type="button"
@@ -307,7 +313,7 @@ function ProductionWorkspaceContent() {
                 </>
               )}
 
-              {isBeamsTab && canEditProduction && !beamsView.isPast && (
+              {isBeamsTab && tabEdit && (
                 <>
                   <button
                     type="button"
@@ -360,7 +366,7 @@ function ProductionWorkspaceContent() {
                 </button>
               )}
 
-              {isYarnTab && canEditProduction && (
+              {isYarnTab && tabEdit && (
                 <>
                   <button
                     type="button"
@@ -452,10 +458,9 @@ function ProductionWorkspaceContent() {
           <FloorMonthLockBar month={selectedDate.slice(0, 7)} isAdmin={isAdmin} />
         )}
 
-        {isAccountant && (
-          <div className="alert alert-warning py-2 mb-0" role="alert">
-            <strong>View-Only (Accountant):</strong> Masters &amp; Daily Entry are restricted.
-            Production Sheet is auto-calculated from masters + floor entry.
+        {tabViewOnly && (
+          <div className="alert alert-secondary py-2 mb-0" role="status">
+            View only — is tab mein tabdeeli ki ijazat nahi.
           </div>
         )}
       </div>
@@ -516,7 +521,7 @@ function ProductionWorkspaceContent() {
                 onRemoveQualitySegment={removeQualitySegment}
                 onAdd={addLoom}
                 onDelete={deleteLoom}
-                readOnly={!canEditProduction}
+                readOnly={!tabEdit}
                 toolbarInChrome
                 tableEdit={loomEdit}
                 onTableEditChange={setLoomEdit}
@@ -525,23 +530,9 @@ function ProductionWorkspaceContent() {
               />
             )}
 
-            {currentTab === 'beams' && beamsView.isPast && (
-              <div className="alert alert-info py-2 px-3 mb-2 d-flex flex-wrap align-items-center gap-2" role="status">
-                <i className="bi bi-clock-history" />
-                <span>
-                  <strong>{getFormattedDateLabel(selectedDate)}</strong> ki halat — sirf dekhne ke liye.
-                  {beamsView.loading ? ' Load ho raha hai…' : ''}
-                  {beamsView.error ? ` ${beamsView.error}` : ''}
-                </span>
-                <button type="button" className="btn btn-sm btn-outline-primary ms-auto" onClick={() => setSelectedDate(getProductionToday())}>
-                  Aaj par jayen
-                </button>
-              </div>
-            )}
-
             {currentTab === 'beams' && (
               <BeamMasterTable
-                beams={beamsView.beams}
+                beams={beams}
                 looms={looms}
                 qualities={qualities}
                 selectedDate={selectedDate}
@@ -552,11 +543,11 @@ function ProductionWorkspaceContent() {
                 onReceiveFromSizing={receiveBeamFromSizing}
                 onSendToSizing={sendBeamToSizing}
                 onDelete={deleteBeam}
-                readOnly={!canEditProduction || beamsView.isPast}
+                readOnly={!tabEdit}
                 filter={beamFilter}
                 onFilterChange={setBeamFilter}
                 toolbarInChrome
-                tableEdit={beamEdit && !beamsView.isPast}
+                tableEdit={beamEdit}
                 onTableEditChange={setBeamEdit}
                 addModalOpen={beamAddOpen}
                 onAddModalOpenChange={setBeamAddOpen}
@@ -589,7 +580,7 @@ function ProductionWorkspaceContent() {
                 dateFilterMode={yarnDateMode}
                 setDateFilterMode={setYarnDateMode}
                 onDelete={deleteYarn}
-                readOnly={!canEditProduction}
+                readOnly={!tabEdit}
                 toolbarInChrome
                 tableEdit={yarnEdit}
                 onTableEditChange={setYarnEdit}
@@ -605,7 +596,7 @@ function ProductionWorkspaceContent() {
                 onAdd={addQuality}
                 onDelete={deleteQuality}
                 onReassignEnded={reassignEndedQuality}
-                readOnly={!canEditProduction}
+                readOnly={!tabEdit}
                 entries={entries}
                 looms={looms}
                 beams={beams}

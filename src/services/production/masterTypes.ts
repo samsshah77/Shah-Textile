@@ -48,6 +48,8 @@ export interface BeamMaster {
   swLot?: string | null
   /** Optional beam repeat (empty = OK). */
   beamRepeat?: string | null
+  /** In the store: the loom it is kept behind (typed by the floor in-charge). Cleared once it leaves the store. */
+  parkedNearLoom?: string | null
 }
 
 export interface YarnMovementRecord {

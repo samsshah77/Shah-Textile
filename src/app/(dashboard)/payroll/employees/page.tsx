@@ -83,7 +83,7 @@ const GW_COLUMN_KEYS = [
 
 export default function GeneralWagesPage() {
   const sheetPrint = usePrintOrientation('general-wages')
-  const { canEditAccounts } = useAuth()
+  const { canEditPayroll: canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, showError, modals } = usePayrollModals()
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])

@@ -1,13 +1,13 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { requireAdminUser } from '@/server/adminAccess'
+import { requireAccess } from '@/server/userAccess'
 import { getArchiveOriginal, getArchiveSheet } from '@/server/archive/qualityArchive'
 
 export const runtime = 'nodejs'
 
 /** One stored sheet (`?sheet=0`), or the original workbook unchanged (`?download=1`). */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await requireAdminUser(request))) return NextResponse.json({ error: 'Sirf admin' }, { status: 403 })
+  if ((await requireAccess(request, 'quality_archive', 'view')).error) return NextResponse.json({ error: 'Ijazat nahi' }, { status: 403 })
   const { id } = await params
   const sp = request.nextUrl.searchParams
   if (sp.get('download') === '1') {
