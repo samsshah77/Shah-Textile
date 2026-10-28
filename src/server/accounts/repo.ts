@@ -18,6 +18,7 @@ import type {
 import { lineAmount, monthOfDate, slugifyPartyName } from '@/lib/accounts/util'
 import { AccountsError, lockedError, staleError } from '@/server/accounts/errors'
 import { ensureAccountsTables } from '@/server/accounts/schema'
+import { pettyClosingAfter } from '@/server/accounts/reports'
 
 /**
  * Accounts data access. Plain SQL (like the production ledger) so the tables need no
@@ -647,13 +648,16 @@ export async function listPetty(dbc: Db, month?: string): Promise<PettyCashEntry
   return rows.map(toPetty)
 }
 
-/** Net cash of all months before `month` (the "Balance b/f"). */
+/**
+ * Cash carried into `month` (the "Balance b/f"): every earlier month chained the same way the
+ * statement adds up, so a counted OPENING entry restarts the balance instead of adding to it.
+ */
 export async function pettyBalanceBefore(dbc: Db, month: string): Promise<number> {
-  const r = await dbc.$queryRawUnsafe<Row[]>(
-    `SELECT COALESCE(sum("debit") - sum("credit"), 0)::float8 AS bal FROM "acc_petty_cash" WHERE "month" < $1`,
+  const rows = await dbc.$queryRawUnsafe<Row[]>(
+    `SELECT ${PC_COLS} FROM "acc_petty_cash" WHERE "month" < $1 ORDER BY "month", "sortOrder", "createdAt"`,
     month
   )
-  return n(r[0]?.bal)
+  return pettyClosingAfter(rows.map(toPetty))
 }
 
 async function getPetty(dbc: Db, id: string): Promise<PettyCashEntry | null> {

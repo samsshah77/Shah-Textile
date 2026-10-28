@@ -89,6 +89,7 @@ function resolveAdminPage(pathname: string): string {
   if (pathname.startsWith('/admin/users')) return 'Users'
   if (pathname.startsWith('/admin/system')) return 'System'
   if (pathname.startsWith('/admin/audit')) return 'Audit log'
+  if (pathname.startsWith('/admin/quality-archive')) return 'Quality Archive'
   if (pathname.startsWith('/admin/approvals')) return 'Approvals'
   if (pathname.startsWith('/admin/roles')) return 'Roles'
   if (pathname.startsWith('/admin/permissions')) return 'Permissions'
@@ -197,7 +198,7 @@ function HeaderContent() {
       }
       try {
         const res = await fetch('/api/admin/users?status=PENDING')
-        if (res.status === 401 || res.status === 403 || (res.redirected && res.url.includes('/login'))) {
+        if (res.status === 401 || (res.redirected && res.url.includes('/login'))) {
           stop()
           handleSessionExpired()
           return

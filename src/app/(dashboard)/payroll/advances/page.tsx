@@ -33,9 +33,15 @@ const DEFAULT_ADVANCE_WIDTHS = {
   employeeName: 200,
   designation: 160,
   amount: 150,
-  remarks: 160,
+  remarks: 180,
   action: 50,
 }
+
+const isApprovedAdvanceRemark = (val?: string) =>
+  Boolean(val && /approved\s*advance/i.test(val.trim()))
+
+const cleanRemarkValue = (val?: string) =>
+  isApprovedAdvanceRemark(val) ? '' : (val || '')
 
 export default function SalaryAdvancesPage() {
   const { canEditAccounts } = useAuth()
@@ -93,7 +99,10 @@ export default function SalaryAdvancesPage() {
 
   const reload = (force = false) => {
     if (!force && hasUnsavedChanges) return
-    const fresh = payrollService.getAdvances(selectedMonth, 'all')
+    const raw = payrollService.getAdvances(selectedMonth, 'all')
+    const fresh = raw.map((a) =>
+      isApprovedAdvanceRemark(a.remarks) ? { ...a, remarks: '' } : a
+    )
     setAdvances(fresh)
     resetSnapshot(fresh)
     setMasterEmployees(payrollService.getAdvanceEligibleEmployees())
@@ -486,10 +495,11 @@ export default function SalaryAdvancesPage() {
                 </label>
               </div>
               <label className="block space-y-1">
-                <span className="text-xs font-semibold text-slate-700">Remarks</span>
+                <span className="text-xs font-semibold text-slate-700">Signature / Remarks</span>
                 <input
                   type="text"
                   value={formRemarks}
+                  placeholder="Voucher note / remarks..."
                   onChange={(e) => setFormRemarks(e.target.value)}
                   className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                 />
@@ -575,7 +585,7 @@ export default function SalaryAdvancesPage() {
                   minWidth={120}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center font-sans"
                 >
                   Designation
                 </ResizableTh>
@@ -586,20 +596,20 @@ export default function SalaryAdvancesPage() {
                   minWidth={120}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-right text-slate-700 dark:text-slate-300"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center text-slate-700 dark:text-slate-300"
                 >
-                  Advance Amount (PKR)
+                  <div className="w-full text-center">Advance Amount (PKR)</div>
                 </ResizableTh>
 
                 <ResizableTh
                   columnKey="remarks"
                   width={widths.remarks}
-                  minWidth={120}
+                  minWidth={140}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center font-sans"
                 >
-                  Remarks / Voucher
+                  Signature
                 </ResizableTh>
                 
                 {/* Custom Columns */}
@@ -635,7 +645,7 @@ export default function SalaryAdvancesPage() {
                   <tr
                     key={adv.id}
                     className={cn(
-                      'text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors',
+                      'text-slate-800 dark:text-slate-200 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors align-middle',
                       isRowDirty(adv.id) && 'payroll-row-dirty'
                     )}
                   >
@@ -690,7 +700,7 @@ export default function SalaryAdvancesPage() {
                     {/* Designation — from HR */}
                     <td
                       style={{ width: `${widths.designation}px`, minWidth: `${widths.designation}px` }}
-                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50"
+                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50 text-center align-middle"
                       title="From HR Profiles"
                     >
                       <span className="font-medium font-sans text-xs text-slate-500">{adv.designation}</span>
@@ -699,7 +709,7 @@ export default function SalaryAdvancesPage() {
                     {/* Amount (Fully Editable) */}
                     <td
                       style={{ width: `${widths.amount}px`, minWidth: `${widths.amount}px` }}
-                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center align-middle"
                     >
                       {canEditAccounts ? (
                         <NumericCellInput
@@ -708,34 +718,52 @@ export default function SalaryAdvancesPage() {
                           navCol={0}
                           isDirty={isCellDirty(adv.id, 'amount')}
                           onValueChange={(v) => handleCellChange(adv.id, 'amount', v)}
-                          className="w-full text-right bg-transparent px-2 py-1 font-semibold text-xs text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono"
+                          style={{ textAlign: 'center' }}
+                          className="w-full !text-center bg-transparent px-2 py-1 font-semibold text-xs text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded font-mono"
                         />
                       ) : (
-                        <div className="text-right px-2 py-1 font-semibold text-xs text-slate-900 dark:text-white font-mono">
+                        <div style={{ textAlign: 'center' }} className="w-full text-center px-2 py-1 font-semibold text-xs text-slate-900 dark:text-white font-mono">
                           {formatNumber(adv.amount || 0, 0)}
                         </div>
                       )}
                     </td>
 
-                    {/* Remarks Input */}
+                    {/* Signature Input / Box */}
                     <td
                       style={{ width: `${widths.remarks}px`, minWidth: `${widths.remarks}px` }}
-                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1 font-sans text-slate-500"
+                      className="border-r border-slate-100 dark:border-slate-800 p-1 font-sans text-slate-500 align-middle"
                     >
-                      {canEditAccounts ? (
-                        <input
-                          type="text"
-                          value={adv.remarks || ''}
-                          placeholder="Voucher / note..."
-                          onChange={(e) => handleCellChange(adv.id, 'remarks', e.target.value)}
-                          className={cn(
-                            'w-full bg-transparent px-2 py-1 font-normal font-sans text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-700 dark:text-slate-300 transition-colors',
-                            isCellDirty(adv.id, 'remarks') && 'payroll-cell-dirty'
+                      <div className="min-h-[58px] h-[58px] w-full rounded border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col justify-between p-1 transition-all focus-within:border-[#0066cc] focus-within:ring-1 focus-within:ring-[#0066cc]/40 print:border-none print:bg-transparent print:p-0 print:min-h-[50px] print:h-[50px]">
+                        {canEditAccounts ? (
+                          <textarea
+                            value={cleanRemarkValue(adv.remarks)}
+                            onChange={(e) => handleCellChange(adv.id, 'remarks', e.target.value)}
+                            rows={2}
+                            className={cn(
+                              'w-full h-full resize-none bg-transparent px-1.5 py-0.5 font-normal font-sans text-xs focus:outline-none rounded text-slate-700 dark:text-slate-300 transition-colors print:hidden',
+                              isCellDirty(adv.id, 'remarks') && 'payroll-cell-dirty'
+                            )}
+                          />
+                        ) : (
+                          <div className="h-full px-1.5 py-0.5 flex flex-col justify-center text-slate-600 dark:text-slate-300 print:hidden">
+                            {cleanRemarkValue(adv.remarks) ? (
+                              <span className="text-xs">{cleanRemarkValue(adv.remarks)}</span>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {/* Dedicated Print View for Signature Box */}
+                        <div className="hidden print:flex print:flex-col print:justify-between print:h-full print:w-full print:min-h-[48px]">
+                          {cleanRemarkValue(adv.remarks) ? (
+                            <span className="text-[7.5pt] leading-tight text-slate-700 font-sans">
+                              {cleanRemarkValue(adv.remarks)}
+                            </span>
+                          ) : (
+                            <div />
                           )}
-                        />
-                      ) : (
-                        <span className="px-2 text-slate-500">{adv.remarks || '—'}</span>
-                      )}
+                          <div className="mt-auto border-b border-dashed border-slate-300 print:border-slate-400 w-full" />
+                        </div>
+                      </div>
                     </td>
 
                     {/* Custom Column Cells */}
@@ -789,7 +817,7 @@ export default function SalaryAdvancesPage() {
                 <td colSpan={4} className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans uppercase text-right text-[11px] text-slate-600 dark:text-slate-300">
                   Total Salary Advances ({filtered.length} Employees):
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-right font-bold text-xs text-slate-900 dark:text-white font-mono">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center font-bold text-xs text-slate-900 dark:text-white font-mono">
                   {formatNumber(totalAdvances, 0)}
                 </td>
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-sans text-[11px] text-slate-500">

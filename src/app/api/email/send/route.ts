@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/server/current-user'
-import { sendEmail } from '@/server/email/mailer'
+import { emailConfigured, sendEmail } from '@/server/email/mailer'
 
 export const runtime = 'nodejs'
 
@@ -17,6 +17,12 @@ function underLimit(userId: string): boolean {
   if (ok) list.push(now)
   recentSends.set(userId, list)
   return ok
+}
+
+/** Can the server send email itself? (If not, the screen offers the email app instead.) */
+export async function GET(request: NextRequest) {
+  if (!(await currentUser(request))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  return NextResponse.json({ configured: emailConfigured() })
 }
 
 export async function POST(request: NextRequest) {

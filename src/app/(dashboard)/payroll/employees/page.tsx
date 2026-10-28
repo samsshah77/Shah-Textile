@@ -47,9 +47,6 @@ const DEFAULT_GW_WIDTHS: Record<string, number> = {
   ratePerHr30: 75,
   ratePerDay28: 85,
   ratePerHr28: 75,
-  doj: 95,
-  contractStatus: 125,
-  remarks: 140,
 }
 
 const COMMON_GW_DESIGNATIONS = [
@@ -115,7 +112,7 @@ export default function GeneralWagesPage() {
     requestNavigationGuard,
   } = usePayrollDirtyTracker(employees, activeMonth, {
     sheetName: 'General Wages',
-    editableFields: ['remarks'],
+    editableFields: [],
   })
 
   const reload = (force = false) => {
@@ -501,24 +498,6 @@ export default function GeneralWagesPage() {
                   >
                     28 days
                   </th>
-                  <th
-                    rowSpan={2}
-                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-center align-middle"
-                  >
-                    D.O.J
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-center align-middle"
-                  >
-                    Contract Status
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-left align-middle"
-                  >
-                    Remarks
-                  </th>
                   {customColumns.map((col) => (
                     <th
                       key={col.id}
@@ -788,36 +767,6 @@ export default function GeneralWagesPage() {
                         —
                       </td>
 
-                      {/* D.O.J — Managed via HR Profile Card */}
-                      <td
-                        className="border-r border-slate-300 py-1.5 px-2 text-center font-sans text-[11px] text-slate-700 whitespace-nowrap bg-slate-50/40"
-                        title="Managed in HR Profile Card"
-                      >
-                        {emp.doj || '—'}
-                      </td>
-
-                      {/* Contract Status (Read-only in General Wages) */}
-                      <td className="border-r border-slate-300 py-1 px-2 text-center font-sans text-xs text-slate-700 whitespace-nowrap">
-                        {emp.contractStatus || 'Company Contract'}
-                      </td>
-
-                      {/* Remarks */}
-                      <td className="border-r border-slate-300 py-1 px-2 font-sans text-slate-700">
-                        {canEditAccounts ? (
-                          <input
-                            type="text"
-                            value={emp.remarks || ''}
-                            onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
-                            className={cn(
-                              'w-full bg-transparent p-0.5 rounded focus:bg-white focus:ring-1 focus:ring-[#0066cc] transition-colors',
-                              isCellDirty(emp.id, 'remarks') && 'payroll-cell-dirty'
-                            )}
-                          />
-                        ) : (
-                          emp.remarks || '—'
-                        )}
-                      </td>
-
                       {/* Custom Columns */}
                       {customColumns.map((col) => (
                         <td key={col.id} className="border-r border-slate-300 py-1 px-2 text-slate-700">
@@ -877,12 +826,14 @@ export default function GeneralWagesPage() {
                   <td className="border-r border-slate-400 py-2 px-1.5 text-right text-slate-400">
                     —
                   </td>
-                  <td
-                    colSpan={3 + customColumns.length}
-                    className="py-2 px-2 text-slate-500 text-center font-sans text-[11px]"
-                  >
-                    Sara Textile Mill Roster
-                  </td>
+                  {customColumns.length > 0 && (
+                    <td
+                      colSpan={customColumns.length}
+                      className="py-2 px-2 text-slate-500 text-center font-sans text-[11px]"
+                    >
+                      Sara Textile Mill Roster
+                    </td>
+                  )}
                 </tr>
               </tfoot>
             </table>

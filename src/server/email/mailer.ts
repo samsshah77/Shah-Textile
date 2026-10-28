@@ -28,6 +28,12 @@ export interface SendEmailOptions {
  *    - SMTP_USER & SMTP_PASS (if auth required)
  * 3. Any standard free SMTP (Brevo, Resend, Zoho, Outlook, etc.)
  */
+/** True when the server has a mailbox to send from (Gmail app password or an SMTP server). */
+export function emailConfigured(): boolean {
+  const gmail = Boolean(process.env.GMAIL_USER?.trim() && process.env.GMAIL_APP_PASS?.trim())
+  return gmail || Boolean(process.env.SMTP_HOST?.trim())
+}
+
 export function getEmailTransporter() {
   const host = process.env.SMTP_HOST || (process.env.GMAIL_USER ? 'smtp.gmail.com' : '')
   const port = Number(process.env.SMTP_PORT) || (host === 'smtp.gmail.com' ? 465 : 587)

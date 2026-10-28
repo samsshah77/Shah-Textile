@@ -6,6 +6,7 @@ import {
   billClearance,
   partySummaries,
   pettyStatement,
+  pettyClosingAfter,
   resolveCostInputs,
   EXCEL_AUG_2026_INPUTS,
   payablesReport,
@@ -163,6 +164,20 @@ describe('party reports', () => {
     ], 200, { month: '2026-09', locked: false })
     expect([s.closing, s.expenseOut, s.entries[0].balance]).toEqual([400, 300, 1200])
   })
+  it('balance b/f restarts at a counted OPENING entry (same as the month list)', () => {
+    const e = (id: string, month: string, kind: 'OPENING' | 'CASH_IN' | 'EXPENSE', debit: number, credit: number) => ({
+      id, month, date: `${month}-05`, description: id, kind, debit, credit, sortOrder: Number(id), version: 1,
+    })
+    const rows = [
+      e('1', '2026-09', 'CASH_IN', 5000, 0),
+      e('2', '2026-10', 'OPENING', 6420, 0),
+      e('3', '2026-10', 'CASH_IN', 75000, 0),
+      e('4', '2026-10', 'EXPENSE', 0, 1450),
+    ]
+    expect(pettyClosingAfter(rows)).toBe(79970) // not 5000 + 6420 + …: the count replaces the carried figure
+    expect(pettyClosingAfter(rows.filter((r) => r.month < '2026-10'))).toBe(5000)
+  })
+
   it('petty statement uses explicit OPENING entry and separates cash in', () => {
     const s = pettyStatement(
       '2026-10',

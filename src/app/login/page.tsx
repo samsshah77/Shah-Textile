@@ -8,7 +8,9 @@ import { Eye, EyeOff } from "lucide-react";
 
 function safeRedirect(value: string | null, role: string) {
   if (value?.startsWith("/") && !value.startsWith("//")) return value;
-  return role.toLowerCase() === "admin" ? "/admin/approvals" : "/dashboard";
+  const r = role.toLowerCase();
+  if (r === "fault") return "/floor/fault-reports";
+  return "/dashboard";
 }
 
 export default function LoginPage() {

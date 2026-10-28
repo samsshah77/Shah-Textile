@@ -9,11 +9,11 @@ export interface WhatsAppShareButtonProps {
   message: string | (() => string)
   onDownloadPdf?: () => void
   className?: string
-  /** Automatic PDF document attachment builder for server-side WhatsApp transmission */
+  /** Builds the PDF only when it is sent (phone share sheet or email). */
   getPdfAttachment?: () => Promise<{ base64: string; filename: string } | null> | { base64: string; filename: string } | null
 }
 
-/** The one WhatsApp button used on every page — same look as the other toolbar buttons. */
+/** The one share button (WhatsApp / Email) used on every page — same look as the other toolbar buttons. */
 export function WhatsAppShareButton({
   documentTitle,
   message,

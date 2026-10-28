@@ -201,6 +201,21 @@ export function payablesReport(asOf: string, parties: Party[], bills: Bill[], pa
 
 // ---------------------------------------------------------------- petty cash
 
+/**
+ * Cash in hand at the end of all the given (earlier) months, carried month by month exactly
+ * like the statement does: an OPENING entry restarts the balance at the counted cash.
+ * Used for "Balance b/f", so the monthly page and the month list always show the same figure.
+ */
+export function pettyClosingAfter(entries: PettyCashEntry[]): number {
+  const byMonth = new Map<string, PettyCashEntry[]>()
+  for (const e of entries) byMonth.set(e.month, [...(byMonth.get(e.month) || []), e])
+  let balance = 0
+  for (const m of [...byMonth.keys()].sort()) {
+    balance = pettyStatement(m, byMonth.get(m)!, balance, { month: m, locked: false }).closing
+  }
+  return balance
+}
+
 export function pettyStatement(
   month: string,
   entries: PettyCashEntry[],

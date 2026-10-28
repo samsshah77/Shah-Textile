@@ -430,7 +430,7 @@ function DailyInwardContent() {
                             </td>
                             <td rowSpan={r.span} className={cn(cell, 'px-1 text-center font-mono font-bold align-middle border-b-2 border-b-slate-800', bg)}>
                               {r.bill.billNo || '-'}
-                              <BillPhotosLink urls={r.bill.attachments} />
+                              <BillPhotosLink urls={r.bill.attachments} title={r.bill.billNo ? `Bill #${r.bill.billNo}` : 'Bill Photo'} />
                             </td>
                             <td rowSpan={r.span} className={cn(cell, 'px-1 text-center font-mono font-bold text-[#0066cc] align-middle border-b-2 border-b-slate-800', bg)}>
                               {r.bill.inwardNo || '-'}

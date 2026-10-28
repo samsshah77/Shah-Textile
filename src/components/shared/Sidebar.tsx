@@ -247,6 +247,12 @@ const ADMIN_ITEMS: NavLeaf[] = [
     icon: 'bi-clock-history',
     activeCheck: (p) => p.startsWith('/admin/audit'),
   },
+  {
+    title: 'Quality Archive',
+    href: '/admin/quality-archive',
+    icon: 'bi-archive',
+    activeCheck: (p) => p.startsWith('/admin/quality-archive'),
+  },
 ]
 
 const anyActive = (items: NavLeaf[]) => (p: string, sp: URLSearchParams) => items.some((i) => i.activeCheck(p, sp))

@@ -11,27 +11,18 @@ function dayLabel(date: string) {
   }
 }
 
-/** Clean WhatsApp summary text for one day's production sheet (numbers + PDF attachment notice). */
+/** Short WhatsApp / email text for one day's production sheet — the numbers as on the sheet. */
 export function productionWhatsAppText(date: string, rows: DailyLoomProductionEntry[]): string {
   const s = summarizeProductionDay(rows)
   const lines = [
-    `*Sara Textile Weaving Mill*`,
-    `📄 *Daily Loom Production Sheet*`,
+    `*Sara Textile — Production Sheet*`,
     dayLabel(date),
-    `─────────────────────────`,
-    `📊 *Total Production:* *${n(s.meters)} m*`,
-    `   • Shift A: ${n(s.shiftA)} m`,
-    `   • Shift B: ${n(s.shiftB)} m`,
-    `⚡ *Running Efficiency:* *${Math.round(s.efficiency)}%* (24h: ${Math.round(s.efficiency24)}%)`,
-    `🏭 *Active Looms:* ${s.running} / ${s.looms} Running`,
+    ``,
+    `Production: *${n(s.meters)} m* (A ${n(s.shiftA)} / B ${n(s.shiftB)})`,
+    `Efficiency: ${Math.round(s.efficiency)}% · 24h: ${Math.round(s.efficiency24)}%`,
+    `Looms chal rahe: ${s.running} / ${s.looms}`,
   ]
-  if (s.weightKg > 0) lines.push(`⚖️ *Total Weight:* ${n(s.weightKg)} kg`)
-  if (s.stopped.length) {
-    lines.push(`⚠️ *Stopped Looms (${s.stopped.length}):*`)
-    for (const x of s.stopped) {
-      lines.push(`   • L-${String(x.loom).padStart(2, '0')}: ${x.status}${x.remarks ? ` (${x.remarks})` : ''}`)
-    }
-  }
-  lines.push(`─────────────────────────`, `📌 *Attached:* Detailed Loom Production Sheet (.pdf)`)
+  if (s.weightKg > 0) lines.push(`Weight: ${n(s.weightKg)} kg`)
+  if (s.stopped.length) lines.push(`Band: ${s.stopped.map((x) => `L${x.loom} ${x.status}`).join(', ')}`)
   return lines.join('\n')
 }

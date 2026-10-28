@@ -307,7 +307,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                             <td className={cn(cell, 'px-2 text-center font-mono')}>{r.date}</td>
                             <td className={cn(cell, 'px-2 py-1.5', r.kind === 'LINE' ? 'font-mono font-bold' : 'font-semibold')}>
                               {r.kind === 'LINE' ? `Bill no ${r.billNo || '-'}` : `${r.description}${r.billNo ? ` (Ref ${r.billNo})` : ''}`}
-                              <BillPhotosLink urls={r.attachments} />
+                              <BillPhotosLink urls={r.attachments} title={r.billNo ? `Bill #${r.billNo}` : 'Payment / Bill Photo'} />
                             </td>
                             <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{r.amount ? rs(r.amount) : ''}</td>
                             <td className={cn(cell, 'px-2 text-right font-mono text-emerald-700')}>{r.paid ? rs(r.paid) : ''}</td>
