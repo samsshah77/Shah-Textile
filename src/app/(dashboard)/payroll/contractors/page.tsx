@@ -32,6 +32,9 @@ import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
+import { SheetHeader } from '@/components/shared/SheetHeader'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 const DEFAULT_CONTRACTOR_WIDTHS = {
   serialNo: 56,
@@ -68,6 +71,7 @@ function cycleLabel(month: string, cycle: ContractorCycle): string {
 }
 
 function ContractorsPayrollContent() {
+  const sheetPrint = usePrintOrientation('contractors')
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const router = useRouter()
@@ -258,7 +262,7 @@ function ContractorsPayrollContent() {
   }
 
   const handlePrint = () => {
-    window.print()
+    sheetPrint.print()
   }
 
   // Custom Column Handlers
@@ -352,6 +356,7 @@ function ContractorsPayrollContent() {
                   disabled={!canEditAccounts}
                   dirtyCount={dirtyCount}
                 />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -360,7 +365,7 @@ function ContractorsPayrollContent() {
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton
+                <ExportPdfButton orientation={sheetPrint.orientation}
                   filename={`Contractors-${selectedMonth}-${activeFortnight || '1-15'}`}
                   className="!min-h-9 !h-9"
                 />
@@ -391,25 +396,16 @@ function ContractorsPayrollContent() {
 
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
-        <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
-          <h1 className="text-lg font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-400 mt-0.5">
-            CONTRACTORS & OUTSOURCED SERVICES BILL PAYMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '}
-            {cycleLabel(selectedMonth, activeFortnight)})
-          </h2>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Cycle: {cycleLabel(selectedMonth, activeFortnight)}
-          </p>
-        </div>
+        <SheetHeader title={<>CONTRACTORS & OUTSOURCED SERVICES BILL PAYMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '} {cycleLabel(selectedMonth, activeFortnight)})</>} subtitle={<>Cycle: {cycleLabel(selectedMonth, activeFortnight)}</>} />
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-          <table className="w-full text-left border-collapse text-xs font-mono">
+          <table data-no-tidy className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-mono">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold uppercase text-[11px] text-slate-600 dark:text-slate-300">
                 <ResizableTh
                   columnKey="serialNo"
                   width={widths.serialNo}
-                  minWidth={45}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center"
@@ -421,7 +417,7 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="name"
                   width={widths.name}
-                  minWidth={130}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
@@ -432,7 +428,7 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="contractType"
                   width={widths.contractType}
-                  minWidth={120}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
@@ -443,10 +439,10 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="contractualAmount"
                   width={widths.contractualAmount}
-                  minWidth={95}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center"
                 >
                   Contractual Amt
                 </ResizableTh>
@@ -454,10 +450,10 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="extraIncentive"
                   width={widths.extraIncentive}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center"
                 >
                   Incentive
                 </ResizableTh>
@@ -465,10 +461,10 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="totalAmount"
                   width={widths.totalAmount}
-                  minWidth={95}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Total Bill
                 </ResizableTh>
@@ -476,10 +472,10 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="lessAdvance"
                   width={widths.lessAdvance}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Less Adv
                 </ResizableTh>
@@ -487,10 +483,10 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="netPayment"
                   width={widths.netPayment}
-                  minWidth={100}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold whitespace-nowrap text-[#0066cc] dark:text-sky-400"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold whitespace-nowrap text-[#0066cc] dark:text-sky-400"
                 >
                   Net Payment
                 </ResizableTh>
@@ -498,7 +494,7 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="remarks"
                   width={widths.remarks}
-                  minWidth={130}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
@@ -519,7 +515,7 @@ function ContractorsPayrollContent() {
                 <ResizableTh
                   columnKey="action"
                   width={widths.action}
-                  minWidth={45}
+                  minWidth={40}
                   enableResize={false}
                   className="py-2 px-1 text-center print:hidden"
                 >
@@ -591,7 +587,7 @@ function ContractorsPayrollContent() {
                       navRow={idx}
                       navCol={0}
                       onValueChange={(v) => handleCellChange(idx, 'contractualAmount', v)}
-                      className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
+                      className="w-full text-center bg-transparent px-2 py-1 font-medium text-xs focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded text-slate-800 dark:text-slate-200"
                     />
                   </td>
 
@@ -607,14 +603,14 @@ function ContractorsPayrollContent() {
                       navRow={idx}
                       navCol={1}
                       onValueChange={(v) => handleCellChange(idx, 'extraIncentive', v)}
-                      className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
+                      className="w-full text-center bg-transparent px-2 py-1 font-medium text-xs text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
                     />
                   </td>
 
                   {/* Calculated Total Bill */}
                   <td
                     style={{ width: `${widths.totalAmount}px`, minWidth: `${widths.totalAmount}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap"
                   >
                     {formatNumber(c.totalAmount, 0)}
                   </td>
@@ -631,14 +627,14 @@ function ContractorsPayrollContent() {
                       navRow={idx}
                       navCol={2}
                       onValueChange={(v) => handleCellChange(idx, 'lessAdvance', v)}
-                      className="w-full text-right bg-transparent px-2 py-1 font-medium text-xs text-red-600 dark:text-red-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
+                      className="w-full text-center bg-transparent px-2 py-1 font-medium text-xs text-red-600 dark:text-red-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded"
                     />
                   </td>
 
                   {/* Calculated Net Payment */}
                   <td
                     style={{ width: `${widths.netPayment}px`, minWidth: `${widths.netPayment}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right font-semibold text-xs text-slate-900 dark:text-white whitespace-nowrap"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center font-semibold text-xs text-slate-900 dark:text-white whitespace-nowrap"
                   >
                     {formatNumber(c.netPayment, 0)}
                   </td>
@@ -703,19 +699,19 @@ function ContractorsPayrollContent() {
                 <td colSpan={3} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 font-sans uppercase text-[11px] text-slate-600 dark:text-slate-300">
                   Totals & Live Aggregates ({cycleLabel(selectedMonth, activeFortnight)}):
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs">
                   {formatNumber(totalContractual, 0)}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs">
                   {formatNumber(totalIncentive, 0)}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs">
                   {formatNumber(totalGross, 0)}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs text-red-600 dark:text-red-400">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs text-red-600 dark:text-red-400">
                   {formatNumber(totalAdvance, 0)}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs text-[#0066cc] dark:text-sky-400">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs text-[#0066cc] dark:text-sky-400">
                   {formatNumber(totalNet, 0)}
                 </td>
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-slate-500 font-sans text-[11px] font-normal">Verified</td>
@@ -731,7 +727,7 @@ function ContractorsPayrollContent() {
         </div>
 
         {/* Prominent Calculated Contractor Total in Words */}
-        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 font-sans print:border-none print:p-2">
+        <div className="print:hidden mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 font-sans print:border-none print:p-2">
           <div>
             <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400 tracking-wider">Net Contractor Payout in Words (PKR):</span>
             <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{numberToWordsPKR(totalNet)}</div>

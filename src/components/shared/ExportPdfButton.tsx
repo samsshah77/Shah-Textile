@@ -2,13 +2,14 @@
 
 import { FileDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { applyPrintOrientation, type PrintOrientation } from '@/lib/printOrientation'
 
 /**
  * Opens print / Save as PDF.
  * Document title stays "Sara Textiles" so browser header chrome (if enabled)
  * does not show the ugly filename. Sheet name goes on the in-page print header.
  */
-export function exportSheetPdf(filename: string, sheetLabel?: string) {
+export function exportSheetPdf(filename: string, sheetLabel?: string, orientation?: PrintOrientation) {
   if (typeof window === 'undefined') return
 
   const prevTitle = document.title
@@ -25,8 +26,10 @@ export function exportSheetPdf(filename: string, sheetLabel?: string) {
 
   document.title = 'Sara Textiles'
   document.body.dataset.printSheet = label
+  const removeOrientation = applyPrintOrientation(orientation)
 
   const restore = () => {
+    removeOrientation()
     document.title = prevTitle
     if (prevSheet === undefined) delete document.body.dataset.printSheet
     else document.body.dataset.printSheet = prevSheet
@@ -45,6 +48,8 @@ type ExportPdfButtonProps = {
   sheetLabel?: string
   className?: string
   label?: string
+  /** Paper direction; unset = the app default (A4 landscape). */
+  orientation?: PrintOrientation
 }
 
 export function ExportPdfButton({
@@ -52,11 +57,12 @@ export function ExportPdfButton({
   sheetLabel,
   className,
   label = 'PDF',
+  orientation,
 }: ExportPdfButtonProps) {
   return (
     <button
       type="button"
-      onClick={() => exportSheetPdf(filename, sheetLabel)}
+      onClick={() => exportSheetPdf(filename, sheetLabel, orientation)}
       title="Generate PDF"
       className={cn('erp-btn-secondary sara-allow-readonly text-xs flex items-center gap-1.5', className)}
     >

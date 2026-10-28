@@ -16,10 +16,13 @@ import { useWeaversPage } from '@/components/payroll/weavers/useWeaversPage'
 import { WeaverWagesTab } from '@/components/payroll/weavers/WeaverWagesTab'
 import { WeaverOvertimeTab } from '@/components/payroll/weavers/WeaverOvertimeTab'
 import { WeaverNetPaymentTab } from '@/components/payroll/weavers/WeaverNetPaymentTab'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 function WeaversPayrollContent() {
+  const sheetPrint = usePrintOrientation('weavers')
   const page = useWeaversPage()
-  const { canEditAccounts, modals, activeFortnight, setActiveFortnight, activeTab, setActiveTab, pushFilters, selectedMonth, setSelectedMonth, showGenerateDialog, setShowGenerateDialog, activeSlip, setActiveSlip, isEditable, newMonth, setNewMonth, newFortnight, setNewFortnight, dirtyCount, requestNavigationGuard, reload, openGenerateDialog, confirmGenerateFortnight, handleSave, handleDiscard, handlePrint, handleAddCustomColumn } = page
+  const { canEditAccounts, modals, activeFortnight, setActiveFortnight, activeTab, setActiveTab, pushFilters, selectedMonth, setSelectedMonth, showGenerateDialog, setShowGenerateDialog, activeSlip, setActiveSlip, isEditable, newMonth, setNewMonth, newFortnight, setNewFortnight, dirtyCount, requestNavigationGuard, reload, openGenerateDialog, confirmGenerateFortnight, handleSave, handleDiscard, handleAddCustomColumn } = page
 
   return (
     <div className="space-y-6 print:space-y-2">
@@ -125,15 +128,16 @@ function WeaversPayrollContent() {
                   dirtyCount={dirtyCount}
                 />
                 <MonthLockButton month={selectedMonth} onStatusChange={reload} />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
-                  onClick={handlePrint}
+                  onClick={sheetPrint.print}
                   className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
                 >
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton
+                <ExportPdfButton orientation={sheetPrint.orientation}
                   filename={`Weavers-${selectedMonth}-${activeFortnight || 'all'}`}
                   className="!min-h-9 !h-9"
                 />

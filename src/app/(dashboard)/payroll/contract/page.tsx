@@ -15,10 +15,13 @@ import { useContractPage } from '@/components/payroll/contract/useContractPage'
 import { ContractSalaryTab } from '@/components/payroll/contract/ContractSalaryTab'
 import { ContractOvertimeTab } from '@/components/payroll/contract/ContractOvertimeTab'
 import { ContractNetPaymentTab } from '@/components/payroll/contract/ContractNetPaymentTab'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 function ContractPayrollContent() {
+  const sheetPrint = usePrintOrientation('contract')
   const page = useContractPage()
-  const { canEditAccounts, askConfirm, modals, activeTab, setContractList, selectedMonth, setSelectedMonth, daysInMonth, setDaysInMonth, activeSlip, setActiveSlip, isEditable, dirtyCount, hasUnsavedChanges, requestNavigationGuard, reload, handleSave, handleDiscard, handlePrint, handleAddCustomColumn, staleRows, staleTotals, saveRecalc } = page
+  const { canEditAccounts, askConfirm, modals, activeTab, setContractList, selectedMonth, setSelectedMonth, daysInMonth, setDaysInMonth, activeSlip, setActiveSlip, isEditable, dirtyCount, hasUnsavedChanges, requestNavigationGuard, reload, handleSave, handleDiscard, handleAddCustomColumn, staleRows, staleTotals, saveRecalc } = page
 
   return (
     <div className="space-y-6 print:space-y-2">
@@ -102,15 +105,16 @@ function ContractPayrollContent() {
                   dirtyCount={dirtyCount}
                 />
                 <MonthLockButton month={selectedMonth} onStatusChange={reload} />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
-                  onClick={handlePrint}
+                  onClick={sheetPrint.print}
                   className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
                 >
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton filename={`Contract-${activeTab}-${selectedMonth}`} className="!min-h-9 !h-9" />
+                <ExportPdfButton orientation={sheetPrint.orientation} filename={`Contract-${activeTab}-${selectedMonth}`} className="!min-h-9 !h-9" />
               </div>
             </>
           }

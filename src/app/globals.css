@@ -2459,3 +2459,36 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
 @media (prefers-reduced-motion: reduce) {
   .sara-clock__dot { animation: none; }
 }
+
+/* Printed sheets: headings may wrap onto two lines so every column fits the page width
+   (on screen they stay on one line and are cut with "…"). */
+@media print {
+  table[data-no-tidy] th,
+  table[data-no-tidy] th .truncate,
+  table[data-no-tidy] th .whitespace-nowrap {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+}
+
+/* Paper is always black text on white: grey read-only cells and tinted rows came out
+   blotchy on the printer. Applies to every print and PDF in the app.
+   In @layer base on purpose: other !important colour rules live there, and an !important
+   rule in a layer outranks an unlayered one. :not(#sara-print) only adds weight. */
+@layer base {
+  @media print {
+    html:not(#sara-print),
+    html body:not(#sara-print) {
+      background-color: #ffffff !important;
+    }
+    html body *:not(#sara-print),
+    html body *:not(#sara-print)::before,
+    html body *:not(#sara-print)::after {
+      color: #000000 !important;
+      background-color: transparent !important;
+      text-shadow: none !important;
+      transition: none !important;
+    }
+  }
+}

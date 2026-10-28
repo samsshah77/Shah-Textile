@@ -17,6 +17,9 @@ import { MonthLockButton } from '@/components/payroll/MonthLockBanner'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 import { useAuth } from '@/context/AuthContext'
 import { isMonthLocked } from '@/services/payroll/payrollStorage'
+import { SheetHeader } from '@/components/shared/SheetHeader'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 /**
  * Petty cash to ask for with this fortnight's cheque. Tufail types it; without a typed
@@ -71,6 +74,7 @@ function PettyInflowCell({ month, fortnight, amount }: { month: string; fortnigh
 }
 
 function DisbursementSynopsisContent() {
+  const sheetPrint = usePrintOrientation('synopsis')
   const { modals } = usePayrollModals()
   const router = useRouter()
   const pathname = usePathname()
@@ -125,7 +129,7 @@ function DisbursementSynopsisContent() {
   }, [selectedMonth])
 
   const handlePrint = () => {
-    if (typeof window !== 'undefined') window.print()
+    sheetPrint.print()
   }
 
   if (!f1 || !f2 || !grand) return null
@@ -182,6 +186,7 @@ function DisbursementSynopsisContent() {
                   <span>Recalculate</span>
                 </button>
                 <MonthLockButton month={selectedMonth} onStatusChange={reloadData} />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -190,7 +195,7 @@ function DisbursementSynopsisContent() {
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton filename={`Synopsis-${selectedMonth || 'month'}`} className="!min-h-9 !h-9" />
+                <ExportPdfButton orientation={sheetPrint.orientation} filename={`Synopsis-${selectedMonth || 'month'}`} className="!min-h-9 !h-9" />
               </div>
             </>
           }
@@ -200,15 +205,7 @@ function DisbursementSynopsisContent() {
       {/* Tab 1: Grand Monthly Summary */}
       {activeTab === 'grand' && (
         <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
-          <div className="text-center border-b border-slate-200 pb-3 mb-4">
-            <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-            <h2 className="text-sm font-semibold text-slate-700 mt-0.5">
-              STAFF, CONTRACT EMPLOYEE, EFFICIENCY, WEAVER WAGES, OVERTIME, HELPER & CONTRACTOR SYNOPSIS
-            </h2>
-            <p className="text-[11px] text-slate-500 font-mono">
-              Statement for Month: {formatPayrollMonthLabel(selectedMonth)}
-            </p>
-          </div>
+          <SheetHeader title="STAFF, CONTRACT EMPLOYEE, EFFICIENCY, WEAVER WAGES, OVERTIME, HELPER & CONTRACTOR SYNOPSIS" subtitle={<>Statement for Month: {formatPayrollMonthLabel(selectedMonth)}</>} />
 
           {/* Same layout as the Excel "Monthly Summery" sheet: 1–15 on the left, 16–31 on the right. */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -233,7 +230,7 @@ function DisbursementSynopsisContent() {
               ] as const
             ).map((side) => (
               <div key={side.key} className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
-                <table className="w-full text-left border-collapse text-xs font-mono">
+                <table data-no-tidy className="w-full text-center border-collapse text-xs font-mono">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase text-slate-600">
                       <th colSpan={3} className="py-2 px-3 text-center font-sans">{side.title}</th>
@@ -241,7 +238,7 @@ function DisbursementSynopsisContent() {
                     <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase text-slate-600">
                       <th className="border-r border-slate-200 py-1.5 px-2 text-center w-12">S.#</th>
                       <th className="border-r border-slate-200 py-1.5 px-3 font-sans">Description</th>
-                      <th className="py-1.5 px-3 text-right w-36">Amount</th>
+                      <th className="py-1.5 px-3 text-center w-36">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -256,22 +253,22 @@ function DisbursementSynopsisContent() {
                             </span>
                           )}
                         </td>
-                        <td className="py-1.5 px-3 text-right font-semibold">{formatNumber(item.amount, 0)}</td>
+                        <td className="py-1.5 px-3 text-center font-semibold">{formatNumber(item.amount, 0)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
                       <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans uppercase">Total</td>
-                      <td className="py-2 px-3 text-right font-bold">{formatNumber(side.total, 0)}</td>
+                      <td className="py-2 px-3 text-center font-bold">{formatNumber(side.total, 0)}</td>
                     </tr>
                     <tr className="border-t border-slate-200">
                       <td colSpan={2} className="border-r border-slate-200 py-1.5 px-3 font-sans">Petty Cash</td>
-                      <td className="py-1.5 px-3 text-right">{formatNumber(side.petty, 0)}</td>
+                      <td className="py-1.5 px-3 text-center">{formatNumber(side.petty, 0)}</td>
                     </tr>
                     <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
                       <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans uppercase">Total</td>
-                      <td className="py-2 px-3 text-right font-bold text-sm text-[#0066cc]">{formatNumber(side.grandTotal, 0)}</td>
+                      <td className="py-2 px-3 text-center font-bold text-sm text-[#0066cc]">{formatNumber(side.grandTotal, 0)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -292,15 +289,15 @@ function DisbursementSynopsisContent() {
 
           <h3 className="mt-6 mb-2 text-sm font-bold text-slate-800">Head-wise detail (cash / bank cheque / advance)</h3>
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
-            <table className="w-full min-w-[1100px] text-left border-collapse text-xs font-mono">
+            <table data-no-tidy className="w-full min-w-[1100px] text-center border-collapse text-xs font-mono">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600">
                   <th className="border-r border-slate-200 py-2 px-2 text-center w-12 min-w-[50px]">S.#</th>
                   <th className="border-r border-slate-200 py-2 px-3 font-sans min-w-[320px]">Description of Expense Head</th>
-                  <th className="border-r border-slate-200 py-2 px-3 text-right w-44 min-w-[170px]">Disbursed Cash (PKR)</th>
-                  <th className="border-r border-slate-200 py-2 px-3 text-right w-40 min-w-[150px]">Bank Cheque</th>
-                  <th className="border-r border-slate-200 py-2 px-3 text-right w-40 min-w-[150px] text-red-600">Advance Recovered</th>
-                  <th className="py-2 px-3 text-right w-44 min-w-[170px] font-semibold text-slate-900">Total Gross Head (PKR)</th>
+                  <th className="border-r border-slate-200 py-2 px-3 text-center w-44 min-w-[170px]">Disbursed Cash (PKR)</th>
+                  <th className="border-r border-slate-200 py-2 px-3 text-center w-40 min-w-[150px]">Bank Cheque</th>
+                  <th className="border-r border-slate-200 py-2 px-3 text-center w-40 min-w-[150px] text-red-600">Advance Recovered</th>
+                  <th className="py-2 px-3 text-center w-44 min-w-[170px] font-semibold text-slate-900">Total Gross Head (PKR)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -308,16 +305,16 @@ function DisbursementSynopsisContent() {
                   <tr key={item.serialNo} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
                     <td className="border-r border-slate-100 py-2 px-2 text-center font-semibold min-w-[50px] text-slate-600">{item.serialNo}</td>
                     <td className="border-r border-slate-100 py-2 px-3 font-medium font-sans min-w-[320px] text-slate-800">{item.description}</td>
-                    <td className="border-r border-slate-100 py-2 px-3 text-right font-semibold text-slate-900 min-w-[170px]">
+                    <td className="border-r border-slate-100 py-2 px-3 text-center font-semibold text-slate-900 min-w-[170px]">
                       {formatNumber(item.amount, 0)}
                     </td>
-                    <td className="border-r border-slate-100 py-2 px-3 text-right text-slate-700 font-medium min-w-[150px]">
+                    <td className="border-r border-slate-100 py-2 px-3 text-center text-slate-700 font-medium min-w-[150px]">
                       {item.chequeAmount ? formatNumber(item.chequeAmount, 0) : '—'}
                     </td>
-                    <td className="border-r border-slate-100 py-2 px-3 text-right text-red-600 font-medium min-w-[150px]">
+                    <td className="border-r border-slate-100 py-2 px-3 text-center text-red-600 font-medium min-w-[150px]">
                       {item.advance ? formatNumber(item.advance, 0) : '—'}
                     </td>
-                    <td className="py-2 px-3 text-right font-semibold text-slate-900 min-w-[170px]">
+                    <td className="py-2 px-3 text-center font-semibold text-slate-900 min-w-[170px]">
                       {formatNumber(item.totalGrossHead, 0)}
                     </td>
                   </tr>
@@ -328,16 +325,16 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[370px]">
                     Grand Reconciled Totals:
                   </td>
-                  <td className="border-r border-slate-200 py-2.5 px-3 text-right font-bold text-sm text-[#0066cc] min-w-[170px]">
+                  <td className="border-r border-slate-200 py-2.5 px-3 text-center font-bold text-sm text-[#0066cc] min-w-[170px]">
                     {formatNumber(grand.grandSynopsisItems.reduce((s, i) => s + i.amount, 0), 0)}
                   </td>
-                  <td className="border-r border-slate-200 py-2.5 px-3 text-right font-semibold text-slate-800 min-w-[150px]">
+                  <td className="border-r border-slate-200 py-2.5 px-3 text-center font-semibold text-slate-800 min-w-[150px]">
                     {formatNumber(grand.grandSynopsisItems.reduce((s, i) => s + (i.chequeAmount || 0), 0), 0)}
                   </td>
-                  <td className="border-r border-slate-200 py-2.5 px-3 text-right font-semibold text-red-600 min-w-[150px]">
+                  <td className="border-r border-slate-200 py-2.5 px-3 text-center font-semibold text-red-600 min-w-[150px]">
                     {formatNumber(grand.grandSynopsisItems.reduce((s, i) => s + (i.advance || 0), 0), 0)}
                   </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-sm text-slate-900 min-w-[170px]">
+                  <td className="py-2.5 px-3 text-center font-bold text-sm text-slate-900 min-w-[170px]">
                     {formatNumber(grand.grandSynopsisItems.reduce((s, i) => s + i.totalGrossHead, 0), 0)}
                   </td>
                 </tr>
@@ -382,24 +379,15 @@ function DisbursementSynopsisContent() {
       {/* Tab 2: Fortnight 1 Disbursal (01 to 15) */}
       {activeTab === 'f1' && (
         <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
-          <div className="text-center border-b border-slate-200 pb-3 mb-4">
-            <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-            <h2 className="text-sm font-semibold text-slate-700 mt-0.5">
-              WEAVERS, HELPER, ADVANCE, CONTRACTOR BILL PAYMENT SYNOPSIS (
-              {formatPayrollMonthLabel(selectedMonth)} · {fortnightDisplayLabel(selectedMonth, '1-15')})
-            </h2>
-            <p className="text-[11px] text-slate-500 font-mono">
-              {fortnightDisplayLabel(selectedMonth, '1-15')} Bank Disbursal Voucher
-            </p>
-          </div>
+          <SheetHeader title={<>WEAVERS, HELPER, ADVANCE, CONTRACTOR BILL PAYMENT SYNOPSIS ( {formatPayrollMonthLabel(selectedMonth)} · {fortnightDisplayLabel(selectedMonth, '1-15')})</>} subtitle={<>{fortnightDisplayLabel(selectedMonth, '1-15')} Bank Disbursal Voucher</>} />
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
-            <table className="w-full min-w-[800px] text-left border-collapse text-xs font-mono">
+            <table data-no-tidy className="w-full min-w-[800px] text-center border-collapse text-xs font-mono">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600">
                   <th className="border-r border-slate-200 py-2 px-2 text-center w-14 min-w-[56px]">S.#</th>
                   <th className="border-r border-slate-200 py-2 px-3 font-sans min-w-[450px]">Disbursement Category</th>
-                  <th className="py-2 px-3 text-right w-48 min-w-[180px] font-semibold text-slate-900">Amount (PKR)</th>
+                  <th className="py-2 px-3 text-center w-48 min-w-[180px] font-semibold text-slate-900">Amount (PKR)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -407,7 +395,7 @@ function DisbursementSynopsisContent() {
                   <tr key={item.serialNo} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
                     <td className="border-r border-slate-100 py-2 px-2 text-center font-semibold min-w-[56px] text-slate-600">{item.serialNo}</td>
                     <td className="border-r border-slate-100 py-2 px-3 font-medium font-sans min-w-[450px] text-slate-800">{item.description}</td>
-                    <td className="py-2 px-3 text-right font-semibold text-slate-900 min-w-[180px]">
+                    <td className="py-2 px-3 text-center font-semibold text-slate-900 min-w-[180px]">
                       {formatNumber(item.amount, 0)}
                     </td>
                   </tr>
@@ -418,7 +406,7 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
                     Total Net Payroll Cash Disbursal:
                   </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-[#0066cc] min-w-[180px]">
+                  <td className="py-2.5 px-3 text-center font-bold text-[#0066cc] min-w-[180px]">
                     {formatNumber(f1.totalPayrollCash, 0)}
                   </td>
                 </tr>
@@ -426,7 +414,7 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
                     + Petty Cash Transfer Inflow (jo petty cash is cheque ke saath mangwana hai):
                   </td>
-                  <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
+                  <td className="py-2 px-3 text-center font-medium text-slate-700 min-w-[180px]">
                     <PettyInflowCell month={selectedMonth} fortnight="1-15" amount={f1.pettyCashInflow} />
                   </td>
                 </tr>
@@ -434,7 +422,7 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
                     Total Bank Cheque Amount Drawn (1st Fortnight):
                   </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-sm text-slate-900 min-w-[180px]">
+                  <td className="py-2.5 px-3 text-center font-bold text-sm text-slate-900 min-w-[180px]">
                     {formatNumber(f1.totalBankCheque, 0)}
                   </td>
                 </tr>
@@ -443,7 +431,7 @@ function DisbursementSynopsisContent() {
           </div>
 
           {/* Prominent Calculated 1st Fortnight Bank Cheque Total in Words */}
-          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
+          <div className="print:hidden mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
             <div>
               <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">1st Fortnight Cheque in Words (PKR):</span>
               <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(f1.totalBankCheque)}</div>
@@ -459,25 +447,17 @@ function DisbursementSynopsisContent() {
       {/* Tab 3: Fortnight 2 Disbursal (16 to 31) */}
       {activeTab === 'f2' && (
         <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
-          <div className="text-center border-b border-slate-200 pb-3 mb-4">
-            <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-            <h2 className="text-sm font-semibold text-slate-700 mt-0.5">
-              SALARY EXPENSE ({formatPayrollMonthLabel(selectedMonth)} · {secondHalfLabel(selectedMonth)})
-            </h2>
-            <p className="text-[11px] text-slate-500 font-mono">
-              {secondHalfLabel(selectedMonth)} Bank Disbursal Voucher
-            </p>
-          </div>
+          <SheetHeader title={<>SALARY EXPENSE ({formatPayrollMonthLabel(selectedMonth)} · {secondHalfLabel(selectedMonth)})</>} subtitle={<>{secondHalfLabel(selectedMonth)} Bank Disbursal Voucher</>} />
 
           <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
-            <table className="w-full min-w-[800px] text-left border-collapse text-xs font-mono">
+            <table data-no-tidy className="w-full min-w-[800px] text-center border-collapse text-xs font-mono">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600">
                   <th className="border-r border-slate-200 py-2 px-2 text-center w-14 min-w-[56px]">S.#</th>
                   <th className="border-r border-slate-200 py-2 px-3 font-sans min-w-[450px]">Disbursement Category</th>
-                  <th className="border-r border-slate-200 py-2 px-3 text-right w-48 min-w-[180px] font-semibold text-slate-900">Amount (PKR)</th>
-                  <th className="border-r border-slate-200 py-2 px-3 text-right w-36">Cheque Amount</th>
-                  <th className="py-2 px-3 text-right w-36 text-red-600">Advance</th>
+                  <th className="border-r border-slate-200 py-2 px-3 text-center w-48 min-w-[180px] font-semibold text-slate-900">Amount (PKR)</th>
+                  <th className="border-r border-slate-200 py-2 px-3 text-center w-36">Cheque Amount</th>
+                  <th className="py-2 px-3 text-center w-36 text-red-600">Advance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -485,13 +465,13 @@ function DisbursementSynopsisContent() {
                   <tr key={item.serialNo} className="text-slate-800 hover:bg-slate-50/80 transition-colors">
                     <td className="border-r border-slate-100 py-2 px-2 text-center font-semibold min-w-[56px] text-slate-600">{item.serialNo}</td>
                     <td className="border-r border-slate-100 py-2 px-3 font-medium font-sans min-w-[450px] text-slate-800">{item.description}</td>
-                    <td className="border-r border-slate-100 py-2 px-3 text-right font-semibold text-slate-900 min-w-[180px]">
+                    <td className="border-r border-slate-100 py-2 px-3 text-center font-semibold text-slate-900 min-w-[180px]">
                       {formatNumber(item.amount, 0)}
                     </td>
-                    <td className="border-r border-slate-100 py-2 px-3 text-right text-slate-700">
+                    <td className="border-r border-slate-100 py-2 px-3 text-center text-slate-700">
                       {item.chequeAmount ? formatNumber(item.chequeAmount, 0) : '—'}
                     </td>
-                    <td className="py-2 px-3 text-right text-red-600">{item.advance ? formatNumber(item.advance, 0) : '—'}</td>
+                    <td className="py-2 px-3 text-center text-red-600">{item.advance ? formatNumber(item.advance, 0) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -500,13 +480,13 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
                     Total Net Payroll Cash Disbursal:
                   </td>
-                  <td className="border-r border-slate-200 py-2.5 px-3 text-right font-bold text-[#0066cc] min-w-[180px]">
+                  <td className="border-r border-slate-200 py-2.5 px-3 text-center font-bold text-[#0066cc] min-w-[180px]">
                     {formatNumber(f2.totalPayrollCash, 0)}
                   </td>
-                  <td className="border-r border-slate-200 py-2.5 px-3 text-right font-semibold">
+                  <td className="border-r border-slate-200 py-2.5 px-3 text-center font-semibold">
                     {formatNumber(f2.items.reduce((s, i) => s + (i.chequeAmount || 0), 0), 0)}
                   </td>
-                  <td className="py-2.5 px-3 text-right font-semibold text-red-600">
+                  <td className="py-2.5 px-3 text-center font-semibold text-red-600">
                     {formatNumber(f2.items.reduce((s, i) => s + (i.advance || 0), 0), 0)}
                   </td>
                 </tr>
@@ -514,7 +494,7 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
                     + Petty Cash Transfer Inflow (jo petty cash is cheque ke saath mangwana hai):
                   </td>
-                  <td className="py-2 px-3 text-right font-medium text-slate-700 min-w-[180px]">
+                  <td className="py-2 px-3 text-center font-medium text-slate-700 min-w-[180px]">
                     <PettyInflowCell month={selectedMonth} fortnight="16-31" amount={f2.pettyCashInflow} />
                   </td>
                   <td colSpan={2} />
@@ -523,7 +503,7 @@ function DisbursementSynopsisContent() {
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
                     Total Bank Cheque Amount Drawn (2nd Fortnight):
                   </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-sm text-slate-900 min-w-[180px]">
+                  <td className="py-2.5 px-3 text-center font-bold text-sm text-slate-900 min-w-[180px]">
                     {formatNumber(f2.totalBankCheque, 0)}
                   </td>
                   <td colSpan={2} />
@@ -533,7 +513,7 @@ function DisbursementSynopsisContent() {
           </div>
 
           {/* Prominent Calculated 2nd Fortnight Bank Cheque Total in Words */}
-          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
+          <div className="print:hidden mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
             <div>
               <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">2nd Fortnight Cheque in Words (PKR):</span>
               <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(f2.totalBankCheque)}</div>

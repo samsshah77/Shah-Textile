@@ -33,6 +33,9 @@ import { usePayrollModals } from '@/hooks/usePayrollModals'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
+import { SheetHeader } from '@/components/shared/SheetHeader'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 const DEFAULT_GW_WIDTHS: Record<string, number> = {
   serial: 48,
@@ -62,7 +65,24 @@ const COMMON_GW_DESIGNATIONS = [
   'Sweeper',
 ]
 
+/** Column order of the sheet (second header row), for the fixed-width <colgroup>. */
+const GW_COLUMN_KEYS = [
+  'serial',
+  'name',
+  'designation',
+  'dutyHrs',
+  'shiftFromTo',
+  'salary',
+  'ratePerDay31',
+  'ratePerHr31',
+  'ratePerDay30',
+  'ratePerHr30',
+  'ratePerDay28',
+  'ratePerHr28',
+] as const
+
 export default function GeneralWagesPage() {
+  const sheetPrint = usePrintOrientation('general-wages')
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, showError, modals } = usePayrollModals()
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
@@ -292,7 +312,7 @@ export default function GeneralWagesPage() {
 
 
   const handlePrint = () => {
-    window.print()
+    sheetPrint.print()
   }
 
   // Metrics — from active month sheets, not the single profile.salary
@@ -352,6 +372,7 @@ export default function GeneralWagesPage() {
                   disabled={!canEditAccounts}
                   dirtyCount={dirtyCount}
                 />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -360,7 +381,7 @@ export default function GeneralWagesPage() {
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton filename="General-Wages" className="!min-h-9 !h-9" />
+                <ExportPdfButton orientation={sheetPrint.orientation} filename="General-Wages" className="!min-h-9 !h-9" />
               </div>
             </>
           }
@@ -453,23 +474,22 @@ export default function GeneralWagesPage() {
       <div className="rounded-lg border border-slate-300 bg-white text-slate-900 p-4 shadow-xs print:border-none print:p-0 print:shadow-none overflow-hidden">
         {/* Excel Header Box: Sara Textile */}
         <div className="border border-slate-400 mb-0">
-          <div className="bg-[#f2eee7] dark:bg-slate-700 py-1.5 px-3 text-center border-b border-slate-400">
-            <h1 className="text-base font-bold uppercase text-slate-900 dark:text-white tracking-wider">
-              Sara Textile
-            </h1>
+          <div className="px-3 pt-2">
+            <SheetHeader title="GENERAL WAGES REGISTER" subtitle={`Month: ${formatPayrollMonthLabel(activeMonth)}`} />
           </div>
 
           <div className="overflow-x-auto">
-            <table
-              style={{
-                minWidth: `${Math.max(
-                  1250,
-                  Object.values(widths).reduce((s, w) => s + w, 0) +
-                    customColumns.reduce((s, c) => s + (c.width || 120), 0)
-                )}px`,
-              }}
-              className="w-full text-left border-collapse text-xs font-sans border-t border-slate-400"
+            <table data-no-tidy
+              className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-sans border-t border-slate-400"
             >
+              <colgroup>
+                {GW_COLUMN_KEYS.map((k) => (
+                  <col key={k} style={{ width: `${widths[k]}px` }} />
+                ))}
+                {customColumns.map((c) => (
+                  <col key={c.id} style={{ width: `${c.width || 120}px` }} />
+                ))}
+              </colgroup>
               {/* EXACT 2-ROW EXCEL HEADERS AS IN USER'S SCREENSHOT */}
               <thead>
                 {/* Row 1: Group Super Headers */}
@@ -502,7 +522,7 @@ export default function GeneralWagesPage() {
                     <th
                       key={col.id}
                       rowSpan={2}
-                      className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-left align-middle"
+                      className="border-r border-slate-400 py-1.5 px-2 bg-[#e8e4dc] dark:bg-slate-700 text-slate-900 dark:text-white text-center align-middle"
                     >
                       {col.label}
                     </th>
@@ -525,10 +545,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="name"
                     width={widths.name}
-                    minWidth={130}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-2 text-left font-sans"
+                    className="border-r border-slate-400 py-1 px-2 text-center font-sans"
                   >
                     Name
                   </ResizableTh>
@@ -536,10 +556,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="designation"
                     width={widths.designation}
-                    minWidth={110}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-2 text-left font-sans"
+                    className="border-r border-slate-400 py-1 px-2 text-center font-sans"
                   >
                     Designation
                   </ResizableTh>
@@ -547,7 +567,7 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="dutyHrs"
                     width={widths.dutyHrs}
-                    minWidth={55}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
                     className="border-r border-slate-400 py-1 px-1 text-center font-sans"
@@ -558,7 +578,7 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="shiftFromTo"
                     width={widths.shiftFromTo}
-                    minWidth={65}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
                     className="border-r border-slate-400 py-1 px-1 text-center font-sans"
@@ -569,10 +589,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="salary"
                     width={widths.salary}
-                    minWidth={90}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-2 text-right font-sans"
+                    className="border-r border-slate-400 py-1 px-2 text-center font-sans"
                   >
                     Salary
                   </ResizableTh>
@@ -580,10 +600,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="ratePerDay31"
                     width={widths.ratePerDay31}
-                    minWidth={75}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                    className="border-r border-slate-400 py-1 px-1.5 text-center font-sans"
                   >
                     Per day
                   </ResizableTh>
@@ -591,10 +611,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="ratePerHr31"
                     width={widths.ratePerHr31}
-                    minWidth={65}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                    className="border-r border-slate-400 py-1 px-1.5 text-center font-sans"
                   >
                     Per Hr
                   </ResizableTh>
@@ -602,10 +622,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="ratePerDay30"
                     width={widths.ratePerDay30}
-                    minWidth={75}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                    className="border-r border-slate-400 py-1 px-1.5 text-center font-sans"
                   >
                     Per day
                   </ResizableTh>
@@ -613,10 +633,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="ratePerHr30"
                     width={widths.ratePerHr30}
-                    minWidth={65}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                    className="border-r border-slate-400 py-1 px-1.5 text-center font-sans"
                   >
                     Per Hr
                   </ResizableTh>
@@ -624,10 +644,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="ratePerDay28"
                     width={widths.ratePerDay28}
-                    minWidth={75}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                    className="border-r border-slate-400 py-1 px-1.5 text-center font-sans"
                   >
                     Per day
                   </ResizableTh>
@@ -635,10 +655,10 @@ export default function GeneralWagesPage() {
                   <ResizableTh
                     columnKey="ratePerHr28"
                     width={widths.ratePerHr28}
-                    minWidth={65}
+                    minWidth={40}
                     onResize={setColumnWidth}
                     onReset={resetColumnWidth}
-                    className="border-r border-slate-400 py-1 px-1.5 text-right font-sans"
+                    className="border-r border-slate-400 py-1 px-1.5 text-center font-sans"
                   >
                     Per Hr
                   </ResizableTh>
@@ -723,24 +743,24 @@ export default function GeneralWagesPage() {
 
                       {/* Salary — month-scoped (profile card edit for active month) */}
                       <td
-                        className="border-r border-slate-300 py-1.5 px-2 text-right font-mono font-bold text-slate-900 bg-slate-50/40"
+                        className="border-r border-slate-300 py-1.5 px-2 text-center font-mono font-bold text-slate-900 bg-slate-50/40"
                         title={`Salary for ${formatPayrollMonthLabel(activeMonth)} — edit via HR Profile Card`}
                       >
                         {formatNumber(pay.salary)}
                       </td>
 
                       {/* 31 days - Per day */}
-                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-700">
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-center font-mono text-slate-700">
                         {formatNumber(Math.round(pay.salary / 31))}
                       </td>
 
                       {/* 31 days - Per Hr (Blank in Excel) */}
-                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-400">
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-center font-mono text-slate-400">
                         —
                       </td>
 
                       {/* 30 days - Per day */}
-                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-900 font-medium">
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-center font-mono text-slate-900 font-medium">
                         {formatNumber(
                           pay.isDaily
                             ? (pay.ratePerDay || 0)
@@ -749,7 +769,7 @@ export default function GeneralWagesPage() {
                       </td>
 
                       {/* 30 days - Per Hr */}
-                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono font-medium text-slate-900">
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-center font-mono font-medium text-slate-900">
                         {emp.dutyHrs && emp.dutyHrs > 0
                           ? (pay.salary / (30 * emp.dutyHrs)).toFixed(2)
                           : emp.ratePerHr30
@@ -758,12 +778,12 @@ export default function GeneralWagesPage() {
                       </td>
 
                       {/* 28 days - Per day */}
-                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-700">
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-center font-mono text-slate-700">
                         {formatNumber(Math.round(pay.salary / 28))}
                       </td>
 
                       {/* 28 days - Per Hr (Blank in Excel) */}
-                      <td className="border-r border-slate-300 py-1 px-1.5 text-right font-mono text-slate-400">
+                      <td className="border-r border-slate-300 py-1 px-1.5 text-center font-mono text-slate-400">
                         —
                       </td>
 
@@ -796,23 +816,23 @@ export default function GeneralWagesPage() {
                 <tr className="bg-[#f2eee7] dark:bg-slate-800 border-t-2 border-slate-400 font-bold text-slate-900 text-xs">
                   <td
                     colSpan={5}
-                    className="border-r border-slate-400 py-2 px-3 text-right uppercase tracking-wider font-sans"
+                    className="border-r border-slate-400 py-2 px-3 text-center uppercase tracking-wider font-sans"
                   >
                     Total Monthly Base ({employees.length} Active):
                   </td>
-                  <td className="border-r border-slate-400 py-2 px-2 text-right font-mono font-bold text-slate-900">
+                  <td className="border-r border-slate-400 py-2 px-2 text-center font-mono font-bold text-slate-900">
                     {formatCurrency(totalBaseSalary)}
                   </td>
-                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono">
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-center font-mono">
                     {formatNumber(totalRatePerDay31)}
                   </td>
-                  <td className="border-r border-slate-400 py-2 px-1.5 text-right text-slate-400">
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-center text-slate-400">
                     —
                   </td>
-                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono font-bold text-slate-900">
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-center font-mono font-bold text-slate-900">
                     {formatNumber(totalRatePerDay30)}
                   </td>
-                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono font-bold text-slate-900">
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-center font-mono font-bold text-slate-900">
                     {employees
                       .reduce((s, e) => {
                         const pay = monthPay(e)
@@ -820,10 +840,10 @@ export default function GeneralWagesPage() {
                       }, 0)
                       .toFixed(2)}
                   </td>
-                  <td className="border-r border-slate-400 py-2 px-1.5 text-right font-mono">
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-center font-mono">
                     {formatNumber(totalRatePerDay28)}
                   </td>
-                  <td className="border-r border-slate-400 py-2 px-1.5 text-right text-slate-400">
+                  <td className="border-r border-slate-400 py-2 px-1.5 text-center text-slate-400">
                     —
                   </td>
                   {customColumns.length > 0 && (

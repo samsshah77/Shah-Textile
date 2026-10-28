@@ -29,6 +29,9 @@ import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
+import { SheetHeader } from '@/components/shared/SheetHeader'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 const DEFAULT_EFFICIENCY_WIDTHS = {
   serialNo: 56,
@@ -43,6 +46,7 @@ const DEFAULT_EFFICIENCY_WIDTHS = {
 }
 
 export default function TechnicalEfficiencyPage() {
+  const sheetPrint = usePrintOrientation('efficiency')
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const { canEditAccounts } = useAuth()
   const [incentiveList, setIncentiveList] = useState<EfficiencyIncentiveRecord[]>([])
@@ -223,7 +227,7 @@ export default function TechnicalEfficiencyPage() {
   }
 
   const handlePrint = () => {
-    window.print()
+    sheetPrint.print()
   }
 
   const totalIncentive = incentiveList.reduce((sum, e) => sum + (e.amount || 0), 0)
@@ -280,6 +284,7 @@ export default function TechnicalEfficiencyPage() {
                   disabled={!canEditAccounts}
                   dirtyCount={dirtyCount}
                 />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -288,7 +293,7 @@ export default function TechnicalEfficiencyPage() {
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton filename={`Efficiency-${selectedMonth}`} className="!min-h-9 !h-9" />
+                <ExportPdfButton orientation={sheetPrint.orientation} filename={`Efficiency-${selectedMonth}`} className="!min-h-9 !h-9" />
               </div>
             </>
           }
@@ -316,22 +321,16 @@ export default function TechnicalEfficiencyPage() {
 
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
-        <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
-          <h1 className="text-lg font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-400 mt-0.5">TECHNICAL STAFF EFFICIENCY INCENTIVE SHEET</h2>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Statement for Month: {formatPayrollMonthLabel(selectedMonth)}
-          </p>
-        </div>
+        <SheetHeader title="TECHNICAL STAFF EFFICIENCY INCENTIVE SHEET" subtitle={<>Statement for Month: {formatPayrollMonthLabel(selectedMonth)}</>} />
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-          <table className="w-full text-left border-collapse text-xs font-mono">
+          <table data-no-tidy className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-mono">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold uppercase text-[11px] text-slate-600 dark:text-slate-300">
                 <ResizableTh
                   columnKey="serialNo"
                   width={widths.serialNo}
-                  minWidth={45}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center"
@@ -343,7 +342,7 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="loom"
                   width={widths.loom}
-                  minWidth={90}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 font-sans"
@@ -354,7 +353,7 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="name"
                   width={widths.name}
-                  minWidth={130}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
@@ -365,7 +364,7 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="designation"
                   width={widths.designation}
-                  minWidth={110}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
@@ -376,7 +375,7 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="efficiencyPercent"
                   width={widths.efficiencyPercent}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center"
@@ -387,10 +386,10 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="salaryEarned"
                   width={widths.salaryEarned}
-                  minWidth={95}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center"
                 >
                   Salary Earned
                 </ResizableTh>
@@ -398,7 +397,7 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="availPercent"
                   width={widths.availPercent}
-                  minWidth={75}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center whitespace-nowrap"
@@ -409,10 +408,10 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="amount"
                   width={widths.amount}
-                  minWidth={95}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold whitespace-nowrap text-[#0066cc] dark:text-sky-400"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold whitespace-nowrap text-[#0066cc] dark:text-sky-400"
                 >
                   Incentive Amt
                 </ResizableTh>
@@ -430,7 +429,7 @@ export default function TechnicalEfficiencyPage() {
                 <ResizableTh
                   columnKey="action"
                   width={widths.action}
-                  minWidth={45}
+                  minWidth={40}
                   enableResize={false}
                   className="py-2 px-1 text-center print:hidden"
                 >
@@ -514,7 +513,7 @@ export default function TechnicalEfficiencyPage() {
                   {/* Salary Earned — Synced from Contract/Staff Profile */}
                   <td
                     style={{ width: `${widths.salaryEarned}px`, minWidth: `${widths.salaryEarned}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right bg-slate-50/50"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center bg-slate-50/50"
                     title="Synced from Contract / Staff Sheet"
                   >
                     <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
@@ -533,7 +532,7 @@ export default function TechnicalEfficiencyPage() {
                   {/* Calculated Incentive Amount */}
                   <td
                     style={{ width: `${widths.amount}px`, minWidth: `${widths.amount}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right font-semibold text-xs text-slate-900 dark:text-white whitespace-nowrap"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center font-semibold text-xs text-slate-900 dark:text-white whitespace-nowrap"
                   >
                     {formatNumber(e.amount, 0)}
                   </td>
@@ -581,13 +580,13 @@ export default function TechnicalEfficiencyPage() {
                 <td colSpan={5} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 font-sans uppercase text-[11px] text-slate-600 dark:text-slate-300">
                   Totals & Live Incentive Sums:
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs">
                   {formatNumber(totalSalaryBase, 0)}
                 </td>
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center font-bold text-xs text-[#0066cc] dark:text-sky-400">
                   Avg {avgEfficiency}%
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs text-[#0066cc] dark:text-sky-400">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs text-[#0066cc] dark:text-sky-400">
                   {formatNumber(totalIncentive, 0)}
                 </td>
                 {customColumns.map((col) => (
@@ -602,7 +601,7 @@ export default function TechnicalEfficiencyPage() {
         </div>
 
         {/* Calculated Total Banner */}
-        <div className="mt-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 font-sans">
+        <div className="print:hidden mt-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 font-sans">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Total Calculated Technical Efficiency Bonus (In Words):

@@ -9,26 +9,23 @@ import { Trash2, FileText } from 'lucide-react'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 import type { ContractPage } from './useContractPage'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 
 /** The "employees" tab of the page. */
 export function ContractSalaryTab({ page }: { page: ContractPage }) {
   const { canEditAccounts, contractList, customColumns, selectedMonth, daysInMonth, setActiveSlip, isEditable, isCellDirty, isRowDirty, salaryWidths, setSalaryColWidth, resetSalaryColWidth, handleCellChange, handleCustomCellChange, handleMoveRow, handleDeleteRow, handleUpdateCustomColumn, handleRemoveCustomColumn, totalBasic, totalLateAmount, totalAdvance, totalTicket, totalNetSalary } = page
   return (
       <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
-        <div className="text-center border-b border-slate-200 pb-3 mb-4">
-          <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-sm font-semibold text-slate-700 mt-0.5">CONTRACT EMPLOYEES SALARIES (EXCEL SHEET 4)</h2>
-          <p className="text-[11px] text-slate-500 font-mono">Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</p>
-        </div>
+        <SheetHeader title="CONTRACT EMPLOYEES SALARIES (EXCEL SHEET 4)" subtitle={<>Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</>} />
 
         <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
-          <table className="w-full text-left border-collapse text-xs font-mono">
+          <table data-no-tidy className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-mono">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600">
                 <ResizableTh
                   columnKey="serialNo"
                   width={salaryWidths.serialNo}
-                  minWidth={45}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
                   className="border-r border-slate-200 py-2 px-1 text-center"
@@ -40,7 +37,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="employeeName"
                   width={salaryWidths.employeeName}
-                  minWidth={130}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
                   className="border-r border-slate-200 py-2 px-3 font-sans"
@@ -51,7 +48,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="designation"
                   width={salaryWidths.designation}
-                  minWidth={110}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
                   className="border-r border-slate-200 py-2 px-3 font-sans"
@@ -62,10 +59,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="salary"
                   width={salaryWidths.salary}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right"
+                  className="border-r border-slate-200 py-2 px-2 text-center"
                 >
                   Salary / Wages
                 </ResizableTh>
@@ -73,7 +70,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="attendanceDays"
                   width={salaryWidths.attendanceDays}
-                  minWidth={55}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
                   className="border-r border-slate-200 py-2 px-1 text-center"
@@ -84,10 +81,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="ratePerDay"
                   width={salaryWidths.ratePerDay}
-                  minWidth={80}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Rate Per Day
                 </ResizableTh>
@@ -95,10 +92,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="ratePerHr"
                   width={salaryWidths.ratePerHr}
-                  minWidth={80}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Rate Per Hr
                 </ResizableTh>
@@ -106,10 +103,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="basicSalary"
                   width={salaryWidths.basicSalary}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                 >
                   Gross Salary
                 </ResizableTh>
@@ -117,10 +114,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="lateHours"
                   width={salaryWidths.lateHours}
-                  minWidth={70}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Late Hrs
                 </ResizableTh>
@@ -128,10 +125,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="lateAmount"
                   width={salaryWidths.lateAmount}
-                  minWidth={80}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right text-red-600 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center text-red-600 whitespace-nowrap"
                 >
                   Late Amount
                 </ResizableTh>
@@ -139,10 +136,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="advanceDeduction"
                   width={salaryWidths.advanceDeduction}
-                  minWidth={80}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right text-red-600 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center text-red-600 whitespace-nowrap"
                 >
                   Advance
                 </ResizableTh>
@@ -150,10 +147,10 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="ticketCharges"
                   width={salaryWidths.ticketCharges}
-                  minWidth={60}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right text-red-600 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center text-red-600 whitespace-nowrap"
                 >
                   Ticket
                 </ResizableTh>
@@ -161,12 +158,23 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="netAmount"
                   width={salaryWidths.netAmount}
-                  minWidth={90}
+                  minWidth={40}
                   onResize={setSalaryColWidth}
                   onReset={resetSalaryColWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-[#0066cc] whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center font-semibold text-[#0066cc] whitespace-nowrap"
                 >
                   Net Salary
+                </ResizableTh>
+
+                <ResizableTh
+                  columnKey="signature"
+                  width={salaryWidths.signature}
+                  minWidth={40}
+                  onResize={setSalaryColWidth}
+                  onReset={resetSalaryColWidth}
+                  className="border-r border-slate-200 py-2 px-2 text-center font-sans"
+                >
+                  Signature
                 </ResizableTh>
                 
                 {/* Custom Columns */}
@@ -182,7 +190,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                 <ResizableTh
                   columnKey="action"
                   width={salaryWidths.action}
-                  minWidth={45}
+                  minWidth={40}
                   enableResize={false}
                   className="py-2 px-1 text-center print:hidden"
                 >
@@ -230,7 +238,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                   {/* Salary — from HR / General Wages */}
                   <td
                     style={{ width: `${salaryWidths.salary}px`, minWidth: `${salaryWidths.salary}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center bg-slate-50"
                     title="From HR Profiles / General Wages"
                   >
                     <span className="font-semibold text-xs text-slate-500">{formatNumber(c.salary, 0)}</span>
@@ -255,7 +263,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                   {/* Calculated Rate Per Day */}
                   <td
                     style={{ width: `${salaryWidths.ratePerDay}px`, minWidth: `${salaryWidths.ratePerDay}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center text-slate-500 whitespace-nowrap bg-slate-50"
                     title="Auto: Salary ÷ Days"
                   >
                     {formatNumber(c.ratePerDay, 2)}
@@ -264,7 +272,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                   {/* Calculated Rate Per Hr */}
                   <td
                     style={{ width: `${salaryWidths.ratePerHr}px`, minWidth: `${salaryWidths.ratePerHr}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center text-slate-500 whitespace-nowrap bg-slate-50"
                     title="From General Wages / duty hours"
                   >
                     {formatNumber(c.ratePerHr, 2)}
@@ -273,7 +281,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                   {/* Calculated Gross Salary */}
                   <td
                     style={{ width: `${salaryWidths.basicSalary}px`, minWidth: `${salaryWidths.basicSalary}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-500 whitespace-nowrap bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center font-semibold text-slate-500 whitespace-nowrap bg-slate-50"
                     title="Auto: Attn × Rate Per Day"
                   >
                     {formatNumber(c.basicSalary, 0)}
@@ -307,7 +315,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                       navRow={idx}
                       navCol={2}
                       onValueChange={(v) => handleCellChange(idx, 'lateAmount', v)}
-                      className="w-full text-right bg-transparent px-1 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                     />
                   </td>
 
@@ -323,7 +331,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                       navRow={idx}
                       navCol={3}
                       onValueChange={(v) => handleCellChange(idx, 'advanceDeduction', v)}
-                      className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      className="w-full text-center bg-transparent px-2 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                     />
                   </td>
 
@@ -339,14 +347,14 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                       navRow={idx}
                       navCol={4}
                       onValueChange={(v) => handleCellChange(idx, 'ticketCharges', v)}
-                      className="w-full text-right bg-transparent px-1 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      className="w-full text-center bg-transparent px-1 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                     />
                   </td>
 
                   {/* Net Salary (Sheet 4 Base Net: Basic - Late - Advance - Ticket) - NO OT, NO Efficiency! */}
                   <td
                     style={{ width: `${salaryWidths.netAmount}px`, minWidth: `${salaryWidths.netAmount}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-bold text-[#0066cc] whitespace-nowrap bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center font-bold text-[#0066cc] whitespace-nowrap bg-slate-50"
                     title="Basic Salary − Late − Advance − Ticket (Sheet 4 Base Net)"
                   >
                     {formatNumber(
@@ -361,6 +369,14 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                           ),
                       0
                     )}
+                  </td>
+
+                  {/* Signature — empty box, signed on the printed sheet */}
+                  <td
+                    style={{ width: `${salaryWidths.signature}px`, minWidth: `${salaryWidths.signature}px` }}
+                    className="border-r border-slate-100 p-1"
+                  >
+                    <div className="h-[50px] w-full rounded border border-slate-300 print:min-w-[90px] print:border-slate-500" />
                   </td>
 
                   {/* Custom Column Cells */}
@@ -417,16 +433,17 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
             <tfoot>
               <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-900">
                 <td colSpan={3} className="border-r border-slate-200 py-2 px-2 text-center uppercase text-xs">Total Base Earned:</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right font-semibold">{formatNumber(contractList.reduce((s, c) => s + (c.salary || 0), 0), 0)}</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center font-semibold">{formatNumber(contractList.reduce((s, c) => s + (c.salary || 0), 0), 0)}</td>
                 <td className="border-r border-slate-200 py-2 px-1 text-center text-slate-400">-</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm">{formatCurrency(totalBasic)}</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right text-slate-400">-</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalLateAmount, 0)}</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold">{formatNumber(totalAdvance, 0)}</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right text-red-600 font-semibold" title="Total Ticket Charges Deductions">{formatNumber(totalTicket, 0)}</td>
-                <td className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] text-sm" title="Total Net Base Salary (Sheet 4)">{formatCurrency(totalNetSalary)}</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center text-slate-400">-</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center text-slate-400">-</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center font-bold text-[#0066cc] text-sm">{formatCurrency(totalBasic)}</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center text-slate-400">-</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center text-red-600 font-semibold">{formatNumber(totalLateAmount, 0)}</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center text-red-600 font-semibold">{formatNumber(totalAdvance, 0)}</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center text-red-600 font-semibold" title="Total Ticket Charges Deductions">{formatNumber(totalTicket, 0)}</td>
+                <td className="border-r border-slate-200 py-2 px-2 text-center font-bold text-[#0066cc] text-sm" title="Total Net Base Salary (Sheet 4)">{formatCurrency(totalNetSalary)}</td>
+                <td className="border-r border-slate-200"></td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 py-2 px-2 text-center font-sans text-[10px] text-slate-500">
                     —
@@ -439,7 +456,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
         </div>
 
         {/* Prominent Calculated Base Salary & Deductions Breakdown */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="print:hidden mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3.5 font-sans">
             <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Gross Base Earned:</span>
             <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(totalBasic)}</div>

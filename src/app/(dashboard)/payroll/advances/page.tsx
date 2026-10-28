@@ -20,6 +20,9 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { SheetHeader } from '@/components/shared/SheetHeader'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
@@ -268,9 +271,7 @@ export default function SalaryAdvancesPage() {
     })
   }
 
-  const handlePrint = () => {
-    window.print()
-  }
+  const sheetPrint = usePrintOrientation('advances', 'portrait')
 
   // Custom Column Handlers
   const handleAddCustomColumn = (newCol: CustomColumn) => {
@@ -370,15 +371,16 @@ export default function SalaryAdvancesPage() {
                   disabled={!canEditAccounts}
                   dirtyCount={dirtyCount}
                 />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
-                  onClick={handlePrint}
+                  onClick={sheetPrint.print}
                   className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800"
                 >
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton filename={`Advances-${selectedMonth}`} className="!min-h-9 !h-9" />
+                <ExportPdfButton filename={`Advances-${selectedMonth}`} orientation={sheetPrint.orientation} className="!min-h-9 !h-9" />
               </div>
             </>
           }
@@ -532,18 +534,12 @@ export default function SalaryAdvancesPage() {
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
         {/* Sheet Header */}
-        <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
-          <h1 className="text-lg font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-400 mt-0.5">
-            ADVANCE SALARY REGISTER (PESHGI)
-          </h2>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Month: {formatMonthName(selectedMonth)}
-          </p>
-        </div>
+        <SheetHeader title="ADVANCE SALARY REGISTER (PESHGI)" subtitle={`Month: ${formatMonthName(selectedMonth)}`} />
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-          <table className="w-full text-left border-collapse text-xs font-mono">
+          <table data-no-tidy
+            className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-mono"
+          >
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold uppercase text-[11px] text-slate-600 dark:text-slate-300">
                 <ResizableTh
@@ -560,7 +556,7 @@ export default function SalaryAdvancesPage() {
                 <ResizableTh
                   columnKey="date"
                   width={widths.date}
-                  minWidth={95}
+                  minWidth={70}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-sans"
@@ -571,10 +567,10 @@ export default function SalaryAdvancesPage() {
                 <ResizableTh
                   columnKey="employeeName"
                   width={widths.employeeName}
-                  minWidth={140}
+                  minWidth={80}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center font-sans"
                 >
                   Employee Name
                 </ResizableTh>
@@ -582,7 +578,7 @@ export default function SalaryAdvancesPage() {
                 <ResizableTh
                   columnKey="designation"
                   width={widths.designation}
-                  minWidth={120}
+                  minWidth={70}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center font-sans"
@@ -593,7 +589,7 @@ export default function SalaryAdvancesPage() {
                 <ResizableTh
                   columnKey="amount"
                   width={widths.amount}
-                  minWidth={120}
+                  minWidth={60}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center text-slate-700 dark:text-slate-300"
@@ -604,7 +600,7 @@ export default function SalaryAdvancesPage() {
                 <ResizableTh
                   columnKey="remarks"
                   width={widths.remarks}
-                  minWidth={140}
+                  minWidth={80}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center font-sans"
@@ -691,7 +687,7 @@ export default function SalaryAdvancesPage() {
                     {/* Name — from HR */}
                     <td
                       style={{ width: `${widths.employeeName}px`, minWidth: `${widths.employeeName}px` }}
-                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50"
+                      className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 bg-slate-50 text-center align-middle"
                       title="From HR Profiles"
                     >
                       <span className="font-semibold font-sans text-xs text-slate-500">{adv.employeeName}</span>
@@ -740,12 +736,12 @@ export default function SalaryAdvancesPage() {
                             onChange={(e) => handleCellChange(adv.id, 'remarks', e.target.value)}
                             rows={2}
                             className={cn(
-                              'w-full h-full resize-none bg-transparent px-1.5 py-0.5 font-normal font-sans text-xs focus:outline-none rounded text-slate-700 dark:text-slate-300 transition-colors print:hidden',
+                              'w-full h-full resize-none bg-transparent px-1.5 py-0.5 text-center font-normal font-sans text-xs focus:outline-none rounded text-slate-700 dark:text-slate-300 transition-colors print:hidden',
                               isCellDirty(adv.id, 'remarks') && 'payroll-cell-dirty'
                             )}
                           />
                         ) : (
-                          <div className="h-full px-1.5 py-0.5 flex flex-col justify-center text-slate-600 dark:text-slate-300 print:hidden">
+                          <div className="h-full px-1.5 py-0.5 flex flex-col justify-center text-center text-slate-600 dark:text-slate-300 print:hidden">
                             {cleanRemarkValue(adv.remarks) ? (
                               <span className="text-xs">{cleanRemarkValue(adv.remarks)}</span>
                             ) : null}
@@ -755,7 +751,7 @@ export default function SalaryAdvancesPage() {
                         {/* Dedicated Print View for Signature Box */}
                         <div className="hidden print:flex print:flex-col print:justify-between print:h-full print:w-full print:min-h-[48px]">
                           {cleanRemarkValue(adv.remarks) ? (
-                            <span className="text-[7.5pt] leading-tight text-slate-700 font-sans">
+                            <span className="text-[7.5pt] leading-tight text-center text-slate-700 font-sans">
                               {cleanRemarkValue(adv.remarks)}
                             </span>
                           ) : (
@@ -835,7 +831,7 @@ export default function SalaryAdvancesPage() {
         </div>
 
         {/* Prominent Calculated Advances Total in Words */}
-        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 font-sans print:border-none print:p-2">
+        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 font-sans print:hidden">
           <div>
             <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
               Advances Disbursed in Words (PKR):

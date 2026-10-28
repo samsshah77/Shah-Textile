@@ -35,6 +35,9 @@ import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
+import { SheetHeader } from '@/components/shared/SheetHeader'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
   serial: 56,
@@ -56,6 +59,7 @@ const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
 }
 
 export default function StaffSalariesPage() {
+  const sheetPrint = usePrintOrientation('staff')
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const [staffList, setStaffList] = useState<StaffSalaryRecord[]>([])
@@ -291,7 +295,7 @@ export default function StaffSalariesPage() {
   const totalNetCash = staffList.reduce((s, st) => s + (st.netCashAmount || 0), 0)
 
   const handlePrint = () => {
-    if (typeof window !== 'undefined') window.print()
+    sheetPrint.print()
   }
 
   return (
@@ -363,6 +367,7 @@ export default function StaffSalariesPage() {
                   dirtyCount={dirtyCount}
                 />
                 <MonthLockButton month={selectedMonth} onStatusChange={reload} />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -371,7 +376,7 @@ export default function StaffSalariesPage() {
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton filename={`Staff-Salary-${selectedMonth}`} className="!min-h-9 !h-9" />
+                <ExportPdfButton orientation={sheetPrint.orientation} filename={`Staff-Salary-${selectedMonth}`} className="!min-h-9 !h-9" />
               </div>
             </>
           }
@@ -418,31 +423,18 @@ export default function StaffSalariesPage() {
 
       {/* Interactive Live Spreadsheet Table */}
       <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
-        <div className="text-center border-b border-slate-200 pb-3 mb-4">
-          <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-sm font-semibold text-slate-700 mt-0.5">STAFF SALARIES AND OVERTIME STATEMENT</h2>
-          <p className="text-[11px] text-slate-500 font-mono">
-            Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)
-          </p>
-        </div>
+        <SheetHeader title="STAFF SALARIES AND OVERTIME STATEMENT" subtitle={<>Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</>} />
 
         <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
-          <table
-            style={{
-              minWidth: `${Math.max(
-                1200,
-                Object.values(widths).reduce((s, w) => s + w, 0) +
-                  customColumns.reduce((s, c) => s + (c.width || 120), 0)
-              )}px`,
-            }}
-            className="w-full text-left border-collapse text-xs font-mono"
+          <table data-no-tidy
+            className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-mono"
           >
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600">
                 <ResizableTh
                   columnKey="serial"
                   width={widths.serial}
-                  minWidth={45}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 py-2 px-1 text-center"
@@ -454,7 +446,7 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="employeeName"
                   width={widths.employeeName}
-                  minWidth={130}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 py-2 px-3 font-sans"
@@ -465,7 +457,7 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="designation"
                   width={widths.designation}
-                  minWidth={110}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 py-2 px-3 font-sans"
@@ -476,10 +468,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="salary"
                   width={widths.salary}
-                  minWidth={90}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right"
+                  className="border-r border-slate-200 py-2 px-2 text-center"
                 >
                   Salary (Base)
                 </ResizableTh>
@@ -487,7 +479,7 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="attendanceDays"
                   width={widths.attendanceDays}
-                  minWidth={55}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 py-2 px-1 text-center"
@@ -498,10 +490,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="ratePerDay"
                   width={widths.ratePerDay}
-                  minWidth={75}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Per Day
                 </ResizableTh>
@@ -509,10 +501,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="basicSalary"
                   width={widths.basicSalary}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                 >
                   Basic
                 </ResizableTh>
@@ -520,10 +512,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="perHrRate"
                   width={widths.perHrRate}
-                  minWidth={75}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Per Hr
                 </ResizableTh>
@@ -531,7 +523,7 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="otHours"
                   width={widths.otHours}
-                  minWidth={60}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 py-2 px-1 text-center"
@@ -542,10 +534,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="otAmount"
                   width={widths.otAmount}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                 >
                   O/T Amt
                 </ResizableTh>
@@ -553,10 +545,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="grossAmount"
                   width={widths.grossAmount}
-                  minWidth={90}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                 >
                   Gross
                 </ResizableTh>
@@ -564,10 +556,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="lessAdvance"
                   width={widths.lessAdvance}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right text-red-600 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center text-red-600 whitespace-nowrap"
                 >
                   Less Adv
                 </ResizableTh>
@@ -575,10 +567,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="chequeAmount"
                   width={widths.chequeAmount}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right text-slate-700 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center text-slate-700 whitespace-nowrap"
                 >
                   Cheque
                 </ResizableTh>
@@ -586,10 +578,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="synopsisAmount"
                   width={widths.synopsisAmount}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                 >
                   Synopsis
                 </ResizableTh>
@@ -597,10 +589,10 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="netCashAmount"
                   width={widths.netCashAmount}
-                  minWidth={100}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 py-2 px-2 text-right font-bold text-[#0066cc] whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-2 text-center font-bold text-[#0066cc] whitespace-nowrap"
                 >
                   Net Cash
                 </ResizableTh>
@@ -618,7 +610,7 @@ export default function StaffSalariesPage() {
                 <ResizableTh
                   columnKey="action"
                   width={widths.action}
-                  minWidth={45}
+                  minWidth={40}
                   enableResize={false}
                   className="py-2 px-1 text-center print:hidden"
                 >
@@ -665,7 +657,7 @@ export default function StaffSalariesPage() {
                   {/* Salary — from HR / General Wages */}
                   <td
                     style={{ width: `${widths.salary}px`, minWidth: `${widths.salary}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center bg-slate-50"
                     title="From HR Profiles / General Wages"
                   >
                     <span className="font-semibold text-xs text-slate-500">{formatNumber(st.salary, 0)}</span>
@@ -690,7 +682,7 @@ export default function StaffSalariesPage() {
                   {/* Calculated Per Day */}
                   <td
                     style={{ width: `${widths.ratePerDay}px`, minWidth: `${widths.ratePerDay}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center text-slate-500 whitespace-nowrap bg-slate-50"
                     title="Auto: Salary ÷ Days"
                   >
                     {formatNumber(st.ratePerDay, 2)}
@@ -699,7 +691,7 @@ export default function StaffSalariesPage() {
                   {/* Calculated Basic */}
                   <td
                     style={{ width: `${widths.basicSalary}px`, minWidth: `${widths.basicSalary}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-500 whitespace-nowrap bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center font-semibold text-slate-500 whitespace-nowrap bg-slate-50"
                     title="Auto: Attn × Rate Per Day"
                   >
                     {formatNumber(st.basicSalary, 0)}
@@ -708,7 +700,7 @@ export default function StaffSalariesPage() {
                   {/* Calculated Hourly Rate */}
                   <td
                     style={{ width: `${widths.perHrRate}px`, minWidth: `${widths.perHrRate}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right text-slate-500 whitespace-nowrap bg-slate-50"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center text-slate-500 whitespace-nowrap bg-slate-50"
                     title="Auto: Salary ÷ 240"
                   >
                     {formatNumber(st.perHrRate, 2)}
@@ -733,7 +725,7 @@ export default function StaffSalariesPage() {
                   {/* Calculated OT Amount */}
                   <td
                     style={{ width: `${widths.otAmount}px`, minWidth: `${widths.otAmount}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                   >
                     {formatNumber(st.otAmount, 0)}
                   </td>
@@ -741,7 +733,7 @@ export default function StaffSalariesPage() {
                   {/* Calculated Gross Amount */}
                   <td
                     style={{ width: `${widths.grossAmount}px`, minWidth: `${widths.grossAmount}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                   >
                     {formatNumber(st.grossAmount, 0)}
                   </td>
@@ -758,7 +750,7 @@ export default function StaffSalariesPage() {
                       navRow={idx}
                       navCol={2}
                       onValueChange={(v) => handleCellChange(idx, 'lessAdvance', v)}
-                      className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      className="w-full text-center bg-transparent px-2 py-0.5 font-semibold text-xs text-red-600 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                     />
                   </td>
 
@@ -774,14 +766,14 @@ export default function StaffSalariesPage() {
                       navRow={idx}
                       navCol={3}
                       onValueChange={(v) => handleCellChange(idx, 'chequeAmount', v)}
-                      className="w-full text-right bg-transparent px-2 py-0.5 font-semibold text-xs text-slate-700 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
+                      className="w-full text-center bg-transparent px-2 py-0.5 font-semibold text-xs text-slate-700 focus:bg-white focus:ring-1 focus:ring-[#0066cc] rounded"
                     />
                   </td>
 
                   {/* Calculated Synopsis Amount */}
                   <td
                     style={{ width: `${widths.synopsisAmount}px`, minWidth: `${widths.synopsisAmount}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-semibold text-slate-900 whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center font-semibold text-slate-900 whitespace-nowrap"
                   >
                     {formatNumber(st.synopsisAmount, 0)}
                   </td>
@@ -789,7 +781,7 @@ export default function StaffSalariesPage() {
                   {/* Calculated Net Cash Amount */}
                   <td
                     style={{ width: `${widths.netCashAmount}px`, minWidth: `${widths.netCashAmount}px` }}
-                    className="border-r border-slate-100 py-1.5 px-2 text-right font-bold text-sm text-[#0066cc] whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-2 text-center font-bold text-sm text-[#0066cc] whitespace-nowrap"
                   >
                     {formatNumber(st.netCashAmount, 0)}
                   </td>
@@ -854,29 +846,29 @@ export default function StaffSalariesPage() {
                 <td colSpan={6} className="border-r border-slate-200 py-2.5 px-2 font-sans uppercase">
                   Totals & Live Formula Sums:
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-semibold">
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center font-semibold">
                   {formatNumber(totalBasic, 0)}
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right text-slate-400">-</td>
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center text-slate-400">-</td>
                 <td className="border-r border-slate-200 py-2.5 px-1 text-center font-semibold">
                   {staffList.reduce((s, st) => s + Number(st.otHours || 0), 0)}
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-semibold">
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center font-semibold">
                   {formatNumber(totalOT, 0)}
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-semibold">
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center font-semibold">
                   {formatNumber(totalGross, 0)}
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-semibold text-red-600">
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center font-semibold text-red-600">
                   {formatNumber(totalAdvance, 0)}
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-semibold text-slate-800">
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center font-semibold text-slate-800">
                   {formatNumber(totalCheque, 0)}
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-semibold">
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center font-semibold">
                   {formatNumber(totalSynopsis, 0)}
                 </td>
-                <td className="border-r border-slate-200 py-2.5 px-2 text-right font-bold text-sm text-[#0066cc]">
+                <td className="border-r border-slate-200 py-2.5 px-2 text-center font-bold text-sm text-[#0066cc]">
                   {formatNumber(totalNetCash, 0)}
                 </td>
                 {customColumns.map((col) => (
@@ -891,7 +883,7 @@ export default function StaffSalariesPage() {
         </div>
 
         {/* Prominent Calculated Staff Total in Words */}
-        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
+        <div className="print:hidden mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
           <div>
             <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Net Cash Disbursal in Words (PKR):</span>
             <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(totalNetCash)}</div>

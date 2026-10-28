@@ -33,6 +33,9 @@ import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
+import { SheetHeader } from '@/components/shared/SheetHeader'
+import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
+import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 
 const DEFAULT_HELPER_WIDTHS = {
   serialNo: 56,
@@ -48,6 +51,7 @@ const DEFAULT_HELPER_WIDTHS = {
 }
 
 function HelpersPayrollContent() {
+  const sheetPrint = usePrintOrientation('helpers')
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const router = useRouter()
@@ -236,7 +240,7 @@ function HelpersPayrollContent() {
   }
 
   const handlePrint = () => {
-    window.print()
+    sheetPrint.print()
   }
 
   // Custom Column Handlers
@@ -302,6 +306,7 @@ function HelpersPayrollContent() {
                   disabled={!canEditAccounts}
                   dirtyCount={dirtyCount}
                 />
+                <PrintOrientationSelect value={sheetPrint.orientation} onChange={sheetPrint.setOrientation} />
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -310,7 +315,7 @@ function HelpersPayrollContent() {
                   <Printer className="size-3.5" />
                   <span>Print</span>
                 </button>
-                <ExportPdfButton
+                <ExportPdfButton orientation={sheetPrint.orientation}
                   filename={`Helpers-${selectedMonth}-${activeFortnight || '1-15'}`}
                   className="!min-h-9 !h-9"
                 />
@@ -339,25 +344,16 @@ function HelpersPayrollContent() {
 
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
-        <div className="text-center border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">
-          <h1 className="text-lg font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-400 mt-0.5">
-            HELPERS WAGES STATEMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '}
-            {fortnightDisplayLabel(selectedMonth, activeFortnight)})
-          </h2>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-            Period: {fortnightDisplayLabel(selectedMonth, activeFortnight)}
-          </p>
-        </div>
+        <SheetHeader title={<>HELPERS WAGES STATEMENT ({formatPayrollMonthLabel(selectedMonth)} ·{' '} {fortnightDisplayLabel(selectedMonth, activeFortnight)})</>} subtitle={<>Period: {fortnightDisplayLabel(selectedMonth, activeFortnight)}</>} />
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-          <table className="w-full text-left border-collapse text-xs font-mono">
+          <table data-no-tidy className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-mono">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 font-semibold uppercase text-[11px] text-slate-600 dark:text-slate-300">
                 <ResizableTh
                   columnKey="serialNo"
                   width={widths.serialNo}
-                  minWidth={45}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center"
@@ -369,7 +365,7 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="employeeName"
                   width={widths.employeeName}
-                  minWidth={130}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
@@ -380,7 +376,7 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="designation"
                   width={widths.designation}
-                  minWidth={100}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans whitespace-nowrap"
@@ -391,10 +387,10 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="wagePerDay"
                   width={widths.wagePerDay}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center"
                 >
                   Wage/Day
                 </ResizableTh>
@@ -402,7 +398,7 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="attendanceDays"
                   width={widths.attendanceDays}
-                  minWidth={55}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center"
@@ -413,10 +409,10 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="wagesAmount"
                   width={widths.wagesAmount}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Wages Amt
                 </ResizableTh>
@@ -424,7 +420,7 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="holidayAttendance"
                   width={widths.holidayAttendance}
-                  minWidth={65}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
                   className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center"
@@ -435,10 +431,10 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="otAmount"
                   width={widths.otAmount}
-                  minWidth={95}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center whitespace-nowrap"
                 >
                   Holiday OT (1200)
                 </ResizableTh>
@@ -446,10 +442,10 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="netAmount"
                   width={widths.netAmount}
-                  minWidth={95}
+                  minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold whitespace-nowrap text-[#0066cc] dark:text-sky-400"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold whitespace-nowrap text-[#0066cc] dark:text-sky-400"
                 >
                   Net Payment
                 </ResizableTh>
@@ -467,7 +463,7 @@ function HelpersPayrollContent() {
                 <ResizableTh
                   columnKey="action"
                   width={widths.action}
-                  minWidth={45}
+                  minWidth={40}
                   enableResize={false}
                   className="py-2 px-1 text-center print:hidden"
                 >
@@ -514,7 +510,7 @@ function HelpersPayrollContent() {
                   {/* Wage Per Day — From HR Profile Card */}
                   <td
                     style={{ width: `${widths.wagePerDay}px`, minWidth: `${widths.wagePerDay}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right bg-slate-50/50"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center bg-slate-50/50"
                     title="Set in HR Profile Card"
                   >
                     <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
@@ -541,7 +537,7 @@ function HelpersPayrollContent() {
                   {/* Calculated Wages Amount */}
                   <td
                     style={{ width: `${widths.wagesAmount}px`, minWidth: `${widths.wagesAmount}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap"
                   >
                     {formatNumber(h.wagesAmount, 0)}
                   </td>
@@ -565,7 +561,7 @@ function HelpersPayrollContent() {
                   {/* Calculated Holiday OT */}
                   <td
                     style={{ width: `${widths.otAmount}px`, minWidth: `${widths.otAmount}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap"
                   >
                     {formatNumber(h.otAmount, 0)}
                   </td>
@@ -573,7 +569,7 @@ function HelpersPayrollContent() {
                   {/* Calculated Net Payment */}
                   <td
                     style={{ width: `${widths.netAmount}px`, minWidth: `${widths.netAmount}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-right font-semibold text-xs text-slate-900 dark:text-white whitespace-nowrap"
+                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-2 text-center font-semibold text-xs text-slate-900 dark:text-white whitespace-nowrap"
                   >
                     {formatNumber(h.netAmount, 0)}
                   </td>
@@ -634,16 +630,16 @@ function HelpersPayrollContent() {
                 <td colSpan={5} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 font-sans uppercase text-[11px] text-slate-600 dark:text-slate-300">
                   Totals & Live Helper Sums:
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs">
                   {formatNumber(totalWages, 0)}
                 </td>
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-1 text-center font-bold text-xs">
                   {helpersList.reduce((s, h) => s + Number(h.holidayAttendance || 0), 0)}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs">
                   {formatNumber(totalHolidayOT, 0)}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-right font-bold text-xs text-[#0066cc] dark:text-sky-400">
+                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs text-[#0066cc] dark:text-sky-400">
                   {formatNumber(totalNet, 0)}
                 </td>
                 {customColumns.map((col) => (
@@ -658,7 +654,7 @@ function HelpersPayrollContent() {
         </div>
 
         {/* Prominent Calculated Helpers Total in Words */}
-        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 font-sans print:border-none print:p-2">
+        <div className="print:hidden mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3.5 font-sans print:border-none print:p-2">
           <div>
             <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400 tracking-wider">Helpers Net Payout in Words (PKR):</span>
             <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{numberToWordsPKR(totalNet)}</div>

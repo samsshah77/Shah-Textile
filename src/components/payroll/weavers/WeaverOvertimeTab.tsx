@@ -11,29 +11,23 @@ import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
 import { REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 import type { WeaversPage } from './useWeaversPage'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 
 /** The "overtime" tab of the page. */
 export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
   const { canEditAccounts, activeFortnight, selectedMonth, weaversList, customColumns, otWidths, setOtColWidth, resetOtColWidth, isCellDirty, isRowDirty, handleCellChange, handleCustomCellChange, handleMoveRow, handleDeleteRow, handleUpdateCustomColumn, handleRemoveCustomColumn, totalHoliday } = page
   return (
       <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
-        <div className="text-center border-b border-slate-200 pb-3 mb-4">
-          <h1 className="text-lg font-bold uppercase text-slate-900 tracking-wide">SARA TEXTILES</h1>
-          <h2 className="text-sm font-semibold text-slate-700 mt-0.5">
-            WEAVER HOLIDAYS & OVERTIME ({fortnightDisplayLabel(selectedMonth, activeFortnight)} ·{' '}
-            {formatPayrollMonthLabel(selectedMonth)})
-          </h2>
-          <p className="text-[11px] text-slate-500 font-mono">Gazetted & weekly holiday shifts worked</p>
-        </div>
+        <SheetHeader title={<>WEAVER HOLIDAYS & OVERTIME ({fortnightDisplayLabel(selectedMonth, activeFortnight)} ·{' '} {formatPayrollMonthLabel(selectedMonth)})</>} subtitle="Gazetted & weekly holiday shifts worked" />
 
         <div className="overflow-x-auto rounded-md border border-slate-200 shadow-xs">
-          <table className="w-full text-left border-collapse text-xs font-mono">
+          <table data-no-tidy className="table-fixed w-px print:table-auto text-center border-collapse text-xs font-mono">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-[11px] text-slate-600">
                 <ResizableTh
                   columnKey="serialNo"
                   width={otWidths.serialNo}
-                  minWidth={45}
+                  minWidth={40}
                   onResize={setOtColWidth}
                   onReset={resetOtColWidth}
                   className="border-r border-slate-200 py-2 px-2 text-center"
@@ -45,7 +39,7 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
                 <ResizableTh
                   columnKey="employeeName"
                   width={otWidths.employeeName}
-                  minWidth={130}
+                  minWidth={40}
                   onResize={setOtColWidth}
                   onReset={resetOtColWidth}
                   className="border-r border-slate-200 py-2 px-3 font-sans"
@@ -56,7 +50,7 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
                 <ResizableTh
                   columnKey="designation"
                   width={otWidths.designation}
-                  minWidth={110}
+                  minWidth={40}
                   onResize={setOtColWidth}
                   onReset={resetOtColWidth}
                   className="border-r border-slate-200 py-2 px-3 font-sans"
@@ -67,7 +61,7 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
                 <ResizableTh
                   columnKey="holidayAttendance"
                   width={otWidths.holidayAttendance}
-                  minWidth={90}
+                  minWidth={40}
                   onResize={setOtColWidth}
                   onReset={resetOtColWidth}
                   className="border-r border-slate-200 py-2 px-2 text-center"
@@ -78,10 +72,10 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
                 <ResizableTh
                   columnKey="holidayRate"
                   width={otWidths.holidayRate}
-                  minWidth={85}
+                  minWidth={40}
                   onResize={setOtColWidth}
                   onReset={resetOtColWidth}
-                  className="border-r border-slate-200 py-2 px-3 text-right whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-3 text-center whitespace-nowrap"
                 >
                   Overtime Rate
                 </ResizableTh>
@@ -89,10 +83,10 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
                 <ResizableTh
                   columnKey="holidayAmount"
                   width={otWidths.holidayAmount}
-                  minWidth={95}
+                  minWidth={40}
                   onResize={setOtColWidth}
                   onReset={resetOtColWidth}
-                  className="border-r border-slate-200 py-2 px-3 text-right font-semibold text-slate-900 whitespace-nowrap"
+                  className="border-r border-slate-200 py-2 px-3 text-center font-semibold text-slate-900 whitespace-nowrap"
                 >
                   AMOUNT
                 </ResizableTh>
@@ -110,7 +104,7 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
                 <ResizableTh
                   columnKey="action"
                   width={otWidths.action}
-                  minWidth={45}
+                  minWidth={40}
                   enableResize={false}
                   className="py-2 px-1 text-center print:hidden"
                 >
@@ -169,7 +163,7 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
 
                   <td
                     style={{ width: `${otWidths.holidayRate}px`, minWidth: `${otWidths.holidayRate}px` }}
-                    className="border-r border-slate-100 py-1.5 px-3 text-right text-slate-600 font-mono whitespace-nowrap bg-slate-50/30"
+                    className="border-r border-slate-100 py-1.5 px-3 text-center text-slate-600 font-mono whitespace-nowrap bg-slate-50/30"
                     title="Set in HR Profile Card"
                   >
                     {formatNumber(w.holidayRate, 0)}
@@ -177,7 +171,7 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
 
                   <td
                     style={{ width: `${otWidths.holidayAmount}px`, minWidth: `${otWidths.holidayAmount}px` }}
-                    className="border-r border-slate-100 py-1.5 px-3 text-right font-semibold text-slate-900 font-mono whitespace-nowrap"
+                    className="border-r border-slate-100 py-1.5 px-3 text-center font-semibold text-slate-900 font-mono whitespace-nowrap"
                   >
                     {formatNumber(w.holidayAmount, 0)}
                   </td>
@@ -236,8 +230,8 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
               <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-900">
                 <td colSpan={3} className="border-r border-slate-200 py-2 px-3 text-center uppercase text-xs">Total Holiday Overtime:</td>
                 <td className="border-r border-slate-200 py-2 px-2 text-center font-semibold">{weaversList.reduce((s, w) => s + (w.holidayAttendance || 0), 0)} shifts</td>
-                <td className="border-r border-slate-200 py-2 px-3 text-right text-slate-400">-</td>
-                <td className="border-r border-slate-200 py-2 px-3 text-right font-bold text-[#0066cc] text-sm">{formatCurrency(totalHoliday)}</td>
+                <td className="border-r border-slate-200 py-2 px-3 text-center text-slate-400">-</td>
+                <td className="border-r border-slate-200 py-2 px-3 text-center font-bold text-[#0066cc] text-sm">{formatCurrency(totalHoliday)}</td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 py-2 px-2 text-center font-sans text-[10px] text-slate-500">
                     —
@@ -250,7 +244,7 @@ export function WeaverOvertimeTab({ page }: { page: WeaversPage }) {
         </div>
 
         {/* Prominent Calculated Holiday Total in Words */}
-        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
+        <div className="print:hidden mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 font-sans print:border-none print:p-2">
           <div>
             <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">Total Holiday Overtime in Words (PKR):</span>
             <div className="text-xs font-semibold text-slate-900 mt-0.5">{numberToWordsPKR(totalHoliday)}</div>

@@ -26,6 +26,7 @@ export const DEFAULT_CONTRACT_SALARY_WIDTHS = {
   advanceDeduction: 90,
   ticketCharges: 70,
   netAmount: 110,
+  signature: 140,
   action: 48,
 }
 
