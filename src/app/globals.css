@@ -2460,6 +2460,11 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   .sara-clock__dot { animation: none; }
 }
 
+/* Salary sheets: everything in a cell is centred, typed values (name, service, remarks) too. */
+table[data-no-tidy] td :is(input, select, textarea) {
+  text-align: center;
+}
+
 /* Printed sheets: headings may wrap onto two lines so every column fits the page width
    (on screen they stay on one line and are cut with "…"). */
 @media print {
@@ -2489,6 +2494,17 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
       background-color: transparent !important;
       text-shadow: none !important;
       transition: none !important;
+    }
+    /* Table heading rows: dark band with white text, on every printed table */
+    html body thead:not(#sara-print) th:not(#sara-print),
+    html body thead:not(#sara-print) td:not(#sara-print) {
+      background-color: #1e293b !important;
+      color: #ffffff !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html body thead:not(#sara-print) :is(th, td):not(#sara-print) *:not(#sara-print) {
+      color: #ffffff !important;
     }
   }
 }

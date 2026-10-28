@@ -11,10 +11,12 @@ import { fortnightDisplayLabel } from '@/components/payroll/FortnightSelect'
 import { REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 import type { WeaversPage } from './useWeaversPage'
 import { SheetHeader } from '@/components/shared/SheetHeader'
+import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
 
 /** The "net-payment" tab of the page. */
 export function WeaverNetPaymentTab({ page }: { page: WeaversPage }) {
   const { canEditAccounts, activeFortnight, selectedMonth, weaversList, customColumns, setActiveSlip, isEditable, netWidths, setNetColWidth, resetNetColWidth, isCellDirty, isRowDirty, handleCellChange, handleCustomCellChange, handleMoveRow, handleDeleteRow, handleUpdateCustomColumn, handleRemoveCustomColumn, totalBasic, totalExtraLoom, totalAttnAllow, totalHoliday, totalEfficiency, totalNet } = page
+  const signatureBox = useSignatureBoxHeight('weavers_net', 58)
   return (
       <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
         <SheetHeader title={<>WEAVERS SALARY & OVERTIME PAYMENT ({fortnightDisplayLabel(selectedMonth, activeFortnight)} ·{' '} {formatPayrollMonthLabel(selectedMonth)})</>} subtitle="Consolidated net payout rollup" />
@@ -155,6 +157,17 @@ export function WeaverNetPaymentTab({ page }: { page: WeaversPage }) {
                 >
                   Net Pay
                 </ResizableTh>
+
+                <ResizableTh
+                  columnKey="signature"
+                  width={netWidths.signature}
+                  minWidth={40}
+                  onResize={setNetColWidth}
+                  onReset={resetNetColWidth}
+                  className="border-r border-slate-200 py-2 px-2 text-center font-sans"
+                >
+                  Signature
+                </ResizableTh>
                 
                 {/* Custom Columns */}
                 {customColumns.map((col) => (
@@ -281,6 +294,14 @@ export function WeaverNetPaymentTab({ page }: { page: WeaversPage }) {
                     {formatNumber(w.netPay, 0)}
                   </td>
 
+                  {/* Signature — empty box, signed (and ticket pasted) on the printed sheet */}
+                  <td
+                    style={{ width: `${netWidths.signature}px`, minWidth: `${netWidths.signature}px` }}
+                    className="border-r border-slate-100 p-1"
+                  >
+                    <SignatureBox height={signatureBox.height} onHeightChange={signatureBox.setHeight} width={netWidths.signature} />
+                  </td>
+
                   {/* Custom Column Cells */}
                   {customColumns.map((col) => {
                     const cWidth = col.width || 120
@@ -346,6 +367,7 @@ export function WeaverNetPaymentTab({ page }: { page: WeaversPage }) {
                 <td className="border-r border-slate-200 py-2 px-2 text-center font-semibold">{formatNumber(totalHoliday, 0)}</td>
                 <td className="border-r border-slate-200 py-2 px-2 text-center font-semibold text-[#0066cc]">{formatNumber(totalEfficiency, 0)}</td>
                 <td className="border-r border-slate-200 py-2 px-2 text-center font-bold text-[#0066cc] text-sm">{formatCurrency(totalNet)}</td>
+                <td className="border-r border-slate-200"></td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 py-2.5 px-2 text-center font-sans text-[10px] text-slate-500">
                     —

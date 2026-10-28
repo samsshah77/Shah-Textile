@@ -13,7 +13,10 @@ export function SheetHeader({ title, subtitle }: { title: ReactNode; subtitle?: 
           <img src="/saratextile.png" alt="" width={28} height={28} className="size-7 shrink-0 rounded object-contain" />
           <h1 className="text-base font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
         </div>
-        <h2 className="text-right text-sm font-semibold uppercase text-slate-700 dark:text-slate-400">{title}</h2>
+        {/* Size / colour inline: the module's text-size rules and AdminLTE heading styles override classes here */}
+        <h2 className="text-right uppercase" style={{ fontSize: 12, fontWeight: 700, color: '#000', letterSpacing: '0.02em' }}>
+          {title}
+        </h2>
       </div>
       {subtitle ? <p className="text-right text-[11px] text-slate-500 font-mono">{subtitle}</p> : null}
     </div>

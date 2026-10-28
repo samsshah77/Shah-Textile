@@ -38,6 +38,7 @@ import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeR
 import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
+import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
 
 const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
   serial: 56,
@@ -55,11 +56,13 @@ const DEFAULT_STAFF_WIDTHS: Record<string, number> = {
   chequeAmount: 95,
   synopsisAmount: 95,
   netCashAmount: 115,
+  signature: 140,
   action: 48,
 }
 
 export default function StaffSalariesPage() {
   const sheetPrint = usePrintOrientation('staff')
+  const signatureBox = useSignatureBoxHeight('staff')
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const [staffList, setStaffList] = useState<StaffSalaryRecord[]>([])
@@ -596,6 +599,17 @@ export default function StaffSalariesPage() {
                 >
                   Net Cash
                 </ResizableTh>
+
+                <ResizableTh
+                  columnKey="signature"
+                  width={widths.signature}
+                  minWidth={40}
+                  onResize={setColumnWidth}
+                  onReset={resetColumnWidth}
+                  className="border-r border-slate-200 py-2 px-2 text-center font-sans"
+                >
+                  Signature
+                </ResizableTh>
                 
                 {/* Custom Columns */}
                 {customColumns.map((col) => (
@@ -786,6 +800,14 @@ export default function StaffSalariesPage() {
                     {formatNumber(st.netCashAmount, 0)}
                   </td>
 
+                  {/* Signature — empty box, signed (and ticket pasted) on the printed sheet */}
+                  <td
+                    style={{ width: `${widths.signature}px`, minWidth: `${widths.signature}px` }}
+                    className="border-r border-slate-100 p-1"
+                  >
+                    <SignatureBox height={signatureBox.height} onHeightChange={signatureBox.setHeight} width={widths.signature} />
+                  </td>
+
                   {/* Custom Column Cells */}
                   {customColumns.map((col) => {
                     const cWidth = col.width || 120
@@ -871,6 +893,7 @@ export default function StaffSalariesPage() {
                 <td className="border-r border-slate-200 py-2.5 px-2 text-center font-bold text-sm text-[#0066cc]">
                   {formatNumber(totalNetCash, 0)}
                 </td>
+                <td className="border-r border-slate-200"></td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 py-2.5 px-2 text-center font-sans text-[10px] text-slate-500 font-semibold">
                     —

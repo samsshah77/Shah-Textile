@@ -10,10 +10,12 @@ import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 import type { ContractPage } from './useContractPage'
 import { SheetHeader } from '@/components/shared/SheetHeader'
+import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
 
 /** The "employees" tab of the page. */
 export function ContractSalaryTab({ page }: { page: ContractPage }) {
   const { canEditAccounts, contractList, customColumns, selectedMonth, daysInMonth, setActiveSlip, isEditable, isCellDirty, isRowDirty, salaryWidths, setSalaryColWidth, resetSalaryColWidth, handleCellChange, handleCustomCellChange, handleMoveRow, handleDeleteRow, handleUpdateCustomColumn, handleRemoveCustomColumn, totalBasic, totalLateAmount, totalAdvance, totalTicket, totalNetSalary } = page
+  const signatureBox = useSignatureBoxHeight('contract_salary')
   return (
       <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
         <SheetHeader title="CONTRACT EMPLOYEES SALARIES (EXCEL SHEET 4)" subtitle={<>Statement for Month: {formatPayrollMonthLabel(selectedMonth)} ({daysInMonth} Days Base)</>} />
@@ -376,7 +378,7 @@ export function ContractSalaryTab({ page }: { page: ContractPage }) {
                     style={{ width: `${salaryWidths.signature}px`, minWidth: `${salaryWidths.signature}px` }}
                     className="border-r border-slate-100 p-1"
                   >
-                    <div className="h-[50px] w-full rounded border border-slate-300 print:min-w-[90px] print:border-slate-500" />
+                    <SignatureBox height={signatureBox.height} onHeightChange={signatureBox.setHeight} width={salaryWidths.signature} />
                   </td>
 
                   {/* Custom Column Cells */}

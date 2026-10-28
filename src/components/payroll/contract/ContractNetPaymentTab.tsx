@@ -10,10 +10,12 @@ import { NumericCellInput } from '@/components/shared/NumericCellInput'
 import { REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
 import type { ContractPage } from './useContractPage'
 import { SheetHeader } from '@/components/shared/SheetHeader'
+import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
 
 /** The "net-payment" tab of the page. */
 export function ContractNetPaymentTab({ page }: { page: ContractPage }) {
   const { canEditAccounts, contractList, customColumns, selectedMonth, daysInMonth, setActiveSlip, isEditable, isCellDirty, isRowDirty, netWidths, setNetColWidth, resetNetColWidth, handleCellChange, handleCustomCellChange, handleMoveRow, handleDeleteRow, handleUpdateCustomColumn, handleRemoveCustomColumn, totalBasic, totalOT, totalOTHours, totalEfficiency, totalGross, totalAdvance, totalTicket, totalNet } = page
+  const signatureBox = useSignatureBoxHeight('contract_net')
   return (
       <div className="rounded-lg border border-slate-200 bg-white text-slate-900 p-5 shadow-xs print:border-none print:p-0 print:shadow-none font-sans overflow-hidden">
         <SheetHeader title="CONTRACT EMPLOYEE SALARY, OVERTIME & EFFICIENCY (EXCEL SHEET 7)" subtitle={<>Statement for Month: {formatPayrollMonthLabel(selectedMonth)} (1 to {daysInMonth} Full Settlement)</>} />
@@ -165,6 +167,17 @@ export function ContractNetPaymentTab({ page }: { page: ContractPage }) {
                 >
                   Net Pay
                 </ResizableTh>
+
+                <ResizableTh
+                  columnKey="signature"
+                  width={netWidths.signature}
+                  minWidth={40}
+                  onResize={setNetColWidth}
+                  onReset={resetNetColWidth}
+                  className="border-r border-slate-200 py-2 px-2 text-center font-sans"
+                >
+                  Signature
+                </ResizableTh>
                 
                 {/* Custom Columns */}
                 {customColumns.map((col) => (
@@ -306,6 +319,14 @@ export function ContractNetPaymentTab({ page }: { page: ContractPage }) {
                     {formatNumber(c.netAmount, 0)}
                   </td>
 
+                  {/* Signature — empty box, signed (and sticker pasted) on the printed sheet */}
+                  <td
+                    style={{ width: `${netWidths.signature}px`, minWidth: `${netWidths.signature}px` }}
+                    className="border-r border-slate-100 p-1"
+                  >
+                    <SignatureBox height={signatureBox.height} onHeightChange={signatureBox.setHeight} width={netWidths.signature} />
+                  </td>
+
                   {/* Custom Column Cells */}
                   {customColumns.map((col) => {
                     const cWidth = col.width || 120
@@ -369,6 +390,7 @@ export function ContractNetPaymentTab({ page }: { page: ContractPage }) {
                 <td className="border-r border-slate-200 py-2 px-2 text-center text-red-600 font-semibold">{formatNumber(totalAdvance, 0)}</td>
                 <td className="border-r border-slate-200 py-2 px-1 text-center text-red-600 font-semibold" title="Total Ticket Charges Deductions">{formatNumber(totalTicket, 0)}</td>
                 <td className="border-r border-slate-200 py-2 px-2 text-center font-bold text-[#0066cc] text-sm">{formatCurrency(totalNet)}</td>
+                <td className="border-r border-slate-200"></td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 py-2 px-2 text-center font-sans text-[10px] text-slate-500">
                     —

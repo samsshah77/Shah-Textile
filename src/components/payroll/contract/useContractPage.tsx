@@ -54,6 +54,7 @@ export const DEFAULT_CONTRACT_NET_WIDTHS = {
   advanceDeduction: 95,
   ticketCharges: 65,
   netAmount: 120,
+  signature: 150,
   action: 48,
 }
 

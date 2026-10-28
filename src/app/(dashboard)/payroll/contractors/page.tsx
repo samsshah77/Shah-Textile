@@ -35,6 +35,7 @@ import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeR
 import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
+import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
 
 const DEFAULT_CONTRACTOR_WIDTHS = {
   serialNo: 56,
@@ -72,6 +73,7 @@ function cycleLabel(month: string, cycle: ContractorCycle): string {
 
 function ContractorsPayrollContent() {
   const sheetPrint = usePrintOrientation('contractors')
+  const signatureBox = useSignatureBoxHeight('contractors', 58)
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const router = useRouter()
@@ -497,9 +499,9 @@ function ContractorsPayrollContent() {
                   minWidth={40}
                   onResize={setColumnWidth}
                   onReset={resetColumnWidth}
-                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 font-sans"
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-3 text-center font-sans"
                 >
-                  Remarks / Billing Basis
+                  Signature
                 </ResizableTh>
                 
                 {/* Custom Columns */}
@@ -639,21 +641,25 @@ function ContractorsPayrollContent() {
                     {formatNumber(c.netPayment, 0)}
                   </td>
 
-                  {/* Remarks Input */}
+                  {/* Signature box (was "Remarks / Billing Basis"); the remark is still typed in it on
+                      screen, and the printed box is left empty to sign / paste a ticket */}
                   <td
                     style={{ width: `${widths.remarks}px`, minWidth: `${widths.remarks}px` }}
-                    className="border-r border-slate-100 dark:border-slate-800 py-1.5 px-1"
+                    className="border-r border-slate-100 dark:border-slate-800 p-1"
                   >
-                    <input
-                      type="text"
-                      value={c.remarks}
-                      disabled={!canEditAccounts}
-                      onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
-                      className={cn(
-                        'w-full bg-transparent px-2 py-1 font-sans text-xs text-slate-600 dark:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded',
-                        isCellDirty(c.id, 'remarks') && 'payroll-cell-dirty'
-                      )}
-                    />
+                    <SignatureBox height={signatureBox.height} onHeightChange={signatureBox.setHeight} width={widths.remarks}>
+                      <input
+                        type="text"
+                        value={c.remarks}
+                        disabled={!canEditAccounts}
+                        placeholder="Remarks"
+                        onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
+                        className={cn(
+                          'w-full bg-transparent px-2 py-1 text-center font-sans text-xs text-slate-600 dark:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-[#0066cc] focus:outline-none rounded print:hidden',
+                          isCellDirty(c.id, 'remarks') && 'payroll-cell-dirty'
+                        )}
+                      />
+                    </SignatureBox>
                   </td>
 
                   {/* Custom Column Cells */}
@@ -714,7 +720,7 @@ function ContractorsPayrollContent() {
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs text-[#0066cc] dark:text-sky-400">
                   {formatNumber(totalNet, 0)}
                 </td>
-                <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-slate-500 font-sans text-[11px] font-normal">Verified</td>
+                <td className="border-r border-slate-200 dark:border-slate-700"></td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-sans text-[11px] text-slate-400 font-normal">
                     —

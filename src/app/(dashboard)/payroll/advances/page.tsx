@@ -29,6 +29,7 @@ import { PayrollSaveButton } from '@/components/payroll/PayrollSaveButton'
 import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
+import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
 
 const DEFAULT_ADVANCE_WIDTHS = {
   serialNo: 50,
@@ -272,6 +273,7 @@ export default function SalaryAdvancesPage() {
   }
 
   const sheetPrint = usePrintOrientation('advances', 'portrait')
+  const signatureBox = useSignatureBoxHeight('advances', 58)
 
   // Custom Column Handlers
   const handleAddCustomColumn = (newCol: CustomColumn) => {
@@ -729,7 +731,12 @@ export default function SalaryAdvancesPage() {
                       style={{ width: `${widths.remarks}px`, minWidth: `${widths.remarks}px` }}
                       className="border-r border-slate-100 dark:border-slate-800 p-1 font-sans text-slate-500 align-middle"
                     >
-                      <div className="min-h-[58px] h-[58px] w-full rounded border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col justify-between p-1 transition-all focus-within:border-[#0066cc] focus-within:ring-1 focus-within:ring-[#0066cc]/40 print:border-none print:bg-transparent print:p-0 print:min-h-[50px] print:h-[50px]">
+                      <SignatureBox
+                        height={signatureBox.height}
+                        onHeightChange={signatureBox.setHeight}
+                        width={widths.remarks}
+                        className="border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col justify-between p-1 focus-within:border-[#0066cc] focus-within:ring-1 focus-within:ring-[#0066cc]/40 print:border-none print:p-0"
+                      >
                         {canEditAccounts ? (
                           <textarea
                             value={cleanRemarkValue(adv.remarks)}
@@ -749,7 +756,7 @@ export default function SalaryAdvancesPage() {
                         )}
 
                         {/* Dedicated Print View for Signature Box */}
-                        <div className="hidden print:flex print:flex-col print:justify-between print:h-full print:w-full print:min-h-[48px]">
+                        <div className="hidden print:flex print:flex-col print:justify-between print:h-full print:w-full">
                           {cleanRemarkValue(adv.remarks) ? (
                             <span className="text-[7.5pt] leading-tight text-center text-slate-700 font-sans">
                               {cleanRemarkValue(adv.remarks)}
@@ -759,7 +766,7 @@ export default function SalaryAdvancesPage() {
                           )}
                           <div className="mt-auto border-b border-dashed border-slate-300 print:border-slate-400 w-full" />
                         </div>
-                      </div>
+                      </SignatureBox>
                     </td>
 
                     {/* Custom Column Cells */}

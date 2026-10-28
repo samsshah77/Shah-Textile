@@ -50,6 +50,7 @@ export const DEFAULT_WEAVER_NET_WIDTHS = {
   holidayAmount: 100,
   efficiencyAmount: 100,
   netPay: 120,
+  signature: 150,
   action: 48,
 }
 

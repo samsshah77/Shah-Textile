@@ -36,6 +36,7 @@ import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeR
 import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
+import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
 
 const DEFAULT_HELPER_WIDTHS = {
   serialNo: 56,
@@ -47,11 +48,13 @@ const DEFAULT_HELPER_WIDTHS = {
   holidayAttendance: 80,
   otAmount: 130,
   netAmount: 125,
+  signature: 150,
   action: 48,
 }
 
 function HelpersPayrollContent() {
   const sheetPrint = usePrintOrientation('helpers')
+  const signatureBox = useSignatureBoxHeight('helpers', 58)
   const { canEditAccounts } = useAuth()
   const { askConfirm, showSuccess, modals } = usePayrollModals()
   const router = useRouter()
@@ -449,6 +452,17 @@ function HelpersPayrollContent() {
                 >
                   Net Payment
                 </ResizableTh>
+
+                <ResizableTh
+                  columnKey="signature"
+                  width={widths.signature}
+                  minWidth={40}
+                  onResize={setColumnWidth}
+                  onReset={resetColumnWidth}
+                  className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-sans"
+                >
+                  Signature
+                </ResizableTh>
                 
                 {/* Custom Columns */}
                 {customColumns.map((col) => (
@@ -574,6 +588,14 @@ function HelpersPayrollContent() {
                     {formatNumber(h.netAmount, 0)}
                   </td>
 
+                  {/* Signature — empty box, signed (and ticket pasted) on the printed sheet */}
+                  <td
+                    style={{ width: `${widths.signature}px`, minWidth: `${widths.signature}px` }}
+                    className="border-r border-slate-100 dark:border-slate-800 p-1"
+                  >
+                    <SignatureBox height={signatureBox.height} onHeightChange={signatureBox.setHeight} width={widths.signature} />
+                  </td>
+
                   {/* Custom Column Cells */}
                   {customColumns.map((col) => {
                     const cWidth = col.width || 120
@@ -642,6 +664,7 @@ function HelpersPayrollContent() {
                 <td className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-bold text-xs text-[#0066cc] dark:text-sky-400">
                   {formatNumber(totalNet, 0)}
                 </td>
+                <td className="border-r border-slate-200 dark:border-slate-700"></td>
                 {customColumns.map((col) => (
                   <td key={col.id} className="border-r border-slate-200 dark:border-slate-700 py-2 px-2 text-center font-sans text-[11px] text-slate-400 font-normal">
                     —
