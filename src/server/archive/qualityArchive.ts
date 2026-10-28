@@ -158,59 +158,77 @@ export async function previewArchiveFile(buf: Uint8Array, fileName: string): Pro
   }
 }
 
-/** Store a workbook for good. The same file again returns the stored one (nothing new is written). */
-export async function saveArchiveFile(
-  buf: Uint8Array,
-  fileName: string,
-  actor: { id: string; name: string }
-): Promise<{ id: string; created: boolean }> {
+/** True once the archive has its files — after that nothing can be added (one-time import). */
+export async function archiveSealed(): Promise<boolean> {
   await ensureQualityArchive()
-  const sha256 = createHash('sha256').update(buf).digest('hex')
-  const parsed = parse(buf)
-  const year = yearOf(fileName)
-  const id = `qa_${Date.now().toString(36)}${randomBytes(4).toString('hex')}`
-  return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext('quality_archive_write'))::text`)
-    const existing = await tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT "id" FROM "quality_archive_files" WHERE "sha256" = $1`, sha256)
-    if (existing[0]) return { id: existing[0].id, created: false }
-    await tx.$executeRawUnsafe(
-      `INSERT INTO "quality_archive_files" ("id","fileName","sha256","size","year","title","content","uploadedBy","uploadedById")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      id,
-      fileName,
-      sha256,
-      buf.length,
-      year,
-      titleOf(parsed.map((p) => p.sheet)),
-      Buffer.from(buf),
-      actor.name,
-      actor.id
-    )
-    for (const [idx, p] of parsed.entries()) {
-      await tx.$executeRawUnsafe(
-        `INSERT INTO "quality_archive_sheets" ("fileId","idx","name","data") VALUES ($1,$2,$3,$4::jsonb)`,
-        id,
-        idx,
-        p.sheet.name,
-        JSON.stringify(p.sheet)
-      )
-      if (p.rows.length) {
-        // One statement per sheet (a few hundred lines) — values passed as JSON, never spliced into SQL.
+  const r = await prisma.$queryRawUnsafe<Array<{ n: number }>>(`SELECT count(*)::int AS n FROM "quality_archive_files"`)
+  return Number(r[0]?.n) > 0
+}
+
+/**
+ * The one-time import: all workbooks in one transaction (all or nothing). Refused once the
+ * archive already holds files, so the record is closed after the first import.
+ */
+export async function saveArchiveBatch(
+  files: Array<{ buf: Uint8Array; fileName: string }>,
+  actor: { id: string; name: string }
+): Promise<Array<{ id: string; fileName: string; sha256: string }>> {
+  await ensureQualityArchive()
+  const prepared = files.map((f) => ({
+    ...f,
+    sha256: createHash('sha256').update(f.buf).digest('hex'),
+    parsed: parse(f.buf),
+    year: yearOf(f.fileName),
+    id: `qa_${Date.now().toString(36)}${randomBytes(4).toString('hex')}`,
+  }))
+  if (new Set(prepared.map((p) => p.sha256)).size !== prepared.length) throw new Error('Ek hi file do dafa chuni gayi hai.')
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext('quality_archive_write'))::text`)
+      const [{ n }] = await tx.$queryRawUnsafe<Array<{ n: number }>>(`SELECT count(*)::int AS n FROM "quality_archive_files"`)
+      if (Number(n) > 0) throw new Error('Archive pehle se save ho chuka hai — is mein ab kuch add nahi ho sakta.')
+      for (const f of prepared) {
         await tx.$executeRawUnsafe(
-          `INSERT INTO "quality_archive_rows" ("fileId","sheetIdx","sheetName","year","row","col","name","warp","weft","reed","pick","production","grp")
-           SELECT $1, $2, $3, $4, (r->>'row')::int, (r->>'col')::int, r->>'name', r->>'warp', r->>'weft',
-                  (r->>'reed')::float8, (r->>'pick')::float8, (r->>'production')::float8, r->>'group'
-           FROM jsonb_array_elements($5::jsonb) AS r`,
-          id,
-          idx,
-          p.sheet.name,
-          year,
-          JSON.stringify(p.rows)
+          `INSERT INTO "quality_archive_files" ("id","fileName","sha256","size","year","title","content","uploadedBy","uploadedById")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          f.id,
+          f.fileName,
+          f.sha256,
+          f.buf.length,
+          f.year,
+          titleOf(f.parsed.map((p) => p.sheet)),
+          Buffer.from(f.buf),
+          actor.name,
+          actor.id
         )
+        for (const [idx, p] of f.parsed.entries()) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "quality_archive_sheets" ("fileId","idx","name","data") VALUES ($1,$2,$3,$4::jsonb)`,
+            f.id,
+            idx,
+            p.sheet.name,
+            JSON.stringify(p.sheet)
+          )
+          if (p.rows.length) {
+            // One statement per sheet — values passed as JSON, never spliced into SQL.
+            await tx.$executeRawUnsafe(
+              `INSERT INTO "quality_archive_rows" ("fileId","sheetIdx","sheetName","year","row","col","name","warp","weft","reed","pick","production","grp")
+               SELECT $1, $2, $3, $4, (r->>'row')::int, (r->>'col')::int, r->>'name', r->>'warp', r->>'weft',
+                      (r->>'reed')::float8, (r->>'pick')::float8, (r->>'production')::float8, r->>'group'
+               FROM jsonb_array_elements($5::jsonb) AS r`,
+              f.id,
+              idx,
+              p.sheet.name,
+              f.year,
+              JSON.stringify(p.rows)
+            )
+          }
+        }
       }
-    }
-    return { id, created: true }
-  }, { timeout: 60_000 })
+      return prepared.map((f) => ({ id: f.id, fileName: f.fileName, sha256: f.sha256 }))
+    },
+    { timeout: 120_000 }
+  )
 }
 
 export async function listArchive(): Promise<{ files: ArchiveFile[]; rows: ArchiveRow[] }> {
