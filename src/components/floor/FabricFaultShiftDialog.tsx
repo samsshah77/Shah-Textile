@@ -636,24 +636,7 @@ export function FabricFaultShiftDialog({
                               ) : (
                                 <div>{r.text || '(sirf photo/video)'}</div>
                               )}
-                              {r.media?.length > 0 && (
-                                <div className="d-flex flex-wrap gap-1.5 mt-1">
-                                  {r.media.map((m, mi) => (
-                                    <button
-                                      key={m.url || mi}
-                                      type="button"
-                                      className="btn btn-xs btn-light border py-0 px-1.5 rounded"
-                                      onClick={() => m.kind === 'image' && setLightboxImage(m.url)}
-                                    >
-                                      {m.kind === 'image' ? (
-                                        <span><i className="bi bi-camera me-1" />Photo</span>
-                                      ) : (
-                                        <span><i className="bi bi-play-circle me-1" />Video</span>
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
+                              {r.media?.length > 0 && <ReportMediaThumbs media={r.media} onOpen={setLightboxImage} />}
                             </div>
                           ))}
                         </div>
@@ -860,24 +843,7 @@ export function FabricFaultShiftDialog({
                               ) : (
                                 <div>{r.text || '(sirf photo/video)'}</div>
                               )}
-                              {r.media?.length > 0 && (
-                                <div className="d-flex flex-wrap gap-1.5 mt-1">
-                                  {r.media.map((m, mi) => (
-                                    <button
-                                      key={m.url || mi}
-                                      type="button"
-                                      className="btn btn-xs btn-light border py-0 px-1.5 rounded"
-                                      onClick={() => m.kind === 'image' && setLightboxImage(m.url)}
-                                    >
-                                      {m.kind === 'image' ? (
-                                        <span><i className="bi bi-camera me-1" />Photo</span>
-                                      ) : (
-                                        <span><i className="bi bi-play-circle me-1" />Video</span>
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
+                              {r.media?.length > 0 && <ReportMediaThumbs media={r.media} onOpen={setLightboxImage} />}
                             </div>
                           ))}
                         </div>
@@ -925,7 +891,7 @@ export function FabricFaultShiftDialog({
         </div>
       </div>
 
-      {/* Lightbox for previewing images */}
+      {/* Lightbox: a photo, or a video that plays here */}
       {lightboxImage && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3"
@@ -947,16 +913,81 @@ export function FabricFaultShiftDialog({
               <i className="bi bi-x-lg me-1" /> Close
             </button>
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxImage}
-            alt="Fault preview"
-            className="rounded shadow-lg"
-            style={{ maxWidth: '92vw', maxHeight: '85vh', objectFit: 'contain' }}
-            onClick={(e) => e.stopPropagation()}
-          />
+          {isVideoUrl(lightboxImage) ? (
+            <video
+              src={lightboxImage}
+              controls
+              autoPlay
+              playsInline
+              className="rounded shadow-lg bg-black"
+              style={{ maxWidth: '92vw', maxHeight: '85vh' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={lightboxImage}
+              alt="Fault preview"
+              className="rounded shadow-lg"
+              style={{ maxWidth: '92vw', maxHeight: '85vh', objectFit: 'contain' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </>
+  )
+}
+
+const isVideoUrl = (url: string) => /\.(mp4|mov|webm)(\?|#|$)/i.test(url)
+
+/**
+ * Kamran's photos and videos on a report, shown as small pictures (a video shows its first
+ * frame with a ▶ mark). Tapping one opens it large; a video plays there.
+ */
+function ReportMediaThumbs({
+  media,
+  onOpen,
+}: {
+  media: Array<{ url: string; kind: 'image' | 'video' }>
+  onOpen: (url: string) => void
+}) {
+  return (
+    <div className="d-flex flex-wrap gap-2 mt-1">
+      {media.map((m, mi) => (
+        <button
+          key={m.url || mi}
+          type="button"
+          className="position-relative p-0 border rounded overflow-hidden bg-dark"
+          style={{ width: m.kind === 'video' ? 112 : 84, height: 84 }}
+          title={m.kind === 'video' ? 'Video chalayein' : 'Photo bari karein'}
+          aria-label={m.kind === 'video' ? 'Video chalayein' : 'Photo bari karein'}
+          onClick={() => onOpen(m.url)}
+        >
+          {m.kind === 'image' ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={m.url} alt="Fault photo" loading="lazy" className="w-100 h-100" style={{ objectFit: 'cover' }} />
+          ) : (
+            <>
+              <video
+                src={`${m.url}#t=0.5`}
+                preload="metadata"
+                muted
+                playsInline
+                className="w-100 h-100"
+                style={{ objectFit: 'cover', pointerEvents: 'none' }}
+              />
+              <span
+                className="position-absolute top-50 start-50 translate-middle d-flex align-items-center justify-content-center rounded-circle text-white"
+                style={{ width: 32, height: 32, background: 'rgba(0,0,0,0.6)', fontSize: 14 }}
+                aria-hidden="true"
+              >
+                ▶
+              </span>
+            </>
+          )}
+        </button>
+      ))}
+    </div>
   )
 }
