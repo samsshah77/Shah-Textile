@@ -618,8 +618,15 @@ export function qualityActiveOnSheetDate(
   const createdOn = q.createdOn ? String(q.createdOn).slice(0, 10) : null
   // New qualities do not appear on dates before they were created.
   if (createdOn && day && day < createdOn) {
-    // Exception: already on that day's sheet (legacy / imported allotment).
-    if (!dayRows.some((e) => sheetRowShowsQuality(e, q, catalog))) return false
+    // Exception: already on that day's sheet (legacy / imported allotment) — but not when
+    // that row belongs to another run of the same name (the run ended before this restart),
+    // or the restarted quality would show on the old run's days as "not assigned".
+    const onSheet = dayRows.some((e) => {
+      if (!sheetRowShowsQuality(e, q, catalog)) return false
+      const owner = qualityRunThatOwnsSheetEntry({ ...e, date: day }, catalog, day)
+      return !owner || owner.id === q.id
+    })
+    if (!onSheet) return false
   }
   const status = normalizeQualityStatus(q.status)
   if (status === 'ENDED') {

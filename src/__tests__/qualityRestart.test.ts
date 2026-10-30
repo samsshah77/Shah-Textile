@@ -49,3 +49,28 @@ describe('same quality run 3 times in one month — each run keeps its own meter
     expect(own('2026-10-24', 'r2')).toBe('r2')
   })
 })
+
+import { qualityActiveOnSheetDate } from '@/services/production/qualityRuns'
+
+describe('quality ended and restarted from zero — past days show only the ended run', () => {
+  const oldRun = { id: 'd-old', name: 'Decatize', status: 'ENDED', createdOn: '2026-10-02', endedOn: '2026-10-27', pick: 290 }
+  const newRun = { id: 'd-new', name: 'Decatize', status: 'ACTIVE', createdOn: '2026-10-28', pick: 290 }
+  const catalog = [oldRun, newRun] as never[]
+  const row = (qualityId?: string) =>
+    [{ date: '2026-10-25', loomNumber: 13, segmentIndex: 1, qualityName: 'Decatize', pick: 290, qualityId }] as never[]
+  it('the restarted run is not listed on a day of the old run', () => {
+    expect(qualityActiveOnSheetDate(newRun as never, '2026-10-25', row(), catalog)).toBe(false)
+    expect(qualityActiveOnSheetDate(newRun as never, '2026-10-25', row('d-old'), catalog)).toBe(false)
+  })
+  it('the ended run is still listed on its own days', () => {
+    expect(qualityActiveOnSheetDate(oldRun as never, '2026-10-25', row('d-old'), catalog)).toBe(true)
+  })
+  it('the restarted run is listed from its start day', () => {
+    expect(qualityActiveOnSheetDate(newRun as never, '2026-10-28', row(), catalog)).toBe(true)
+  })
+  it('a single quality created after its (imported) rows still shows on those days', () => {
+    const only = { id: 'x', name: 'Mellina', status: 'ACTIVE', createdOn: '2026-10-20', pick: 66 }
+    const rows = [{ date: '2026-10-10', loomNumber: 26, segmentIndex: 1, qualityName: 'Mellina', pick: 66 }] as never[]
+    expect(qualityActiveOnSheetDate(only as never, '2026-10-10', rows, [only] as never[])).toBe(true)
+  })
+})
