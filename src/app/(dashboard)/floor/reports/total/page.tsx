@@ -412,18 +412,31 @@ function ProductionTotalTrackingContent() {
               'efficiency',
               trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
             )
-      const actual: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
-      const target: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
-      for (const [loomStr, meters] of Object.entries(source.loomActual || {})) {
-        const loom = Number(loomStr)
-        if (qualityLoomSet && !qualityLoomSet.has(loom)) continue
-        const cat = catOf(loom)
-        actual[cat] += Number(meters) || 0
-        target[cat] += Number(source.loomTarget?.[loom] || 0)
+      // Same as the Excel "Monthly Efficiency" block: each day's model efficiency
+      // (that day's meters ÷ that day's 100% running target), then the plain average of
+      // those days. Days with no entry for the model (no target) are left out.
+      const daySum: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+      const dayCount: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+      for (const d of source.days) {
+        const actual: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+        const target: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
+        for (const [loomStr, t] of Object.entries(d.loomTarget || {})) {
+          const loom = Number(loomStr)
+          if (qualityLoomSet && !qualityLoomSet.has(loom)) continue
+          const cat = catOf(loom)
+          target[cat] += Number(t) || 0
+          actual[cat] += Number(d.loomActual?.[loom]) || 0
+        }
+        for (const cat of ['G6200', 'G6300', 'PU']) {
+          if (target[cat] > 0) {
+            daySum[cat] += (actual[cat] / target[cat]) * 100
+            dayCount[cat] += 1
+          }
+        }
       }
       return (['G6200', 'G6300', 'PU'] as const).map((label) => ({
         label,
-        value: target[label] > 0 ? Math.round((actual[label] / target[label]) * 100) : 0,
+        value: dayCount[label] > 0 ? Math.round(daySum[label] / dayCount[label]) : 0,
         color: colors[label],
       }))
     }
