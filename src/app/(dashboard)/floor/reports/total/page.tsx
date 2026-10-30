@@ -414,10 +414,12 @@ function ProductionTotalTrackingContent() {
             )
       // Same as the Excel "Monthly Efficiency" block: each day's model efficiency
       // (that day's meters ÷ that day's 100% running target), then the plain average of
-      // those days. Days with no entry for the model (no target) are left out.
+      // those days over every working day (a day with a sheet). A day the model did not run
+      // at all counts as 0%, as in the Excel (sum of daily % ÷ monthly days).
       const daySum: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
       const dayCount: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
       for (const d of source.days) {
+        if (!d.hasSheet) continue
         const actual: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
         const target: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
         for (const [loomStr, t] of Object.entries(d.loomTarget || {})) {
@@ -428,10 +430,8 @@ function ProductionTotalTrackingContent() {
           actual[cat] += Number(d.loomActual?.[loom]) || 0
         }
         for (const cat of ['G6200', 'G6300', 'PU']) {
-          if (target[cat] > 0) {
-            daySum[cat] += (actual[cat] / target[cat]) * 100
-            dayCount[cat] += 1
-          }
+          if (target[cat] > 0) daySum[cat] += (actual[cat] / target[cat]) * 100
+          dayCount[cat] += 1
         }
       }
       return (['G6200', 'G6300', 'PU'] as const).map((label) => ({
