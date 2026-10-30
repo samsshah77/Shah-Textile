@@ -130,3 +130,70 @@ export async function beamsAsOf(date: string): Promise<BeamMaster[]> {
     .filter((r) => r.state && typeof r.state === 'object')
     .map((r) => normalizeBeam({ ...(r.state as BeamMaster), beamNo: r.beamNo }))
 }
+
+/** One time a beam sat on one loom: mounted `from`, taken off `to` (null = still on). */
+export type BeamLoomStint = {
+  beamNo: string
+  loom: number
+  from: string
+  to: string | null
+  length: number
+  swLot: string | null
+  warp: string
+  qualityId: string | null
+}
+
+/**
+ * Every time a beam sat on a loom, read from the beam history (so a beam that was taken off,
+ * re-filled at sizing and mounted again shows each time separately, with the length and
+ * Sw# it had then). Only stints that overlap from…to are returned. Read-only.
+ */
+export async function beamLoomStints(from: string, to: string): Promise<BeamLoomStint[]> {
+  await ensureBeamHistoryTable()
+  const rows = await prisma.$queryRawUnsafe<Array<{ beamNo: string; effectiveDate: Date | string; state: unknown }>>(
+    `SELECT "beamNo", to_char("effectiveDate", 'YYYY-MM-DD') AS "effectiveDate", "state"
+       FROM "floor_beam_history"
+      ORDER BY "beamNo", "effectiveDate", "id"`
+  )
+  const out: BeamLoomStint[] = []
+  let cur: BeamLoomStint | null = null
+  let curBeam = ''
+  const close = (end: string) => {
+    if (cur) out.push({ ...cur, to: end < cur.from ? cur.from : end })
+    cur = null
+  }
+  for (const r of rows) {
+    if (r.beamNo !== curBeam) {
+      if (cur) out.push(cur) // still on its loom at the end of the history
+      cur = null
+      curBeam = r.beamNo
+    }
+    const effective = day(String(r.effectiveDate))
+    const state = r.state && typeof r.state === 'object' ? (r.state as BeamMaster) : null
+    const loom = state?.usedInLoom ? Number(state.usedInLoom) : NaN
+    const onLoom = Number.isFinite(loom) && loom > 0
+    const c = cur as BeamLoomStint | null
+    // No mount date written: the same loom continues the stint, a new loom starts that day.
+    const mount = isYmd(day(state?.mountedOn)) ? day(state?.mountedOn) : c && onLoom && loom === c.loom ? c.from : effective
+    if (c && (!onLoom || loom !== c.loom || mount !== c.from)) {
+      const ended = day(state?.beamEndedOn)
+      close(isYmd(ended) && !onLoom ? ended : effective)
+    }
+    if (onLoom && state) {
+      const next: BeamLoomStint = {
+        beamNo: r.beamNo,
+        loom,
+        from: mount,
+        to: null,
+        length: Number(state.length) || 0,
+        swLot: state.swLot ?? null,
+        warp: state.warp || '',
+        qualityId: state.qualityId ?? null,
+      }
+      // Same stint: keep the latest length / Sw# / quality written while it was on the loom.
+      cur = next
+    }
+  }
+  if (cur) out.push(cur)
+  return out.filter((s) => s.from <= to && (s.to == null || s.to >= from))
+}

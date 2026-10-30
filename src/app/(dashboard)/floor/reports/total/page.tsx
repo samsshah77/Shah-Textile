@@ -10,6 +10,7 @@ import { SimpleBarChart, SimpleHBarList, SimpleLineChart } from '@/components/sh
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 import { ServerMonthCheck } from '@/components/floor/ServerMonthCheck'
+import { QualityBeamsCard } from '@/components/floor/QualityBeamsCard'
 import {
   hydrateFloorFromDb,
   preloadMonthSheets,
@@ -709,6 +710,14 @@ function ProductionTotalTrackingContent() {
         <>
       {view === 'meters' && !qualityFocus && (
         <ServerMonthCheck month={month} pageTotal={matrix.grandTotalMeters} />
+      )}
+      {qualityFocus?.master && qualityFocus.createdOn && (
+        <QualityBeamsCard
+          quality={qualityFocus.master}
+          catalog={qualityCatalog}
+          runFrom={qualityFocus.createdOn}
+          runTo={qualityFocus.status === 'ENDED' ? qualityFocus.endedOn : null}
+        />
       )}
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">

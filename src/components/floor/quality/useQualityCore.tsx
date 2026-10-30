@@ -128,7 +128,12 @@ export function useQualityCore(props: QualityMasterTableProps) {
           if (!qualityEndedVisibleOnDate(q, day)) return false
           return matchesFabric(q)
         })
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        // Ended view: the quality that ended first comes first (no end date → last, then by name).
+        .sort((a, b) => {
+          const ea = String(a.endedOn || '').slice(0, 10) || '9999-99-99'
+          const eb = String(b.endedOn || '').slice(0, 10) || '9999-99-99'
+          return ea.localeCompare(eb) || (a.name || '').localeCompare(b.name || '')
+        })
     }
     if (isHoldView) {
       return qualities
