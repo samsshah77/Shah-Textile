@@ -20,8 +20,6 @@ import {
   qualityStatusCounts,
   type QualityStatusFilter,
 } from '@/components/floor/QualityMasterTable'
-import { ProductionDateFilterBar } from '@/components/floor/ProductionDateFilterBar'
-import { NewDayProductionModal } from '@/components/floor/NewDayProductionModal'
 import { ProductionWorkspaceSkeleton } from '@/components/floor/ProductionSkeleton'
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
@@ -56,8 +54,7 @@ function ProductionWorkspaceContent() {
   const tabArea = PRODUCTION_TAB_AREA[currentTab]
   const tabEdit = tabArea ? canEdit(tabArea) : canEditProduction
   const tabViewOnly = Boolean(tabArea && canView(tabArea) && !canEdit(tabArea))
-  const { setDateLabel } = useFloorDateLabel()
-  const [isNewDayModalOpen, setIsNewDayModalOpen] = useState(false)
+  const { setDateLabel, setPicker } = useFloorDateLabel()
   const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
   const [beamFilter, setBeamFilter] = useState<BeamFilterType>('IN_STOCK')
   const [qualityStatusFilter, setQualityStatusFilter] = useState<QualityStatusFilter>('ACTIVE')
@@ -94,7 +91,6 @@ function ProductionWorkspaceContent() {
     selectedDate,
     setSelectedDate,
     selectedMonth,
-    setSelectedMonth,
     updateLoom,
     addQualitySegment,
     removeQualitySegment,
@@ -118,10 +114,8 @@ function ProductionWorkspaceContent() {
     addQuality,
     deleteQuality,
     reassignEndedQuality,
-    startNewDay,
     updateEntry,
     resetDayMeters,
-    todaySheetReady,
     submitForApproval,
     approveSheet,
     unlockSheet,
@@ -198,6 +192,16 @@ function ProductionWorkspaceContent() {
     currentTab === 'looms'
   const isYarnTab = currentTab === 'yarn'
   const isBeamsTab = currentTab === 'beams'
+  // The day picker lives in the top header chip (‹ date › + Today) on these tabs.
+  const headerPicksDate = showDateBar || isBeamsTab
+  useEffect(() => {
+    if (!headerPicksDate) {
+      setPicker(null)
+      return
+    }
+    setPicker({ date: selectedDate, onChange: setSelectedDate })
+  }, [headerPicksDate, selectedDate, setSelectedDate, setPicker])
+  useEffect(() => () => setPicker(null), [setPicker])
   const isQualityTab = currentTab === 'quality'
   // Beams tab always shows the beams as they are now and stays editable on any date; a mount /
   // take-off done while a past date is selected is dated that day. (Beam changes are still
@@ -220,15 +224,6 @@ function ProductionWorkspaceContent() {
                   filter={qualityStatusFilter}
                   onChange={setQualityStatusFilter}
                   counts={qualityCounts}
-                />
-              )}
-              {isBeamsTab && (
-                <DateStepper
-                  size="sm"
-                  value={selectedDate}
-                  ariaLabel="Beams date"
-                  allowFuture={false}
-                  onChange={setSelectedDate}
                 />
               )}
               {isBeamsTab && (
@@ -442,18 +437,6 @@ function ProductionWorkspaceContent() {
           </div>
         </div>
 
-        {showDateBar && (
-          <ProductionDateFilterBar
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
-            selectedMonth={selectedMonth}
-            setSelectedMonth={setSelectedMonth}
-            onOpenNewDayModal={() => setIsNewDayModalOpen(true)}
-            canEdit={canEditDay}
-            showStartNewDay={currentTab !== 'quality' && !todaySheetReady}
-          />
-        )}
-
         {showDateBar && currentTab !== 'quality' && currentTab !== 'looms' && (
           <FloorMonthLockBar month={selectedDate.slice(0, 7)} isAdmin={isAdmin} />
         )}
@@ -617,12 +600,6 @@ function ProductionWorkspaceContent() {
         )}
       </div>
 
-      <NewDayProductionModal
-        isOpen={isNewDayModalOpen}
-        onClose={() => setIsNewDayModalOpen(false)}
-        onStartNewDay={startNewDay}
-        currentSelectedDate={selectedDate}
-      />
     </div>
   )
 }

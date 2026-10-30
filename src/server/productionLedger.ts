@@ -83,7 +83,10 @@ export function ledgerInsertSql(where = 'TRUE'): string {
     ${num('pick')}, ${num('reed')},
     NULLIF(s.payload->>'fabricType', ''), NULLIF(s.payload->>'status', ''),
     ${a}, ${b}, ${total},
-    ${num('theoretical24h')}, ${num('efficiencyPercentage')}, ${num('runningHours')},
+    -- Target meters on the sheet's Roller Hours (same as the sheet's Efficiency column, PU × 2
+    -- included); rows saved without it fall back to the 24-hour target.
+    COALESCE(NULLIF(${num('runningTheoretical')}, 0), ${num('theoretical24h')}),
+    ${num('efficiencyPercentage')}, ${num('runningHours')},
     ${num('rpm')}, ${num('stopLossMeters')},
     NULLIF(s.payload->>'approvalStatus', ''), s."updatedAt"
   FROM "floor_daily_sheets" s

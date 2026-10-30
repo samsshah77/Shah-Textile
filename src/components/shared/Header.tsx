@@ -8,6 +8,7 @@ import { useFloorDateLabel } from '@/context/FloorDateContext'
 import { UserRole } from '@/types/auth'
 import { toggleSidebar } from '@/lib/sidebarToggle'
 import { getCalendarToday } from '@/constants/productionCalendar'
+import { HeaderDatePicker } from '@/components/shared/HeaderDatePicker'
 import { hydratePayrollFromDb, payrollService } from '@/services/payrollService'
 import { handleSessionExpired, isSessionExpired } from '@/lib/authGuard'
 
@@ -104,7 +105,7 @@ function HeaderContent() {
   const [pendingCount, setPendingCount] = useState(0)
   const [profilePageLabel, setProfilePageLabel] = useState<string | null>(null)
   const menuRef = useRef<HTMLLIElement>(null)
-  const { dateLabel: floorDateLabel } = useFloorDateLabel()
+  const { dateLabel: floorDateLabel, picker: floorPicker } = useFloorDateLabel()
 
   const {
     user,
@@ -237,6 +238,21 @@ function HeaderContent() {
     }
   }
 
+  const clockTime = (
+    <>
+      <span className="sara-clock__dot" aria-hidden="true" />
+      {timeStr ? (
+        <>
+          {timeStr.slice(0, 5)}
+          <span className="sara-clock__sec">:{timeStr.slice(6, 8)}</span>
+          <span className="sara-clock__ampm">{timeStr.slice(9)}</span>
+        </>
+      ) : (
+        '--:--'
+      )}
+    </>
+  )
+
   return (
     <nav className="app-header navbar navbar-expand bg-white border-bottom-0">
       <div className="container-fluid">
@@ -269,27 +285,23 @@ function HeaderContent() {
         </ul>
 
         <ul className="navbar-nav ms-auto align-items-center">
-          <li className="nav-item d-none d-sm-flex align-items-center me-2">
-            <span className="sara-clock" title="Floor date · local time">
-              <span className="sara-clock__date">
-                <i className="bi bi-calendar3" aria-hidden="true" />
-                {headerDateLabel}
+          {floorPicker ? (
+            // Production pages: the chip is the day picker (also on phones).
+            <li className="nav-item d-flex align-items-center me-2">
+              <HeaderDatePicker picker={floorPicker} time={clockTime} />
+            </li>
+          ) : (
+            <li className="nav-item d-none d-sm-flex align-items-center me-2">
+              <span className="sara-clock" title="Floor date · local time">
+                <span className="sara-clock__date">
+                  <i className="bi bi-calendar3" aria-hidden="true" />
+                  {headerDateLabel}
+                </span>
+                <span className="sara-clock__sep" aria-hidden="true" />
+                <span className="sara-clock__time">{clockTime}</span>
               </span>
-              <span className="sara-clock__sep" aria-hidden="true" />
-              <span className="sara-clock__time">
-                <span className="sara-clock__dot" aria-hidden="true" />
-                {timeStr ? (
-                  <>
-                    {timeStr.slice(0, 5)}
-                    <span className="sara-clock__sec">:{timeStr.slice(6, 8)}</span>
-                    <span className="sara-clock__ampm">{timeStr.slice(9)}</span>
-                  </>
-                ) : (
-                  '--:--'
-                )}
-              </span>
-            </span>
-          </li>
+            </li>
+          )}
 
           <li className="nav-item dropdown user-menu" ref={menuRef}>
             <a

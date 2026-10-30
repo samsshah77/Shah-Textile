@@ -2458,6 +2458,79 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   .sara-clock__dot { animation: none; }
 }
 
+/* Production pages: the header chip is the day picker. Today = green, any other day = orange. */
+.sara-clock--picker .sara-clock__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.sara-clock--picker .sara-clock__nav:hover:not(:disabled) { background: rgba(15, 23, 42, 0.08); }
+.sara-clock--picker .sara-clock__nav:disabled { opacity: 0.35; cursor: default; }
+.sara-clock--picker .sara-clock__day {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.sara-clock--picker .sara-clock__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 9.6rem;
+  justify-content: center;
+  padding: 0 0.35rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sara-clock--picker .sara-clock__label:hover { background: rgba(15, 23, 42, 0.06); }
+.sara-clock--picker .sara-clock__label i { font-size: 0.78rem; }
+.sara-clock--picker .sara-clock__dim { font-weight: 600; opacity: 0.75; }
+/* Native date input kept only to open the calendar; it sits under the label, invisible. */
+.sara-clock--picker .sara-clock__input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+}
+.sara-back-today {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  padding: 0 0.8rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: #16a34a;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+.sara-back-today:hover { background: #15803d; }
+.sara-clock--today { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+.sara-clock--past { background: #f1f5f9; border-color: #cbd5e1; color: #334155; }
+.sara-clock--picker .sara-clock__sep { background: currentColor; opacity: 0.25; }
+.sara-clock--picker .sara-clock__time { background: #ffffff; color: #1e293b; }
+
 /* Salary sheets: everything in a cell is centred, typed values (name, service, remarks) too. */
 table[data-no-tidy] td :is(input, select, textarea) {
   text-align: center;

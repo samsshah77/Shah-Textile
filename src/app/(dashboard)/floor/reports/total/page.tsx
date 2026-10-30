@@ -135,6 +135,50 @@ function trackOwnsEntry(
     )
 }
 
+/** Dates a quality run covers: from its start day to its end day (or open-ended while running). */
+function trackedRunRange(
+  qualityId: string | null,
+  qualityNameParam: string | null,
+  qualityFromParam: string | null
+): { from: string | null; to: string | null } | null {
+  const tracked = resolveTrackedQuality(qualityId, qualityNameParam, qualityFromParam)
+  if (!tracked) return null
+  const q = tracked.master
+  const from = q.createdOn ? String(q.createdOn).slice(0, 10) : null
+  const to = q.status === 'ENDED' && q.endedOn ? String(q.endedOn).slice(0, 10) : null
+  return { from, to }
+}
+
+/**
+ * A quality run started from zero is tracked on its own: days before it started (or after it
+ * ended) are dropped instead of showing as zero columns.
+ */
+function limitMatrixToRun(m: MatrixState, range: { from: string | null; to: string | null } | null, efficiency: boolean): MatrixState {
+  if (!range || (!range.from && !range.to)) return m
+  const keep = m.days.map((d) => {
+    if (!d.date) return true
+    if (range.from && d.date < range.from) return false
+    if (range.to && d.date > range.to) return false
+    return true
+  })
+  const days = m.days.filter((_, i) => keep[i])
+  const dayActual = m.dayActual.filter((_, i) => keep[i])
+  const dayTarget = m.dayTarget.filter((_, i) => keep[i])
+  const daysWithSheet = days.filter((d) => d.hasSheet).length
+  let grandTotalMeters: number
+  let avgPerDay: number
+  if (efficiency) {
+    const actual = dayActual.reduce((s, n) => s + n, 0)
+    const target = dayTarget.reduce((s, n) => s + n, 0)
+    grandTotalMeters = target > 0 ? Math.round((actual / target) * 100) : 0
+    avgPerDay = grandTotalMeters
+  } else {
+    grandTotalMeters = days.reduce((s, d) => s + (d.totalMeters || 0), 0)
+    avgPerDay = daysWithSheet > 0 ? grandTotalMeters / daysWithSheet : 0
+  }
+  return { ...m, days, dayActual, dayTarget, grandTotalMeters, avgPerDay }
+}
+
 function formatShortDate(dateStr?: string | null) {
   if (!dateStr) return ''
   try {
@@ -176,9 +220,14 @@ function ProductionTotalTrackingContent() {
         const primary =
           view === 'shifts' ? 'shiftA' : view === 'efficiency' ? 'efficiency' : view === 'active' ? 'active' : 'meters'
         const owns = trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
-        setMatrix(productionMastersService.buildMonthlyMatrix(month, primary, owns))
+        const runRange = trackedRunRange(qualityId, qualityNameParam, qualityFromParam)
+        setMatrix(
+          limitMatrixToRun(productionMastersService.buildMonthlyMatrix(month, primary, owns), runRange, primary === 'efficiency')
+        )
         if (view === 'shifts') {
-          setShiftBMatrix(productionMastersService.buildMonthlyMatrix(month, 'shiftB', owns))
+          setShiftBMatrix(
+            limitMatrixToRun(productionMastersService.buildMonthlyMatrix(month, 'shiftB', owns), runRange, false)
+          )
         }
       } catch (err) {
         console.error('[total tracking] load failed', err)
