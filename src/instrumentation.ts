@@ -5,6 +5,9 @@ export async function register() {
     // Copy business tables into data_snapshots right after each deploy/restart
     // (skipped if the last snapshot is < 6h old). Never blocks or crashes startup.
     const { snapshotOnStartup } = await import("@/server/dbSnapshot");
+    // Fault videos older than 90 days are removed once a day (disk space).
+    const { scheduleFaultVideoCleanup } = await import("@/server/floor/faultVideoCleanup");
+    scheduleFaultVideoCleanup();
     // Snapshot first, then rebuild the production ledger from the sheets.
     void snapshotOnStartup().then(async () => {
       const { rebuildProductionLedger } = await import("@/server/productionLedger");

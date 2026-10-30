@@ -2,6 +2,7 @@ import { readdir, stat, statfs } from 'fs/promises'
 import path from 'path'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { privateUploadsRoot, publicUploadsRoot } from '@/server/uploadPaths'
 import { prisma } from '@/lib/prisma'
 import { requireAdminUser } from '@/server/adminAccess'
 import { listSnapshots } from '@/server/dbSnapshot'
@@ -71,11 +72,18 @@ export async function GET(req: NextRequest) {
     prisma.user.groupBy({ by: ['status'], _count: { _all: true } }).catch(() => []),
   ])
 
-  const uploadsRoot = path.join(process.cwd(), 'public', 'uploads')
-  const sub = await readdir(uploadsRoot, { withFileTypes: true }).catch(() => [])
-  const uploads = await Promise.all(
-    sub.filter((d) => d.isDirectory()).map(async (d) => ({ folder: d.name, ...(await folderUsage(path.join(uploadsRoot, d.name))) }))
-  )
+  // Public pictures (public/uploads) and private ones (private-uploads: bills, profiles);
+  // a folder that is in both (old + new bills) is added up.
+  const byFolder = new Map<string, { folder: string; bytes: number; files: number }>()
+  for (const root of [publicUploadsRoot(), privateUploadsRoot()]) {
+    const sub = await readdir(root, { withFileTypes: true }).catch(() => [])
+    for (const d of sub.filter((x) => x.isDirectory())) {
+      const u = await folderUsage(path.join(root, d.name))
+      const prev = byFolder.get(d.name) || { folder: d.name, bytes: 0, files: 0 }
+      byFolder.set(d.name, { folder: d.name, bytes: prev.bytes + u.bytes, files: prev.files + u.files })
+    }
+  }
+  const uploads = [...byFolder.values()]
   uploads.sort((a, b) => b.bytes - a.bytes)
 
   let disk: { total: number; free: number } | null = null

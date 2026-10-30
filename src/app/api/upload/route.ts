@@ -7,6 +7,7 @@ import { currentUser } from '@/server/current-user'
 import { accessFor } from '@/server/userAccess'
 import { allows } from '@/lib/access'
 import { sniffImage } from '@/server/imageSniff'
+import { uploadDirFor } from '@/server/uploadPaths'
 
 export const runtime = 'nodejs'
 
@@ -15,8 +16,8 @@ const MAX_BYTES = 8 * 1024 * 1024 // 8 MB
 /**
  * Where a picture goes and who may upload it:
  *  - loom    → /uploads/looms     (production editors)
- *  - profile → /uploads/profiles  (salary editor: Tufail)
- *  - bill    → /uploads/bills     (accounts editor: Tufail)
+ *  - profile → /uploads/profiles  (salary editor: Tufail)   — private, see uploadPaths.ts
+ *  - bill    → /uploads/bills     (accounts editor: Tufail) — private, see uploadPaths.ts
  */
 const KINDS = {
   loom: { dir: 'looms', prefix: 'loom' },
@@ -32,7 +33,7 @@ async function mayUpload(user: NonNullable<Awaited<ReturnType<typeof currentUser
   return allows(access, 'accounts', 'edit')
 }
 
-/** Same-origin upload — saves under public/uploads/<kind> on the server. */
+/** Same-origin upload — looms under public/uploads, bills / profiles under private-uploads. */
 export async function POST(request: NextRequest) {
   const user = await currentUser(request)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
   const { dir, prefix } = KINDS[kind]
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   const filename = `${prefix}-${stamp}-${randomBytes(8).toString('hex')}${ext}`
-  const uploadsDir = path.join(process.cwd(), 'public', 'uploads', dir)
+  const uploadsDir = uploadDirFor(dir)
   await mkdir(uploadsDir, { recursive: true })
   await writeFile(path.join(uploadsDir, filename), buffer)
 
