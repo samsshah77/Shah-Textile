@@ -15,13 +15,20 @@ import { NavigationProgress } from '@/components/shared/NavigationProgress'
 const BODY_ERP_CLASSES = ['layout-fixed', 'sidebar-expand-lg', 'bg-body-tertiary'] as const
 
 function MainContent({ children }: { children: React.ReactNode }) {
-  const { isQualityController, isFaultInspector } = useAuth()
+  const { isQualityController, isFaultInspector, canView } = useAuth()
+  const faultAddAllowed = canView('fault_reports')
+  const faultTableAllowed = canView('prod_fabric_fault')
   const pathname = usePathname()
   const router = useRouter()
 
   useEffect(() => {
-    if (isFaultInspector) {
-      if (pathname !== '/floor/fault-reports') {
+    // Kamran is kept on Fabric Fault → Fault Add only while he may open it. If Permissions
+    // took it away, the pages he may see decide instead (no loop with the Fault Add page,
+    // which sends someone without it to the Fault Table).
+    if (isFaultInspector && faultAddAllowed) {
+      // Given the Fault Table too, he may also open Production (it shows only his tabs).
+      const allowed = pathname === '/floor/fault-reports' || (faultTableAllowed && pathname === '/floor/production')
+      if (!allowed) {
         router.replace('/floor/fault-reports')
       }
       return
@@ -31,7 +38,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
         router.replace('/dashboard')
       }
     }
-  }, [isQualityController, isFaultInspector, pathname, router])
+  }, [isQualityController, isFaultInspector, faultAddAllowed, faultTableAllowed, pathname, router])
 
   return (
     <main className="app-main bg-body-tertiary sara-app-main">
