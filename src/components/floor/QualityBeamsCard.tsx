@@ -7,30 +7,34 @@ import { formatNumber } from '@/lib/utils'
 import { getProductionToday } from '@/constants/productionCalendar'
 import { qualityRunOwnsSheetEntry, type QualityMaster } from '@/services/productionMastersService'
 import { listPersistedSheetEntries } from '@/services/production/floorStore'
-import { beamTrackLotKeys, formatSwLotForDailyEntry, normalizeBeamLotKey } from '@/services/beamTrack'
+import { formatSwLotForDailyEntry, normalizeBeamLotKey } from '@/services/beamTrack'
 import type { DailyLoomProductionEntry } from '@/types/production'
+import { beamMadeMeters, entryMeters as meters, fetchBeamStints, stintLotKeys, type BeamStint as Stint } from '@/lib/floor/beamStints'
 
-/** One time a beam sat on one loom (from /api/floor/beam-history?stints=1). */
-type Stint = {
-  beamNo: string
+/**
+ * One line of the card: a Sw/Wp lot on one loom as the Daily Entry recorded it for this
+ * quality, plus the beam(s) the beam history knows for that loom + lot at that time.
+ */
+type BeamRow = {
+  key: string
   loom: number
+  /** Lot as written on the Daily Entry rows ('' = not written). */
+  lot: string
   from: string
-  to: string | null
-  length: number
-  swLot: string | null
-  warp: string
-  qualityId: string | null
-}
-
-type BeamRow = Stint & {
-  /** Meters this quality run made from the beam. */
+  to: string
+  /** Days with meters for this quality. */
+  days: number
+  /** Meters this quality run made on this loom + lot. */
   qualityMeters: number
-  /** All meters made from the beam while it sat on the loom (any quality). */
+  /** Beams from the beam history (empty = no beam record for this loom + lot). */
+  beams: Stint[]
+  /** Beam length (sum when the lot ran on more than one beam); 0 = unknown. */
+  length: number
+  /** All meters made from those beams while they sat on the loom (any quality). */
   beamMeters: number
+  /** Every matched beam came off the loom. */
+  ended: boolean
 }
-
-const meters = (e: DailyLoomProductionEntry) =>
-  e.totalMeters != null ? Number(e.totalMeters) || 0 : (Number(e.shiftAMeters) || 0) + (Number(e.shiftBMeters) || 0)
 
 function shortDate(d: string | null) {
   if (!d) return ''
@@ -40,10 +44,11 @@ function shortDate(d: string | null) {
 }
 
 /**
- * Quality tracking: every beam that ran on this quality's looms during the run, read from
- * the beam history (so beams that were later re-filled and re-used still show), with the
- * beam length, what this quality made from it, what the beam made in all, and what was
- * left over: wasted once the beam came off, still on the beam while it is running.
+ * Quality tracking — what ran on which beam. The Daily Entry is the record: this quality's
+ * production grouped by loom + Sw/Wp lot (so it works for beams that were later re-filled,
+ * and for days before the beam table / history existed). Where the beam history knows that
+ * loom + lot at that time it adds the Beam #, its length, what the beam made in all, and
+ * what was left over: wasted once it came off, still on the beam while it is running.
  * Read-only — nothing is saved.
  */
 export function QualityBeamsCard({
@@ -64,21 +69,15 @@ export function QualityBeamsCard({
 
   useEffect(() => {
     let live = true
-    fetch(`/api/floor/beam-history?stints=1&from=${runFrom}&to=${to}`, { credentials: 'same-origin', cache: 'no-store' })
-      .then(async (r) => {
-        const d = await r.json().catch(() => ({}))
+    fetchBeamStints(runFrom, to)
+      .then((list) => {
         if (!live) return
-        if (!r.ok) {
-          setError(d?.error || 'Beams load nahi ho sake.')
-          setStints([])
-          return
-        }
         setError('')
-        setStints(Array.isArray(d.stints) ? d.stints : [])
+        setStints(list)
       })
-      .catch(() => {
+      .catch((err) => {
         if (live) {
-          setError('Beams load nahi ho sake.')
+          setError(err instanceof Error ? err.message : 'Beams load nahi ho sake.')
           setStints([])
         }
       })
@@ -90,27 +89,75 @@ export function QualityBeamsCard({
   const rows = useMemo<BeamRow[]>(() => {
     if (!stints) return []
     const entries = listPersistedSheetEntries()
-    const out: BeamRow[] = []
-    for (const s of stints) {
-      const end = s.to || today
-      const keys = new Set(beamTrackLotKeys({ beamNo: s.beamNo, swLot: s.swLot }))
-      let beamMeters = 0
-      let qualityMeters = 0
-      for (const e of entries) {
-        if (Number(e.loomNumber) !== s.loom) continue
-        const d = String(e.date || '').slice(0, 10)
-        if (!d || d < s.from || d > end) continue
-        // Two beams on one loom: a row's lot (Sw#) says which beam it came from.
-        const lot = normalizeBeamLotKey(e.lot || '')
-        if (keys.size && lot && !keys.has(lot)) continue
-        const m = meters(e)
-        if (m <= 0) continue
-        beamMeters += m
-        if (qualityRunOwnsSheetEntry(quality, { ...e, date: d }, catalog, d)) qualityMeters += m
-      }
-      if (qualityMeters > 0 || s.qualityId === quality.id) out.push({ ...s, qualityMeters, beamMeters })
+    const dayOf = (e: DailyLoomProductionEntry) => String(e.date || '').slice(0, 10)
+    const stintKeys = new Map(stints.map((s) => [s, stintLotKeys(s)]))
+
+    // 1) The Daily Entry is the record: this quality's rows grouped by loom + Sw/Wp lot.
+    const groups = new Map<string, { loom: number; lot: string; lotKey: string; from: string; to: string; days: Set<string>; meters: number }>()
+    for (const e of entries) {
+      const d = dayOf(e)
+      if (!d) continue
+      const m = meters(e)
+      if (m <= 0) continue
+      if (!qualityRunOwnsSheetEntry(quality, { ...e, date: d }, catalog, d)) continue
+      const loom = Number(e.loomNumber)
+      const lot = (e.lot || '').trim()
+      const lotKey = normalizeBeamLotKey(lot)
+      const key = `${loom}|${lotKey}`
+      const g = groups.get(key) || { loom, lot, lotKey, from: d, to: d, days: new Set<string>(), meters: 0 }
+      if (d < g.from) g.from = d
+      if (d > g.to) g.to = d
+      g.days.add(d)
+      g.meters += m
+      if (!g.lot && lot) g.lot = lot
+      groups.set(key, g)
     }
-    return out.sort((a, b) => a.from.localeCompare(b.from) || a.loom - b.loom || a.beamNo.localeCompare(b.beamNo))
+
+    const beamMade = (beams: Stint[]) => beamMadeMeters(entries, beams, today)
+
+    // 2) The beam history adds Beam #, length and waste where it knows this loom + lot.
+    const used = new Set<Stint>()
+    const out: BeamRow[] = []
+    for (const [key, g] of groups) {
+      const beams = stints.filter((s) => {
+        if (s.loom !== g.loom) return false
+        if (s.from > g.to || (s.to != null && s.to < g.from)) return false
+        const keys = stintKeys.get(s) || new Set<string>()
+        return !g.lotKey || !keys.size || keys.has(g.lotKey)
+      })
+      beams.forEach((b) => used.add(b))
+      out.push({
+        key,
+        loom: g.loom,
+        lot: g.lot,
+        from: g.from,
+        to: g.to,
+        days: g.days.size,
+        qualityMeters: g.meters,
+        beams,
+        length: beams.reduce((sum, b) => sum + (b.length || 0), 0),
+        beamMeters: beamMade(beams),
+        ended: beams.length > 0 && beams.every((b) => b.to != null),
+      })
+    }
+    // A beam linked to this quality that made nothing for it yet (e.g. just mounted).
+    for (const s of stints) {
+      if (used.has(s) || s.qualityId !== quality.id) continue
+      out.push({
+        key: `beam|${s.beamNo}|${s.from}`,
+        loom: s.loom,
+        lot: s.swLot || '',
+        from: s.from,
+        to: s.to || today,
+        days: 0,
+        qualityMeters: 0,
+        beams: [s],
+        length: s.length || 0,
+        beamMeters: beamMade([s]),
+        ended: s.to != null,
+      })
+    }
+    return out.sort((a, b) => a.from.localeCompare(b.from) || a.loom - b.loom || a.lot.localeCompare(b.lot))
   }, [stints, quality, catalog, today])
 
   const totals = useMemo(() => {
@@ -121,8 +168,8 @@ export function QualityBeamsCard({
     for (const r of rows) {
       length += r.length
       made += r.qualityMeters
-      if (r.length > 0 && r.to) wasted += r.length - r.beamMeters
-      if (r.length > 0 && !r.to) left += r.length - r.beamMeters
+      if (r.length > 0 && r.ended) wasted += r.length - r.beamMeters
+      if (r.length > 0 && !r.ended) left += r.length - r.beamMeters
     }
     return { length, made, wasted, left }
   }, [rows])
@@ -133,7 +180,7 @@ export function QualityBeamsCard({
         <h3 className="card-title mb-0">Beams — is quality mein</h3>
         {rows.length > 0 && (
           <div className="d-flex flex-wrap gap-2 small">
-            <span className="badge text-bg-light border">{rows.length} beam{rows.length === 1 ? '' : 's'}</span>
+            <span className="badge text-bg-light border">{rows.length} lot{rows.length === 1 ? '' : 's'}</span>
             <span className="badge text-bg-light border">Lambai {formatNumber(totals.length, 0)} m</span>
             <span className="badge text-bg-success">Bana {formatNumber(totals.made, 0)} m</span>
             {totals.wasted !== 0 && <span className="badge text-bg-danger">Zaya {formatNumber(totals.wasted, 0)} m</span>}
@@ -147,18 +194,18 @@ export function QualityBeamsCard({
         ) : error ? (
           <div className="p-3 small text-danger">{error}</div>
         ) : rows.length === 0 ? (
-          <div className="p-3 small text-secondary">Is quality ke run mein kisi beam ka record nahi mila.</div>
+          <div className="p-3 small text-secondary">Is quality ki Daily Entry mein abhi koi production nahi.</div>
         ) : (
           <table className="table table-sm table-bordered align-middle mb-0 text-center" style={{ fontSize: 13 }}>
             <thead>
               <tr>
-                <th>Beam #</th>
-                <th>Sw / Wp #</th>
                 <th>Loom</th>
-                <th>Laga</th>
-                <th>Utra</th>
-                <th>Lambai (m)</th>
+                <th>Sw / Wp #</th>
+                <th>Kab se – kab tak</th>
+                <th>Din</th>
                 <th>Is quality mein bana (m)</th>
+                <th>Beam #</th>
+                <th>Beam lambai (m)</th>
                 <th>Beam pe kul bana (m)</th>
                 <th>Zaya / Baqi (m)</th>
               </tr>
@@ -167,21 +214,34 @@ export function QualityBeamsCard({
               {rows.map((r) => {
                 const rest = r.length > 0 ? r.length - r.beamMeters : null
                 return (
-                  <tr key={`${r.beamNo}-${r.loom}-${r.from}`}>
-                    <td className="fw-semibold">
-                      <Link href={`/floor/reports/beam?beam=${encodeURIComponent(r.beamNo)}`}>{r.beamNo}</Link>
+                  <tr key={r.key}>
+                    <td className="fw-semibold">{r.loom}</td>
+                    <td>{r.lot ? formatSwLotForDailyEntry(r.lot) : <span className="text-secondary fst-italic">Lot nahi likha</span>}</td>
+                    <td>
+                      {shortDate(r.from)}
+                      {r.to !== r.from ? ` – ${shortDate(r.to)}` : ''}
                     </td>
-                    <td>{r.swLot ? formatSwLotForDailyEntry(r.swLot) : '—'}</td>
-                    <td>{r.loom}</td>
-                    <td>{shortDate(r.from)}</td>
-                    <td>{r.to ? shortDate(r.to) : <span className="badge text-bg-success">Laga hua</span>}</td>
-                    <td>{r.length > 0 ? formatNumber(r.length, 0) : '—'}</td>
+                    <td>{r.days || '—'}</td>
                     <td className="fw-semibold">{formatNumber(r.qualityMeters, 0)}</td>
-                    <td>{formatNumber(r.beamMeters, 0)}</td>
+                    <td>
+                      {r.beams.length === 0 ? (
+                        <span className="text-secondary" title="Beam register / history mein is loom + lot ka record nahi">—</span>
+                      ) : (
+                        r.beams.map((b, i) => (
+                          <span key={`${b.beamNo}-${b.from}`}>
+                            {i > 0 ? ', ' : ''}
+                            <Link href={`/floor/reports/beam?beam=${encodeURIComponent(b.beamNo)}`}>{b.beamNo}</Link>
+                            {b.to == null && <span className="badge text-bg-success ms-1">Laga hua</span>}
+                          </span>
+                        ))
+                      )}
+                    </td>
+                    <td>{r.length > 0 ? formatNumber(r.length, 0) : '—'}</td>
+                    <td>{r.beams.length ? formatNumber(r.beamMeters, 0) : '—'}</td>
                     <td>
                       {rest == null ? (
                         '—'
-                      ) : r.to ? (
+                      ) : r.ended ? (
                         <span className={rest > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold'}>
                           {rest > 0 ? `${formatNumber(rest, 0)} zaya` : `${formatNumber(-rest, 0)} zyada bana`}
                         </span>
@@ -197,7 +257,8 @@ export function QualityBeamsCard({
         )}
       </TablePanScroll>
       <div className="card-footer small text-secondary">
-        Lambai beam register se. Zaya = lambai − beam pe kul bana (beam utarne ke baad). Laga hua beam pe baqi abhi chal raha hai.
+        Har line Daily Entry se: is quality ki production loom aur Sw/Wp lot ke hisaab se. Beam #, lambai aur zaya beam
+        history se, jahan us loom + lot ka record mila. Zaya = lambai − beam pe kul bana (beam utarne ke baad).
       </div>
     </div>
   )

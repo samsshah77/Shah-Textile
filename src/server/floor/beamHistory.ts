@@ -153,8 +153,11 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
   const rows = await prisma.$queryRawUnsafe<Array<{ beamNo: string; effectiveDate: Date | string; state: unknown }>>(
     `SELECT "beamNo", to_char("effectiveDate", 'YYYY-MM-DD') AS "effectiveDate", "state"
        FROM "floor_beam_history"
-      ORDER BY "beamNo", "effectiveDate", "id"`
+      ORDER BY "beamNo", "id"`
   )
+  // Rows are read in the order they were recorded (id), not by their day: a mount entered
+  // later with an earlier date (e.g. back-dated after the beam came back from sizing today)
+  // must still come after that return. The days themselves come from mountedOn / beamEndedOn.
   const out: BeamLoomStint[] = []
   let cur: BeamLoomStint | null = null
   let curBeam = ''

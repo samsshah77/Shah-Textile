@@ -75,11 +75,18 @@ export function lotForDay(
   savedLot: string | null | undefined
 ): string {
   const mounted = getMountedBeamsOnLoom(beams, loomNumber)
-  const mountedBy = (b: BeamMaster) => !b.mountedOn || String(b.mountedOn).slice(0, 10) <= dateStr
+  const hasSaved = Boolean(String(savedLot || '').trim())
+  // A beam with no mount date cannot say which days are its own: it may fill a day that has
+  // no lot yet, but it never rewrites a lot a past day already saved (e.g. the Sw# of a beam
+  // that was on the loom before it was re-filled with a new Sw#).
+  const mountedBy = (b: BeamMaster) => (b.mountedOn ? String(b.mountedOn).slice(0, 10) <= dateStr : !hasSaved)
   const onDay = mounted.filter(mountedBy)
   if (onDay.length) return onDay.map((b) => beamDailyEntryLot(b)).filter(Boolean).join(' + ')
   const later = new Set(
-    mounted.map((b) => normalizeBeamLotKey(beamDailyEntryLot(b))).filter(Boolean)
+    mounted
+      .filter((b) => b.mountedOn)
+      .map((b) => normalizeBeamLotKey(beamDailyEntryLot(b)))
+      .filter(Boolean)
   )
   return String(savedLot || '')
     .split('+')

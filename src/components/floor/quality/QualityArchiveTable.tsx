@@ -11,7 +11,7 @@ export function QualityArchiveTable({ t }: { t: QualityMasterTableState }) {
   const { sheetDate, qualities, tableEdit, qualityStartDay, patchQualityStart, isHoldView, orderedForView, productionByQuality, canArchiveOps, rowClassFor, PastHistoryBadge, archiveAction, openTrack, emptyCopy } = t
   return (
     <TablePanScroll className="card-body p-0">
-      <table className="table table-sm table-hover mb-0 align-middle">
+      <table className="table table-sm table-hover mb-0 align-middle sara-quality-table">
         <thead className="table-light">
           <tr>
             <th className="px-2 text-center" style={{ width: 46 }}>

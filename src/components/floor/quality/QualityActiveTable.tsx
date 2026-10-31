@@ -14,7 +14,7 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
   return (
     <TablePanScroll className="card-body p-0">
       <table
-        className="table table-sm table-hover mb-0 align-middle text-nowrap"
+        className="table table-sm table-hover mb-0 align-middle text-nowrap sara-quality-table"
         style={{ tableLayout: 'fixed', width: tableMinWidth, minWidth: tableMinWidth }}
       >
         <colgroup>

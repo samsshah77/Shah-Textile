@@ -22,6 +22,8 @@ import {
 } from '@/components/floor/QualityMasterTable'
 import { ProductionWorkspaceSkeleton } from '@/components/floor/ProductionSkeleton'
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
+import { BeamEndedHistory } from '@/components/floor/BeamEndedHistory'
+import { FabricFaultTabs } from '@/components/floor/FabricFaultTabs'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { productionWhatsAppText } from '@/lib/floor/shareText'
@@ -214,11 +216,14 @@ function ProductionWorkspaceContent() {
 
   return (
     <div className="sara-production-workspace">
+      {/* PDF / print header (logo + SARA TEXTILES left, print date-time right). Outside the
+          print-hidden toolbar below, so it shows on paper. */}
+      <PrintBrandHeader sheetTitle={tabTitle[currentTab] || 'Production'} />
       <div className="sara-production-chrome print:hidden">
-        <PrintBrandHeader sheetTitle={tabTitle[currentTab] || 'Production'} />
         <div className="sara-page-header sara-prod-toolbar-row">
           <div className="d-flex flex-wrap align-items-center gap-2 justify-content-between w-100">
             <div className="d-flex flex-wrap align-items-center gap-2">
+              {currentTab === 'fabric-fault' && <FabricFaultTabs active="table" />}
               {isQualityTab && (
                 <QualityStatusFilterBar
                   filter={qualityStatusFilter}
@@ -308,7 +313,7 @@ function ProductionWorkspaceContent() {
                 </>
               )}
 
-              {isBeamsTab && tabEdit && (
+              {isBeamsTab && tabEdit && beamFilter !== 'ENDED' && (
                 <>
                   <button
                     type="button"
@@ -424,7 +429,7 @@ function ProductionWorkspaceContent() {
                     documentTitle={`Production Sheet ${selectedDate}`}
                     message={() => productionWhatsAppText(selectedDate, entries)}
                     onDownloadPdf={() => void loadProductionPdf().then((m) => m.downloadProductionPdf(entries, selectedDate))}
-                    getPdfAttachment={() => loadProductionPdf().then((m) => m.generateProductionPdfBase64(entries, selectedDate))}
+                    getPdfAttachment={() => loadProductionPdf().then(async (m) => m.generateProductionPdfBase64(entries, selectedDate, { logoDataUrl: await m.loadPdfLogo() }))}
                   />
                 </>
               ) : (
@@ -513,7 +518,11 @@ function ProductionWorkspaceContent() {
               />
             )}
 
-            {currentTab === 'beams' && (
+            {currentTab === 'beams' && beamFilter === 'ENDED' && (
+              <BeamEndedHistory month={selectedDate.slice(0, 7)} />
+            )}
+
+            {currentTab === 'beams' && beamFilter !== 'ENDED' && (
               <BeamMasterTable
                 beams={beams}
                 looms={looms}

@@ -91,12 +91,13 @@ const FLOOR_ITEMS: NavLeaf[] = [
     href: '/floor/production?tab=fabric-fault',
     icon: 'bi-exclamation-diamond',
     activeCheck: (p, sp) =>
-      p === '/floor/production' && sp.get('tab') === 'fabric-fault',
+      (p === '/floor/production' && sp.get('tab') === 'fabric-fault') || p.startsWith('/floor/fault-reports'),
   },
 ]
 
+/** Fabric Fault → Fault Add (Kamran's phone form), for someone without the Fault Table. */
 const KAMRAN_FAULT_ITEM: NavLeaf = {
-  title: 'Kamran Fault',
+  title: 'Fabric Fault',
   href: '/floor/fault-reports',
   icon: 'bi-camera-video',
   activeCheck: (p) => p.startsWith('/floor/fault-reports'),
@@ -334,6 +335,7 @@ function SidebarContent() {
 
   // Menu follows Administration → Permissions: a hidden area is not in the menu.
   const showFault = canView('fault_reports')
+  const showFaultTable = canView('prod_fabric_fault')
   const showTracking = canView('tracking')
   const showArchive = canView('quality_archive')
   const areaKey = FLOOR_ITEMS.map((i) => {
@@ -348,16 +350,18 @@ function SidebarContent() {
     if (faultOnly) {
       return [
         {
-          title: 'Floor Fault',
+          title: 'Fabric Fault',
           icon: 'bi-camera-video',
-          items: [KAMRAN_FAULT_ITEM],
+          items: [{ ...KAMRAN_FAULT_ITEM, title: 'Fault Add' }],
         },
       ]
     }
 
     const floorItems = [
       ...FLOOR_ITEMS.filter((_, idx) => areaKey[idx] === '1'),
-      ...(showFault ? [KAMRAN_FAULT_ITEM] : []),
+      // One "Fabric Fault" entry: the Fault Table when allowed (its tab bar opens Fault Add),
+      // otherwise Fault Add alone.
+      ...(showFault && !showFaultTable ? [KAMRAN_FAULT_ITEM] : []),
     ]
     const payrollTree: NavLeaf = {
       title: 'Salary & Wages',
@@ -400,7 +404,7 @@ function SidebarContent() {
       if (showArchive) list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
     }
     return list
-  }, [faultOnly, areaKey, showFault, showArchive, canViewAccounts, canViewPayroll, isAdmin])
+  }, [faultOnly, areaKey, showFault, showFaultTable, showArchive, canViewAccounts, canViewPayroll, isAdmin])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { startVoiceNote, type VoiceRecording } from '@/lib/voiceNote'
 import { getCalendarToday } from '@/constants/productionCalendar'
+import { FabricFaultTabs } from '@/components/floor/FabricFaultTabs'
 
 type Media = { url: string; kind: 'image' | 'video' }
 type Report = {
@@ -68,7 +69,7 @@ function uploadFile(blob: Blob, name: string, onProgress: (p: number) => void): 
 }
 
 /**
- * Kamran Fault — floor fault reports from the phone: pick a loom, take photos / video,
+ * Fabric Fault → Fault Add (Kamran) — floor fault reports from the phone: pick a loom, take photos / video,
  * type or speak the fault, send. Automatically updates the Fabric Fault page.
  */
 export default function FaultReportsPage() {
@@ -282,9 +283,12 @@ export default function FaultReportsPage() {
   return (
     <div className="container-fluid px-2 px-md-3 py-3" style={{ maxWidth: 900 }}>
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <h1 className="h5 fw-bold mb-0">
-          <i className="bi bi-camera-video me-1" /> Kamran Fault
-        </h1>
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <h1 className="h5 fw-bold mb-0">
+            <i className="bi bi-camera-video me-1" /> Fabric Fault
+          </h1>
+          <FabricFaultTabs active="add" />
+        </div>
         <input
           type="date"
           className="form-control form-control-sm"

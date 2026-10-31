@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { longDateTime } from '@/lib/longDate'
 
 type PrintBrandHeaderProps = {
   /** Sheet / page name shown under company name (e.g. Looms) */
@@ -22,16 +23,7 @@ export function PrintBrandHeader({ sheetTitle }: PrintBrandHeaderProps) {
 
   useEffect(() => {
     const stamp = () => {
-      setPrintedAt(
-        new Date().toLocaleString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        })
-      )
+      setPrintedAt(longDateTime(new Date()))
       const fromBtn = document.body?.dataset?.printSheet
       if (fromBtn) setActiveSheet(fromBtn)
     }

@@ -7,8 +7,9 @@ import { ResizableTh } from '@/components/shared/ResizableTh'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useTablePanScroll } from '@/hooks/useTablePanScroll'
 import { loomConditionRowStyle, LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
-import { formatProductionDayLabel, productionDayName } from '@/constants/productionCalendar'
+import { productionDayName } from '@/constants/productionCalendar'
 import { isQualityEndedSheetRow } from '@/services/productionMastersService'
+import { longDateFromYmd, longDayDateFromYmd } from '@/lib/longDate'
 import {
   ProductionSheetExportModal,
   type SheetTextSize,
@@ -33,16 +34,9 @@ function num(n: number | undefined, digits = 0) {
   })
 }
 
+/** 31 October 2026 — the day is written out on the sheet and its PDF. */
 function formatSheetDate(dateStr: string) {
-  try {
-    const d = new Date(`${dateStr}T12:00:00`)
-    const dd = String(d.getDate()).padStart(2, '0')
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const yyyy = d.getFullYear()
-    return `${dd}/${mm}/${yyyy}`
-  } catch {
-    return dateStr
-  }
+  return longDateFromYmd(dateStr)
 }
 
 /** Excel Production sheet order: G6200 (1–20) → G6300 (27–34) → PU (21–26) */
@@ -350,7 +344,7 @@ export function ProductionSheetTable({
         <div className="min-w-0">
           <h3 className="card-title mb-0">Production Sheet</h3>
           {activeDate ? (
-            <div className="small text-secondary">{formatProductionDayLabel(activeDate)}</div>
+            <div className="small text-secondary">{longDayDateFromYmd(activeDate)}</div>
           ) : null}
         </div>
         <div className="d-flex align-items-center gap-2">

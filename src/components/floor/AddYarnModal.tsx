@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { YarnMaster, kgToLbs } from '@/services/productionMastersService'
-import { getCalendarToday } from '@/constants/productionCalendar'
+import { PRODUCTION_START, getCalendarToday } from '@/constants/productionCalendar'
+import { longDayDateFromYmd } from '@/lib/longDate'
 
 const MAX_BAGS = 50
 
@@ -46,6 +47,8 @@ export function AddYarnModal({
   const [error, setError] = useState<string | null>(null)
   const [showSuggest, setShowSuggest] = useState(false)
   const [suggestIndex, setSuggestIndex] = useState(0)
+  /** Day the yarn arrived — the day open on the page unless changed here. */
+  const [arrivalDate, setArrivalDate] = useState(() => activeDate || getCalendarToday())
 
   const bagInputRefs = useRef<(HTMLInputElement | null)[]>([])
 
@@ -56,7 +59,8 @@ export function AddYarnModal({
     setBagCountText('5')
     setBagKg(Array(5).fill(''))
     setError(null)
-  }, [isOpen])
+    setArrivalDate(activeDate || getCalendarToday())
+  }, [isOpen, activeDate])
 
   useEffect(() => {
     if (!isOpen) return
@@ -128,6 +132,10 @@ export function AddYarnModal({
       setError('Please enter or select a yarn quality.')
       return
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(arrivalDate) || arrivalDate > getCalendarToday() || arrivalDate < PRODUCTION_START) {
+      setError('Sahi tareekh chunein (aaj ya pehle ki).')
+      return
+    }
     if (!allBagsFilled || totalKg <= 0) {
       setError(`Please enter the weight for all ${bagCount} bags.`)
       return
@@ -141,7 +149,7 @@ export function AddYarnModal({
         issuedKg: 0,
       },
       {
-        date: activeDate || getCalendarToday(),
+        date: arrivalDate,
         bags: bagCount,
         weightKg: totalKg,
       }
@@ -230,21 +238,32 @@ export function AddYarnModal({
                       required
                     />
                     {showSuggest && suggestions.length > 0 && !matchedYarn && (
-                      <ul id="sara-yarn-suggest" role="listbox" className="list-group position-absolute w-100 shadow-sm" style={{ zIndex: 5, maxHeight: 240, overflowY: 'auto' }}>
-                        {suggestions.map((y, i) => (
-                          <li key={y.id} role="option" aria-selected={i === suggestIndex}>
-                            <button
-                              type="button"
-                              className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1.5 small ${i === suggestIndex ? 'active' : ''}`}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => pickYarn(y)}
-                            >
-                              <span className="fw-semibold">{y.yarnType}</span>
-                              <span className={i === suggestIndex ? '' : 'text-secondary'}>Stock {Number(y.balanceKg || 0).toFixed(2)} kg</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="sara-yarn-suggest">
+                        <div className="sara-yarn-suggest__head">
+                          {yarnType.trim() ? 'Milte julte yarn' : 'Stock mein yarn'} · {suggestions.length}
+                        </div>
+                        <ul id="sara-yarn-suggest" role="listbox" className="sara-yarn-suggest__list">
+                          {suggestions.map((y, i) => {
+                            const kg = Number(y.balanceKg || 0)
+                            return (
+                              <li key={y.id} role="option" aria-selected={i === suggestIndex}>
+                                <button
+                                  type="button"
+                                  className={`sara-yarn-suggest__item${i === suggestIndex ? ' is-active' : ''}`}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onMouseEnter={() => setSuggestIndex(i)}
+                                  onClick={() => pickYarn(y)}
+                                >
+                                  <span className="sara-yarn-suggest__name">{y.yarnType}</span>
+                                  <span className={`sara-yarn-suggest__stock${kg <= 0 ? ' is-empty' : ''}`}>
+                                    {kg.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg
+                                  </span>
+                                </button>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </div>
                     )}
                   </div>
                   {yarnType.trim() && (
@@ -254,6 +273,27 @@ export function AddYarnModal({
                         : 'Naya yarn banega.'}
                     </div>
                   )}
+                </div>
+
+                {/* Arrival date */}
+                <div className="col-12 col-sm-6">
+                  <label className="form-label small fw-semibold sara-add-beam-label mb-1" htmlFor="sara-yarn-date">
+                    Date (maal kab aaya)
+                  </label>
+                  <input
+                    id="sara-yarn-date"
+                    type="date"
+                    className="form-control"
+                    value={arrivalDate}
+                    min={PRODUCTION_START}
+                    max={getCalendarToday()}
+                    onChange={(e) => {
+                      setArrivalDate(e.target.value)
+                      setError(null)
+                    }}
+                    required
+                  />
+                  <div className="form-text small">{longDayDateFromYmd(arrivalDate)}</div>
                 </div>
 
                 {/* Bags Count */}

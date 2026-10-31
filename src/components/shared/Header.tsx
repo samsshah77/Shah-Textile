@@ -72,7 +72,7 @@ function resolveAccountsPage(pathname: string): string {
 function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
   if (pathname.startsWith('/floor/reports')) return 'Reports'
   if (pathname.startsWith('/floor/challan')) return 'Challan'
-  if (pathname.startsWith('/floor/fault-reports')) return 'Kamran Fault'
+  if (pathname.startsWith('/floor/fault-reports')) return 'Fabric Fault'
   if (pathname === '/floor/production' || pathname.startsWith('/floor/production')) {
     const tab = sp.get('tab')
     if (tab === 'looms') return 'Looms'

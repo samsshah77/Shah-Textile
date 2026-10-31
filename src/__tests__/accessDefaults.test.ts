@@ -19,7 +19,8 @@ describe('Permissions — default access is what each person had before the tab'
     expect(a.accounts).toBe('view')
     expect(a.payroll).toBe('view')
     for (const area of PRODUCTION_AREAS) expect(a[area]).toBe('edit')
-    expect(a.fault_reports).toBe('edit')
+    // Fabric Fault: the Fault Table (prod_fabric_fault), not Kamran's Fault Add form.
+    expect(a.fault_reports).toBe('hide')
     expect(a.tracking).toBe('view')
     expect(a.quality_archive).toBe('view')
   })
@@ -39,10 +40,11 @@ describe('Permissions — default access is what each person had before the tab'
     expect(a.accounts).toBe('hide')
     expect(a.payroll).toBe('hide')
     expect(a.prod_beams).toBe('edit')
-    expect(a.fault_reports).toBe('edit')
+    expect(a.prod_fabric_fault).toBe('edit')
+    expect(a.fault_reports).toBe('hide')
   })
 
-  it('Kamran (fault): only the fault page', () => {
+  it('Kamran (fault): only Fabric Fault → Fault Add', () => {
     const a = defaultAccess(facts({ roleKey: 'fault', isFaultInspector: true, floorCreate: true }))
     for (const area of PRODUCTION_AREAS) expect(a[area]).toBe('hide')
     expect(a.fault_reports).toBe('edit')

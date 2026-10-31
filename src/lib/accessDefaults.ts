@@ -28,7 +28,9 @@ export function defaultAccess(f: AccessFacts): AccessMap {
     else if (role === 'accountant') map[area] = area === 'prod_sheet' ? 'view' : 'hide'
     else map[area] = f.floorUpdate ? 'edit' : f.floorView ? 'view' : 'hide'
   }
-  map.fault_reports = f.floorCreate ? 'edit' : 'hide'
+  // Fabric Fault → Fault Add (the phone form): Kamran only. Ahmer / Javed Sir see and edit his
+  // reports in the Fault Table (prod_fabric_fault); Javed Sir can still give anyone Fault Add.
+  map.fault_reports = f.isFaultInspector ? 'edit' : 'hide'
   map.tracking = f.isFaultInspector || role === 'accountant' || !f.floorView ? 'hide' : 'view'
   map.quality_archive = role === 'admin' ? 'view' : 'hide'
   return map

@@ -1,6 +1,7 @@
 'use client'
 
 import { exportSheetPdf } from '@/components/shared/ExportPdfButton'
+import { longDayDateFromYmd } from '@/lib/longDate'
 import { FileDown, Printer, X, Info } from 'lucide-react'
 
 import type { DailyLoomProductionEntry } from '@/types/production'
@@ -24,14 +25,7 @@ export function ProductionSheetExportModal({
 }: ProductionSheetExportModalProps) {
   if (!isOpen) return null
 
-  const formattedDate = (() => {
-    try {
-      const d = new Date(`${sheetDate}T12:00:00`)
-      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    } catch {
-      return sheetDate
-    }
-  })()
+  const formattedDate = longDayDateFromYmd(sheetDate)
 
   const handleSavePdf = () => {
     onClose()

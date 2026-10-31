@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { longDateTime, longDayDateFromYmd } from '@/lib/longDate'
 import autoTable from 'jspdf-autotable'
 import type { DailyLoomProductionEntry } from '@/types/production'
 import type { LoomCategory } from '@/types/loom'
@@ -17,31 +18,14 @@ function num(n: number | undefined | null, digits = 0): string {
   })
 }
 
+/** Saturday, 31 October 2026 */
 function formatDisplayDate(dateStr: string): string {
-  try {
-    const d = new Date(`${dateStr}T12:00:00`)
-    return d.toLocaleDateString('en-GB', {
-      weekday: 'long',
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-    })
-  } catch {
-    return dateStr
-  }
+  return longDayDateFromYmd(dateStr)
 }
 
+/** Header date of the sheet day — written out, as on every printed sheet. */
 function formatShortDate(dateStr: string): string {
-  try {
-    const d = new Date(`${dateStr}T12:00:00`)
-    const dd = String(d.getDate()).padStart(2, '0')
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const yyyy = d.getFullYear()
-    const weekday = d.toLocaleDateString('en-US', { weekday: 'long' })
-    return `${dd}/${mm}/${yyyy}  ${weekday}`
-  } catch {
-    return dateStr
-  }
+  return longDayDateFromYmd(dateStr)
 }
 
 function modelOf(e: DailyLoomProductionEntry): LoomCategory {
@@ -103,6 +87,33 @@ function sumSection(rows: DailyLoomProductionEntry[]): SectionSum {
 export interface GeneratePdfOptions {
   companyName?: string
   millUnit?: string
+  /** PNG data URL of the mill logo (see loadPdfLogo); header shows the name alone without it. */
+  logoDataUrl?: string | null
+}
+
+let cachedLogo: string | null | undefined
+
+/**
+ * The mill logo, made small (the file is 1254 px) as a PNG data URL for the PDF header.
+ * Loaded once per page; null when it cannot be loaded (the PDF is still made, without it).
+ */
+export async function loadPdfLogo(): Promise<string | null> {
+  if (cachedLogo !== undefined) return cachedLogo
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null
+  try {
+    const res = await fetch('/saratextile.png', { cache: 'force-cache' })
+    if (!res.ok) throw new Error(String(res.status))
+    const bmp = await createImageBitmap(await res.blob())
+    const size = 160
+    const c = document.createElement('canvas')
+    c.width = size
+    c.height = size
+    c.getContext('2d')?.drawImage(bmp, 0, 0, size, size)
+    cachedLogo = c.toDataURL('image/png')
+  } catch {
+    cachedLogo = null
+  }
+  return cachedLogo
 }
 
 /**
@@ -120,40 +131,42 @@ export function buildProductionPdf(
     format: 'a4',
   })
 
-  const company = options?.companyName || 'SARA TEXTILE'
+  const company = options?.companyName || 'SARA TEXTILES'
+  const logo = options?.logoDataUrl === undefined ? cachedLogo || null : options.logoDataUrl
   const summary = summarizeProductionDay(entries)
   const shortDateHeader = formatShortDate(sheetDate)
   const formattedDate = formatDisplayDate(sheetDate)
-  const nowStamp = new Date().toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const nowStamp = longDateTime(new Date())
 
-  // 1. Clean Company Header (No heavy dark background box — clean white paper aesthetic)
+  // 1. Header — same layout as every printed sheet: logo + company + sheet on the left,
+  //    print date / time on the right.
+  let textX = 6
+  if (logo) {
+    try {
+      doc.addImage(logo, 'PNG', 6, 4.5, 11, 11)
+      textX = 19
+    } catch {
+      textX = 6
+    }
+  }
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(15)
+  doc.setFontSize(13)
   doc.setTextColor(15, 23, 42) // slate-900
-  doc.text(company, 148.5, 11.5, { align: 'center' })
+  doc.text(company, textX, 10)
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(71, 85, 105) // slate-600
-  doc.text('DAILY LOOM PRODUCTION SHEET', 148.5, 16, { align: 'center' })
+  doc.setFontSize(8)
+  doc.setTextColor(51, 65, 85) // slate-700
+  doc.text(`DAILY LOOM PRODUCTION SHEET  ·  ${shortDateHeader}`, textX, 15)
 
-  // Left side: Date & Day
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(30, 41, 59)
-  doc.text(shortDateHeader, 6, 15.5)
-
-  // Right side: Generation metadata
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
+  doc.setFontSize(6.5)
   doc.setTextColor(100, 116, 139)
-  doc.text(`Printed: ${nowStamp}`, 291, 15.5, { align: 'right' })
+  doc.text('PRINTED', 291, 9.5, { align: 'right' })
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(15, 23, 42)
+  doc.text(nowStamp, 291, 14.5, { align: 'right' })
 
   // Subtle clean divider line
   doc.setDrawColor(203, 213, 225) // slate-300
@@ -584,12 +597,13 @@ export function generateProductionPdfBase64(
 /**
  * Direct browser download of the crisp PDF file.
  */
-export function downloadProductionPdf(
+export async function downloadProductionPdf(
   entries: DailyLoomProductionEntry[],
   sheetDate: string,
   options?: GeneratePdfOptions
 ) {
-  const doc = buildProductionPdf(entries, sheetDate, options)
+  const logoDataUrl = options?.logoDataUrl !== undefined ? options.logoDataUrl : await loadPdfLogo()
+  const doc = buildProductionPdf(entries, sheetDate, { ...options, logoDataUrl })
   const filename = `Daily-Production-Sheet-${sheetDate}.pdf`
   doc.save(filename)
 }

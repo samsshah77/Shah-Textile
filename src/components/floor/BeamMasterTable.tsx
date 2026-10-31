@@ -124,7 +124,6 @@ function SwLotCell({
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   beam: 110,
-  parked: 110,
   location: 165,
   swLot: 150,
   beamRepeat: 110,
@@ -138,7 +137,8 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   track: 88,
 }
 
-export type BeamFilterType = 'IN_STOCK' | 'ON_LOOM' | 'AT_SIZING'
+/** ENDED = record of beams taken off a loom (beam history, see BeamEndedHistory). */
+export type BeamFilterType = 'IN_STOCK' | 'ON_LOOM' | 'AT_SIZING' | 'ENDED'
 
 function isEmptyBeam(b: BeamMaster) {
   return !b.usedInLoom && b.location === 'SIZING'
@@ -154,6 +154,7 @@ export function beamStockCounts(beams: BeamMaster[]) {
 function filterLabel(f: BeamFilterType): string {
   if (f === 'IN_STOCK') return 'In Stock'
   if (f === 'ON_LOOM') return 'On Loom'
+  if (f === 'ENDED') return 'Ended'
   return 'Empty Beam'
 }
 
@@ -193,6 +194,14 @@ export function BeamStockFilterBar({
         onClick={() => onChange('AT_SIZING')}
       >
         Empty Beam ({counts.atSizing})
+      </button>
+      <button
+        type="button"
+        className={`btn ${filter === 'ENDED' ? 'btn-danger' : 'btn-outline-danger'}`}
+        onClick={() => onChange('ENDED')}
+        title="Loom se utre beams ka record (restock ke baad bhi rehta hai)"
+      >
+        Ended
       </button>
     </div>
   )
@@ -334,13 +343,11 @@ export function BeamMasterTable({
   const activeLooms = looms.filter((l) => l.isActive)
   const compactTab = isCompactBeamTab(filter)
   /** Empty Beam keeps Machine Type; other compact cols stay hidden. */
-  /** In Stock only: which loom the beam is kept behind (typed by the floor in-charge). */
-  const showParked = filter === 'IN_STOCK'
-  const tableColCount = compactTab ? 6 : showParked ? 13 : 12
+  const tableColCount = compactTab ? 6 : 12
   const visibleColKeys = useMemo(() => {
-    if (!compactTab) return Object.keys(DEFAULT_WIDTHS).filter((k) => k !== 'parked' || showParked)
+    if (!compactTab) return Object.keys(DEFAULT_WIDTHS)
     return ['beam', 'swLot', 'beamRepeat', 'machine', 'status', 'track']
-  }, [compactTab, showParked])
+  }, [compactTab])
   const tableMinWidthVisible = useMemo(
     () => visibleColKeys.reduce((sum, k) => sum + (widths[k] || 80), 0),
     [visibleColKeys, widths]
@@ -798,11 +805,6 @@ export function BeamMasterTable({
                 <ResizableTh columnKey="beam" width={widths.beam} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                   Beam Identity
                 </ResizableTh>
-                {showParked && (
-                  <ResizableTh columnKey="parked" width={widths.parked} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-                    Loom ke peeche
-                  </ResizableTh>
-                )}
                 {!compactTab && (
                   <ResizableTh columnKey="location" width={widths.location} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
                     Location / Loom
@@ -864,23 +866,6 @@ export function BeamMasterTable({
                       className={editActive ? 'sara-edit-row' : undefined}
                     >
                       <td className="fw-semibold px-2">{b.beamNo}</td>
-                      {showParked && (
-                        <td className="px-1">
-                          {editActive ? (
-                            <TextCellInput
-                              className="form-control form-control-sm"
-                              value={b.parkedNearLoom || ''}
-                              placeholder="Loom #"
-                              inputMode="numeric"
-                              navRow={rowIdx}
-                              navCol={7}
-                              onValueChange={(v) => patchBeam(b, { parkedNearLoom: v.trim() || null })}
-                            />
-                          ) : (
-                            <span className="small px-1">{b.parkedNearLoom ? `Loom ${b.parkedNearLoom}` : '—'}</span>
-                          )}
-                        </td>
-                      )}
                       {!compactTab && (
                         <td className="px-1">{renderLocationSelect(b, opsEdit)}</td>
                       )}
