@@ -193,6 +193,18 @@ export function LoomMasterTable({
   const dayStatus = (loom: LoomMaster) => statusOnLoomForDate(loom, dayRows)
 
   /**
+   * Running looms with a quality on sheetDate but no beam mounted — the beam still has to be
+   * attached in the Beams table. Only checked when the beams register was passed in.
+   */
+  const needsBeam = (loom: LoomMaster) =>
+    beams.length > 0 &&
+    loom.isActive !== false &&
+    dayStatus(loom) === 'RUNNING' &&
+    Boolean(dayQualitySelectValue(loom)) &&
+    getMountedBeamsOnLoom(beams, loom.loomNumber).length === 0
+  const loomsNeedingBeam = filteredLooms.filter(needsBeam)
+
+  /**
    * Status change from the table. B/End or B/Cut no longer ends the beam by itself: when a
    * beam is still on the loom, ask whether to end it too. "Abhi nahi" leaves it mounted and
    * the Beams table keeps showing it (highlighted) until it is ended there.
@@ -747,6 +759,15 @@ export function LoomMasterTable({
         </div>
       </div>
 
+      {loomsNeedingBeam.length > 0 && (
+        <div className="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0 py-2 px-3 small">
+          <i className="bi bi-exclamation-triangle-fill me-1" />
+          <span className="fw-semibold">Running hain, quality lagi hai, lekin beam attach nahi:</span>{' '}
+          {loomsNeedingBeam.map((l) => `Loom ${l.loomNumber}`).join(', ')}
+          <span className="text-secondary"> — Beams table mein beam lagayen.</span>
+        </div>
+      )}
+
       {mode === 'grid' ? (
         <div className="master-grid">
           {filteredLooms.map((l, rowIdx) => {
@@ -951,6 +972,12 @@ export function LoomMasterTable({
                     disabled={!masterEdit}
                     onChange={(status) => changeStatus(l, status)}
                   />
+                  {needsBeam(l) && (
+                    <div className="text-warning-emphasis fw-semibold mt-1" style={{ fontSize: '0.72rem' }}>
+                      <i className="bi bi-exclamation-triangle-fill me-1" />
+                      Beam attach karein
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -1098,6 +1125,12 @@ export function LoomMasterTable({
                           style={{ width: '100%', minWidth: 0 }}
                           onChange={(status) => changeStatus(l, status)}
                         />
+                        {needsBeam(l) && (
+                          <span className="text-warning-emphasis fw-semibold text-nowrap mt-0.5" style={{ fontSize: '0.68rem' }}>
+                            <i className="bi bi-exclamation-triangle-fill me-1" />
+                            Beam attach karein
+                          </span>
+                        )}
                         {!opsEdit && dayStatus(l) !== 'RUNNING' && sheetDate && (
                           <span className="text-muted text-nowrap mt-0.5" style={{ fontSize: '0.68rem' }}>
                             <i className="bi bi-clock-history me-1" />
