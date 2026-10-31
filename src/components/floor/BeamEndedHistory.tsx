@@ -9,6 +9,8 @@ import { preloadAllFloorSheets } from '@/services/productionMastersService'
 import { listPersistedSheetEntries } from '@/services/production/floorStore'
 import { formatSwLotForDailyEntry } from '@/services/beamTrack'
 import { longDateFromYmd } from '@/lib/longDate'
+import type { BeamMaster, MountBeamResult } from '@/services/productionMastersService'
+import { useAlertDialog } from '@/context/AlertDialogContext'
 import { beamMadeMeters, entryMeters, fetchBeamStints, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
 
 type EndedRow = BeamStint & {
@@ -29,10 +31,26 @@ function monthRange(month: string): { from: string; to: string; label: string } 
  * Beams tab → Ended: every time a beam came off a loom in the month, read from the beam
  * history. A beam that was later re-filled and mounted again keeps this record as it was
  * (its old Sw/Wp #, length, what it made and what was wasted), so past months stay right.
- * Read-only — nothing is saved.
+ * Edit → "Wapis loom pe" puts a beam ended by mistake back on its loom (same mount day).
  */
-export function BeamEndedHistory({ month }: { month: string }) {
+export function BeamEndedHistory({
+  month,
+  beams = [],
+  canEdit = false,
+  onRestore,
+}: {
+  month: string
+  beams?: BeamMaster[]
+  canEdit?: boolean
+  onRestore?: (beamNo: string, loomNumber: number, mountedOn: string, endedOn: string | null) => MountBeamResult
+}) {
   const range = useMemo(() => monthRange(month), [month])
+  const { showConfirm, showError, showSuccessSoon } = useAlertDialog()
+  const [editing, setEditing] = useState(false)
+  // Bumped after a restore so the history is read again.
+  const [reload, setReload] = useState(0)
+  // Rows put back on their loom here — hidden at once, before the history is read again.
+  const [restored, setRestored] = useState<string[]>([])
   // What was loaded, and for which month (a different month = still loading).
   const [loaded, setLoaded] = useState<{ month: string; stints: BeamStint[]; error: string } | null>(null)
   const today = getProductionToday()
@@ -49,7 +67,7 @@ export function BeamEndedHistory({ month }: { month: string }) {
     return () => {
       live = false
     }
-  }, [month, range.from, range.to])
+  }, [month, range.from, range.to, reload])
 
   const stints = loaded && loaded.month === month ? loaded.stints : null
   const error = loaded && loaded.month === month ? loaded.error : ''
@@ -59,6 +77,7 @@ export function BeamEndedHistory({ month }: { month: string }) {
     const entries = listPersistedSheetEntries()
     return stints
       .filter((s): s is BeamStint & { to: string } => s.to != null && s.to >= range.from && s.to <= range.to)
+      .filter((s) => !restored.includes(`${s.beamNo}|${s.loom}|${s.from}`))
       .map((s) => {
         const made = rowsFromBeams(entries, [s], today)
         const days = new Set(made.filter((e) => entryMeters(e) > 0).map((e) => String(e.date).slice(0, 10)))
@@ -66,7 +85,47 @@ export function BeamEndedHistory({ month }: { month: string }) {
         return { ...s, made: beamMadeMeters(entries, [s], today), days: days.size, qualities }
       })
       .sort((a, b) => a.to.localeCompare(b.to) || a.loom - b.loom || a.beamNo.localeCompare(b.beamNo))
-  }, [stints, range.from, range.to, today])
+  }, [stints, range.from, range.to, today, restored])
+
+  /** Rows that can go back: the beam is off every loom now and this is its last run (same Sw/Wp #). */
+  const restorable = useMemo(() => {
+    const out = new Set<EndedRow>()
+    for (const r of rows) {
+      const beam = beams.find((b) => b.beamNo === r.beamNo)
+      if (!beam || beam.usedInLoom) continue
+      const later = rows.some((o) => o !== r && o.beamNo === r.beamNo && o.from > r.from)
+      if (later) continue
+      if ((beam.swLot || '').trim() !== (r.swLot || '').trim()) continue
+      out.add(r)
+    }
+    return out
+  }, [rows, beams])
+
+  const restore = (r: EndedRow) => {
+    if (!onRestore) return
+    showConfirm({
+      title: `Beam ${r.beamNo} wapis Loom ${r.loom} pe?`,
+      message: `Beam ${r.beamNo}${r.swLot ? ` (${formatSwLotForDailyEntry(r.swLot)})` : ''} ghalti se End hua tha? Ye wapis Loom ${r.loom} pe lag jayega, ${longDateFromYmd(r.from)} se (jaise pehle tha), aur Ended list se hat jayega.`,
+      type: 'confirm',
+      confirmText: 'Haan, wapis lagao',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        const res = onRestore(r.beamNo, r.loom, r.from, r.to)
+        if (!res.ok) {
+          showError({ title: 'Wapis nahi laga', message: res.message || 'Beam wapis nahi lag saka.' })
+          return
+        }
+        setRestored((list) => [...list, `${r.beamNo}|${r.loom}|${r.from}`])
+        // The save goes to the server in the background; read the history again after it.
+        window.setTimeout(() => setReload((n) => n + 1), 2500)
+        showSuccessSoon({
+          title: 'Beam wapis loom pe',
+          message: `Beam ${r.beamNo} dobara Loom ${r.loom} pe laga hai. Looms table mein Loom ${r.loom} ka status wapis Running kar dein agar B/End / B/Cut pe hai.`,
+        })
+      },
+    })
+  }
+  const showActions = editing && canEdit && Boolean(onRestore)
 
   const totals = useMemo(() => {
     let length = 0
@@ -94,6 +153,16 @@ export function BeamEndedHistory({ month }: { month: string }) {
             <span className={`badge ${totals.wasted > 0 ? 'text-bg-danger' : 'text-bg-light border'}`}>Zaya {formatNumber(totals.wasted, 0)} m</span>
           </div>
         )}
+        {canEdit && onRestore && rows.length > 0 && (
+          <button
+            type="button"
+            className={`btn btn-sm ${editing ? 'btn-success' : 'btn-outline-secondary'}`}
+            onClick={() => setEditing((v) => !v)}
+          >
+            <i className={`bi ${editing ? 'bi-check-lg' : 'bi-pencil'} me-1`} />
+            {editing ? 'Done' : 'Edit'}
+          </button>
+        )}
       </div>
       <TablePanScroll className="card-body p-0">
         {stints == null ? (
@@ -118,6 +187,7 @@ export function BeamEndedHistory({ month }: { month: string }) {
                 <th>Lambai (m)</th>
                 <th>Bana (m)</th>
                 <th>Zaya (m)</th>
+                {showActions && <th className="d-print-none">Ghalti?</th>}
               </tr>
             </thead>
             <tbody>
@@ -147,6 +217,18 @@ export function BeamEndedHistory({ month }: { month: string }) {
                         </span>
                       )}
                     </td>
+                    {showActions && (
+                      <td className="d-print-none">
+                        {restorable.has(r) ? (
+                          <button type="button" className="btn btn-sm btn-outline-primary py-0 text-nowrap" onClick={() => restore(r)}>
+                            <i className="bi bi-arrow-counterclockwise me-1" />
+                            Wapis loom pe
+                          </button>
+                        ) : (
+                          <span className="text-secondary small" title="Beam ab kisi loom pe hai, dobara bhara gaya, ya baad mein phir laga">—</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -157,6 +239,7 @@ export function BeamEndedHistory({ month }: { month: string }) {
       <div className="card-footer small text-secondary">
         Beam history se: har line ek dafa loom se utarna. Beam dobara bhar ke lage tab bhi ye record waisa hi rehta hai.
         Bana = us loom ki Daily Entry, us beam ke Sw/Wp lot ke din. Zaya = lambai − bana. Mahina upar date se badlein.
+        Ghalti se End hua beam: Edit → &quot;Wapis loom pe&quot;.
       </div>
     </div>
   )

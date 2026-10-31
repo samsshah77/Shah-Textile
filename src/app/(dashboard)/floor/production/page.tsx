@@ -105,6 +105,7 @@ function ProductionWorkspaceContent() {
     unmountBeam,
     receiveBeamFromSizing,
     sendBeamToSizing,
+    restoreBeamToLoom,
     updateYarn,
     addYarn,
     deleteYarn,
@@ -505,6 +506,8 @@ function ProductionWorkspaceContent() {
                 entries={entries}
                 sheetDate={selectedDate}
                 onUpdate={updateLoom}
+                beams={beams}
+                onEndBeam={sendBeamToSizing}
                 onAddQualitySegment={addQualitySegment}
                 onRemoveQualitySegment={removeQualitySegment}
                 onAdd={addLoom}
@@ -519,7 +522,12 @@ function ProductionWorkspaceContent() {
             )}
 
             {currentTab === 'beams' && beamFilter === 'ENDED' && (
-              <BeamEndedHistory month={selectedDate.slice(0, 7)} />
+              <BeamEndedHistory
+                month={selectedDate.slice(0, 7)}
+                beams={beams}
+                canEdit={tabEdit}
+                onRestore={restoreBeamToLoom}
+              />
             )}
 
             {currentTab === 'beams' && beamFilter !== 'ENDED' && (
@@ -534,6 +542,7 @@ function ProductionWorkspaceContent() {
                 onUnmount={unmountBeam}
                 onReceiveFromSizing={receiveBeamFromSizing}
                 onSendToSizing={sendBeamToSizing}
+                entries={entries}
                 onDelete={deleteBeam}
                 readOnly={!tabEdit}
                 filter={beamFilter}

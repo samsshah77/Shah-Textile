@@ -15,7 +15,10 @@ import {
   getMountedBeamsOnLoom,
   loomBeamCapacity,
   loomHasFreeBeamSlot,
+  mergeSheetEntriesForDate,
+  statusOnLoomForDate,
 } from '@/services/productionMastersService'
+import type { DailyLoomProductionEntry } from '@/types/production'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
@@ -25,6 +28,7 @@ import type { LoomStatus } from '@/types/loom'
 import { AddBeamModal } from '@/components/floor/AddBeamModal'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { longDateFromYmd } from '@/lib/longDate'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 
@@ -228,6 +232,8 @@ interface BeamMasterTableProps {
   onTableEditChange?: (next: boolean) => void
   addModalOpen?: boolean
   onAddModalOpenChange?: (open: boolean) => void
+  /** Daily Entry rows — the loom's status on selectedDate (B/End / B/Cut flags its beam). */
+  entries?: DailyLoomProductionEntry[]
 }
 
 function formatShortDate(dateStr?: string | null) {
@@ -314,6 +320,7 @@ export function BeamMasterTable({
   onTableEditChange,
   addModalOpen: addModalOpenProp,
   onAddModalOpenChange,
+  entries = [],
 }: BeamMasterTableProps) {
   const { canEditProduction } = useAuth()
   const { showError, showConfirm, showSuccessSoon } = useAlertDialog()
@@ -399,6 +406,41 @@ export function BeamMasterTable({
     }
     return list.slice().sort(swSort)
   }, [baseBeamsForTab, lotKindFilter])
+
+  /**
+   * Beams still mounted on a loom that is on B/End or B/Cut for selectedDate — the loom
+   * came off but the beam was not ended yet. Highlighted, with a prompt to end them.
+   */
+  const beamsToEnd = useMemo(() => {
+    const dayRows = mergeSheetEntriesForDate(selectedDate, entries)
+    const out = new Map<string, LoomStatus>()
+    for (const b of beams) {
+      if (!b.usedInLoom) continue
+      const loom = looms.find((l) => String(l.loomNumber) === String(b.usedInLoom))
+      if (!loom) continue
+      const st = statusOnLoomForDate(loom, dayRows)
+      if (st === 'BEAM_END' || st === 'BEAM_CUT') out.set(b.beamNo, st)
+    }
+    return out
+  }, [beams, looms, entries, selectedDate])
+
+  const endFlaggedBeam = (b: BeamMaster) => {
+    const label = beamsToEnd.get(b.beamNo) === 'BEAM_CUT' ? 'B/Cut' : 'B/End'
+    showConfirm({
+      title: `Beam ${b.beamNo} End karein?`,
+      message: `Loom #${b.usedInLoom} ${label} pe hai. Beam ${b.beamNo}${b.swLot ? ` (${formatSwLotForDailyEntry(b.swLot)})` : ''} ko End (Empty Beam) kar dein? ${longDateFromYmd(selectedDate)} ki date se.`,
+      type: 'confirm',
+      confirmText: 'Haan, End karo',
+      cancelText: 'Abhi nahi',
+      onConfirm: () => {
+        onSendToSizing(b.beamNo, selectedDate)
+        showSuccessSoon({
+          title: 'Beam End ho gaya',
+          message: `Beam ${b.beamNo} Empty Beam mein chala gaya. Ghalti se hua ho to Ended → Edit se wapis loom pe laga sakte hain.`,
+        })
+      },
+    })
+  }
 
   const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
   const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
@@ -592,6 +634,30 @@ export function BeamMasterTable({
         </div>
       </div>
 
+      {beamsToEnd.size > 0 && (
+        <div className="alert alert-danger rounded-0 border-start-0 border-end-0 mb-0 py-2 px-3 small d-flex flex-wrap align-items-center gap-2">
+          <span className="fw-semibold">
+            <i className="bi bi-exclamation-triangle-fill me-1" />
+            Loom B/End / B/Cut pe hai, beam abhi End nahi hua:
+          </span>
+          {beams
+            .filter((b) => beamsToEnd.has(b.beamNo))
+            .map((b) => (
+              <span key={b.beamNo} className="d-inline-flex align-items-center gap-1 bg-white border border-danger-subtle rounded px-2 py-1">
+                <span>
+                  Beam <b>{b.beamNo}</b> · Loom {b.usedInLoom}
+                  {b.swLot ? ` · ${formatSwLotForDailyEntry(b.swLot)}` : ''}
+                </span>
+                {!readOnly && canEditProduction && (
+                  <button type="button" className="btn btn-danger btn-sm py-0 px-2" onClick={() => endFlaggedBeam(b)}>
+                    End karo
+                  </button>
+                )}
+              </span>
+            ))}
+        </div>
+      )}
+
       {mode === 'grid' ? (
         <div className="master-grid">
           {filteredBeams.length === 0 ? (
@@ -605,7 +671,7 @@ export function BeamMasterTable({
               return (
                 <div
                   key={b.beamNo}
-                  className={`master-grid-card${editActive ? ' sara-edit-card' : ''}`}
+                  className={`master-grid-card${editActive ? ' sara-edit-card' : ''}${beamsToEnd.has(b.beamNo) ? ' sara-beam-to-end' : ''}`}
                 >
                   <div className="d-flex justify-content-between align-items-start gap-2 border-bottom pb-2">
                     <div>
@@ -863,7 +929,8 @@ export function BeamMasterTable({
                   return (
                     <tr
                       key={b.beamNo}
-                      className={editActive ? 'sara-edit-row' : undefined}
+                      className={[editActive ? 'sara-edit-row' : '', beamsToEnd.has(b.beamNo) ? 'sara-beam-to-end' : ''].filter(Boolean).join(' ') || undefined}
+                      title={beamsToEnd.has(b.beamNo) ? 'Loom B/End / B/Cut pe hai — beam End karna hai' : undefined}
                     >
                       <td className="fw-semibold px-2">{b.beamNo}</td>
                       {!compactTab && (

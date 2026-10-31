@@ -71,6 +71,7 @@ const BATCHED_METHODS = [
   'mountBeam',
   'unmountBeam',
   'sendBeamToSizing',
+  'restoreBeamToLoom',
   'receiveBeamFromSizing',
   'declareBeamEmpty',
 ] as const

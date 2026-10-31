@@ -293,10 +293,8 @@ export const loomsMethods = {
           sheetPatch.status = workingPatch.status
           sheetPatch.remarks = workingPatch.status === 'RUNNING' ? '' : label
           // Do NOT zero rollerHours / meters — Beam End only marks status; day's punch stays.
-          if (workingPatch.status === 'BEAM_END' || workingPatch.status === 'BEAM_CUT') {
-            this.flagBeamEndFromLoom(loomNumber, dateStr)
-            this.reconcileBeamEndsWithLooms(dateStr)
-          }
+          // B/End / B/Cut no longer take the beam off by themselves: the Looms table asks, and
+          // the Beams table flags the beam until it is ended there.
         }
         if (Object.keys(sheetPatch).length > 0) {
           this.updateSheetEntry(dateStr, loomNumber, sheetPatch)
@@ -444,10 +442,7 @@ export const loomsMethods = {
         remarks: masterPatch.status === 'RUNNING' ? '' : label,
       }
       // Beam End / Stopped: status + remarks only — keep roller hours & A/B meters intact.
-      if (masterPatch.status === 'BEAM_END' || masterPatch.status === 'BEAM_CUT') {
-        this.flagBeamEndFromLoom(loomNumber, dateStr)
-        this.reconcileBeamEndsWithLooms(dateStr)
-      }
+      // The beam is ended separately (Looms table asks; Beams table flags it).
       this.updateSheetEntry(dateStr, loomNumber, sheetPatch)
     }
 

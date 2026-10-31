@@ -2685,3 +2685,12 @@ table[data-no-tidy] td :is(input, select, textarea) {
   background: #f1f5f9;
   color: #94a3b8;
 }
+
+/* Beams table: beam still mounted on a loom that is on B/End / B/Cut — needs ending. */
+tr.sara-beam-to-end > td {
+  background-color: #f8d7da !important;
+}
+.master-grid-card.sara-beam-to-end {
+  background-color: #f8d7da;
+  border-color: #dc3545 !important;
+}

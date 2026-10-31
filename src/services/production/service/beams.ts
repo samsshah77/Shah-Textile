@@ -294,13 +294,46 @@ export const beamsMethods = {
 
   /** Send beam to sizing (not on loom). */
   sendBeamToSizing(this: ProductionMastersService, beamNo: string, dateStr?: string): BeamMaster[] {
+    const prev = this.getBeams().find((b) => b.beamNo === beamNo)
     return this.updateBeam(beamNo, {
       usedInLoom: null,
       location: 'SIZING',
       mountedOn: null,
       fillStatus: 'EMPTY',
       beamEndedOn: dateStr || null,
+      // Remembered so a beam ended by mistake can go back on the same loom.
+      ...(prev?.usedInLoom ? { endedFromLoom: String(prev.usedInLoom) } : {}),
     })
+  },
+
+  /**
+   * Undo a beam ended by mistake: put it back on the loom it came off, mounted on its
+   * original day, so its run continues (the beam history joins the two parts again) and
+   * the Daily Entry rows from the day it was ended to today get its Sw# back.
+   */
+  restoreBeamToLoom(
+    this: ProductionMastersService,
+    beamNo: string,
+    loomNumber: number,
+    mountedOn: string,
+    endedOn: string | null
+  ): MountBeamResult {
+    const beam = this.getBeams().find((b) => b.beamNo === beamNo)
+    if (!beam) return { ok: false, beams: this.getBeams(), loomNumber, message: `Beam "${beamNo}" nahi mila.` }
+    if (beam.usedInLoom) {
+      return { ok: false, beams: this.getBeams(), loomNumber, message: `Beam ${beamNo} pehle se Loom ${beam.usedInLoom} pe laga hai.` }
+    }
+    const res = this.mountBeam(beamNo, loomNumber, mountedOn)
+    if (!res.ok) return res
+    const lot = getMountedBeamsOnLoom(res.beams, loomNumber)
+      .map((b) => beamDailyEntryLot(b) || b.beamNo)
+      .filter(Boolean)
+      .join(' + ')
+    const today = getProductionToday()
+    for (const day of new Set([endedOn, today].filter((d): d is string => Boolean(d) && d! >= mountedOn && d! <= today))) {
+      this.updateSheetEntry(day, loomNumber, { lot })
+    }
+    return { ok: true, beams: this.getBeams() }
   },
 
   unmountBeam(this: ProductionMastersService, beamNo: string, location: 'STORE' | 'SIZING' = 'STORE', dateStr?: string): BeamMaster[] {

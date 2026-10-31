@@ -182,6 +182,15 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
       const ended = day(state?.beamEndedOn)
       close(isYmd(ended) && !onLoom ? ended : effective)
     }
+    if (onLoom && state && !cur) {
+      // Put back on the same loom from the same day right after coming off (a beam ended by
+      // mistake, then restored): that is still one run, so the closed part is reopened.
+      const last = out[out.length - 1]
+      if (last && last.beamNo === r.beamNo && last.loom === loom && last.from === mount && last.to != null) {
+        out.pop()
+        cur = { ...last, to: null }
+      }
+    }
     if (onLoom && state) {
       const next: BeamLoomStint = {
         beamNo: r.beamNo,

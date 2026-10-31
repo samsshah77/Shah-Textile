@@ -20,9 +20,12 @@ import {
   normalizeQualityStatus,
   sheetSegmentIndex,
   MAX_SAME_DAY_QUALITY_SEGMENTS,
+  formatSwLotForDailyEntry,
 } from '@/services/productionMastersService'
+import type { BeamMaster } from '@/services/production/masterTypes'
+import { getMountedBeamsOnLoom } from '@/services/production/loomBeamHelpers'
 import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
-import { LoomCategory } from '@/types/loom'
+import { LoomCategory, type LoomStatus } from '@/types/loom'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
@@ -34,6 +37,7 @@ import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { longDateFromYmd } from '@/lib/longDate'
 
 const MODELS: LoomCategory[] = ['G6200', 'G6300', 'PU']
 
@@ -71,6 +75,10 @@ interface LoomMasterTableProps {
   onTableEditChange?: (next: boolean) => void
   addModalOpen?: boolean
   onAddModalOpenChange?: (open: boolean) => void
+  /** Beams register — to ask about ending the beam when a loom goes to B/End or B/Cut. */
+  beams?: BeamMaster[]
+  /** End (Empty Beam) a beam that came off a loom; dateStr = the sheet day. */
+  onEndBeam?: (beamNo: string, dateStr: string) => void
 }
 
 export function LoomMasterTable({
@@ -89,6 +97,8 @@ export function LoomMasterTable({
   onTableEditChange,
   addModalOpen: addModalOpenProp,
   onAddModalOpenChange,
+  beams = [],
+  onEndBeam,
 }: LoomMasterTableProps) {
   const [mode, setMode] = useState<TableGridMode>('table')
   const [modelFilter, setModelFilter] = useState<'ALL' | LoomCategory>('ALL')
@@ -181,6 +191,38 @@ export function LoomMasterTable({
   const dayRpm = (loom: LoomMaster) => rpmOnLoomForDate(loom, dayRows)
 
   const dayStatus = (loom: LoomMaster) => statusOnLoomForDate(loom, dayRows)
+
+  /**
+   * Status change from the table. B/End or B/Cut no longer ends the beam by itself: when a
+   * beam is still on the loom, ask whether to end it too. "Abhi nahi" leaves it mounted and
+   * the Beams table keeps showing it (highlighted) until it is ended there.
+   */
+  const changeStatus = (loom: LoomMaster, status: LoomStatus) => {
+    const before = dayStatus(loom)
+    onUpdate(loom.loomNumber, { status })
+    const beamOff = (st: LoomStatus) => st === 'BEAM_END' || st === 'BEAM_CUT'
+    if (!onEndBeam || !beamOff(status) || beamOff(before)) return
+    const mounted = getMountedBeamsOnLoom(beams, loom.loomNumber)
+    if (!mounted.length) return
+    const label = status === 'BEAM_CUT' ? 'B/Cut' : 'B/End'
+    const names = mounted
+      .map((b) => (b.swLot ? `${b.beamNo} (${formatSwLotForDailyEntry(b.swLot)})` : b.beamNo))
+      .join(', ')
+    showConfirm({
+      title: `Beam bhi End karein?`,
+      message: `Loom #${loom.loomNumber} ${label} pe gaya. Is pe Beam ${names} laga hai — beam ko bhi End (Empty Beam) kar dein? ${longDateFromYmd(sheetDate)} ki date se.\n\n"Abhi nahi" karein to Beams table mein ye beam laal rang mein dikhega jab tak wahan End na karein.`,
+      type: 'confirm',
+      confirmText: 'Haan, beam End karo',
+      cancelText: 'Abhi nahi',
+      onConfirm: () => {
+        for (const b of mounted) onEndBeam(b.beamNo, sheetDate)
+        showSuccessSoon({
+          title: 'Beam End ho gaya',
+          message: `Beam ${mounted.map((b) => b.beamNo).join(', ')} Empty Beam mein chala gaya. Ghalti se hua ho to Beams → Ended → Edit se wapis loom pe laga sakte hain.`,
+        })
+      },
+    })
+  }
 
   const openPart2Picker = (loom: LoomMaster) => {
     if (!onAddQualitySegment || !editActive) return
@@ -907,7 +949,7 @@ export function LoomMasterTable({
                   <LoomStatusSelect
                     value={dayStatus(l)}
                     disabled={!masterEdit}
-                    onChange={(status) => onUpdate(l.loomNumber, { status })}
+                    onChange={(status) => changeStatus(l, status)}
                   />
                 </div>
               </div>
@@ -1054,7 +1096,7 @@ export function LoomMasterTable({
                           value={dayStatus(l)}
                           disabled={!opsEdit}
                           style={{ width: '100%', minWidth: 0 }}
-                          onChange={(status) => onUpdate(l.loomNumber, { status })}
+                          onChange={(status) => changeStatus(l, status)}
                         />
                         {!opsEdit && dayStatus(l) !== 'RUNNING' && sheetDate && (
                           <span className="text-muted text-nowrap mt-0.5" style={{ fontSize: '0.68rem' }}>

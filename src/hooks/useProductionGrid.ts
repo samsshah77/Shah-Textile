@@ -63,7 +63,7 @@ export function useProductionGrid() {
     (dateStr?: string) => {
       const d = dateStr || selectedDate
       productionMastersService.clearExpiredBeamEnds(d)
-      productionMastersService.reconcileBeamEndsWithLooms(d)
+      // A beam on a B/End loom is no longer taken off automatically — the Beams table flags it.
       setLooms(productionMastersService.getLooms())
       setBeams(productionMastersService.getBeams())
       setYarn(productionMastersService.getYarn())
@@ -418,6 +418,17 @@ export function useProductionGrid() {
     [selectedDate]
   )
 
+  /** Beam ended by mistake → back on its loom from its original mount day. */
+  const restoreBeamToLoom = useCallback(
+    (beamNo: string, loomNumber: number, mountedOn: string, endedOn: string | null) => {
+      const res = productionMastersService.restoreBeamToLoom(beamNo, loomNumber, mountedOn, endedOn)
+      setBeams(productionMastersService.getBeams().map((b) => ({ ...b })))
+      setEntries(productionMastersService.buildSheetForDate(selectedDate))
+      return res
+    },
+    [selectedDate]
+  )
+
   const updateYarn = useCallback((id: string, patch: Partial<YarnMaster>) => {
     setYarn(productionMastersService.updateYarn(id, patch))
   }, [])
@@ -579,6 +590,7 @@ export function useProductionGrid() {
     unmountBeam,
     receiveBeamFromSizing,
     sendBeamToSizing,
+    restoreBeamToLoom,
     updateYarn,
     addYarn,
     deleteYarn,
