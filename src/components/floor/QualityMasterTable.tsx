@@ -12,12 +12,25 @@ import { QualityActiveGrid } from '@/components/floor/quality/QualityActiveGrid'
 import { QualityArchiveTable } from '@/components/floor/quality/QualityArchiveTable'
 import { QualityActiveTable } from '@/components/floor/quality/QualityActiveTable'
 import { QualityLoomsFooter } from '@/components/floor/quality/QualityLoomsFooter'
+import { longDateFromYmd } from '@/lib/longDate'
 // Named (not `export *`): Next.js does not allow `export *` in a 'use client' file.
 export { qualityStatusCounts, QualityStatusFilterBar, type QualityStatusFilter } from '@/components/floor/quality/qualityMasterParts'
 
 export function QualityMasterTable(props: QualityMasterTableProps) {
   const t = useQualityMasterTable(props)
-  const { readOnly, toolbarInChrome, canEditProduction, emptyAddForm, addForm, setAddForm, endsFabricFilter, setEndsFabricFilter, mode, setMode, tableEdit, isAddModalOpen, setIsAddModalOpen, isEndedView, isArchiveView, warpOptions, weftOptions, cardTitle, editToggle, handleAddFormKeyDown, handleCreateQuality, sheetDate } = t
+  const { readOnly, toolbarInChrome, canEditProduction, emptyAddForm, addForm, setAddForm, endsFabricFilter, setEndsFabricFilter, mode, setMode, tableEdit, isAddModalOpen, setIsAddModalOpen, isEndedView, isArchiveView, isHoldView, warpOptions, weftOptions, cardTitle, editToggle, handleAddFormKeyDown, handleCreateQuality, sheetDate, orderedForView, assignedByQuality } = t
+
+  /** Active / Hold list as text for WhatsApp: each quality with its looms on the day. */
+  const activeShareText = () => {
+    const title = isHoldView ? 'Hold Qualities' : 'Active Qualities'
+    const lines = orderedForView.map((q, i) => {
+      const looms = assignedByQuality.get(q.id) || []
+      return `${i + 1}. ${q.name}${looms.length ? ` — L# ${looms.join(', ')}` : ''}`
+    })
+    return [`*Sara Textile — ${title}*`, sheetDate ? longDateFromYmd(sheetDate) : '', '', ...lines, '', `Total: ${orderedForView.length}`]
+      .filter((l, i) => i !== 1 || l)
+      .join('\n')
+  }
 
   return (
     <div className="card">
@@ -69,6 +82,13 @@ export function QualityMasterTable(props: QualityMasterTableProps) {
                 onDownloadPdf={() => exportSheetPdf(`Quality-Ends-Report-${sheetDate || ''}`, 'Quality Ends • Completion Register')}
               />
             </>
+          )}
+          {!isEndedView && !isArchiveView && (
+            <WhatsAppShareButton
+              documentTitle={isHoldView ? 'Hold Qualities' : 'Active Qualities'}
+              message={activeShareText}
+              onDownloadPdf={() => exportSheetPdf(`Production-Quality-${sheetDate || ''}`, 'Quality')}
+            />
           )}
           {!toolbarInChrome && editToggle}
           <ViewModeToggle mode={mode} onChange={setMode} />
