@@ -9,7 +9,7 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { ProductionReportSkeleton } from '@/components/floor/ProductionSkeleton'
 import { ReportDataCheck } from '@/components/floor/ReportDataCheck'
-import { getProductionTodayMonth } from '@/constants/productionCalendar'
+import { getProductionCurrentMonth } from '@/constants/productionCalendar'
 import { useProductionReport } from '@/hooks/useProductionReport'
 import {
   monthOptions,
@@ -20,7 +20,7 @@ import {
 /** Monthly floor output per loom — computed on the server from the saved daily sheets. */
 export default function MonthlyProductionReportsPage() {
   const months = useMemo(() => monthOptions(), [])
-  const [month, setMonth] = useState(getProductionTodayMonth())
+  const [month, setMonth] = useState(getProductionCurrentMonth())
   const range = useMemo(() => monthRange(month), [month])
   const { report, error, loading } = useProductionReport(range.from, range.to)
   const [category, setCategory] = useState('ALL')

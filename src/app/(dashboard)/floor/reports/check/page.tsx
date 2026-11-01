@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { getProductionTodayMonth } from '@/constants/productionCalendar'
+import { getProductionCurrentMonth } from '@/constants/productionCalendar'
 import { monthOptions, monthRange } from '@/services/floorReportsClient'
 import type { FloorProblem } from '@/lib/floor/dataCheck'
 
@@ -30,7 +30,7 @@ const KIND: Record<FloorProblem['kind'], string> = {
  */
 export default function FloorDataCheckPage() {
   const months = useMemo(() => monthOptions(), [])
-  const [month, setMonth] = useState(getProductionTodayMonth())
+  const [month, setMonth] = useState(getProductionCurrentMonth())
   const range = useMemo(() => monthRange(month), [month])
   const [data, setData] = useState<CheckResult | null>(null)
   const [error, setError] = useState<string | null>(null)

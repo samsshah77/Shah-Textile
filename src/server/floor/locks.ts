@@ -4,6 +4,7 @@
  * locks and unlocks.
  */
 import { prisma } from '@/lib/prisma'
+import { productionMonthOf } from '@/constants/productionCalendar'
 
 export class FloorLockedError extends Error {
   readonly status = 423
@@ -30,9 +31,9 @@ export async function isMonthLocked(month: string): Promise<boolean> {
   return Boolean(rows[0]?.locked)
 }
 
-/** Throws 423 when the date's month is locked. */
+/** Throws 423 when the date's production month (2nd → 1st of next month) is locked. */
 export async function assertDateOpen(date: string): Promise<void> {
-  const month = String(date || '').slice(0, 7)
+  const month = productionMonthOf(String(date || '').slice(0, 10))
   if (/^\d{4}-\d{2}$/.test(month) && (await isMonthLocked(month))) throw new FloorLockedError(month)
 }
 

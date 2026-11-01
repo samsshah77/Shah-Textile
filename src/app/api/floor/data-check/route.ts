@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { sheetEntryFromDbRow } from '@/server/floorDb'
 import { productionReport } from '@/server/productionLedger'
 import { findFloorProblems } from '@/lib/floor/dataCheck'
-import { getProductionToday } from '@/constants/productionCalendar'
+import { getProductionToday, productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
 import type { DailyLoomProductionEntry } from '@/types/production'
 
 export const runtime = 'nodejs'
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const allowed = await hasPermission(user.id, { moduleKey: 'floor', resourceKey: 'production_entries', action: 'VIEW' })
     if (!allowed) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
     const today = getProductionToday()
-    const from = req.nextUrl.searchParams.get('from') || `${today.slice(0, 7)}-01`
+    const from = req.nextUrl.searchParams.get('from') || productionMonthBounds(productionMonthOf(today)).from
     const to = req.nextUrl.searchParams.get('to') || today
     if (!ISO.test(from) || !ISO.test(to) || from > to)
       return NextResponse.json({ ok: false, error: 'from/to must be YYYY-MM-DD and from <= to' }, { status: 400 })

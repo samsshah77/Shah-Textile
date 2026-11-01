@@ -9,13 +9,11 @@ import {
 import {
   PRODUCTION_TODAY_MONTH,
   PRODUCTION_YESTERDAY,
+  productionMonthDates,
 } from '@/constants/productionCalendar'
 import {
   resolveLoomCondition,
 } from '@/constants/loomConditions'
-import {
-  monthLastEnteredDay,
-} from '@/services/production/floorStore'
 import type { ProductionMastersService } from '@/services/productionMastersService'
 
 export const matrixMethods = {
@@ -35,7 +33,9 @@ export const matrixMethods = {
     dayActual: number[]
     dayTarget: number[]
   } {
-    const lastDay = monthLastEnteredDay(monthStr)
+    // Production month: the 2nd → the 1st of the next month (the 1st's entry is the
+    // previous day's production), up to today.
+    const monthDates = productionMonthDates(monthStr)
 
     const loomNumbers = this.getLooms()
       .filter((l) => l.isActive)
@@ -54,8 +54,8 @@ export const matrixMethods = {
     const days: MonthlyMatrixDay[] = []
     const dayActual: number[] = []
     const dayTarget: number[] = []
-    for (let day = 1; day <= lastDay; day++) {
-      const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`
+    for (const dateStr of monthDates) {
+      const day = Number(dateStr.slice(8, 10))
       const peeked = this.peekSheetDay(dateStr)
       const loomMeters: Record<number, number> = {}
       const dayLoomActual: Record<number, number> = {}

@@ -22,6 +22,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
+import { productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
 
 export type WeightUnit = 'KG' | 'LBS'
 export type YarnViewMode = 'STOCK' | 'LEDGER' | 'BALANCE'
@@ -49,11 +50,10 @@ function getWeekRange(dateStr: string) {
   return { start: toYmd(monday), end: toYmd(sunday) }
 }
 
+/** Production month of the day: the 2nd → the 1st of the next month. */
 function getMonthRange(dateStr: string) {
-  const d = parseDay(dateStr)
-  const first = new Date(d.getFullYear(), d.getMonth(), 1)
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0)
-  return { start: toYmd(first), end: toYmd(last) }
+  const { from, to } = productionMonthBounds(productionMonthOf(dateStr))
+  return { start: from, end: to }
 }
 
 function shortRangeLabel(start: string, end: string) {
@@ -216,7 +216,7 @@ export function YarnStockTable({
     if (dateFilterMode === 'WEEKLY') return `Week ${shortRangeLabel(dateRange.start, dateRange.end)}`
     if (dateFilterMode === 'MONTHLY') {
       try {
-        return parseDay(selectedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+        return parseDay(`${productionMonthOf(selectedDate)}-15`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
       } catch {
         return selectedDate.slice(0, 7)
       }

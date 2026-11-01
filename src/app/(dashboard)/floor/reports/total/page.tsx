@@ -21,14 +21,16 @@ import {
 import { formatNumber } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import {
-  getProductionTodayMonth,
+  getProductionCurrentMonth,
+  productionMonthOf,
   PRODUCTION_START,
 } from '@/constants/productionCalendar'
 import type { DailyLoomProductionEntry, MonthlyMatrixDay } from '@/types/production'
 import type { QualityMaster } from '@/services/productionMastersService'
 
 function buildMonthOptions(): { value: string; label: string }[] {
-  const end = getProductionTodayMonth()
+  // Production months (2nd → 1st of next month): on the 1st the open month is still the last one.
+  const end = getProductionCurrentMonth()
   const start = PRODUCTION_START.slice(0, 7)
   const out: { value: string; label: string }[] = []
   let cursor = start
@@ -49,11 +51,11 @@ const MONTH_OPTIONS = buildMonthOptions()
 function initialTrackMonth(fromParam: string | null): string {
   // Quality deep-link: open the run's month when provided.
   if (fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)) {
-    const m = fromParam.slice(0, 7)
+    const m = productionMonthOf(fromParam)
     if (MONTH_OPTIONS.some((o) => o.value === m)) return m
   }
   // Default = current production month; older months stay available in the dropdown.
-  const todayM = getProductionTodayMonth()
+  const todayM = getProductionCurrentMonth()
   if (MONTH_OPTIONS.some((o) => o.value === todayM)) return todayM
   return MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value || '2026-09'
 }

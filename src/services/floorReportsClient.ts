@@ -1,5 +1,5 @@
 import type { ProductionReport } from '@/server/productionLedger'
-import { PRODUCTION_START, getProductionTodayMonth } from '@/constants/productionCalendar'
+import { PRODUCTION_START, getProductionCurrentMonth, productionMonthBounds } from '@/constants/productionCalendar'
 
 export type { ProductionReport }
 
@@ -16,14 +16,13 @@ export async function fetchProductionReport(from: string, to: string): Promise<P
   return data.report as ProductionReport
 }
 
+/** Production month: the 2nd → the 1st of the next month (the 1st closes the previous month). */
 export function monthRange(month: string): { from: string; to: string } {
-  const [y, m] = month.split('-').map(Number)
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
-  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` }
+  return productionMonthBounds(month)
 }
 
 export function monthOptions(): { value: string; label: string }[] {
-  const end = getProductionTodayMonth()
+  const end = getProductionCurrentMonth()
   const out: { value: string; label: string }[] = []
   let cursor = PRODUCTION_START.slice(0, 7)
   while (cursor <= end) {
@@ -37,15 +36,21 @@ export function monthOptions(): { value: string; label: string }[] {
   return out.reverse()
 }
 
-/** Factory weeks inside a month: 1–7, 8–14, 15–21, 22–28, 29–end. */
+/**
+ * Factory weeks inside a production month: 2–8, 9–15, 16–22, 23–1 (the last week runs to
+ * the 1st of the next month, which closes the month).
+ */
 export function monthWeeks(month: string): { label: string; from: string; to: string }[] {
-  const { to } = monthRange(month)
-  const lastDay = Number(to.slice(8, 10))
+  const { from, to } = monthRange(month)
+  const d = (n: number) => `${month}-${String(n).padStart(2, '0')}`
+  const cuts = [d(8), d(15), d(22), to]
   const weeks: { label: string; from: string; to: string }[] = []
-  for (let start = 1; start <= lastDay; start += 7) {
-    const end = Math.min(start + 6, lastDay)
-    const d = (n: number) => `${month}-${String(n).padStart(2, '0')}`
-    weeks.push({ label: `${start}–${end}`, from: d(start), to: d(end) })
+  let start = from
+  for (const end of cuts) {
+    weeks.push({ label: `${Number(start.slice(8, 10))}–${Number(end.slice(8, 10))}`, from: start, to: end })
+    const [y, m, dd] = end.split('-').map(Number)
+    const next = new Date(Date.UTC(y, m - 1, dd + 1))
+    start = next.toISOString().slice(0, 10)
   }
   return weeks
 }

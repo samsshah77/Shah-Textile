@@ -9,6 +9,7 @@ import {
 import {
   PRODUCTION_TODAY_MONTH,
   getCalendarToday,
+  productionMonthDates,
 } from '@/constants/productionCalendar'
 import { isClient } from '@/services/production/loomBeamHelpers'
 import type {
@@ -515,11 +516,6 @@ export async function preloadMonthSheets(monthStr: string = PRODUCTION_TODAY_MON
   if (!isClient()) return
   const [y, m] = monthStr.split('-').map(Number)
   if (!y || !m) return
-  const lastDay = monthLastEnteredDay(monthStr)
-  await Promise.all(
-    Array.from({ length: lastDay }, (_, i) => {
-      const day = String(i + 1).padStart(2, '0')
-      return preloadFloorSheet(`${monthStr}-${day}`)
-    })
-  )
+  // Production month: the 2nd → the 1st of the next month, up to today.
+  await Promise.all(productionMonthDates(monthStr).map((d) => preloadFloorSheet(d)))
 }

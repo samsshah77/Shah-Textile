@@ -86,6 +86,41 @@ export function productionAccountingMonthBounds(dateStr: string): { from: string
   return { from, to }
 }
 
+/**
+ * Production month of a day. A month runs from the 2nd to the 1st of the next month: what is
+ * entered on the 1st is the previous day's production, so it closes the previous month
+ * (1 November → October). The first month starts on PRODUCTION_START (1 September).
+ */
+export function productionMonthOf(dateStr: string): string {
+  const day = String(dateStr || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day.slice(0, 7)
+  if (day.slice(8, 10) !== '01' || day <= PRODUCTION_START) return day.slice(0, 7)
+  return shiftProductionDate(day, -1).slice(0, 7)
+}
+
+/** First and last day of a production month (YYYY-MM): the 2nd → the 1st of the next month. */
+export function productionMonthBounds(month: string): { from: string; to: string } {
+  const [y, m] = String(month).split('-').map(Number)
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+  // The very first month also takes its 1st (production started on PRODUCTION_START).
+  const from = month === PRODUCTION_START.slice(0, 7) ? PRODUCTION_START : `${month}-02`
+  return { from, to: `${next}-01` }
+}
+
+/** Every day of a production month up to `until` (default: today), in order. */
+export function productionMonthDates(month: string, until: string = getCalendarToday()): string[] {
+  const { from, to } = productionMonthBounds(month)
+  const last = until < to ? until : to
+  const out: string[] = []
+  for (let d = from; d <= last; d = shiftProductionDate(d, 1)) out.push(d)
+  return out
+}
+
+/** Production month that is open today (on the 1st it is still the previous month). */
+export function getProductionCurrentMonth(): string {
+  return productionMonthOf(getProductionToday())
+}
+
 export function formatProductionDayLabel(dateStr: string): string {
   try {
     return new Date(`${String(dateStr).slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', {

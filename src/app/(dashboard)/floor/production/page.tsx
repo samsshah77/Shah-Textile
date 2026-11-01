@@ -35,6 +35,7 @@ import { PRODUCTION_TAB_AREA } from '@/lib/access'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
 import { DateStepper } from '@/components/floor/DateStepper'
 import { FloorMonthLockBar, useFloorMonthLocked } from '@/components/floor/FloorMonthLock'
+import { productionMonthOf } from '@/constants/productionCalendar'
 
 function ProductionWorkspaceContent() {
   const router = useRouter()
@@ -135,7 +136,7 @@ function ProductionWorkspaceContent() {
 
 
   // A locked production month is view-only for everyone (the server refuses changes too).
-  const monthLocked = useFloorMonthLocked(selectedDate.slice(0, 7))
+  const monthLocked = useFloorMonthLocked(productionMonthOf(selectedDate))
   const canEditDay = tabEdit && !monthLocked
 
   const getFormattedDateLabel = (dateStr: string) => {
@@ -273,6 +274,10 @@ function ProductionWorkspaceContent() {
             </div>
 
             <div className="d-flex flex-wrap align-items-center gap-2 ms-auto">
+              {/* Month lock sits in this toolbar row (no extra empty row); the "locked" note shows below. */}
+              {showDateBar && currentTab !== 'quality' && currentTab !== 'looms' && (
+                <FloorMonthLockBar month={productionMonthOf(selectedDate)} isAdmin={isAdmin} variant="button" />
+              )}
               {isQualityTab && tabEdit && qualityStatusFilter === 'ACTIVE' && (
                 <>
                   <button
@@ -444,7 +449,7 @@ function ProductionWorkspaceContent() {
         </div>
 
         {showDateBar && currentTab !== 'quality' && currentTab !== 'looms' && (
-          <FloorMonthLockBar month={selectedDate.slice(0, 7)} isAdmin={isAdmin} />
+          <FloorMonthLockBar month={productionMonthOf(selectedDate)} isAdmin={isAdmin} variant="note" />
         )}
 
         {tabViewOnly && (
@@ -523,7 +528,7 @@ function ProductionWorkspaceContent() {
 
             {currentTab === 'beams' && beamFilter === 'ENDED' && (
               <BeamEndedHistory
-                month={selectedDate.slice(0, 7)}
+                month={productionMonthOf(selectedDate)}
                 beams={beams}
                 canEdit={tabEdit}
                 onRestore={restoreBeamToLoom}

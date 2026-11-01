@@ -35,7 +35,16 @@ export function useFloorMonthLocked(month: string): boolean {
  * Banner for a locked production month; the admin also gets the Lock / Unlock button.
  * A locked month cannot be changed by anyone (the server refuses with 423).
  */
-export function FloorMonthLockBar({ month, isAdmin }: { month: string; isAdmin: boolean }) {
+export function FloorMonthLockBar({
+  month,
+  isAdmin,
+  variant = 'full',
+}: {
+  month: string
+  isAdmin: boolean
+  /** full = note + button; button = only the Lock / Unlock button (toolbar); note = only the "locked" note. */
+  variant?: 'full' | 'button' | 'note'
+}) {
   const locks = useFloorMonthLocks()
   const lock = locks.find((l) => l.month === month)
   const locked = Boolean(lock?.locked)
@@ -64,6 +73,30 @@ export function FloorMonthLockBar({ month, isAdmin }: { month: string; isAdmin: 
     }
   }
 
+  const lockButton = (extra: string) => (
+    <button
+      type="button"
+      className={`btn btn-sm ${locked ? 'btn-outline-secondary' : 'btn-outline-dark'} ${extra}`}
+      onClick={toggle}
+      disabled={busy}
+      title={error || (locked ? 'Unlock this production month' : 'Lock this production month')}
+    >
+      <i className={`bi ${locked ? 'bi-unlock' : 'bi-lock'} me-1`} />
+      {locked ? `Unlock ${monthLabel(month)}` : `Lock ${monthLabel(month)}`}
+    </button>
+  )
+
+  if (variant === 'button') {
+    if (!isAdmin) return null
+    return (
+      <>
+        {lockButton('')}
+        {error && <span className="text-danger small">{error}</span>}
+      </>
+    )
+  }
+  if (variant === 'note' && !locked) return null
+
   return (
     <div
       className={`d-flex flex-wrap align-items-center gap-2 px-3 py-2 small ${locked ? 'alert alert-secondary mb-0' : ''}`}
@@ -77,18 +110,7 @@ export function FloorMonthLockBar({ month, isAdmin }: { month: string; isAdmin: 
           {lock?.lockedBy ? ` — ${lock.lockedBy}` : ''}. Is mahine ka production sirf dekha ja sakta hai.
         </span>
       ) : null}
-      {isAdmin && (
-        <button
-          type="button"
-          className={`btn btn-sm ${locked ? 'btn-outline-secondary' : 'btn-outline-dark'} ms-auto`}
-          onClick={toggle}
-          disabled={busy}
-          title={locked ? 'Unlock this production month' : 'Lock this production month'}
-        >
-          <i className={`bi ${locked ? 'bi-unlock' : 'bi-lock'} me-1`} />
-          {locked ? `Unlock ${monthLabel(month)}` : `Lock ${monthLabel(month)}`}
-        </button>
-      )}
+      {isAdmin && variant === 'full' && lockButton('ms-auto')}
       {error && <span className="text-danger w-100">{error}</span>}
     </div>
   )

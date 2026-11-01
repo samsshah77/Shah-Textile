@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { formatNumber } from '@/lib/utils'
-import { getProductionToday } from '@/constants/productionCalendar'
+import { getProductionToday, productionMonthBounds } from '@/constants/productionCalendar'
 import { preloadAllFloorSheets } from '@/services/productionMastersService'
 import { listPersistedSheetEntries } from '@/services/production/floorStore'
 import { formatSwLotForDailyEntry } from '@/services/beamTrack'
@@ -20,11 +20,11 @@ type EndedRow = BeamStint & {
   qualities: string[]
 }
 
+/** Production month: the 2nd → the 1st of the next month. */
 function monthRange(month: string): { from: string; to: string; label: string } {
   const [y, m] = month.split('-').map(Number)
-  const last = new Date(y, m, 0).getDate()
   const label = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}`, label }
+  return { ...productionMonthBounds(month), label }
 }
 
 /**
