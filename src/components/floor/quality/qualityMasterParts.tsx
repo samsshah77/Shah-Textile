@@ -14,6 +14,8 @@ import {
 import { getProductionToday } from '@/constants/productionCalendar'
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { DailyLoomProductionEntry } from '@/types/production'
+import type { MutableRefObject } from 'react'
+import type { QualityShareData } from '@/lib/floor/qualityShare'
 
 /** Today only: looms from Hold that already carry another live quality. */
 export function loomsBusyOnResumeToday(
@@ -156,6 +158,8 @@ export interface QualityMasterTableProps {
   onViewModeChange?: (mode: TableGridMode) => void
   addModalOpen?: boolean
   onAddModalOpenChange?: (open: boolean) => void
+  /** Filled with the Active / Hold rows as shown, for the page's WhatsApp / PDF buttons. */
+  shareRef?: MutableRefObject<(() => QualityShareData) | null>
 }
 
 export type FlashTone = 'ended' | 'hold' | 'active' | 'reuse'

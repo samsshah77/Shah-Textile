@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable, type SheetTextSize } from '@/components/floor/ProductionSheetTable'
@@ -27,8 +27,10 @@ import { FabricFaultTabs } from '@/components/floor/FabricFaultTabs'
 import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { productionWhatsAppText } from '@/lib/floor/shareText'
+import { qualityWhatsAppText, type QualityShareData } from '@/lib/floor/qualityShare'
 // jsPDF (~350 KB) loads only when a PDF is actually made.
 const loadProductionPdf = () => import('@/lib/floor/generateProductionPdf')
+const loadQualityPdf = () => import('@/lib/floor/generateQualityPdf')
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { PRODUCTION_TAB_AREA } from '@/lib/access'
@@ -61,6 +63,8 @@ function ProductionWorkspaceContent() {
   const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
   const [beamFilter, setBeamFilter] = useState<BeamFilterType>('IN_STOCK')
   const [qualityStatusFilter, setQualityStatusFilter] = useState<QualityStatusFilter>('ACTIVE')
+  /** Quality table fills this with its Active / Hold rows for the toolbar WhatsApp / PDF. */
+  const qualityShareRef = useRef<(() => QualityShareData) | null>(null)
   const [qualityEdit, setQualityEdit] = useState(false)
   const [qualityViewMode, setQualityViewMode] = useState<TableGridMode>('table')
   const [qualityAddOpen, setQualityAddOpen] = useState(false)
@@ -438,6 +442,37 @@ function ProductionWorkspaceContent() {
                     getPdfAttachment={() => loadProductionPdf().then(async (m) => m.generateProductionPdfBase64(entries, selectedDate, { logoDataUrl: await m.loadPdfLogo() }))}
                   />
                 </>
+              ) : isQualityTab && qualityStatusFilter !== 'ENDED' ? (
+                <>
+                  {/* Same as the Production Sheet: a real PDF file, and WhatsApp / Email with it attached. */}
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1.5"
+                    onClick={() => {
+                      const data = qualityShareRef.current?.()
+                      if (data) void loadQualityPdf().then((m) => m.downloadQualityPdf(data))
+                    }}
+                    title="PDF save"
+                  >
+                    <i className="bi bi-file-earmark-pdf" />
+                    <span>PDF</span>
+                  </button>
+                  <WhatsAppShareButton
+                    documentTitle={qualityStatusFilter === 'HOLD' ? 'Hold Qualities' : 'Active Qualities'}
+                    message={() => {
+                      const data = qualityShareRef.current?.()
+                      return data ? qualityWhatsAppText(data) : '*Sara Textile — Qualities*'
+                    }}
+                    onDownloadPdf={() => {
+                      const data = qualityShareRef.current?.()
+                      if (data) void loadQualityPdf().then((m) => m.downloadQualityPdf(data))
+                    }}
+                    getPdfAttachment={() => {
+                      const data = qualityShareRef.current?.()
+                      return data ? loadQualityPdf().then((m) => m.generateQualityPdfBase64(data)) : null
+                    }}
+                  />
+                </>
               ) : (
                 <ExportPdfButton
                   filename={`Production-${tabTitle[currentTab] || 'Production-Sheet'}-${selectedDate || selectedMonth || 'export'}`}
@@ -597,6 +632,7 @@ function ProductionWorkspaceContent() {
 
             {currentTab === 'quality' && (
               <QualityMasterTable
+                shareRef={qualityShareRef}
                 qualities={qualities}
                 onUpdate={updateQuality}
                 onAdd={addQuality}
