@@ -107,8 +107,8 @@ export function useQualityAddForm(core: QualityCore) {
     : isEndedView
       ? {
           icon: 'bi-stop-circle',
-          title: `No ends on ${formatShortDate(sheetDate)}`,
-          hint: 'Is date pe koi quality end nahi hui. Jab End karoge, Ends list yahan aayegi.',
+          title: `Is mahine ${formatShortDate(sheetDate)} tak koi quality end nahi hui`,
+          hint: 'Upar mahina ya date badal kar dekhein. Jab End karoge, Ends list yahan aayegi.',
         }
       : {
           icon: 'bi-stars',

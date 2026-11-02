@@ -126,6 +126,8 @@ export function useQualityCore(props: QualityMasterTableProps) {
         .filter((q) => {
           if (!day) return (q.status ?? 'ACTIVE') === 'ENDED' && matchesFabric(q)
           if (!qualityEndedVisibleOnDate(q, day)) return false
+          // The month as it stood on this day: nothing ended after it.
+          if (String(q.endedOn || '').slice(0, 10) > day) return false
           return matchesFabric(q)
         })
         // Ended view: the quality that ended first comes first (no end date → last, then by name).
@@ -362,7 +364,7 @@ export function useQualityCore(props: QualityMasterTableProps) {
 
   const cardTitle =
     statusFilter === 'ENDED'
-      ? `Quality — Ended (${counts.ended})`
+      ? `Quality — Ended (${displayedQualities.length})`
       : statusFilter === 'HOLD'
         ? `Quality — Hold (${counts.hold})`
         : `Quality — Active (${counts.active})`

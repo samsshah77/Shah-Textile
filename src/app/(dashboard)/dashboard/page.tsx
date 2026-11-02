@@ -12,21 +12,19 @@ import {
   preloadFloorSheet,
   productionMastersService,
 } from '@/services/productionMastersService'
-import { formatNumber, cn } from '@/lib/utils'
+import { formatNumber } from '@/lib/utils'
 import {
-  PRODUCTION_START,
   getProductionToday,
   getProductionYesterday,
   formatProductionDayLabel,
-  shiftProductionDate,
 } from '@/constants/productionCalendar'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
 import type { LoomStatus } from '@/types/loom'
 import type { LoomCategory } from '@/types/loom'
 import type { DailyLoomProductionEntry } from '@/types/production'
 import { calculateProductionMetrics } from '@/types/production'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { fetchProductionReport } from '@/services/floorReportsClient'
+import { DateNav } from '@/components/shared/DateNav'
 import { useAuth } from '@/context/AuthContext'
 
 /** Same as Production sheet footer / Excel: Σ(A+B) ÷ Σ(100% Running) × 100 — not avg of %. */
@@ -116,13 +114,14 @@ function shortDay(dateStr: string) {
 }
 
 export default function DashboardPage() {
-  // "Total Tracking" links only for people who may open Tracking (Administration → Permissions).
+  // "Monthly Tracking" links only for people who may open Tracking (Administration → Permissions).
   const { canView } = useAuth()
   const trackingOk = canView('tracking')
   const productionToday = getProductionToday()
   const productionYesterday = getProductionYesterday()
   /** Open on Today — yesterday user khud select karega. */
-  const [selectedDate, setSelectedDate] = useState(() => getProductionToday())
+  // Opens on yesterday — the last full day whose sheet is entered.
+  const [selectedDate, setSelectedDate] = useState(() => getProductionYesterday())
   const [loading, setLoading] = useState(true)
   const [day, setDay] = useState({
     meters: 0,
@@ -199,19 +198,8 @@ export default function DashboardPage() {
       .sort((a, b) => b.value - a.value)
   }, [day.conditions])
 
-  const isYesterday = selectedDate === productionYesterday
-  const isToday = selectedDate === productionToday
   const hasSheet = availableDates.includes(selectedDate)
 
-  const shiftDay = (delta: number) => {
-    try {
-      const next = shiftProductionDate(selectedDate, delta)
-      if (next < PRODUCTION_START || next > productionToday) return
-      setSelectedDate(next)
-    } catch {
-      // ignore
-    }
-  }
 
   const sheetHref = '/floor/production?tab=sheet'
   const trackingHref = trackingOk ? '/floor/reports/total' : undefined
@@ -224,63 +212,12 @@ export default function DashboardPage() {
       <PrintBrandHeader sheetTitle="Dashboard" />
 
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 mt-3 pt-1">
-        <h2 className="h6 mb-0 text-secondary text-uppercase">Production overview</h2>
-        <div className="d-flex flex-wrap align-items-center gap-2">
-          <div className="d-flex align-items-center gap-1">
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary px-2"
-              title="Previous day"
-              onClick={() => shiftDay(-1)}
-              disabled={selectedDate <= PRODUCTION_START}
-            >
-              <ChevronLeft className="size-3.5" />
-            </button>
-            <input
-              type="date"
-              className="form-control form-control-sm fw-semibold"
-              style={{ width: 'auto', minWidth: 140 }}
-              value={selectedDate}
-              min={PRODUCTION_START}
-              max={productionToday}
-              aria-label="Production date"
-              onChange={(e) => setSelectedDate(e.target.value)}
-            />
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary px-2"
-              title="Next day"
-              onClick={() => shiftDay(1)}
-              disabled={selectedDate >= productionToday}
-            >
-              <ChevronRight className="size-3.5" />
-            </button>
-          </div>
+        <DateNav value={selectedDate} onChange={setSelectedDate} max={productionToday} />
 
-          <div className="btn-group btn-group-sm" role="group" aria-label="Quick day">
-            <button
-              type="button"
-              className={cn('btn btn-sm', isYesterday ? 'btn-primary' : 'btn-outline-secondary')}
-              onClick={() => setSelectedDate(productionYesterday)}
-            >
-              Yesterday
-              <span className="d-none d-md-inline"> ({shortDay(productionYesterday)})</span>
-            </button>
-            <button
-              type="button"
-              className={cn('btn btn-sm', isToday ? 'btn-primary' : 'btn-outline-secondary')}
-              onClick={() => setSelectedDate(productionToday)}
-            >
-              Today
-              <span className="d-none d-md-inline"> ({shortDay(productionToday)})</span>
-            </button>
-          </div>
-
-          <Link href={sheetHref} className="btn btn-sm btn-outline-primary">
-            Open Production Sheet
-            <i className="bi bi-arrow-right-short ms-1" />
-          </Link>
-        </div>
+        <Link href={sheetHref} className="btn btn-sm btn-primary ms-auto">
+          Open Production Sheet
+          <i className="bi bi-arrow-right-short ms-1" />
+        </Link>
       </div>
 
       {!loading && !hasSheet && (
@@ -303,7 +240,7 @@ export default function DashboardPage() {
             biIcon="bi-speedometer2"
             colorVariant="primary"
             href={trackingHref}
-            footerLabel={trackingOk ? 'Total Tracking' : ' '}
+            footerLabel={trackingOk ? 'Monthly Tracking' : ' '}
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -318,7 +255,7 @@ export default function DashboardPage() {
             biIcon="bi-columns-gap"
             colorVariant="success"
             href={shiftTrackingHref}
-            footerLabel={trackingOk ? 'Total Tracking' : ' '}
+            footerLabel={trackingOk ? 'Monthly Tracking' : ' '}
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -329,7 +266,7 @@ export default function DashboardPage() {
             biIcon="bi-percent"
             colorVariant="warning"
             href={efficiencyTrackingHref}
-            footerLabel={trackingOk ? 'Total Tracking' : ' '}
+            footerLabel={trackingOk ? 'Monthly Tracking' : ' '}
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -340,7 +277,7 @@ export default function DashboardPage() {
             biIcon="bi-gear-wide-connected"
             colorVariant="info"
             href={activeTrackingHref}
-            footerLabel={trackingOk ? 'Total Tracking' : ' '}
+            footerLabel={trackingOk ? 'Monthly Tracking' : ' '}
           />
         </div>
       </div>
@@ -363,7 +300,7 @@ export default function DashboardPage() {
                   </div>
                 </>
               ) : (
-                <p className="text-secondary small mb-0">
+                <p className="text-dark small mb-0">
                   Abhi koi entered production day chart ke liye available nahi.
                 </p>
               )}
@@ -387,7 +324,7 @@ export default function DashboardPage() {
               {conditionBars.length > 0 ? (
                 <SimpleHBarList data={conditionBars} maxBars={8} valueSuffix=" looms" />
               ) : (
-                <p className="text-secondary small mb-0">No loom conditions for this date.</p>
+                <p className="text-dark small mb-0">No loom conditions for this date.</p>
               )}
             </div>
           </div>
@@ -404,10 +341,10 @@ export default function DashboardPage() {
           <p className="mb-2">
             <strong>Sara Textile</strong> — 34 Rapier &amp; PU looms
           </p>
-          <p className="text-body-secondary mb-0 small">
+          <p className="text-dark mb-0 small">
             Dashboard sirf floor production sheets se data leta hai (dummy history nahi). Date
             calendar se koi bhi entered din dekho — default{' '}
-            <strong>{shortDay(productionToday)}</strong> (Today).
+            <strong>{shortDay(productionYesterday)}</strong> (Yesterday).
           </p>
         </div>
       </div>

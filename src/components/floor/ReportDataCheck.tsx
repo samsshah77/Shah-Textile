@@ -7,16 +7,16 @@ export function ReportDataCheck({ report }: { report: ProductionReport }) {
   const { mismatches, unlinked, outsideRun } = report
   if (mismatches.length === 0 && unlinked.length === 0 && outsideRun.length === 0) {
     return (
-      <div className="alert alert-success py-2 px-3 small mb-0">
-        <i className="bi bi-check-circle-fill me-1" />
+      <div className="sara-note sara-note--ok">
+        <i className="bi bi-check-circle-fill me-1 text-success" />
         Data check OK — totals match the saved sheets and every row belongs to a known quality.
       </div>
     )
   }
   return (
-    <div className="alert alert-warning py-2 px-3 small mb-0">
+    <div className="sara-note sara-note--warn">
       <div className="fw-semibold mb-1">
-        <i className="bi bi-exclamation-triangle-fill me-1" />
+        <i className="bi bi-exclamation-triangle-fill me-1 text-danger" />
         Data check — please review:
       </div>
       <ul className="mb-0 ps-3">

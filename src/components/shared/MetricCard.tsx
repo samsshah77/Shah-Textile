@@ -38,21 +38,28 @@ interface MetricCardProps {
   }
 }
 
-const VARIANT_CLASS: Record<string, string> = {
-  primary: 'text-bg-primary',
-  success: 'text-bg-success',
-  warning: 'text-bg-warning',
-  danger: 'text-bg-danger',
-  info: 'text-bg-info',
-  secondary: 'text-bg-secondary',
-  blue: 'text-bg-primary',
-  emerald: 'text-bg-success',
-  amber: 'text-bg-warning',
-  purple: 'text-bg-info',
-  rose: 'text-bg-danger',
+/**
+ * Card colour per variant — the site's own colours (buttons, sidebar, chart bars), so the
+ * cards match the rest of the app. All dark enough for the white text.
+ */
+const VARIANT_COLOR: Record<string, string> = {
+  primary: '#0d6efd', // site blue (buttons, links, chart bars)
+  success: '#198754', // site green (Add / Today buttons, G6300 bars)
+  warning: '#c2410c', // site orange (Hold, PU)
+  danger: '#dc3545', // site red
+  info: '#343a40', // sidebar charcoal
+  secondary: '#495057',
+  blue: '#0d6efd',
+  emerald: '#198754',
+  amber: '#c2410c',
+  purple: '#343a40',
+  rose: '#dc3545',
 }
 
-/** AdminLTE small-box KPI card. */
+/**
+ * KPI card — dark solid colour, big white number and white text, so it
+ * reads easily (no white text on coloured / yellow boxes).
+ */
 export function MetricCard({
   title,
   value,
@@ -64,50 +71,40 @@ export function MetricCard({
   footerLabel = 'More info',
   colorVariant = 'primary',
 }: MetricCardProps) {
+  const color = VARIANT_COLOR[colorVariant] || VARIANT_COLOR.primary
+  // Solid dark card colour with white text (strong contrast, no light / yellow backgrounds).
+  const style = { backgroundColor: color, borderColor: color }
+  const footer = href && footerLabel.trim() ? footerLabel : ''
   const body = (
     <>
-      <div className="inner">
-        <h3>{value}</h3>
-        <p className="mb-0">{title}</p>
-        {subValue && <p className="small opacity-75 mb-0">{subValue}</p>}
-        {badge && <span className="badge text-bg-light text-dark mt-1">{badge}</span>}
+      <div className="sara-metric__body">
+        <div className="min-w-0">
+          <div className="sara-metric__title">{title}</div>
+          <div className="sara-metric__value">{value}</div>
+          {subValue && <div className="sara-metric__sub">{subValue}</div>}
+          {badge && <span className="badge text-bg-light border text-dark mt-1">{badge}</span>}
+        </div>
+        <span className="sara-metric__icon" aria-hidden>
+          {Icon ? <Icon size={26} style={{ pointerEvents: 'none' }} /> : <i className={cn('bi', biIcon)} />}
+        </span>
       </div>
-      {Icon ? (
-        <Icon className="small-box-icon" aria-hidden style={{ pointerEvents: 'none' }} />
-      ) : (
-        <i
-          className={cn('small-box-icon bi', biIcon)}
-          aria-hidden
-          style={{ pointerEvents: 'none' }}
-        />
+      {footer && (
+        <span className="sara-metric__footer">
+          <span className="sara-metric__footer-text">{footer}</span> <i className="bi bi-arrow-right" aria-hidden />
+        </span>
       )}
-      <span className="small-box-footer">
-        {footerLabel} {href ? <i className="bi bi-link-45deg" aria-hidden /> : null}
-      </span>
     </>
   )
 
   if (href) {
     return (
-      <Link
-        href={href}
-        className={cn(
-          'small-box h-100 mb-0 text-decoration-none d-block link-light',
-          VARIANT_CLASS[colorVariant] || 'text-bg-primary'
-        )}
-      >
+      <Link href={href} className="sara-metric sara-metric--link h-100 text-decoration-none" style={style}>
         {body}
       </Link>
     )
   }
-
   return (
-    <div
-      className={cn(
-        'small-box h-100 mb-0',
-        VARIANT_CLASS[colorVariant] || 'text-bg-primary'
-      )}
-    >
+    <div className="sara-metric h-100" style={style}>
       {body}
     </div>
   )

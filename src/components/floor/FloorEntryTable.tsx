@@ -429,7 +429,7 @@ export function FloorEntryTable({
           )}
 
           {!toolbarInChrome && editToggle}
-          {canUserEdit && entries.length > 0 && (
+          {!toolbarInChrome && canUserEdit && entries.length > 0 && (
             <button
               type="button"
               className="btn btn-sm btn-outline-primary"

@@ -21,7 +21,9 @@ export const matrixMethods = {
     this: ProductionMastersService,
     monthStr: string = PRODUCTION_TODAY_MONTH,
     metric: 'meters' | 'shiftA' | 'shiftB' | 'efficiency' | 'active' = 'meters',
-    ownsEntry?: (entry: DailyLoomProductionEntry, dateStr: string) => boolean
+    ownsEntry?: (entry: DailyLoomProductionEntry, dateStr: string) => boolean,
+    /** Last day to include (YYYY-MM-DD) — "the month as it stood on this day". Default: today. */
+    until?: string
   ): {
     days: MonthlyMatrixDay[]
     loomTotals: Record<number, number>
@@ -35,7 +37,7 @@ export const matrixMethods = {
   } {
     // Production month: the 2nd → the 1st of the next month (the 1st's entry is the
     // previous day's production), up to today.
-    const monthDates = productionMonthDates(monthStr)
+    const monthDates = productionMonthDates(monthStr, until)
 
     const loomNumbers = this.getLooms()
       .filter((l) => l.isActive)

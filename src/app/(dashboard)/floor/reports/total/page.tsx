@@ -22,9 +22,13 @@ import { formatNumber } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import {
   getProductionCurrentMonth,
+  getProductionToday,
+  getProductionYesterday,
+  productionMonthBounds,
   productionMonthOf,
   PRODUCTION_START,
 } from '@/constants/productionCalendar'
+import { longDateFromYmd } from '@/lib/longDate'
 import type { DailyLoomProductionEntry, MonthlyMatrixDay } from '@/types/production'
 import type { QualityMaster } from '@/services/productionMastersService'
 
@@ -59,6 +63,26 @@ function initialTrackMonth(fromParam: string | null): string {
   if (MONTH_OPTIONS.some((o) => o.value === todayM)) return todayM
   return MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value || '2026-09'
 }
+
+/**
+ * "As of" day for a month: the month as it stood on that day. Default yesterday (the last
+ * full day); for an older month its last day; never before the month's first day.
+ */
+function asOfForMonth(month: string): string {
+  const { from, to } = productionMonthBounds(month)
+  const yesterday = getProductionYesterday()
+  const day = to < yesterday ? to : yesterday
+  return day < from ? from : day
+}
+
+function initialAsOf(fromParam: string | null): string {
+  // Quality deep-link: the run's month (as it stands now / at its end).
+  if (fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)) return asOfForMonth(initialTrackMonth(fromParam))
+  const yesterday = getProductionYesterday()
+  return yesterday < PRODUCTION_START ? PRODUCTION_START : yesterday
+}
+
+
 
 type TrackView = 'meters' | 'shifts' | 'efficiency' | 'active'
 
@@ -201,7 +225,10 @@ function ProductionTotalTrackingContent() {
   const view = readTrackView(searchParams.get('view'))
   const isQualityDeepLink = Boolean(qualityId || qualityNameParam)
 
-  const [month, setMonth] = useState(() => initialTrackMonth(qualityFromParam))
+  // The day the page shows the month up to (default: yesterday). The month follows this day.
+  const [asOf, setAsOf] = useState(() => initialAsOf(qualityFromParam))
+  const month = productionMonthOf(asOf)
+  const setMonth = (m: string) => setAsOf(asOfForMonth(m))
   const [matrix, setMatrix] = useState<MatrixState>(EMPTY_MATRIX)
   const [shiftBMatrix, setShiftBMatrix] = useState<MatrixState>(EMPTY_MATRIX)
   const [shiftChartMode, setShiftChartMode] = useState<'COMBINED' | 'SHIFT_A' | 'SHIFT_B'>('COMBINED')
@@ -225,11 +252,11 @@ function ProductionTotalTrackingContent() {
         const owns = trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
         const runRange = trackedRunRange(qualityId, qualityNameParam, qualityFromParam)
         setMatrix(
-          limitMatrixToRun(productionMastersService.buildMonthlyMatrix(month, primary, owns), runRange, primary === 'efficiency')
+          limitMatrixToRun(productionMastersService.buildMonthlyMatrix(month, primary, owns, asOf), runRange, primary === 'efficiency')
         )
         if (view === 'shifts') {
           setShiftBMatrix(
-            limitMatrixToRun(productionMastersService.buildMonthlyMatrix(month, 'shiftB', owns), runRange, false)
+            limitMatrixToRun(productionMastersService.buildMonthlyMatrix(month, 'shiftB', owns, asOf), runRange, false)
           )
         }
       } catch (err) {
@@ -242,7 +269,7 @@ function ProductionTotalTrackingContent() {
     return () => {
       cancelled = true
     }
-  }, [month, view, qualityId, qualityNameParam, qualityFromParam])
+  }, [month, asOf, view, qualityId, qualityNameParam, qualityFromParam])
 
   const qualityFocus = useMemo(() => {
     if (!qualityId && !qualityNameParam) return null
@@ -413,7 +440,8 @@ function ProductionTotalTrackingContent() {
           : productionMastersService.buildMonthlyMatrix(
               month,
               'efficiency',
-              trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
+              trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam),
+              asOf
             )
       // Same as the Excel "Monthly Efficiency" block: each day's model efficiency
       // (that day's meters ÷ that day's 100% running target), then the plain average of
@@ -476,7 +504,8 @@ function ProductionTotalTrackingContent() {
         : productionMastersService.buildMonthlyMatrix(
             month,
             'meters',
-            trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam)
+            trackOwnsEntry(qualityId, qualityNameParam, qualityFromParam),
+            asOf
           )
     const totals: Record<string, number> = { G6200: 0, G6300: 0, PU: 0 }
     for (const [loomStr, meters] of Object.entries(metersMatrix.loomTotals || {})) {
@@ -490,7 +519,7 @@ function ProductionTotalTrackingContent() {
       value: totals[label] || 0,
       color: colors[label],
     }))
-  }, [matrix, shiftBMatrix, month, view, shiftChartMode, qualityLoomSet, loading, qualityId, qualityNameParam, qualityFromParam])
+  }, [matrix, shiftBMatrix, month, asOf, view, shiftChartMode, qualityLoomSet, loading, qualityId, qualityNameParam, qualityFromParam])
 
   const modelBarSuffix = view === 'efficiency' ? '%' : ' m'
   const modelBarTitle =
@@ -618,7 +647,7 @@ function ProductionTotalTrackingContent() {
         ? 'Efficiency Monthly Tracking'
         : view === 'active'
           ? 'Active Looms Monthly Tracking'
-          : 'Production Total Tracking'
+          : 'Monthly Tracking'
 
   const formatTotal = (n: number) =>
     view === 'efficiency' ? `${Math.round(n)}%` : view === 'active' ? formatNumber(n, 0) : `${formatNumber(n, 0)} m`
@@ -644,37 +673,55 @@ function ProductionTotalTrackingContent() {
     <div className="pb-4">
       <PageHeader
         title={pageTitle}
+        showTitle={false}
         showBreadcrumbs={false}
         actions={
           <>
-            <select
-              className="form-select form-select-sm"
-              style={{ width: 'auto', minWidth: 150 }}
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              disabled={loading}
-              aria-label="Tracking month"
+            <Link
+              href={backHref}
+              className="btn btn-sm btn-primary"
+              style={{
+                fontSize: '0.875rem',
+                lineHeight: 1.5,
+                padding: '0.25rem 0.5rem',
+                height: 'auto',
+                minHeight: 'auto',
+                borderRadius: '0.375rem',
+              }}
             >
-              {MONTH_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <ExportPdfButton filename="Total-Production-Report" />
+              <i className="bi bi-arrow-left-short me-1" />
+              {backLabel.replace(/^←\s*/, '')}
+            </Link>
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 'auto', minWidth: 150 }}
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                disabled={loading}
+                aria-label="Tracking month"
+              >
+                {MONTH_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                className="form-control form-control-sm fw-semibold"
+                style={{ width: 'auto', minWidth: 140 }}
+                value={asOf}
+                max={getProductionToday()}
+                disabled={loading}
+                onChange={(e) => e.target.value && setAsOf(e.target.value)}
+                aria-label="Tracking date"
+              />
+              <ExportPdfButton filename={`Monthly-Tracking-${asOf}`} />
+            </div>
           </>
         }
       />
-
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 print:hidden">
-        <Link
-          href={backHref}
-          className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
-        >
-          <i className="bi bi-arrow-left" aria-hidden />
-          {backLabel.replace(/^←\s*/, '')}
-        </Link>
-      </div>
 
       {(qualityFocus || (isQualityDeepLink && focusName)) && (
         <div className="alert alert-info d-flex flex-wrap align-items-center gap-2 py-2 mb-3">
@@ -711,7 +758,7 @@ function ProductionTotalTrackingContent() {
       ) : (
         <>
       {view === 'meters' && !qualityFocus && (
-        <ServerMonthCheck month={month} pageTotal={matrix.grandTotalMeters} />
+        <ServerMonthCheck month={month} until={asOf} pageTotal={matrix.grandTotalMeters} />
       )}
       {qualityFocus?.master && qualityFocus.createdOn && (
         <QualityBeamsCard
@@ -726,7 +773,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title={view === 'shifts' ? 'Shift A month' : 'Month total'}
             value={formatTotal(qualityMonthTotal ?? matrix.grandTotalMeters)}
-            subValue={qualityFocus ? `${qualityFocus.name} · ${monthLabel}` : monthLabel}
+            subValue={`${qualityFocus ? `${qualityFocus.name} · ` : ''}${longDateFromYmd(asOf)} tak`}
             biIcon="bi-calendar3"
             colorVariant="primary"
           />
@@ -892,8 +939,9 @@ function ProductionTotalTrackingContent() {
                   ? 'Active looms — Loom × Day'
                   : 'Total matrix — Loom × Day (meters)'}
           </h3>
-          <Link href="/floor/production" className="btn btn-sm btn-outline-primary">
+          <Link href="/floor/production" className="btn btn-sm btn-primary">
             Open Production Sheet
+            <i className="bi bi-arrow-right-short ms-1" />
           </Link>
         </div>
         <TablePanScroll className="card-body p-0">
@@ -1120,7 +1168,12 @@ export default function ProductionTotalTrackingPage() {
   const { user, canView } = useAuth()
   // Administration → Permissions: Tracking can be hidden for a person.
   if (user && !canView('tracking')) {
-    return <div className="alert alert-secondary m-3">Tracking dekhne ki ijazat nahi.</div>
+    return (
+      <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 m-3 fw-medium">
+        <i className="bi bi-shield-lock-fill text-warning fs-5 flex-shrink-0" />
+        <span>Tracking dekhne ki ijazat nahi.</span>
+      </div>
+    )
   }
   return (
     <Suspense

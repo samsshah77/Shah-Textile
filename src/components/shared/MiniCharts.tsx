@@ -89,7 +89,7 @@ export function SimpleBarChart({
   const padX = 8
   const slot = data.length ? (width - padX * 2) / data.length : width
   const barW = Math.max(3, Math.min(36, slot * 0.7))
-  const chartH = height - 22
+  const chartH = height - 24
   const step = labelStep(data.length, width)
 
   return (
@@ -114,7 +114,7 @@ export function SimpleBarChart({
                 onMouseMove={(e) => setTip(tipFromMouse(e, d.label, d.value, valueSuffix))}
               />
               {showLabel(i, data.length, step) && (
-                <text x={cx} y={height - 6} textAnchor="middle" fontSize={10} fill="#6c757d">
+                <text x={cx} y={height - 6} textAnchor="middle" fontSize={12} fontWeight={600} fill="#1e293b">
                   {d.label}
                 </text>
               )}
@@ -173,7 +173,7 @@ export function SimpleLineChart({
               />
               <circle cx={x} cy={y} r={dot} fill={stroke} stroke="#fff" strokeWidth={1.5} style={{ pointerEvents: 'none' }} />
               {showLabel(i, data.length, step) && (
-                <text x={x} y={height - 6} textAnchor="middle" fontSize={10} fill="#6c757d">
+                <text x={x} y={height - 6} textAnchor="middle" fontSize={12} fontWeight={600} fill="#1e293b">
                   {d.label}
                 </text>
               )}
@@ -205,7 +205,7 @@ export function SimpleHBarList({
         <div key={d.label}>
           <div className="d-flex justify-content-between small mb-1">
             <span className="fw-semibold text-truncate">{d.label}</span>
-            <span className="font-monospace text-secondary">
+            <span className="font-monospace fw-semibold text-dark">
               {formatNumber(d.value, 0)}
               {valueSuffix}
             </span>
@@ -225,7 +225,7 @@ export function SimpleHBarList({
           </div>
         </div>
       ))}
-      {slice.length === 0 && <p className="text-secondary small mb-0">No data</p>}
+      {slice.length === 0 && <p className="text-dark small mb-0">No data</p>}
     </div>
   )
 }

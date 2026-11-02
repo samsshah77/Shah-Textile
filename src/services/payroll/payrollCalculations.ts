@@ -575,7 +575,7 @@ export function calculateStaffSalaryRow(
   // Staff Excel sheet uses 30-day rate (same as General Wages), not calendar 31.
   // UI may pass 28/30/31; if calendar days leaked in as default, still prefer 30.
   const divisor =
-    daysInMonth === 28 || daysInMonth === 30 || daysInMonth === 31
+    daysInMonth === 28 || daysInMonth === 29 || daysInMonth === 30 || daysInMonth === 31
       ? daysInMonth
       : actualDays === 28
         ? 28
@@ -599,7 +599,7 @@ export function calculateStaffSalaryRow(
   if (isHistorical && row.basicSalary !== undefined) {
     const explicitDays =
       row.ratePerDay && row.ratePerDay > 0 ? Math.round(salary / row.ratePerDay) : 0
-    if (explicitDays === calDays || explicitDays === 28 || explicitDays === 31 || explicitDays === 30) {
+    if (explicitDays === calDays || explicitDays === 28 || explicitDays === 29 || explicitDays === 31 || explicitDays === 30) {
       ratePerDay = Number(row.ratePerDay) || calculatedRatePerDay
       basicSalary =
         attendance === explicitDays && salary > 0
@@ -680,7 +680,7 @@ export function calculateContractSalaryRow(
 
   // Contract Excel Sheet 4 uses 30-day rate base (same as General Wages), not calendar 31.
   let actualDays = 30
-  if (daysInMonth === 28 || daysInMonth === 30 || daysInMonth === 31) {
+  if (daysInMonth === 28 || daysInMonth === 29 || daysInMonth === 30 || daysInMonth === 31) {
     actualDays = daysInMonth
   } else if (isHistorical && (calDays === 28 || calDays === 30 || calDays === 31)) {
     // Prefer stored rate base when historical row already encodes 28/30/31
@@ -699,7 +699,7 @@ export function calculateContractSalaryRow(
   if (isHistorical && row.basicSalary !== undefined && Number(row.attendanceDays) > 0) {
     const explicitDays =
       row.ratePerDay && row.ratePerDay > 0 ? Math.round(salary / row.ratePerDay) : 0
-    if (explicitDays === calDays || explicitDays === 28 || explicitDays === 31 || explicitDays === 30) {
+    if (explicitDays === calDays || explicitDays === 28 || explicitDays === 29 || explicitDays === 31 || explicitDays === 30) {
       ratePerDay = Number(row.ratePerDay) || calculatedRatePerDay
       basicSalary =
         attendance === explicitDays && salary > 0

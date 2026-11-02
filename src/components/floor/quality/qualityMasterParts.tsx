@@ -72,10 +72,13 @@ export function QualityStatusFilterBar({
   filter,
   onChange,
   counts,
+  showEnded = true,
 }: {
   filter: QualityStatusFilter
   onChange: (f: QualityStatusFilter) => void
   counts: ReturnType<typeof qualityStatusCounts>
+  /** Off when Quality Ends has its own tab. */
+  showEnded?: boolean
 }) {
   return (
     <div className="btn-group btn-group-sm" role="group" aria-label="Quality status filter">
@@ -93,13 +96,15 @@ export function QualityStatusFilterBar({
       >
         Hold ({counts.hold})
       </button>
-      <button
-        type="button"
-        className={`btn ${filter === 'ENDED' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-        onClick={() => onChange('ENDED')}
-      >
-        Quality Ends ({counts.ended})
-      </button>
+      {showEnded && (
+        <button
+          type="button"
+          className={`btn ${filter === 'ENDED' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+          onClick={() => onChange('ENDED')}
+        >
+          Quality Ends ({counts.ended})
+        </button>
+      )}
     </div>
   )
 }

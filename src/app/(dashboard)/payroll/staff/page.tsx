@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { payrollService, formatPayrollMonthLabel } from '@/services/payrollService'
+import { daysInCalendarMonth } from '@/services/payroll/payrollCalculations'
 import { StaffSalaryRecord, CustomColumn, EmployeePaySlip } from '@/types/payroll'
 import { AddColumnButton, CustomColumnHeader } from '@/components/shared/CustomColumnModal'
 import { SerialCellWithInsert, reorderSerialRows } from '@/components/shared/InlineRowActions'
@@ -69,7 +70,12 @@ export default function StaffSalariesPage() {
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   // Staff Excel / General Wages use 30-day rate base (not calendar 31).
-  const [daysInMonth, setDaysInMonth] = useState<number>(30)
+  // Days base follows the month's calendar (Oct → 31, Sep → 30, Feb → 28/29). A day count
+  // picked by hand in the dropdown holds for that month only.
+  const [daysOverride, setDaysOverride] = useState<{ month: string; days: number } | null>(null)
+  const daysInMonth =
+    daysOverride && daysOverride.month === selectedMonth ? daysOverride.days : daysInCalendarMonth(selectedMonth)
+  const setDaysInMonth = (days: number) => setDaysOverride({ month: selectedMonth, days })
   const [activeSlip, setActiveSlip] = useState<EmployeePaySlip | null>(null)
 
   const isLocked = payrollService.isMonthLocked(selectedMonth)
@@ -139,10 +145,6 @@ export default function StaffSalariesPage() {
   }
 
   useEffect(() => {
-    // Keep 30-day Staff base across months (Feb can be switched manually to 28).
-    if (daysInMonth !== 28 && daysInMonth !== 30 && daysInMonth !== 31) {
-      setDaysInMonth(30)
-    }
     reload(true)
     const handleSync = (e: Event) => {
       const detailMonth = (e as CustomEvent<{ month?: string }>).detail?.month
@@ -356,9 +358,13 @@ export default function StaffSalariesPage() {
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                   aria-label="Days in month"
                 >
-                  <option value={30}>30 Days</option>
-                  <option value={31}>31 Days</option>
-                  <option value={28}>28 Days</option>
+                  {[31, 30, 29, 28]
+                    .filter((d) => d !== 29 || daysInMonth === 29 || daysInCalendarMonth(selectedMonth) === 29)
+                    .map((d) => (
+                      <option key={d} value={d}>
+                        {d} Days
+                      </option>
+                    ))}
                 </select>
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">

@@ -88,16 +88,20 @@ export function QualityMasterTable(props: QualityMasterTableProps) {
                 </button>
               </div>
 
-              <ExportPdfButton
-                filename={`Quality-Ends-Report-${sheetDate || ''}`}
-                sheetLabel="Quality Ends • Completion Register"
-              />
+              {!toolbarInChrome && (
+                <>
+                  <ExportPdfButton
+                    filename={`Quality-Ends-Report-${sheetDate || ''}`}
+                    sheetLabel="Quality Ends • Completion Register"
+                  />
 
-              <WhatsAppShareButton
-                documentTitle="Quality Ends"
-                message={`*Sara Textile — Quality Ends*${sheetDate ? `\n${sheetDate}` : ''}`}
-                onDownloadPdf={() => exportSheetPdf(`Quality-Ends-Report-${sheetDate || ''}`, 'Quality Ends • Completion Register')}
-              />
+                  <WhatsAppShareButton
+                    documentTitle="Quality Ends"
+                    message={`*Sara Textile — Quality Ends*${sheetDate ? `\n${sheetDate}` : ''}`}
+                    onDownloadPdf={() => exportSheetPdf(`Quality-Ends-Report-${sheetDate || ''}`, 'Quality Ends • Completion Register')}
+                  />
+                </>
+              )}
             </>
           )}
           {!toolbarInChrome && editToggle}

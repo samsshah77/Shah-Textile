@@ -75,10 +75,10 @@ const FLOOR_ITEMS: NavLeaf[] = [
       (sp.get('tab') === 'quality' || sp.get('tab') === 'qualities'),
   },
   {
-    title: 'Tracking',
-    href: '/floor/reports/total',
-    icon: 'bi-grid-3x3-gap',
-    activeCheck: (p) => p.startsWith('/floor/reports') && !p.startsWith('/floor/reports/check'),
+    title: 'Quality Ends',
+    href: '/floor/production?tab=quality-ends',
+    icon: 'bi-flag',
+    activeCheck: (p, sp) => p === '/floor/production' && sp.get('tab') === 'quality-ends',
   },
   {
     title: 'Data Check',
@@ -272,7 +272,7 @@ const FLOOR_ITEM_AREA: Record<string, AccessArea | 'any'> = {
   Beams: 'prod_beams',
   'Yarn Stock': 'prod_yarn',
   Quality: 'prod_quality',
-  Tracking: 'tracking',
+  'Quality Ends': 'prod_quality',
   'Data Check': 'prod_entry',
   'Fabric Fault': 'prod_fabric_fault',
 }
@@ -454,6 +454,23 @@ function SidebarContent() {
                     <p>Dashboard</p>
                   </Link>
                 </li>
+                {showTracking && (
+                  <li className="nav-item">
+                    <Link
+                      href="/floor/reports/total"
+                      className={cn(
+                        'nav-link',
+                        pathname.startsWith('/floor/reports') && !pathname.startsWith('/floor/reports/check') && 'active'
+                      )}
+                      onClick={() => {
+                        if (isSidebarMobileViewport()) closeSidebar()
+                      }}
+                    >
+                      <i className="nav-icon bi bi-grid-3x3-gap" />
+                      <p>Monthly Tracking</p>
+                    </Link>
+                  </li>
+                )}
               </>
             )}
 

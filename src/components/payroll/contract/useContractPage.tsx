@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { payrollService, hydratePayrollFromDb } from '@/services/payrollService'
+import { daysInCalendarMonth } from '@/services/payroll/payrollCalculations'
 import { ContractSalaryRecord, CustomColumn, EmployeePaySlip } from '@/types/payroll'
 import { reorderSerialRows } from '@/components/shared/InlineRowActions'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
@@ -76,7 +77,12 @@ export function useContractPage() {
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => payrollService.getActiveSalariedMonth())
   // Contract Excel Sheet 4 / General Wages use 30-day rate base (not calendar 31).
-  const [daysInMonth, setDaysInMonth] = useState<number>(30)
+  // Days base follows the month's calendar (Oct → 31, Sep → 30, Feb → 28/29). A day count
+  // picked by hand in the dropdown holds for that month only.
+  const [daysOverride, setDaysOverride] = useState<{ month: string; days: number } | null>(null)
+  const daysInMonth =
+    daysOverride && daysOverride.month === selectedMonth ? daysOverride.days : daysInCalendarMonth(selectedMonth)
+  const setDaysInMonth = (days: number) => setDaysOverride({ month: selectedMonth, days })
   const [activeSlip, setActiveSlip] = useState<EmployeePaySlip | null>(null)
 
   const isLocked = payrollService.isMonthLocked(selectedMonth)
@@ -176,10 +182,6 @@ export function useContractPage() {
 
   useEffect(() => {
     let cancelled = false
-    if (daysInMonth !== 28 && daysInMonth !== 30 && daysInMonth !== 31) {
-      setDaysInMonth(30)
-    }
-
     // Wait for DB hydrate so we don't flash local/seed count (e.g. 15 → 12).
     void hydratePayrollFromDb().then(() => {
       if (!cancelled) reload(true)

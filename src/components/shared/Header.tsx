@@ -70,6 +70,7 @@ function resolveAccountsPage(pathname: string): string {
 }
 
 function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
+  if (pathname.startsWith('/floor/reports/total')) return 'Monthly Tracking'
   if (pathname.startsWith('/floor/reports')) return 'Reports'
   if (pathname.startsWith('/floor/challan')) return 'Challan'
   if (pathname.startsWith('/floor/fault-reports')) return 'Fabric Fault'
@@ -79,6 +80,7 @@ function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
     if (tab === 'beams') return 'Beams'
     if (tab === 'yarn') return 'Yarn'
     if (tab === 'quality') return 'Quality'
+    if (tab === 'quality-ends') return 'Quality Ends'
     if (tab === 'entry') return 'Production Entry'
     if (tab === 'fabric-fault') return 'Fabric Fault'
     return 'Production'

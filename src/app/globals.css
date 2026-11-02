@@ -2392,14 +2392,14 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   display: inline-flex;
   align-items: stretch;
   height: 2rem;
-  border: 1px solid #dbe3ec;
-  border-radius: 0.6rem;
-  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0.375rem;
+  background: transparent;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   overflow: hidden;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   line-height: 1;
-  color: #1e293b;
+  color: #ffffff;
   white-space: nowrap;
 }
 .sara-clock__date,
@@ -2410,19 +2410,21 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   padding: 0 0.7rem;
 }
 .sara-clock__date {
-  background: #f1f5f9;
-  color: #334155;
-  font-weight: 600;
+  background: #0d6efd;
+  color: #ffffff;
+  font-weight: 700;
 }
 .sara-clock__date i {
   font-size: 0.78rem;
-  color: #0d6efd;
+  color: #ffffff;
 }
 .sara-clock__sep {
   width: 1px;
-  background: #dbe3ec;
+  background: rgba(255, 255, 255, 0.35);
 }
 .sara-clock__time {
+  background: #198754;
+  color: #ffffff;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
@@ -2433,32 +2435,32 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   height: 0.45rem;
   margin-right: 0.3rem;
   border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  background: #ffffff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6);
   animation: saraClockPulse 2s ease-out infinite;
 }
 .sara-clock__sec {
-  color: #94a3b8;
-  font-weight: 600;
-  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 700;
+  font-size: 0.8rem;
 }
 .sara-clock__ampm {
   margin-left: 0.25rem;
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ffffff;
   letter-spacing: 0.04em;
 }
 @keyframes saraClockPulse {
-  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
-  70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55); }
+  70% { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .sara-clock__dot { animation: none; }
 }
 
-/* Production pages: the header chip is the day picker. Today = green, any other day = orange. */
+/* Production pages: the header chip is the day picker. */
 .sara-clock--picker .sara-clock__nav {
   display: inline-flex;
   align-items: center;
@@ -2466,19 +2468,21 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   width: 1.7rem;
   padding: 0;
   border: 0;
-  background: transparent;
-  color: inherit;
+  background: #0d6efd;
+  color: #ffffff;
   font-size: 1.15rem;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
 }
-.sara-clock--picker .sara-clock__nav:hover:not(:disabled) { background: rgba(15, 23, 42, 0.08); }
-.sara-clock--picker .sara-clock__nav:disabled { opacity: 0.35; cursor: default; }
+.sara-clock--picker .sara-clock__nav:hover:not(:disabled) { background: #0b5ed7; }
+.sara-clock--picker .sara-clock__nav:disabled { opacity: 0.4; cursor: default; }
 .sara-clock--picker .sara-clock__day {
   position: relative;
   display: inline-flex;
   align-items: stretch;
+  background: #0d6efd;
+  color: #ffffff;
 }
 .sara-clock--picker .sara-clock__label {
   display: inline-flex;
@@ -2489,14 +2493,15 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   padding: 0 0.35rem;
   border: 0;
   background: transparent;
-  color: inherit;
+  color: #ffffff;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
 }
-.sara-clock--picker .sara-clock__label:hover { background: rgba(15, 23, 42, 0.06); }
-.sara-clock--picker .sara-clock__label i { font-size: 0.78rem; }
-.sara-clock--picker .sara-clock__dim { font-weight: 600; opacity: 0.75; }
+.sara-clock--picker .sara-clock__label:hover { background: rgba(255, 255, 255, 0.12); }
+.sara-clock--picker .sara-clock__label i { font-size: 0.9rem; color: #ffffff; }
+.sara-clock--picker .sara-clock__dim { font-weight: 700; color: #ffffff; }
+.sara-clock--picker .sara-clock__today-word { font-weight: 700; color: #ffffff; }
 /* Native date input kept only to open the calendar; it sits under the label, invisible. */
 .sara-clock--picker .sara-clock__input {
   position: absolute;
@@ -2516,7 +2521,7 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   height: 2rem;
   padding: 0 0.8rem;
   border: 0;
-  border-radius: 0.6rem;
+  border-radius: 0.375rem;
   background: #16a34a;
   color: #fff;
   font-size: 0.8rem;
@@ -2526,10 +2531,10 @@ tr.sara-active-entry-row > td.sara-active-loom-num {
   cursor: pointer;
 }
 .sara-back-today:hover { background: #15803d; }
-.sara-clock--today { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
-.sara-clock--past { background: #f1f5f9; border-color: #cbd5e1; color: #334155; }
-.sara-clock--picker .sara-clock__sep { background: currentColor; opacity: 0.25; }
-.sara-clock--picker .sara-clock__time { background: #ffffff; color: #1e293b; }
+.sara-clock--today { border-color: rgba(0, 0, 0, 0.15); }
+.sara-clock--past { border-color: rgba(0, 0, 0, 0.15); }
+.sara-clock--picker .sara-clock__sep { background: rgba(255, 255, 255, 0.35); }
+.sara-clock--picker .sara-clock__time { background: #198754; color: #ffffff; }
 
 /* Salary sheets: everything in a cell is centred, typed values (name, service, remarks) too. */
 table[data-no-tidy] td :is(input, select, textarea) {
@@ -2694,3 +2699,94 @@ tr.sara-beam-to-end > td {
   background-color: #f8d7da;
   border-color: #dc3545 !important;
 }
+
+/* KPI cards (MetricCard): dark solid colour, large white text — strong contrast, easy to read. */
+.sara-metric {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  color: #fff;
+}
+.sara-metric--link:hover {
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.25);
+  filter: brightness(1.05);
+}
+.sara-metric__body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  flex: 1 1 auto;
+}
+.sara-metric__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+.sara-metric__value {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #fff;
+  margin: 0.15rem 0;
+  word-break: break-word;
+}
+.sara-metric__sub {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+}
+.sara-metric__icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+}
+.sara-metric__footer {
+  display: block;
+  padding: 0.45rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+}
+/* Clickable link look: underlined, stronger on hover. */
+.sara-metric__footer-text {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+}
+.sara-metric--link:hover .sara-metric__footer-text {
+  text-decoration-thickness: 2.5px;
+}
+@media (max-width: 575.98px) {
+  .sara-metric__value {
+    font-size: 1.5rem;
+  }
+  .sara-metric__icon {
+    display: none;
+  }
+}
+
+/* Plain note (no yellow / tinted box): white, coloured left stripe, dark readable text. */
+.sara-note {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-left: 6px solid #198754;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1rem;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+.sara-note--warn {
+  border-left-color: #dc3545;
+}
+

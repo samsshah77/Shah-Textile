@@ -18,7 +18,7 @@ function shortDate(iso: string): string {
 
 /**
  * The header's date chip on Production pages.
- *  Today:                          ‹ Today · 30 Oct 2026 ›   (green)
+ *  Today:                          ‹ Today · 30 Oct 2026 ›
  *  Past:   [← Back to 30 Oct 2026]  ‹ 29 Oct 2026 ›          (grey; the green button sits
  *          outside the chip so the chip itself never moves)
  * Clicking the date opens the calendar.

@@ -24,7 +24,7 @@ import { ProductionWorkspaceSkeleton } from '@/components/floor/ProductionSkelet
 import { PrintBrandHeader } from '@/components/shared/PrintBrandHeader'
 import { BeamEndedHistory } from '@/components/floor/BeamEndedHistory'
 import { FabricFaultTabs } from '@/components/floor/FabricFaultTabs'
-import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
+import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfButton'
 import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { productionWhatsAppText } from '@/lib/floor/shareText'
 import { qualityWhatsAppText, type QualityShareData } from '@/lib/floor/qualityShare'
@@ -37,7 +37,9 @@ import { PRODUCTION_TAB_AREA } from '@/lib/access'
 import { useFloorDateLabel } from '@/context/FloorDateContext'
 import { DateStepper } from '@/components/floor/DateStepper'
 import { FloorMonthLockBar, useFloorMonthLocked } from '@/components/floor/FloorMonthLock'
-import { productionMonthOf } from '@/constants/productionCalendar'
+import { getCalendarToday, getProductionToday, productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
+import { monthOptions } from '@/services/floorReportsClient'
+import { DateNav } from '@/components/shared/DateNav'
 
 function ProductionWorkspaceContent() {
   const router = useRouter()
@@ -56,15 +58,36 @@ function ProductionWorkspaceContent() {
 
   const { canEditProduction, isAdmin, canView, canEdit, user } = useAuth()
   // Administration → Permissions: each tab is Hide / View / Edit for this person.
-  const tabArea = PRODUCTION_TAB_AREA[currentTab]
+  // Quality Ends is its own tab, under the same Quality permission.
+  const tabArea = PRODUCTION_TAB_AREA[currentTab === 'quality-ends' ? 'quality' : currentTab]
   const tabEdit = tabArea ? canEdit(tabArea) : canEditProduction
   const tabViewOnly = Boolean(tabArea && canView(tabArea) && !canEdit(tabArea))
   const { setDateLabel, setPicker } = useFloorDateLabel()
   const [yarnDateMode, setYarnDateMode] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
   const [beamFilter, setBeamFilter] = useState<BeamFilterType>('IN_STOCK')
   const [qualityStatusFilter, setQualityStatusFilter] = useState<QualityStatusFilter>('ACTIVE')
+  // Quality tab = Active / Hold; Quality Ends tab = Ended.
+  const qualityFilter: QualityStatusFilter =
+    currentTab === 'quality-ends' ? 'ENDED' : qualityStatusFilter === 'ENDED' ? 'ACTIVE' : qualityStatusFilter
+  const changeQualityFilter = (f: QualityStatusFilter) => {
+    if (f === 'ENDED') {
+      if (currentTab !== 'quality-ends') router.push('/floor/production?tab=quality-ends')
+      return
+    }
+    setQualityStatusFilter(f)
+    if (currentTab === 'quality-ends') router.push('/floor/production?tab=quality')
+  }
   /** Quality table fills this with its Active / Hold rows for the toolbar WhatsApp / PDF. */
   const qualityShareRef = useRef<(() => QualityShareData) | null>(null)
+  // Quality Ends has its own month + day (not the header date): ends in that month up to that day.
+  const [endsDate, setEndsDate] = useState(() => getCalendarToday())
+  const endsMonth = productionMonthOf(endsDate)
+  const setEndsMonth = (m: string) => {
+    const { to } = productionMonthBounds(m)
+    const today = getCalendarToday()
+    setEndsDate(to < today ? to : today)
+  }
+  const endsMonthOptions = useMemo(() => monthOptions(), [])
   const [qualityEdit, setQualityEdit] = useState(false)
   const [qualityViewMode, setQualityViewMode] = useState<TableGridMode>('table')
   const [qualityAddOpen, setQualityAddOpen] = useState(false)
@@ -163,11 +186,11 @@ function ProductionWorkspaceContent() {
   }, [selectedDate, setDateLabel])
 
   useEffect(() => {
-    if (qualityStatusFilter !== 'ACTIVE') {
+    if (qualityFilter !== 'ACTIVE') {
       setQualityEdit(false)
       setQualityAddOpen(false)
     }
-  }, [qualityStatusFilter])
+  }, [qualityFilter])
 
   useEffect(() => {
     setQualityEdit(false)
@@ -190,6 +213,7 @@ function ProductionWorkspaceContent() {
     beams: 'Beams',
     yarn: 'Yarn Stock',
     quality: 'Quality',
+    'quality-ends': 'Quality Ends',
   }
 
   const showDateBar =
@@ -202,15 +226,9 @@ function ProductionWorkspaceContent() {
   const isBeamsTab = currentTab === 'beams'
   // The day picker lives in the top header chip (‹ date › + Today) on these tabs.
   const headerPicksDate = showDateBar || isBeamsTab
-  useEffect(() => {
-    if (!headerPicksDate) {
-      setPicker(null)
-      return
-    }
-    setPicker({ date: selectedDate, onChange: setSelectedDate })
-  }, [headerPicksDate, selectedDate, setSelectedDate, setPicker])
+  // The header shows today's date / time only; the day is picked on the page (left, DateNav).
   useEffect(() => () => setPicker(null), [setPicker])
-  const isQualityTab = currentTab === 'quality'
+  const isQualityTab = currentTab === 'quality' || currentTab === 'quality-ends'
   // Beams tab always shows the beams as they are now and stays editable on any date; a mount /
   // take-off done while a past date is selected is dated that day. (Beam changes are still
   // recorded day-wise on the server — floor_beam_history.)
@@ -229,20 +247,33 @@ function ProductionWorkspaceContent() {
         <div className="sara-page-header sara-prod-toolbar-row">
           <div className="d-flex flex-wrap align-items-center gap-2 justify-content-between w-100">
             <div className="d-flex flex-wrap align-items-center gap-2">
+              {headerPicksDate && <DateNav value={selectedDate} onChange={setSelectedDate} />}
               {currentTab === 'fabric-fault' && <FabricFaultTabs active="table" />}
-              {isQualityTab && (
-                <QualityStatusFilterBar
-                  filter={qualityStatusFilter}
-                  onChange={setQualityStatusFilter}
-                  counts={qualityCounts}
-                />
-              )}
-              {isBeamsTab && (
-                <BeamStockFilterBar
-                  filter={beamFilter}
-                  onChange={setBeamFilter}
-                  counts={beamCounts}
-                />
+              {currentTab === 'quality-ends' && (
+                <>
+                  <select
+                    className="form-select form-select-sm fw-semibold"
+                    style={{ width: 'auto', minWidth: 160, height: '2.25rem' }}
+                    value={endsMonth}
+                    onChange={(e) => setEndsMonth(e.target.value)}
+                    aria-label="Mahina"
+                  >
+                    {endsMonthOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    className="form-control form-control-sm fw-semibold"
+                    style={{ width: 'auto', minWidth: 140, height: '2.25rem' }}
+                    value={endsDate}
+                    max={getProductionToday()}
+                    onChange={(e) => e.target.value && setEndsDate(e.target.value)}
+                    aria-label="Quality ends date"
+                  />
+                </>
               )}
               {isYarnTab && (
                 <>
@@ -279,10 +310,10 @@ function ProductionWorkspaceContent() {
 
             <div className="d-flex flex-wrap align-items-center gap-2 ms-auto">
               {/* Month lock sits in this toolbar row (no extra empty row); the "locked" note shows below. */}
-              {showDateBar && currentTab !== 'quality' && currentTab !== 'looms' && (
+              {showDateBar && !isQualityTab && currentTab !== 'looms' && (
                 <FloorMonthLockBar month={productionMonthOf(selectedDate)} isAdmin={isAdmin} variant="button" />
               )}
-              {isQualityTab && tabEdit && qualityStatusFilter === 'ACTIVE' && (
+              {isQualityTab && tabEdit && qualityFilter === 'ACTIVE' && (
                 <>
                   <button
                     type="button"
@@ -442,7 +473,7 @@ function ProductionWorkspaceContent() {
                     getPdfAttachment={() => loadProductionPdf().then(async (m) => m.generateProductionPdfBase64(entries, selectedDate, { logoDataUrl: await m.loadPdfLogo() }))}
                   />
                 </>
-              ) : isQualityTab && qualityStatusFilter !== 'ENDED' ? (
+              ) : isQualityTab && qualityFilter !== 'ENDED' ? (
                 <>
                   {/* Same as the Production Sheet: a real PDF file, and WhatsApp / Email with it attached. */}
                   <button
@@ -458,7 +489,7 @@ function ProductionWorkspaceContent() {
                     <span>PDF</span>
                   </button>
                   <WhatsAppShareButton
-                    documentTitle={qualityStatusFilter === 'HOLD' ? 'Hold Qualities' : 'Active Qualities'}
+                    documentTitle={qualityFilter === 'HOLD' ? 'Hold Qualities' : 'Active Qualities'}
                     message={() => {
                       const data = qualityShareRef.current?.()
                       return data ? qualityWhatsAppText(data) : '*Sara Textile — Qualities*'
@@ -473,6 +504,18 @@ function ProductionWorkspaceContent() {
                     }}
                   />
                 </>
+              ) : currentTab === 'quality-ends' ? (
+                <>
+                  <ExportPdfButton
+                    filename={`Quality-Ends-Report-${endsDate || ''}`}
+                    sheetLabel="Quality Ends • Completion Register"
+                  />
+                  <WhatsAppShareButton
+                    documentTitle="Quality Ends"
+                    message={`*Sara Textile — Quality Ends*${endsDate ? `\n${endsDate}` : ''}`}
+                    onDownloadPdf={() => exportSheetPdf(`Quality-Ends-Report-${endsDate || ''}`, 'Quality Ends • Completion Register')}
+                  />
+                </>
               ) : (
                 <ExportPdfButton
                   filename={`Production-${tabTitle[currentTab] || 'Production-Sheet'}-${selectedDate || selectedMonth || 'export'}`}
@@ -481,15 +524,39 @@ function ProductionWorkspaceContent() {
               )}
             </div>
           </div>
+
+          {isBeamsTab && (
+            <div className="d-flex align-items-center justify-content-start mt-2">
+              <BeamStockFilterBar
+                filter={beamFilter}
+                onChange={setBeamFilter}
+                counts={beamCounts}
+              />
+            </div>
+          )}
+
+          {currentTab === 'quality' && (
+            <div className="d-flex align-items-center justify-content-start mt-2">
+              <QualityStatusFilterBar
+                showEnded={false}
+                filter={qualityFilter}
+                onChange={changeQualityFilter}
+                counts={qualityCounts}
+              />
+            </div>
+          )}
         </div>
 
-        {showDateBar && currentTab !== 'quality' && currentTab !== 'looms' && (
+        {showDateBar && !isQualityTab && currentTab !== 'looms' && (
           <FloorMonthLockBar month={productionMonthOf(selectedDate)} isAdmin={isAdmin} variant="note" />
         )}
 
         {tabViewOnly && (
-          <div className="alert alert-secondary py-2 mb-0" role="status">
-            View only — is tab mein tabdeeli ki ijazat nahi.
+          <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 mb-0 fw-medium" role="status">
+            <i className="bi bi-shield-lock-fill text-warning fs-5 flex-shrink-0" />
+            <span>
+              <strong>View only</strong> — is tab mein tabdeeli ki ijazat nahi.
+            </span>
           </div>
         )}
       </div>
@@ -630,7 +697,7 @@ function ProductionWorkspaceContent() {
               />
             )}
 
-            {currentTab === 'quality' && (
+            {isQualityTab && (
               <QualityMasterTable
                 shareRef={qualityShareRef}
                 qualities={qualities}
@@ -643,9 +710,9 @@ function ProductionWorkspaceContent() {
                 looms={looms}
                 beams={beams}
                 yarn={yarn}
-                statusFilter={qualityStatusFilter}
-                onStatusFilterChange={setQualityStatusFilter}
-                sheetDate={selectedDate}
+                statusFilter={qualityFilter}
+                onStatusFilterChange={changeQualityFilter}
+                sheetDate={currentTab === 'quality-ends' ? endsDate : selectedDate}
                 toolbarInChrome
                 tableEdit={qualityEdit}
                 onTableEditChange={setQualityEdit}

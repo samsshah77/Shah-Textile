@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react'
 import { payrollService } from '@/services/payrollService'
+import { daysInCalendarMonth } from '@/services/payroll/payrollCalculations'
 import { AddColumnButton } from '@/components/shared/CustomColumnModal'
 import { Printer, Lock } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -91,9 +92,13 @@ function ContractPayrollContent() {
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/40"
                   aria-label="Days in month"
                 >
-                  <option value={30}>30 Days</option>
-                  <option value={31}>31 Days</option>
-                  <option value={28}>28 Days</option>
+                  {[31, 30, 29, 28]
+                    .filter((d) => d !== 29 || daysInMonth === 29 || daysInCalendarMonth(selectedMonth) === 29)
+                    .map((d) => (
+                      <option key={d} value={d}>
+                        {d} Days
+                      </option>
+                    ))}
                 </select>
               </div>
               <div className="inline-flex shrink-0 items-center gap-1.5">
