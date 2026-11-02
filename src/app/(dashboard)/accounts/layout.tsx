@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export default async function AccountsLayout({ children }: { children: React.ReactNode }) {
   await requireFinancePage('accounts', 'financial_reports')
   return (
-    <div className="sara-module-content">
+    <div className="sara-module-content sara-accounts">
       <FinanceReadonly area="accounts">
         <AccountsHydrate>
           <ModuleTables storageKey="sara.textSize.accounts">{children}</ModuleTables>

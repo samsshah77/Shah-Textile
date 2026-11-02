@@ -412,7 +412,7 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
-                    + Petty Cash Transfer Inflow (jo petty cash is cheque ke saath mangwana hai):
+                    Petty Cash
                   </td>
                   <td className="py-2 px-3 text-center font-medium text-slate-700 min-w-[180px]">
                     <PettyInflowCell month={selectedMonth} fortnight="1-15" amount={f1.pettyCashInflow} />
@@ -420,7 +420,7 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
-                    Total Bank Cheque Amount Drawn (1st Fortnight):
+                    Grand Total
                   </td>
                   <td className="py-2.5 px-3 text-center font-bold text-sm text-slate-900 min-w-[180px]">
                     {formatNumber(f1.totalBankCheque, 0)}
@@ -492,7 +492,7 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t border-slate-200 bg-white font-medium text-slate-700 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2 px-3 font-sans min-w-[500px]">
-                    + Petty Cash Transfer Inflow (jo petty cash is cheque ke saath mangwana hai):
+                    Petty Cash
                   </td>
                   <td className="py-2 px-3 text-center font-medium text-slate-700 min-w-[180px]">
                     <PettyInflowCell month={selectedMonth} fortnight="16-31" amount={f2.pettyCashInflow} />
@@ -501,7 +501,7 @@ function DisbursementSynopsisContent() {
                 </tr>
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900 text-xs">
                   <td colSpan={2} className="border-r border-slate-200 py-2.5 px-3 font-sans uppercase min-w-[500px]">
-                    Total Bank Cheque Amount Drawn (2nd Fortnight):
+                    Grand Total
                   </td>
                   <td className="py-2.5 px-3 text-center font-bold text-sm text-slate-900 min-w-[180px]">
                     {formatNumber(f2.totalBankCheque, 0)}

@@ -5,6 +5,7 @@ import { PictureStrip } from '@/components/shared/PictureStrip'
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer, Pencil, Wallet, Trash2 } from 'lucide-react'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -110,7 +111,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
             </div>
             <div className="flex items-center gap-2">
               <MonthPicker month={month} months={months} onChange={setMonth} allowAll />
-              <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                 <Printer className="size-3.5" /> Print
               </button>
             </div>
@@ -150,6 +151,12 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
             </div>
 
             <div className="erp-card overflow-hidden">
+              <div className="px-3 pt-3">
+                <SheetHeader
+                  title={`${ledger.party.name} — ${ledger.party.kind === 'WORKSHOP' ? 'WORKSHOP' : 'TRADER'} LEDGER`}
+                  subtitle={<>Period: {period}</>}
+                />
+              </div>
               <div className="px-4 py-2.5 border-b border-border bg-slate-50 flex items-center justify-between">
                 <h2 className="text-xs font-bold uppercase tracking-wider">
                   {ledger.party.name} · {ledger.party.kind === 'WORKSHOP' ? 'Workshop' : 'Trader'} · {period}
@@ -160,7 +167,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                   <button
                     type="button"
                     onClick={resetAllWidths}
-                    className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
+                    className="sara-allow-readonly text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
                     title="Reset column widths to default"
                   >
                     Reset widths

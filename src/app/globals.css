@@ -1223,14 +1223,17 @@ tr:hover .sara-serial-arrows {
    ========================================================================== */
 
 /* Accounts + Salary: everyone except Tufail is view-only */
-.sara-finance-readonly input:not([type='date']):not([type='month']):not([type='search']),
+/* View only: typing / saving controls are locked; looking around (search, month, filters,
+   bill photos, print, text size) stays open — marked .sara-allow-readonly / -zone. */
+.sara-finance-readonly input:not([type='date']):not([type='month']):not([type='search']):not(.sara-allow-readonly),
 .sara-finance-readonly textarea,
 .sara-finance-readonly button:not(.sara-allow-readonly) {
   pointer-events: none !important;
 }
 
 .sara-finance-readonly a,
-.sara-finance-readonly .sara-allow-readonly {
+.sara-finance-readonly .sara-allow-readonly,
+.sara-finance-readonly .sara-allow-readonly-zone :is(button, input, a) {
   pointer-events: auto !important;
 }
 
@@ -1297,6 +1300,11 @@ tr:hover .sara-serial-arrows {
   .sara-sheet-tabs,
   .app-sidebar,
   .alert {
+    display: none !important;
+  }
+
+  /* Accounts sheets carry their own SheetHeader (like the Salary sheets). */
+  .sara-accounts .sara-print-doc-header {
     display: none !important;
   }
 

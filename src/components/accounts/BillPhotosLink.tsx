@@ -73,7 +73,7 @@ export function BillPhotosLink({ urls, title = 'Bill Photo' }: BillPhotosLinkPro
         }}
         title={`Bill photo dekhein${count > 1 ? ` (${count} photos)` : ''}`}
         aria-label="View bill photo"
-        className="ml-1.5 inline-flex items-center justify-center rounded p-1 text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:text-sky-400 dark:hover:bg-sky-900/80 border border-sky-200/80 dark:border-sky-800/70 transition-all shadow-2xs hover:shadow-xs active:scale-95 print:hidden cursor-pointer"
+        className="sara-allow-readonly ml-1.5 inline-flex items-center justify-center rounded p-1 text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:text-sky-400 dark:hover:bg-sky-900/80 border border-sky-200/80 dark:border-sky-800/70 transition-all shadow-2xs hover:shadow-xs active:scale-95 print:hidden cursor-pointer"
       >
         <ImageIcon className="size-3.5" />
       </button>
@@ -81,7 +81,7 @@ export function BillPhotosLink({ urls, title = 'Bill Photo' }: BillPhotosLinkPro
       {/* Picture Dialog Modal */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-5 animate-in fade-in duration-150"
+          className="sara-allow-readonly-zone fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-5 animate-in fade-in duration-150"
           role="dialog"
           aria-modal="true"
           onClick={() => setIsOpen(false)}

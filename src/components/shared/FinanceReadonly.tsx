@@ -9,7 +9,7 @@ export function FinanceReadonly({ area, children }: { area: 'accounts' | 'payrol
 
   return (
     <div className="sara-finance-readonly">
-      <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 mb-3 fw-medium" role="status">
+      <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 mb-3 fw-medium d-print-none" role="status">
         <i className="bi bi-shield-lock-fill text-warning fs-5 flex-shrink-0" />
         <span>
           <strong>View only</strong> — {area === 'accounts' ? 'Accounts' : 'Salary'} mein tabdeeli ki ijazat nahi.

@@ -4,6 +4,7 @@ import { BillPhotosLink } from '@/components/accounts/BillPhotosLink'
 import { Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PlusCircle, Search, Filter, Building2, Download, Printer, Pencil, Plus, Trash2, Receipt } from 'lucide-react'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -183,11 +184,11 @@ function DailyInwardContent() {
             </div>
             <div className="flex items-center gap-2">
               <MonthPicker month={month} months={months} onChange={setMonth} />
-              <button type="button" onClick={exportCSV} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <button type="button" onClick={exportCSV} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                 <Download className="size-3.5" />
                 <span>Export CSV</span>
               </button>
-              <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                 <Printer className="size-3.5" />
                 <span>Print</span>
               </button>
@@ -198,6 +199,12 @@ function DailyInwardContent() {
 
       <LoadState loading={loading} error={error} hasData={Boolean(book)}>
         <div className="erp-card overflow-hidden">
+          <div className="px-3 pt-3">
+            <SheetHeader
+              title="DAILY INWARD & PURCHASE EXPENSES"
+              subtitle={<>Month: {title}{locked ? ' · Locked' : ''}</>}
+            />
+          </div>
           <div className="p-3 border-b border-border flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/30 print:hidden">
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="relative w-60">
@@ -207,7 +214,7 @@ function DailyInwardContent() {
                   placeholder="Search description, party, bill..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-[#0066cc]"
+                  className="sara-allow-readonly w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-[#0066cc]"
                 />
               </div>
               <div className="flex items-center gap-1.5 bg-background border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1">
@@ -241,7 +248,7 @@ function DailyInwardContent() {
               <button
                 type="button"
                 onClick={resetAllWidths}
-                className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
+                className="sara-allow-readonly text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
                 title="Reset column widths to default"
               >
                 Reset widths
@@ -269,12 +276,6 @@ function DailyInwardContent() {
                 <col className="print:hidden" style={{ width: widths.actions }} />
               </colgroup>
               <thead>
-                <tr className="bg-slate-200/90 dark:bg-slate-800">
-                  <th colSpan={12} className={cn(cell, 'py-2 px-3 font-bold text-xs uppercase tracking-wider')}>
-                    Daily Inward & Purchase Expenses • {title}
-                    {locked && <span className="ml-2 text-amber-700 normal-case">(locked)</span>}
-                  </th>
-                </tr>
                 <tr className="bg-slate-100 dark:bg-slate-800 font-bold uppercase text-[10px] border-b-2 border-slate-800">
                   <ResizableTh
                     columnKey="serialNo"

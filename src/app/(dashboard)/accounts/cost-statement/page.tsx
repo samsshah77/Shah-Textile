@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { Edit3, Eye, RotateCcw, Save, Printer, Link2, Plus, Trash2 } from 'lucide-react'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -189,7 +190,7 @@ function CostStatementContent() {
             </div>
             <div className="flex items-center gap-2">
               <MonthPicker month={month} months={months} onChange={(m) => (setDraft(null), setMonth(m))} />
-              <button type="button" onClick={() => window.print()} className="erp-btn-primary text-xs !min-h-9 !h-9 cursor-pointer">
+              <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-primary text-xs !min-h-9 !h-9 cursor-pointer">
                 <Printer className="size-3.5" /> Print
               </button>
             </div>
@@ -205,22 +206,23 @@ function CostStatementContent() {
                 Peelay khaane manual hain. Salaries, contractors, purchases aur petty cash apni sheets se khud aate hain — unhein wahan badlein.
               </div>
             )}
-            <div className="text-center border-b border-slate-200 pb-4 mb-6">
-              <h1 className="text-lg font-bold uppercase tracking-wider">SARA TEXTILE</h1>
-              <h2 className="text-sm font-semibold text-slate-700">COST STATEMENT</h2>
-              <p className="text-xs text-slate-500">
-                {editing ? (
-                  <input
-                    aria-label="Period title"
-                    value={draft?.period ?? cs.period}
-                    onChange={(e) => setDraft((d) => (d ? { ...d, period: e.target.value } : d))}
-                    className="text-center bg-amber-50 border border-amber-300 rounded px-2"
-                  />
-                ) : (
-                  cs.period
-                )}
-              </p>
-              <p className="mt-1 text-[10px] text-slate-400 print:hidden">{manualSource}</p>
+            <div className="mb-5">
+              <SheetHeader
+                title="COST STATEMENT"
+                subtitle={
+                  editing ? (
+                    <input
+                      aria-label="Period title"
+                      value={draft?.period ?? cs.period}
+                      onChange={(e) => setDraft((d) => (d ? { ...d, period: e.target.value } : d))}
+                      className="text-right bg-amber-50 border border-amber-300 rounded px-2"
+                    />
+                  ) : (
+                    cs.period
+                  )
+                }
+              />
+              <p className="-mt-2 text-right text-[10px] text-slate-500 print:hidden">{manualSource}</p>
             </div>
 
             <h3 className="text-xs font-bold uppercase tracking-wider mb-3">Cost Of Production</h3>

@@ -172,7 +172,7 @@ export function ModuleTables({ storageKey, children }: { storageKey: string; chi
       <div className="sara-text-size-bar print:hidden" role="group" aria-label="Table text size">
         <span>Text size</span>
         {SIZES.map(([k, label, title]) => (
-          <button key={k} type="button" title={title} aria-pressed={size === k} onClick={() => choose(k)} className={cn(size === k && 'is-active')}>
+          <button key={k} type="button" title={title} aria-pressed={size === k} onClick={() => choose(k)} className={cn('sara-allow-readonly', size === k && 'is-active')}>
             {label}
           </button>
         ))}

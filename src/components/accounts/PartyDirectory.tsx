@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PlusCircle, Search, Download, Printer, Pencil, X, AlertTriangle } from 'lucide-react'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -110,10 +111,10 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
             </div>
             <div className="flex items-center gap-2">
               <MonthPicker month={month} months={months} onChange={setMonth} allowAll />
-              <button type="button" onClick={exportCSV} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <button type="button" onClick={exportCSV} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                 <Download className="size-3.5" /> Export CSV
               </button>
-              <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                 <Printer className="size-3.5" /> Print
               </button>
             </div>
@@ -123,6 +124,9 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
 
       <LoadState loading={loading} error={error} hasData={Boolean(rows)}>
         <div className="erp-card overflow-hidden">
+          <div className="px-3 pt-3">
+            <SheetHeader title={`${noun.toUpperCase()}S`} subtitle={<>Period: {period}</>} />
+          </div>
           <div className="p-3 border-b border-border flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 print:hidden">
             <div className="relative w-72">
               <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
@@ -130,19 +134,19 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
                 placeholder="Search name, category, remarks..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-slate-300 rounded-lg"
+                className="sara-allow-readonly w-full pl-8 pr-3 py-1.5 text-xs bg-background border border-slate-300 rounded-lg"
               />
             </div>
             <div className="flex items-center gap-4">
               {month !== 'all' && (
                 <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                  <input type="checkbox" checked={showIdle} onChange={(e) => setShowIdle(e.target.checked)} />
+                  <input type="checkbox" className="sara-allow-readonly" checked={showIdle} onChange={(e) => setShowIdle(e.target.checked)} />
                   Is mahine bina bill walay bhi dikhayein
                 </label>
               )}
               {removedCount > 0 && (
                 <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                  <input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
+                  <input type="checkbox" className="sara-allow-readonly" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
                   Removed bhi dikhayein ({removedCount})
                 </label>
               )}
@@ -152,7 +156,7 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
               <button
                 type="button"
                 onClick={resetAllWidths}
-                className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
+                className="sara-allow-readonly text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline cursor-pointer print:hidden"
                 title="Reset column widths to default"
               >
                 Reset widths

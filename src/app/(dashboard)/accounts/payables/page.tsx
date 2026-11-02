@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Pencil, Printer, Search } from 'lucide-react'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { cn } from '@/lib/utils'
 import { ageLabel, daysSince, rs, todayStr } from '@/lib/accounts/util'
@@ -53,14 +54,14 @@ export default function PayablesPage() {
               <option value="WORKSHOP">Workshops</option>
             </select>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-              <input type="checkbox" checked={onlyOwed} onChange={(e) => setOnlyOwed(e.target.checked)} />
+              <input type="checkbox" className="sara-allow-readonly" checked={onlyOwed} onChange={(e) => setOnlyOwed(e.target.checked)} />
               Sirf pending balance walay
             </label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Party dhoondein" className="h-9 w-44 rounded-md border border-slate-300 bg-background pl-7 pr-2 text-xs" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Party dhoondein" className="sara-allow-readonly h-9 w-44 rounded-md border border-slate-300 bg-background pl-7 pr-2 text-xs" />
             </div>
-            <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+            <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
               <Printer className="size-3.5" /> Print
             </button>
           </div>
@@ -87,6 +88,12 @@ export default function PayablesPage() {
             </div>
 
             <div className="erp-card overflow-x-auto">
+              <div className="px-3 pt-3">
+                <SheetHeader
+                  title={`PAYABLES — ${kind === 'TRADER' ? 'TRADERS' : kind === 'WORKSHOP' ? 'WORKSHOPS' : 'TRADERS + WORKSHOPS'}`}
+                  subtitle={<>Balance as on {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</>}
+                />
+              </div>
               <table className="w-full min-w-[820px] border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-[10px] font-bold uppercase">

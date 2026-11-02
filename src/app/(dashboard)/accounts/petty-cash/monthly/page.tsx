@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft, Printer } from 'lucide-react'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { monthLabel, rs } from '@/lib/accounts/util'
 import { accountsApi } from '@/services/accounts/accountsApi'
@@ -21,7 +22,7 @@ export default function PettyCashMonthlyPage() {
             <Link href="/accounts/petty-cash" className="erp-btn-secondary text-xs !min-h-9 !h-9">
               <ArrowLeft className="size-3.5" /> Petty cash journal
             </Link>
-            <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+            <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
               <Printer className="size-3.5" /> Print
             </button>
           </div>
@@ -29,6 +30,9 @@ export default function PettyCashMonthlyPage() {
       />
       <LoadState loading={loading} error={error} hasData={Boolean(rows)}>
         <div className="erp-card overflow-x-auto">
+          <div className="px-3 pt-3">
+            <SheetHeader title="PETTY CASH — MONTHLY SUMMARY" subtitle="Balance b/f · Cash in · Cash out · Mill expense · Closing" />
+          </div>
           <table className="w-full min-w-[720px] text-xs">
             <thead>
               <tr className="bg-slate-100 font-bold uppercase text-[10px] border-b-2 border-slate-800">

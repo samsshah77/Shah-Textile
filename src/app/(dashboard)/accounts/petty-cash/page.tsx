@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { Printer, Trash2, Plus, BarChart3 } from 'lucide-react'
+import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -83,7 +84,7 @@ function PettyCashContent() {
             <div className="flex items-center gap-2">
               {save.node}
               <MonthPicker month={month} months={months} onChange={setMonth} />
-              <button type="button" onClick={() => window.print()} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
+              <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                 <Printer className="size-3.5" /> Print
               </button>
             </div>
@@ -108,6 +109,9 @@ function PettyCashContent() {
               ))}
             </div>
             <div className="erp-card overflow-hidden">
+              <div className="px-3 pt-3">
+                <SheetHeader title="PETTY CASH JOURNAL" subtitle={<>Month: {month ? monthLabel(month) : ''}</>} />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[860px] text-xs border-collapse">
                   <thead>
