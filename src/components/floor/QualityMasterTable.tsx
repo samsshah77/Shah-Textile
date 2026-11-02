@@ -97,7 +97,7 @@ export function QualityMasterTable(props: QualityMasterTableProps) {
 
                   <WhatsAppShareButton
                     documentTitle="Quality Ends"
-                    message={`*Sara Textile — Quality Ends*${sheetDate ? `\n${sheetDate}` : ''}`}
+                    message={`*Shah Textile — Quality Ends*${sheetDate ? `\n${sheetDate}` : ''}`}
                     onDownloadPdf={() => exportSheetPdf(`Quality-Ends-Report-${sheetDate || ''}`, 'Quality Ends • Completion Register')}
                   />
                 </>

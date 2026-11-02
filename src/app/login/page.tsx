@@ -68,7 +68,7 @@ export default function LoginPage() {
               src="/saratextile.png"
               width={72}
               height={72}
-              alt="Sara Textile"
+              alt="Shah Textile"
               priority
               className="mb-2 d-block mx-auto rounded-3"
             />

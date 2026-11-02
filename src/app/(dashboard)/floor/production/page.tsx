@@ -240,7 +240,7 @@ function ProductionWorkspaceContent() {
 
   return (
     <div className="sara-production-workspace">
-      {/* PDF / print header (logo + SARA TEXTILES left, print date-time right). Outside the
+      {/* PDF / print header (logo + SHAH TEXTILES left, print date-time right). Outside the
           print-hidden toolbar below, so it shows on paper. */}
       <PrintBrandHeader sheetTitle={tabTitle[currentTab] || 'Production'} />
       <div className="sara-production-chrome print:hidden">
@@ -492,7 +492,7 @@ function ProductionWorkspaceContent() {
                     documentTitle={qualityFilter === 'HOLD' ? 'Hold Qualities' : 'Active Qualities'}
                     message={() => {
                       const data = qualityShareRef.current?.()
-                      return data ? qualityWhatsAppText(data) : '*Sara Textile — Qualities*'
+                      return data ? qualityWhatsAppText(data) : '*Shah Textile — Qualities*'
                     }}
                     onDownloadPdf={() => {
                       const data = qualityShareRef.current?.()
@@ -512,7 +512,7 @@ function ProductionWorkspaceContent() {
                   />
                   <WhatsAppShareButton
                     documentTitle="Quality Ends"
-                    message={`*Sara Textile — Quality Ends*${endsDate ? `\n${endsDate}` : ''}`}
+                    message={`*Shah Textile — Quality Ends*${endsDate ? `\n${endsDate}` : ''}`}
                     onDownloadPdf={() => exportSheetPdf(`Quality-Ends-Report-${endsDate || ''}`, 'Quality Ends • Completion Register')}
                   />
                 </>

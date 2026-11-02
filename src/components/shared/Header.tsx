@@ -166,7 +166,7 @@ function HeaderContent() {
     if (pathname.startsWith('/floor')) {
       return { section: 'Floor Operations', page: resolveFloorPage(pathname, searchParams) }
     }
-    return { section: 'Sara Textile', page: null as string | null }
+    return { section: 'Shah Textile', page: null as string | null }
   }, [pathname, searchParams, profilePageLabel])
 
   useEffect(() => {

@@ -397,7 +397,7 @@ export function ProductionSheetTable({
                   background: '#fff',
                 }}
               >
-                SARA TEXTILE
+                SHAH TEXTILE
               </th>
             </tr>
             {/* Excel row 2: date + weekday */}

@@ -15,7 +15,7 @@ function dayLabel(date: string) {
 export function productionWhatsAppText(date: string, rows: DailyLoomProductionEntry[]): string {
   const s = summarizeProductionDay(rows)
   const lines = [
-    `*Sara Textile — Production Sheet*`,
+    `*Shah Textile — Production Sheet*`,
     dayLabel(date),
     ``,
     `Production: *${n(s.meters)} m* (A ${n(s.shiftA)} / B ${n(s.shiftB)})`,

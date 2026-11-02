@@ -60,7 +60,7 @@ export function EmployeePaySlipModal({ slip, onClose }: EmployeePaySlipModalProp
           {/* Company & Voucher Header */}
           <div className="border-b-2 border-slate-900 pb-3 mb-4 text-center">
             <h1 className="text-xl font-black uppercase tracking-wider text-slate-900">
-              SARA TEXTILE MILLS
+              SHAH TEXTILE MILLS
             </h1>
             <p className="text-xs font-semibold uppercase text-slate-600 tracking-wide mt-0.5">
               Employee Salary & Wage Voucher / پرچی ادائیگی تنخواہ

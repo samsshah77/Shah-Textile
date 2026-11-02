@@ -91,7 +91,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
 
   const waNumber = formatWhatsAppNumber(number)
   const waLink = `https://wa.me/${waNumber.length >= 10 ? waNumber : ''}?text=${encodeURIComponent(message)}`
-  const subject = `${documentTitle} — Sara Textile`
+  const subject = `${documentTitle} — Shah Textile`
   const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`
 
   const shareWithPdf = async () => {

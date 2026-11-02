@@ -131,7 +131,7 @@ export function buildProductionPdf(
     format: 'a4',
   })
 
-  const company = options?.companyName || 'SARA TEXTILES'
+  const company = options?.companyName || 'SHAH TEXTILES'
   const logo = options?.logoDataUrl === undefined ? cachedLogo || null : options.logoDataUrl
   const summary = summarizeProductionDay(entries)
   const shortDateHeader = formatShortDate(sheetDate)
@@ -567,7 +567,7 @@ export function buildProductionPdf(
     doc.setFontSize(6)
     doc.setTextColor(148, 163, 184)
     doc.text(
-      `Sara Textile ERP • Daily Loom Production Sheet • ${formattedDate} • Page ${p} of ${totalPages}`,
+      `Shah Textile ERP • Daily Loom Production Sheet • ${formattedDate} • Page ${p} of ${totalPages}`,
       148.5,
       pageH - 4,
       { align: 'center' }

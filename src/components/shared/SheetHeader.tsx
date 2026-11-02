@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 /**
- * Top of a printable sheet: logo + "SARA TEXTILES" on the left, the sheet title on the
+ * Top of a printable sheet: logo + "SHAH TEXTILES" on the left, the sheet title on the
  * right on the same line, and the month / period line under the title.
  */
 export function SheetHeader({ title, subtitle }: { title: ReactNode; subtitle?: ReactNode }) {
@@ -11,7 +11,7 @@ export function SheetHeader({ title, subtitle }: { title: ReactNode; subtitle?: 
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/saratextile.png" alt="" width={28} height={28} className="size-7 shrink-0 rounded object-contain" />
-          <h1 className="text-base font-bold uppercase text-slate-900 dark:text-white tracking-wide">SARA TEXTILES</h1>
+          <h1 className="text-base font-bold uppercase text-slate-900 dark:text-white tracking-wide">SHAH TEXTILES</h1>
         </div>
         {/* Size / colour inline: the module's text-size rules and AdminLTE heading styles override classes here */}
         <h2 className="text-right uppercase" style={{ fontSize: 12, fontWeight: 700, color: '#000', letterSpacing: '0.02em' }}>

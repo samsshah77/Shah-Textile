@@ -124,7 +124,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <div className="text-center">
             <div className="spinner-border text-primary mb-2" role="status" />
             <div className="text-secondary text-uppercase small fw-semibold tracking-wide">
-              Loading Sara Textile ERP...
+              Loading Shah Textile ERP...
             </div>
           </div>
         </div>

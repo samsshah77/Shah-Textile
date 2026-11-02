@@ -44,7 +44,7 @@ export function PrintBrandHeader({ sheetTitle }: PrintBrandHeaderProps) {
           height={40}
         />
         <div>
-          <div className="sara-print-doc-header__company">SARA TEXTILES</div>
+          <div className="sara-print-doc-header__company">SHAH TEXTILES</div>
           <div className="sara-print-doc-header__sheet">
             {activeSheet || sheetTitle || 'Mill statement'}
           </div>

@@ -1,6 +1,6 @@
 {
   "costStatement": {
-    "companyName": "SARA TEXTILE",
+    "companyName": "SHAH TEXTILE",
     "title": "COST STATEMENT",
     "period": "For The Month of Aug-2026",
     "costOfProduction": {
@@ -45,19 +45,19 @@
           "amount": 378349,
           "breakdown": [
             {
-              "name": "Amir (PU Technician)",
+              "name": "Arshad (PU Technician)",
               "amount": 70000
             },
             {
-              "name": "Basit (Electronics Contractor)",
+              "name": "Babar (Electronics Contractor)",
               "amount": 70000
             },
             {
-              "name": "Naseer Reed",
+              "name": "Naeem Reed",
               "amount": 5500
             },
             {
-              "name": "Nawab (Gitta Winder)",
+              "name": "Noor (Gitta Winder)",
               "amount": 30000
             },
             {

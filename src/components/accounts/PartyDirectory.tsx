@@ -375,7 +375,7 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
           <label className="block space-y-1">
             <span className="text-[11px] font-semibold text-slate-600">Payable kis account se (A/P Synopsis)</span>
             <select value={account} onChange={(e) => setAccount(e.target.value as PayAccount)} className={input}>
-              <option value="SARA">Sara Textile</option>
+              <option value="SARA">Shah Textile</option>
               <option value="FOI">FOI</option>
             </select>
           </label>

@@ -22,7 +22,7 @@ export function buildQualityPdf(data: QualityShareData, logo: string | null): js
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(13)
   doc.setTextColor(15, 23, 42)
-  doc.text('SARA TEXTILES', textX, 10)
+  doc.text('SHAH TEXTILES', textX, 10)
   doc.setFontSize(8)
   doc.setTextColor(51, 65, 85)
   doc.text(`${data.title.toUpperCase()}  ·  ${longDayDateFromYmd(data.date)}`, textX, 15)
@@ -118,7 +118,7 @@ export function buildQualityPdf(data: QualityShareData, logo: string | null): js
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(6)
     doc.setTextColor(148, 163, 184)
-    doc.text(`Sara Textile ERP • ${data.title} • ${longDayDateFromYmd(data.date)} • Page ${p} of ${pages}`, 148.5, 206, {
+    doc.text(`Shah Textile ERP • ${data.title} • ${longDayDateFromYmd(data.date)} • Page ${p} of ${pages}`, 148.5, 206, {
       align: 'center',
     })
   }

@@ -10,7 +10,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Sara Textile ERP • Weaving Mill Floor Management',
+  title: 'Shah Textile ERP • Weaving Mill Floor Management',
   description: 'Enterprise 34-Loom Weaving Production, Efficiency & Dispatch ERP System',
   icons: {
     icon: [{ url: '/saratextile.png', type: 'image/png' }, { url: '/favicon.ico' }],

@@ -472,7 +472,7 @@ export default function GeneralWagesPage() {
 
       {/* EXACT EXCEL SPREADSHEET TABLE (Print-Friendly) */}
       <div className="rounded-lg border border-slate-300 bg-white text-slate-900 p-4 shadow-xs print:border-none print:p-0 print:shadow-none overflow-hidden">
-        {/* Excel Header Box: Sara Textile */}
+        {/* Excel Header Box: Shah Textile */}
         <div className="border border-slate-400 mb-0">
           <div className="px-3 pt-2">
             <SheetHeader title="GENERAL WAGES REGISTER" subtitle={`Month: ${formatPayrollMonthLabel(activeMonth)}`} />
@@ -851,7 +851,7 @@ export default function GeneralWagesPage() {
                       colSpan={customColumns.length}
                       className="py-2 px-2 text-slate-500 text-center font-sans text-[11px]"
                     >
-                      Sara Textile Mill Roster
+                      Shah Textile Mill Roster
                     </td>
                   )}
                 </tr>

@@ -414,11 +414,11 @@ function SidebarContent() {
         <Link href={showDashboard ? "/dashboard" : showFault ? "/floor/fault-reports" : "/dashboard"} className="brand-link flex-grow-1">
           <img
             src="/saratextile.png"
-            alt="Sara Textile"
+            alt="Shah Textile"
             className="brand-image shadow"
             style={{ maxHeight: 36, width: 36, objectFit: 'contain', borderRadius: 6 }}
           />
-          <span className="brand-text fw-light">Sara Textile</span>
+          <span className="brand-text fw-light">Shah Textile</span>
         </Link>
         <button
           type="button"
@@ -516,7 +516,7 @@ export function Sidebar() {
         <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
           <div className="sidebar-brand">
             <span className="brand-link">
-              <span className="brand-text fw-light">Sara Textile</span>
+              <span className="brand-text fw-light">Shah Textile</span>
             </span>
           </div>
         </aside>

@@ -6,7 +6,7 @@ import { applyPrintOrientation, type PrintOrientation } from '@/lib/printOrienta
 
 /**
  * Opens print / Save as PDF.
- * Document title stays "Sara Textiles" so browser header chrome (if enabled)
+ * Document title stays "Shah Textiles" so browser header chrome (if enabled)
  * does not show the ugly filename. Sheet name goes on the in-page print header.
  */
 export function exportSheetPdf(filename: string, sheetLabel?: string, orientation?: PrintOrientation) {
@@ -24,7 +24,7 @@ export function exportSheetPdf(filename: string, sheetLabel?: string, orientatio
       .trim() ||
     'Statement'
 
-  document.title = 'Sara Textiles'
+  document.title = 'Shah Textiles'
   document.body.dataset.printSheet = label
   const removeOrientation = applyPrintOrientation(orientation)
 

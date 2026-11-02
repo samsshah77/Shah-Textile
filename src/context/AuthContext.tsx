@@ -60,7 +60,7 @@ function toAppUser(raw: AuthUser & { roleLabel?: string; department?: string | n
     email: raw.email,
     role,
     roleLabel: raw.roleLabel || ROLE_LABELS[role] || role.replaceAll('_', ' '),
-    department: raw.department || 'Sara Textile',
+    department: raw.department || 'Shah Textile',
     access: raw.access,
   }
 }

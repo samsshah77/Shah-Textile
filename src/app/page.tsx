@@ -147,7 +147,7 @@ export default function HomePage() {
           <Link href="/" className="st-brand" onClick={close}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/media/site/logo.webp" alt="" width={36} height={36} />
-            <span>Sara Textiles</span>
+            <span>Shah Textiles</span>
           </Link>
           <button
             type="button"
@@ -372,7 +372,7 @@ export default function HomePage() {
 
       <footer className="st-footer">
         <div className="st-wrap st-footer__inner">
-          <span>© {new Date().getFullYear()} Sara Textiles Weaving</span>
+          <span>© {new Date().getFullYear()} Shah Textiles Weaving</span>
           <Link href={isLoggedIn ? '/dashboard' : '/login'}>{isLoggedIn ? 'Open ERP' : 'Staff login'}</Link>
         </div>
       </footer>

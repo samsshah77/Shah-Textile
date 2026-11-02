@@ -339,7 +339,7 @@ export default function DashboardPage() {
         </div>
         <div className="card-body">
           <p className="mb-2">
-            <strong>Sara Textile</strong> — 34 Rapier &amp; PU looms
+            <strong>Shah Textile</strong> — 34 Rapier &amp; PU looms
           </p>
           <p className="text-dark mb-0 small">
             Dashboard sirf floor production sheets se data leta hai (dummy history nahi). Date

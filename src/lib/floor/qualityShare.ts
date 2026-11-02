@@ -27,7 +27,7 @@ export interface QualityShareData {
 export function qualityWhatsAppText(data: QualityShareData): string {
   const looms = new Set(data.rows.flatMap((r) => r.looms))
   const lines = [
-    `*Sara Textile — ${data.title}*`,
+    `*Shah Textile — ${data.title}*`,
     longDayDateFromYmd(data.date),
     ``,
     `Qualities: *${data.rows.length}* · Looms: ${looms.size}`,

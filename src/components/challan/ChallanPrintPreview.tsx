@@ -61,7 +61,7 @@ export function ChallanPrintPreview({ challan }: ChallanPrintPreviewProps) {
               <div className="flex items-center gap-2">
                 <Factory className="size-7 text-blue-800 print:text-black" />
                 <h1 className="text-2xl font-black tracking-tight uppercase text-black">
-                  SARA TEXTILE (PVT) LIMITED
+                  SHAH TEXTILE (PVT) LIMITED
                 </h1>
               </div>
               <p className="text-xs font-medium text-gray-700 mt-1">
