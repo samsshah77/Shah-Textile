@@ -22,7 +22,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-1.jpg"
   },
   {
     "id": "emp-2",
@@ -47,7 +48,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-2.jpg"
   },
   {
     "id": "emp-3",
@@ -72,7 +74,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-3.jpg"
   },
   {
     "id": "emp-5",
@@ -97,7 +100,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-4.jpg"
   },
   {
     "id": "emp-6",
@@ -122,7 +126,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-5.jpg"
   },
   {
     "id": "emp-12",
@@ -147,7 +152,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-6.jpg"
   },
   {
     "id": "emp-31",
@@ -172,7 +178,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-7.jpg"
   },
   {
     "id": "emp-sep-20-ubaid",
@@ -197,7 +204,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-8.jpg"
   },
   {
     "id": "emp-29",
@@ -222,7 +230,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-9.jpg"
   },
   {
     "id": "emp-21",
@@ -247,7 +256,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-10.jpg"
   },
   {
     "id": "emp-sep-23-israr",
@@ -372,7 +382,8 @@
     "status": "Active",
     "remarks": "",
     "advanceEligible": true,
-    "advance": true
+    "advance": true,
+    "photoUrl": "/avatars/avatar-12.jpg"
   },
   {
     "id": "emp-sep-48-dawood",
@@ -444,7 +455,8 @@
     "ratePerDay28": 1800,
     "doj": "01-Jan-2021",
     "contractStatus": "Daily Wage",
-    "status": "Active"
+    "status": "Active",
+    "photoUrl": "/avatars/avatar-11.jpg"
   },
   {
     "id": "emp-48",

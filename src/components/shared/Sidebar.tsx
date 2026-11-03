@@ -363,21 +363,6 @@ function SidebarContent() {
       // otherwise Fault Add alone.
       ...(showFault && !showFaultTable ? [KAMRAN_FAULT_ITEM] : []),
     ]
-    const payrollTree: NavLeaf = {
-      title: 'Salary & Wages',
-      href: '/payroll/synopsis',
-      icon: 'bi-cash-stack',
-      activeCheck: anyActive(PAYROLL_ITEMS),
-      children: PAYROLL_ITEMS,
-    }
-    const accountsTree: NavLeaf = {
-      title: 'Accounts',
-      href: '/accounts/payables',
-      icon: 'bi-calculator',
-      activeCheck: anyActive(ACCOUNTS_ITEMS),
-      children: ACCOUNTS_ITEMS,
-    }
-
     const list: NavTree[] = []
     if (floorItems.length) {
       list.push({
@@ -386,22 +371,31 @@ function SidebarContent() {
         items: floorItems,
       })
     }
+    if (canViewAccounts) {
+      list.push({
+        title: 'Accounts',
+        icon: 'bi-calculator',
+        items: ACCOUNTS_ITEMS,
+      })
+    }
+    if (canViewPayroll) {
+      list.push({
+        title: 'Salary & Wages',
+        icon: 'bi-cash-stack',
+        items: PAYROLL_ITEMS,
+      })
+    }
     if (isAdmin) {
-      // Admin (Javed): Salary and Accounts live inside Administration.
       list.push({
         title: 'Administration',
         icon: 'bi-shield-lock',
         items: [
           ...ADMIN_ITEMS,
           ...(showArchive ? [QUALITY_ARCHIVE_ITEM] : []),
-          ...(canViewPayroll ? [payrollTree] : []),
-          ...(canViewAccounts ? [accountsTree] : []),
         ],
       })
-    } else {
-      if (canViewAccounts) list.push({ title: 'Accounts', icon: 'bi-calculator', items: ACCOUNTS_ITEMS })
-      if (canViewPayroll) list.push({ title: 'Salary & Wages', icon: 'bi-cash-stack', items: PAYROLL_ITEMS })
-      if (showArchive) list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
+    } else if (showArchive) {
+      list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
     }
     return list
   }, [faultOnly, areaKey, showFault, showFaultTable, showArchive, canViewAccounts, canViewPayroll, isAdmin])
@@ -413,7 +407,7 @@ function SidebarContent() {
       <div className="sidebar-brand d-flex align-items-center justify-content-between pe-2">
         <Link href={showDashboard ? "/dashboard" : showFault ? "/floor/fault-reports" : "/dashboard"} className="brand-link flex-grow-1">
           <img
-            src="/saratextile.png"
+            src="/shahtextile.png"
             alt="Shah Textile"
             className="brand-image shadow"
             style={{ maxHeight: 36, width: 36, objectFit: 'contain', borderRadius: 6 }}
