@@ -112,6 +112,17 @@ let ddlDone = false
 
 export async function ensureLedgerTable(): Promise<void> {
   if (ddlDone) return
+  try {
+    const sentinel = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
+      `SELECT to_regclass('public.floor_production') IS NOT NULL AS exists`
+    )
+    if (sentinel[0]?.exists) {
+      ddlDone = true
+      return
+    }
+  } catch {
+    // fallback
+  }
   for (const stmt of LEDGER_DDL) await prisma.$executeRawUnsafe(stmt)
   ddlDone = true
 }
@@ -181,66 +192,116 @@ export type ProductionReport = {
 const n = (v: unknown) => (v == null ? 0 : Number(v))
 const nn = (v: unknown) => (v == null ? null : Math.round(Number(v) * 10) / 10)
 
-export async function productionReport(from: string, to: string): Promise<ProductionReport> {
+export async function productionReport(
+  from: string,
+  to: string,
+  options?: { summaryOnly?: boolean }
+): Promise<ProductionReport> {
   await ensureLedgerTable()
   const range = `"date" BETWEEN $1::date AND $2::date`
 
-  const byDay = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT to_char("date",'YYYY-MM-DD') AS date, count(*) AS rows, sum("totalMeters") AS meters,
-            sum("shiftAMeters") AS a, sum("shiftBMeters") AS b,
-            avg("efficiencyPct") FILTER (WHERE "totalMeters" > 0) AS eff
-     FROM "floor_production" WHERE ${range} GROUP BY "date" ORDER BY "date"`,
-    from, to
-  )
-  const byQuality = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT p."qualityId", COALESCE(q."name", p."qualityName") AS name, min(p."pick") AS pick,
-            count(*) AS rows, count(DISTINCT p."loomNumber") AS looms, sum(p."totalMeters") AS meters,
-            to_char(min(p."date"),'YYYY-MM-DD') AS first, to_char(max(p."date"),'YYYY-MM-DD') AS last
-     FROM "floor_production" p LEFT JOIN "floor_qualities" q ON q."id" = p."qualityId"
-     WHERE p.${range} AND p."qualityName" NOT IN ('', '-', '—')
-     GROUP BY p."qualityId", COALESCE(q."name", p."qualityName")
-     ORDER BY meters DESC NULLS LAST`,
-    from, to
-  )
-  const byLoom = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT p."loomNumber", l."category", count(*) AS rows,
-            count(DISTINCT p."date") FILTER (WHERE p."totalMeters" > 0) AS days,
-            sum(p."totalMeters") AS meters, sum(p."shiftAMeters") AS a, sum(p."shiftBMeters") AS b,
-            sum(p."theoreticalMeters") FILTER (WHERE p."totalMeters" > 0) AS theo,
-            avg(p."efficiencyPct") FILTER (WHERE p."totalMeters" > 0) AS eff,
-            (SELECT x."qualityName" FROM "floor_production" x
-              WHERE x."loomNumber" = p."loomNumber" AND x.${range} AND x."qualityName" NOT IN ('', '-', '—')
-              GROUP BY x."qualityName" ORDER BY sum(x."totalMeters") DESC LIMIT 1) AS main
-     FROM "floor_production" p LEFT JOIN "floor_looms" l ON l."loomNumber" = p."loomNumber"
-     WHERE p.${range} GROUP BY p."loomNumber", l."category" ORDER BY p."loomNumber"`,
-    from, to
-  )
-  const byDayCategory = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT to_char(p."date",'YYYY-MM-DD') AS date, COALESCE(l."category", 'Other') AS category,
-            sum(p."totalMeters") AS meters, count(DISTINCT p."loomNumber") FILTER (WHERE p."totalMeters" > 0) AS looms,
-            avg(p."efficiencyPct") FILTER (WHERE p."totalMeters" > 0) AS eff
-     FROM "floor_production" p LEFT JOIN "floor_looms" l ON l."loomNumber" = p."loomNumber"
-     WHERE p.${range} GROUP BY p."date", COALESCE(l."category", 'Other') ORDER BY 1, 2`,
-    from, to
-  )
-  const unlinked = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT to_char("date",'YYYY-MM-DD') AS date, "loomNumber", "qualityName", "totalMeters" AS meters
-     FROM "floor_production"
-     WHERE ${range} AND "qualityId" IS NULL AND "qualityName" NOT IN ('', '-', '—')
-     ORDER BY "date", "loomNumber" LIMIT 500`,
-    from, to
-  )
-  const outsideRun = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT to_char(p."date",'YYYY-MM-DD') AS date, p."loomNumber", p."qualityName", p."totalMeters" AS meters,
-            q."createdOn" AS started, q."endedOn" AS ended
-     FROM "floor_production" p JOIN "floor_qualities" q ON q."id" = p."qualityId"
-     WHERE p.${range}
-       AND ( (q."createdOn" ~ '^\\d{4}-\\d{2}-\\d{2}$' AND p."date" < q."createdOn"::date)
-          OR (q."endedOn" ~ '^\\d{4}-\\d{2}-\\d{2}$' AND p."date" > q."endedOn"::date AND p."totalMeters" > 0) )
-     ORDER BY p."date", p."loomNumber" LIMIT 500`,
-    from, to
-  )
-  const mismatches = await reconcile(from, to)
+  if (options?.summaryOnly) {
+    const byDay = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT to_char("date",'YYYY-MM-DD') AS date, count(*) AS rows, sum("totalMeters") AS meters,
+              sum("shiftAMeters") AS a, sum("shiftBMeters") AS b,
+              avg("efficiencyPct") FILTER (WHERE "totalMeters" > 0) AS eff
+       FROM "floor_production" WHERE ${range} GROUP BY "date" ORDER BY "date"`,
+      from, to
+    )
+    const days = byDay.map((r) => ({
+      date: String(r.date),
+      rows: n(r.rows),
+      meters: n(r.meters),
+      shiftA: n(r.a),
+      shiftB: n(r.b),
+      avgEfficiency: nn(r.eff),
+    }))
+    return {
+      from,
+      to,
+      totals: {
+        rows: days.reduce((s, d) => s + d.rows, 0),
+        meters: days.reduce((s, d) => s + d.meters, 0),
+        shiftA: days.reduce((s, d) => s + d.shiftA, 0),
+        shiftB: days.reduce((s, d) => s + d.shiftB, 0),
+        days: days.length,
+      },
+      byDay: days,
+      byQuality: [],
+      byLoom: [],
+      byDayCategory: [],
+      unlinked: [],
+      outsideRun: [],
+      mismatches: [],
+    }
+  }
+
+  const [
+    byDay,
+    byQuality,
+    byLoom,
+    byDayCategory,
+    unlinked,
+    outsideRun,
+    mismatches,
+  ] = await Promise.all([
+    prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT to_char("date",'YYYY-MM-DD') AS date, count(*) AS rows, sum("totalMeters") AS meters,
+              sum("shiftAMeters") AS a, sum("shiftBMeters") AS b,
+              avg("efficiencyPct") FILTER (WHERE "totalMeters" > 0) AS eff
+       FROM "floor_production" WHERE ${range} GROUP BY "date" ORDER BY "date"`,
+      from, to
+    ),
+    prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT p."qualityId", COALESCE(q."name", p."qualityName") AS name, min(p."pick") AS pick,
+              count(*) AS rows, count(DISTINCT p."loomNumber") AS looms, sum(p."totalMeters") AS meters,
+              to_char(min(p."date"),'YYYY-MM-DD') AS first, to_char(max(p."date"),'YYYY-MM-DD') AS last
+       FROM "floor_production" p LEFT JOIN "floor_qualities" q ON q."id" = p."qualityId"
+       WHERE p.${range} AND p."qualityName" NOT IN ('', '-', '—')
+       GROUP BY p."qualityId", COALESCE(q."name", p."qualityName")
+       ORDER BY meters DESC NULLS LAST`,
+      from, to
+    ),
+    prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT p."loomNumber", l."category", count(*) AS rows,
+              count(DISTINCT p."date") FILTER (WHERE p."totalMeters" > 0) AS days,
+              sum(p."totalMeters") AS meters, sum(p."shiftAMeters") AS a, sum(p."shiftBMeters") AS b,
+              sum(p."theoreticalMeters") FILTER (WHERE p."totalMeters" > 0) AS theo,
+              avg(p."efficiencyPct") FILTER (WHERE p."totalMeters" > 0) AS eff,
+              (SELECT x."qualityName" FROM "floor_production" x
+                WHERE x."loomNumber" = p."loomNumber" AND x.${range} AND x."qualityName" NOT IN ('', '-', '—')
+                GROUP BY x."qualityName" ORDER BY sum(x."totalMeters") DESC LIMIT 1) AS main
+       FROM "floor_production" p LEFT JOIN "floor_looms" l ON l."loomNumber" = p."loomNumber"
+       WHERE p.${range} GROUP BY p."loomNumber", l."category" ORDER BY p."loomNumber"`,
+      from, to
+    ),
+    prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT to_char(p."date",'YYYY-MM-DD') AS date, COALESCE(l."category", 'Other') AS category,
+              sum(p."totalMeters") AS meters, count(DISTINCT p."loomNumber") FILTER (WHERE p."totalMeters" > 0) AS looms,
+              avg(p."efficiencyPct") FILTER (WHERE p."totalMeters" > 0) AS eff
+       FROM "floor_production" p LEFT JOIN "floor_looms" l ON l."loomNumber" = p."loomNumber"
+       WHERE p.${range} GROUP BY p."date", COALESCE(l."category", 'Other') ORDER BY 1, 2`,
+      from, to
+    ),
+    prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT to_char("date",'YYYY-MM-DD') AS date, "loomNumber", "qualityName", "totalMeters" AS meters
+       FROM "floor_production"
+       WHERE ${range} AND "qualityId" IS NULL AND "qualityName" NOT IN ('', '-', '—')
+       ORDER BY "date", "loomNumber" LIMIT 500`,
+      from, to
+    ),
+    prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT to_char(p."date",'YYYY-MM-DD') AS date, p."loomNumber", p."qualityName", p."totalMeters" AS meters,
+              q."createdOn" AS started, q."endedOn" AS ended
+       FROM "floor_production" p JOIN "floor_qualities" q ON q."id" = p."qualityId"
+       WHERE p.${range}
+         AND ( (q."createdOn" ~ '^\\d{4}-\\d{2}-\\d{2}$' AND p."date" < q."createdOn"::date)
+            OR (q."endedOn" ~ '^\\d{4}-\\d{2}-\\d{2}$' AND p."date" > q."endedOn"::date AND p."totalMeters" > 0) )
+       ORDER BY p."date", p."loomNumber" LIMIT 500`,
+      from, to
+    ),
+    reconcile(from, to),
+  ])
 
   const days = byDay.map((r) => ({
     date: String(r.date),

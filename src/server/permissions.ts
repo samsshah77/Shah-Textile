@@ -41,6 +41,17 @@ function catalogDeniesAction(roleKey: string, target: PermissionTarget) {
   );
 }
 
+let cachedRoles: Array<{ id: string; key: string }> | null = null
+let cachedRolesAt = 0
+
+async function getCachedRoles() {
+  const now = Date.now()
+  if (cachedRoles && now - cachedRolesAt < 60000) return cachedRoles
+  cachedRoles = await prisma.role.findMany({ select: { id: true, key: true } })
+  cachedRolesAt = now
+  return cachedRoles
+}
+
 /** Resolve canonical lowercase role key + role id (fixes VPS ACCOUNTANT vs accountant mismatch). */
 async function resolveRoleIdentity(user: {
   id: string;
@@ -71,7 +82,7 @@ async function resolveRoleIdentity(user: {
 
   // Always bind to role row whose key matches (case-insensitive)
   if (roleKey) {
-    const roles = await prisma.role.findMany({ select: { id: true, key: true } });
+    const roles = await getCachedRoles();
     const match = roles.find((r) => r.key.toLowerCase() === roleKey);
     if (match) {
       roleId = match.id;
@@ -99,6 +110,9 @@ async function resolvePermissionOnce(
     select: { id: true, roleId: true, roleKey: true, isActive: true, status: true },
   });
   if (!user || !user.isActive || user.status !== "APPROVED") return { allowed: false };
+
+  const rawRoleKey = (user.roleKey || "").trim().toLowerCase();
+  if (rawRoleKey === "admin") return { allowed: true, source: "ADMIN", scope: "ALL" };
 
   const { roleKey, roleId } = await resolveRoleIdentity(user);
   if (roleKey === "admin") return { allowed: true, source: "ADMIN", scope: "ALL" };

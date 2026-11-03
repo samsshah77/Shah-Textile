@@ -139,8 +139,15 @@ export default function DashboardPage() {
   const loadDate = useCallback(async (dateStr: string) => {
     setLoading(true)
     try {
-      await hydrateFloorFromDb()
-      await preloadFloorSheet(dateStr)
+      const fromDate = shiftDays(dateStr, -CHART_DAYS - 15)
+      const reportPromise = fetchProductionReport(fromDate, dateStr, { summaryOnly: true }).catch(() => null)
+      const floorPromise = Promise.all([
+        hydrateFloorFromDb(),
+        preloadFloorSheet(dateStr),
+      ])
+
+      const [, report] = await Promise.all([floorPromise, reportPromise])
+
       const live = productionMastersService.hasPersistedSheet(dateStr)
         ? productionMastersService.buildSheetForDate(dateStr)
         : []
@@ -158,9 +165,6 @@ export default function DashboardPage() {
 
       setAvailableDates(listPersistedSheetDates())
 
-      // Chart: last 30 days up to the selected day, totals from the server in one request
-      // (the browser no longer loads every old sheet just to draw it).
-      const report = await fetchProductionReport(shiftDays(dateStr, -CHART_DAYS - 15), dateStr).catch(() => null)
       setDaySeries(
         recentDays((report?.byDay || []).filter((d) => d.meters > 0).map((d) => d.date)).map((d) => ({
           label: shortDay(d),

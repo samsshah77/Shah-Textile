@@ -29,7 +29,16 @@ export function ensureFloorSetup(): Promise<void> {
   if (!ready) {
     ready = (async () => {
       await ensureFloorPayrollTables()
-      for (const sql of STATEMENTS) await prisma.$executeRawUnsafe(sql)
+      try {
+        const sentinel = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
+          `SELECT to_regclass('public.floor_migrations') IS NOT NULL AS exists`
+        )
+        if (!sentinel[0]?.exists) {
+          for (const sql of STATEMENTS) await prisma.$executeRawUnsafe(sql)
+        }
+      } catch {
+        for (const sql of STATEMENTS) await prisma.$executeRawUnsafe(sql)
+      }
       const { reconcileYarnOnce } = await import('@/server/floor/yarn')
       await reconcileYarnOnce()
     })().catch((err) => {

@@ -70,6 +70,14 @@ let tablesReady: Promise<void> | null = null
 export function ensurePayrollTables(): Promise<void> {
   if (!tablesReady) {
     tablesReady = (async () => {
+      try {
+        const sentinel = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
+          `SELECT to_regclass('public.payroll_rows') IS NOT NULL AS exists`
+        )
+        if (sentinel[0]?.exists) return
+      } catch {
+        // fallback
+      }
       for (const sql of DDL) await prisma.$executeRawUnsafe(sql)
     })().catch((err) => {
       tablesReady = null
@@ -150,51 +158,62 @@ let importGate: Promise<ImportReport> | null = null
  */
 export function ensurePayrollImported(seed: () => Record<string, unknown>): Promise<ImportReport> {
   if (!importGate) {
-    importGate = inPayrollTx(async (db) => {
-      await db.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${IMPORT_LOCK})`)
-      const done = await db.$queryRawUnsafe<Array<{ source: string }>>(`SELECT "source" FROM "payroll_import_log" LIMIT 1`)
-      if (done.length) return { ran: false, source: done[0].source, rows: {}, fixedIds: 0 }
-
-      const already = await db.$queryRawUnsafe<Array<{ n: number }>>(`SELECT COUNT(*)::int AS n FROM "payroll_rows"`)
-      if ((already[0]?.n || 0) > 0) {
-        // Rows exist without a log entry (should never happen) — never overwrite them.
-        await db.$executeRawUnsafe(
-          `INSERT INTO "payroll_import_log" ("source","details") VALUES ('existing-rows', $1::jsonb)`,
-          JSON.stringify({ note: 'payroll_rows already had data; nothing copied' })
+    importGate = (async () => {
+      await ensurePayrollTables()
+      try {
+        const done = await prisma.$queryRawUnsafe<Array<{ source: string }>>(
+          `SELECT "source" FROM "payroll_import_log" LIMIT 1`
         )
-        return { ran: false, source: 'existing-rows', rows: {}, fixedIds: 0 }
+        if (done.length) return { ran: false, source: done[0].source, rows: {}, fixedIds: 0 }
+      } catch {
+        // fallback to tx
       }
+      return inPayrollTx(async (db) => {
+        await db.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${IMPORT_LOCK})`)
+        const done = await db.$queryRawUnsafe<Array<{ source: string }>>(`SELECT "source" FROM "payroll_import_log" LIMIT 1`)
+        if (done.length) return { ran: false, source: done[0].source, rows: {}, fixedIds: 0 }
 
-      const hasOld = await db.$queryRawUnsafe<Array<{ r: string | null }>>(`SELECT to_regclass('public.payroll_store')::text AS r`)
-      const blobs = hasOld[0]?.r
-        ? await db.$queryRawUnsafe<BlobRow[]>(`SELECT "key", "payload" FROM "payroll_store"`)
-        : []
-      const store: Record<string, unknown> = {}
-      for (const b of blobs) store[b.key] = b.payload
-      const fromSeed: string[] = []
-      if (blobs.length === 0) {
-        Object.assign(store, seed())
-        fromSeed.push('all')
-      } else {
-        const s = seed()
-        for (const sheet of ALL_SHEETS) {
-          if (store[sheet] == null && s[sheet] != null) {
-            store[sheet] = s[sheet]
-            fromSeed.push(sheet)
+        const already = await db.$queryRawUnsafe<Array<{ n: number }>>(`SELECT COUNT(*)::int AS n FROM "payroll_rows"`)
+        if ((already[0]?.n || 0) > 0) {
+          // Rows exist without a log entry (should never happen) — never overwrite them.
+          await db.$executeRawUnsafe(
+            `INSERT INTO "payroll_import_log" ("source","details") VALUES ('existing-rows', $1::jsonb)`,
+            JSON.stringify({ note: 'payroll_rows already had data; nothing copied' })
+          )
+          return { ran: false, source: 'existing-rows', rows: {}, fixedIds: 0 }
+        }
+
+        const hasOld = await db.$queryRawUnsafe<Array<{ r: string | null }>>(`SELECT to_regclass('public.payroll_store')::text AS r`)
+        const blobs = hasOld[0]?.r
+          ? await db.$queryRawUnsafe<BlobRow[]>(`SELECT "key", "payload" FROM "payroll_store"`)
+          : []
+        const store: Record<string, unknown> = {}
+        for (const b of blobs) store[b.key] = b.payload
+        const fromSeed: string[] = []
+        if (blobs.length === 0) {
+          Object.assign(store, seed())
+          fromSeed.push('all')
+        } else {
+          const s = seed()
+          for (const sheet of ALL_SHEETS) {
+            if (store[sheet] == null && s[sheet] != null) {
+              store[sheet] = s[sheet]
+              fromSeed.push(sheet)
+            }
           }
         }
-      }
-      const { rows, counts, fixedIds } = storeToRows(store)
-      await insertRows(db, rows, 'copy-from-payroll_store')
-      const source = blobs.length ? 'payroll_store' : 'seed'
-      await db.$executeRawUnsafe(
-        `INSERT INTO "payroll_import_log" ("source","details") VALUES ($1, $2::jsonb)`,
-        source,
-        JSON.stringify({ counts, fixedIds, fromSeed })
-      )
-      console.log('[payroll] copied salary data into payroll_rows', JSON.stringify({ source, counts, fixedIds, fromSeed }))
-      return { ran: true, source, rows: counts, fixedIds }
-    }).catch((err) => {
+        const { rows, counts, fixedIds } = storeToRows(store)
+        await insertRows(db, rows, 'copy-from-payroll_store')
+        const source = blobs.length ? 'payroll_store' : 'seed'
+        await db.$executeRawUnsafe(
+          `INSERT INTO "payroll_import_log" ("source","details") VALUES ($1, $2::jsonb)`,
+          source,
+          JSON.stringify({ counts, fixedIds, fromSeed })
+        )
+        console.log('[payroll] copied salary data into payroll_rows', JSON.stringify({ source, counts, fixedIds, fromSeed }))
+        return { ran: true, source, rows: counts, fixedIds }
+      })
+    })().catch((err) => {
       importGate = null
       console.error('[payroll] copying old salary data failed', err)
       throw new PayrollError(

@@ -4,9 +4,14 @@ import { PRODUCTION_START, getProductionCurrentMonth, productionMonthBounds } fr
 export type { ProductionReport }
 
 /** Server-computed production totals (from the floor_production ledger). */
-export async function fetchProductionReport(from: string, to: string): Promise<ProductionReport> {
+export async function fetchProductionReport(
+  from: string,
+  to: string,
+  options?: { summaryOnly?: boolean }
+): Promise<ProductionReport> {
+  const summaryPart = options?.summaryOnly ? '&summary=1' : ''
   const res = await fetch(
-    `/api/floor/reports?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    `/api/floor/reports?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${summaryPart}`,
     { cache: 'no-store', credentials: 'include' }
   )
   const data = await res.json().catch(() => ({}))

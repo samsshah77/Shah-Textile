@@ -27,11 +27,13 @@ export async function GET(req: NextRequest) {
     const today = getProductionToday()
     const from = req.nextUrl.searchParams.get('from') || productionMonthBounds(productionMonthOf(today)).from
     const to = req.nextUrl.searchParams.get('to') || today
+    const summaryParam = req.nextUrl.searchParams.get('summary')
+    const summaryOnly = summaryParam === '1' || summaryParam === 'true'
     if (!ISO.test(from) || !ISO.test(to) || from > to) {
       return NextResponse.json({ ok: false, error: 'from/to must be YYYY-MM-DD and from <= to' }, { status: 400 })
     }
 
-    const report = await productionReport(from, to)
+    const report = await productionReport(from, to, { summaryOnly })
     return NextResponse.json({ ok: true, report })
   } catch (err) {
     console.error('[floor/reports]', err)

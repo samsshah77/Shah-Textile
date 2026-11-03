@@ -150,9 +150,26 @@ const STATEMENTS = [
   `ALTER TABLE "floor_beams" ADD COLUMN IF NOT EXISTS "parkedNearLoom" TEXT`,
 ]
 
+let tablesEnsured = false
+
 export async function ensureFloorPayrollTables(): Promise<{ ok: true; statements: number }> {
+  if (tablesEnsured) return { ok: true, statements: STATEMENTS.length }
+
+  try {
+    const sentinel = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
+      `SELECT to_regclass('public.floor_daily_sheets') IS NOT NULL AS exists`
+    )
+    if (sentinel[0]?.exists) {
+      tablesEnsured = true
+      return { ok: true, statements: STATEMENTS.length }
+    }
+  } catch {
+    // If check fails, fallback to running DDL
+  }
+
   for (const sql of STATEMENTS) {
     await prisma.$executeRawUnsafe(sql)
   }
+  tablesEnsured = true
   return { ok: true, statements: STATEMENTS.length }
 }
