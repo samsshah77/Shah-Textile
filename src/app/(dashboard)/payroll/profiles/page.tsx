@@ -50,7 +50,7 @@ function EmployeeProfilesContent() {
   const [activeMonth, setActiveMonth] = useState<string>('2026-09')
   const [search, setSearch] = useState(initialSearch)
   const [filterCategory, setFilterCategory] = useState<string>(initialTab)
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid')
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
   const [selectedHistoryEmp, setSelectedHistoryEmp] = useState<EmployeeProfile | null>(null)
 
@@ -357,19 +357,19 @@ function EmployeeProfilesContent() {
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2.5 min-w-0">
+                    <div className="flex items-start gap-3 min-w-0">
                       <ProfileAvatar
                         name={emp.name}
                         photoUrl={emp.photoUrl}
                         category={cat}
-                        size="md"
+                        size="lg"
                       />
-                      <div className="min-w-0">
+                      <div className="min-w-0 pt-0.5">
                         <p className="text-[10px] font-mono text-slate-400">#{emp.serialNo}</p>
                         <h3 className="font-semibold text-slate-900 text-sm leading-snug truncate">{emp.name}</h3>
                         <p className="text-xs text-slate-600 mt-0.5 truncate">{emp.designation}</p>
-                </div>
-                </div>
+                      </div>
+                    </div>
                     <span className="shrink-0 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
                       {cat}
                       </span>
