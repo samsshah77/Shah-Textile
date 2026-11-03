@@ -27,7 +27,9 @@ function productionTodayOverride(): string | null {
   const raw =
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PRODUCTION_TODAY) || ''
   const day = String(raw).trim().slice(0, 10)
-  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
+  // Shah Textile demo: default Today to 2026-11-24 so Yesterday is 2026-11-23 (23 full entered days in Nov)
+  return '2026-11-24'
 }
 
 /** Real wall-clock date in mill timezone (or local override). */
