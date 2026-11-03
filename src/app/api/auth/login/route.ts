@@ -34,13 +34,11 @@ const handler = createLoginHandler({
 export async function POST(request: Request) {
   try {
     const response = await handler(request);
-    // After successful login, heal RBAC so accountant (Tufail) gets module grants
+    // After successful login, heal RBAC in background without blocking the response
     if (response.status === 200) {
-      try {
-        await ensurePermissionCatalog();
-      } catch (healErr) {
+      ensurePermissionCatalog().catch((healErr) => {
         console.error("[login] permission catalog heal failed", healErr);
-      }
+      });
     }
     return response;
   } catch (err: any) {

@@ -3,12 +3,20 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 
 const connectionString =
-  process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/sara_textile?schema=public'
+  process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_fb74ZlaKLGDh@ep-hidden-union-azivgio9-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require'
 
 /** Bump when Prisma models change so hot-reload drops stale PrismaClient. */
-const PRISMA_CLIENT_GEN = 5
+const PRISMA_CLIENT_GEN = 6
 
-const pool = new pg.Pool({ connectionString })
+const isSsl = connectionString.includes('sslmode=require') || connectionString.includes('neon.tech')
+
+const pool = new pg.Pool({
+  connectionString,
+  ssl: isSsl ? { rejectUnauthorized: false } : undefined,
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 3,
+})
 const adapter = new PrismaPg(pool)
 
 const globalForPrisma = globalThis as unknown as {
