@@ -404,12 +404,10 @@ export async function applyImport(dbc: Db, plan: ImportPlan): Promise<ImportResu
   // Bills, skipping lines already present (same party / bill no. / item / amount).
   const seen = new Set<string>()
   const existingParties = new Map<string, string>()
+  const allParties = await dbc.$queryRawUnsafe<{ id: string; slug: string }[]>(`SELECT "id", "slug" FROM "acc_parties"`)
+  for (const p of allParties) existingParties.set(p.id, p.slug)
   for (const b of await listBills(dbc, {})) {
-    const slug =
-      existingParties.get(b.partyId) ??
-      (await dbc.$queryRawUnsafe<{ slug: string }[]>(`SELECT "slug" FROM "acc_parties" WHERE "id" = $1`, b.partyId))[0]?.slug ??
-      ''
-    existingParties.set(b.partyId, slug)
+    const slug = existingParties.get(b.partyId) || ''
     for (const f of billFingerprints(slug, b.billNo, b.lines)) seen.add(f)
   }
   for (const b of plan.bills) {

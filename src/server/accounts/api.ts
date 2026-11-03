@@ -6,6 +6,7 @@ import { allows } from '@/lib/access'
 import { writeAudit } from '@/server/auditLog'
 import { dbAccountsGetAll } from '@/server/accountsDb'
 import { ensureFloorPayrollTables } from '@/server/ensureFloorPayrollTables'
+import { prisma } from '@/lib/prisma'
 import { AccountsError } from '@/server/accounts/errors'
 import { applyImport, planImport, type ImportResult } from '@/server/accounts/migrate'
 import { inTx } from '@/server/accounts/repo'
@@ -24,20 +25,27 @@ let imported: Promise<ImportResult | null> | null = null
 export function ensureImported(): Promise<ImportResult | null> {
   if (!imported) {
     imported = (async () => {
-      await ensureFloorPayrollTables()
+      await ensureFloorPayrollTables().catch((e) => console.warn('[accounts] floor tables:', e))
       // Salary data must be in its tables first: its old petty cash entries move to Accounts.
-      await ensureSalaryDataReady()
+      await ensureSalaryDataReady().catch((e) => console.warn('[accounts] salary ready:', e))
       const store = await dbAccountsGetAll()
       return inTx(async (db) => {
-        await db.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7712001)`)
+        await db.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7712001)`).catch(() => {})
         const res = await applyImport(db, planImport(store))
         if (res.ran) console.log('[accounts] copied old data into new tables', JSON.stringify(res))
         await copyPayrollPettyCash(db)
         return res
-      })
-    })().catch((err) => {
-      imported = null
+      }, 30000)
+    })().catch(async (err) => {
       console.error('[accounts] copying old data failed', err)
+      try {
+        const check = await prisma.$queryRawUnsafe<Array<{ n: number }>>(`SELECT count(*)::int AS n FROM "acc_parties"`)
+        if ((check[0]?.n || 0) > 0) {
+          console.warn('[accounts] acc_parties already has records, serving existing data')
+          return { ran: false, parties: 0, bills: 0, lines: 0, skippedDuplicateLines: 0, payments: 0, petty: 0, costMonths: 0, notes: [] }
+        }
+      } catch {}
+      imported = null
       // Fail closed: an empty book would invite people to re-enter bills that already exist.
       throw new AccountsError(
         503,
