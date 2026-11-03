@@ -146,8 +146,8 @@ export default function HomePage() {
         <div className="st-wrap st-nav__inner">
           <Link href="/" className="st-brand" onClick={close}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/media/site/logo.webp" alt="" width={36} height={36} />
-            <span>Shah Textiles</span>
+            <img src="/shahtextile.png" alt="Shah Textile Logo" width={38} height={38} className="rounded object-contain" />
+            <span>Shah Textile Mills</span>
           </Link>
           <button
             type="button"
@@ -218,23 +218,26 @@ export default function HomePage() {
           <span className="st-hero__weft" />
         </div>
         <div className="st-wrap st-hero__copy" id="main">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-300 text-xs font-semibold tracking-wider uppercase mb-5 backdrop-blur-sm shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            Shah Textile Mills • 34 High-Speed Looms
+          </div>
           <h1>
-            We weave greige
+            Precision Greige
             <br />
-            fabric for the
+            Fabric Weaving
             <br />
-            dye house.
+            &amp; Manufacturing.
           </h1>
           <p className="st-hero__lede">
-            Yarn in, clean undyed cloth out — woven on modern looms, inspected, and released ready for bleaching, dyeing or
-            finishing.
+            Enterprise weaving facility operating 34 high-performance rapier and Sulzer PU machines. Real-time shift tracking, yarn batch accounting, and automated efficiency ERP.
           </p>
           <div className="st-hero__cta">
-            <a className="st-btn st-btn--amber" href="#contact">
-              Ask about capacity
-            </a>
+            <Link className="st-btn st-btn--amber font-semibold shadow-lg shadow-amber-500/20" href="/login">
+              Explore Demo ERP →
+            </Link>
             <a className="st-btn st-btn--line-light" href="#process">
-              See how we weave
+              How We Weave
             </a>
           </div>
         </div>
@@ -362,8 +365,8 @@ export default function HomePage() {
               <p>Greige capacity, a failed loom card, a spare part or a used machine — write to us with the details and we will reply.</p>
             </div>
             <div className="st-contact__actions">
-              <a className="st-btn st-btn--amber" href="mailto:info@saratextilesweaving.com">
-                Email info@saratextilesweaving.com
+              <a className="st-btn st-btn--amber" href="mailto:contact@shahtextile.com">
+                Email contact@shahtextile.com
               </a>
             </div>
           </div>
@@ -372,8 +375,12 @@ export default function HomePage() {
 
       <footer className="st-footer">
         <div className="st-wrap st-footer__inner">
-          <span>© {new Date().getFullYear()} Shah Textiles Weaving</span>
-          <Link href={isLoggedIn ? '/dashboard' : '/login'}>{isLoggedIn ? 'Open ERP' : 'Staff login'}</Link>
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/shahtextile.png" alt="Shah Textile" width={28} height={28} className="rounded object-contain" />
+            <span>© {new Date().getFullYear()} Shah Textile Mills Ltd. • All Rights Reserved</span>
+          </div>
+          <Link href={isLoggedIn ? '/dashboard' : '/login'}>{isLoggedIn ? 'Open ERP' : 'Staff Login'}</Link>
         </div>
       </footer>
     </div>

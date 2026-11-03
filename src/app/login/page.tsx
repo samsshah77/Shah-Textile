@@ -65,16 +65,19 @@ export default function LoginPage() {
         <div className="card-header">
           <a href="/" className="link-dark text-center d-flex flex-column align-items-center text-decoration-none">
             <Image
-              src="/saratextile.png"
+              src="/shahtextile.png"
               width={72}
               height={72}
               alt="Shah Textile"
               priority
-              className="mb-2 d-block mx-auto rounded-3"
+              className="mb-2 d-block mx-auto rounded-3 object-contain"
             />
             <h1 className="mb-0 fs-3">
-              <b>Sara</b> Textile
+              <b>Shah</b> Textile
             </h1>
+            <small className="text-muted d-block mt-1" style={{ fontSize: '0.8rem' }}>
+              Weaving Mill Management ERP
+            </small>
           </a>
         </div>
         <div className="card-body login-card-body">
@@ -95,7 +98,7 @@ export default function LoginPage() {
                 name="email"
                 type="email"
                 className="form-control"
-                placeholder="Email"
+                placeholder="Email (e.g. admin@shah.com)"
                 autoComplete="email"
                 maxLength={254}
                 required
@@ -139,10 +142,33 @@ export default function LoginPage() {
                 {error}
               </div>
             ) : null}
-            <div className="d-grid">
+            <div className="d-grid mb-3">
               <button type="submit" className="btn btn-primary" disabled={busy}>
                 {busy ? "Please wait…" : "Sign In"}
               </button>
+            </div>
+
+            <div className="p-2.5 rounded-3 bg-light border text-center">
+              <span className="text-muted d-block mb-1" style={{ fontSize: '0.78rem' }}>
+                🔑 <b>Demo Admin Credentials:</b>
+              </span>
+              <div className="d-flex justify-content-center gap-2 mt-1">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary py-0 px-2"
+                  style={{ fontSize: '0.75rem' }}
+                  onClick={() => {
+                    const emailInput = document.getElementById('loginEmail') as HTMLInputElement;
+                    const passInput = document.getElementById('loginPassword') as HTMLInputElement;
+                    if (emailInput && passInput) {
+                      emailInput.value = 'admin@shah.com';
+                      passInput.value = 'admin';
+                    }
+                  }}
+                >
+                  Click to Auto-fill: <b>admin@shah.com / admin</b>
+                </button>
+              </div>
             </div>
           </form>
         </div>

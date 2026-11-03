@@ -13,9 +13,9 @@ export const metadata: Metadata = {
   title: 'Shah Textile ERP • Weaving Mill Floor Management',
   description: 'Enterprise 34-Loom Weaving Production, Efficiency & Dispatch ERP System',
   icons: {
-    icon: [{ url: '/saratextile.png', type: 'image/png' }, { url: '/favicon.ico' }],
+    icon: [{ url: '/shahtextile.png', type: 'image/png' }, { url: '/favicon.ico' }],
     shortcut: '/favicon.ico',
-    apple: '/saratextile.png',
+    apple: '/shahtextile.png',
   },
 }
 
