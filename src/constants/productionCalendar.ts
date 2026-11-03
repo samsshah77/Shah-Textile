@@ -28,8 +28,18 @@ function productionTodayOverride(): string | null {
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PRODUCTION_TODAY) || ''
   const day = String(raw).trim().slice(0, 10)
   if (/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
-  // Shah Textile demo: default Today to 2026-11-24 so Yesterday is 2026-11-23 (23 full entered days in Nov)
+  // Shah Textile demo: Today (calendar cap) is 2026-11-24 so days up to 24 Nov are accessible
   return '2026-11-24'
+}
+
+/** Default initial open date for pages (mid-month e.g. 10 Nov 2026 so user can browse backwards & forwards). */
+export function getProductionDefaultOpenDate(): string {
+  const raw =
+    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_DEFAULT_OPEN_DATE) || ''
+  const day = String(raw).trim().slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
+  // Default to mid-month (10 Nov 2026) for demo: user sees data and can navigate back or forward
+  return '2026-11-10'
 }
 
 /** Real wall-clock date in mill timezone (or local override). */

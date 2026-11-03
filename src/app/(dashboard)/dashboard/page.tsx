@@ -16,6 +16,7 @@ import { formatNumber } from '@/lib/utils'
 import {
   getProductionToday,
   getProductionYesterday,
+  getProductionDefaultOpenDate,
   formatProductionDayLabel,
 } from '@/constants/productionCalendar'
 import { LOOM_STATUS_LABEL, resolveLoomCondition } from '@/constants/loomConditions'
@@ -119,9 +120,8 @@ export default function DashboardPage() {
   const trackingOk = canView('tracking')
   const productionToday = getProductionToday()
   const productionYesterday = getProductionYesterday()
-  /** Open on Today — yesterday user khud select karega. */
-  // Opens on yesterday — the last full day whose sheet is entered.
-  const [selectedDate, setSelectedDate] = useState(() => getProductionYesterday())
+  // Opens on mid-month (10 Nov) so user can navigate back & forward across 1 to 24 Nov.
+  const [selectedDate, setSelectedDate] = useState(() => getProductionDefaultOpenDate())
   const [loading, setLoading] = useState(true)
   const [day, setDay] = useState({
     meters: 0,

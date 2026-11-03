@@ -17,6 +17,7 @@ import {
   getCalendarToday,
   getProductionToday,
   getProductionTodayMonth,
+  getProductionDefaultOpenDate,
 } from '@/constants/productionCalendar'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { rememberQualityAssignFlash } from '@/lib/qualityAssignFlash'
@@ -34,14 +35,14 @@ export function useProductionGrid() {
   const [qualities, setQualities] = useState<QualityMaster[]>([])
   const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
   const [loading, setLoading] = useState(true)
-  /** Full page load / refresh always opens on production Today (wall-clock aaj). */
-  const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionToday())
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => getProductionToday().slice(0, 7))
+  /** Full page load / refresh opens on mid-month demo date (10 Nov 2026). */
+  const [selectedDate, setSelectedDateState] = useState<string>(() => getProductionDefaultOpenDate())
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getProductionDefaultOpenDate().slice(0, 7))
   const [todaySheetReady, setTodaySheetReady] = useState(false)
   const [dateReady, setDateReady] = useState(false)
 
   useEffect(() => {
-    let initialDate = getProductionToday()
+    let initialDate = getProductionDefaultOpenDate()
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search)
       const qDate = sp.get('date')

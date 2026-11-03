@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { startVoiceNote, type VoiceRecording } from '@/lib/voiceNote'
-import { getCalendarToday } from '@/constants/productionCalendar'
+import { getCalendarToday, getProductionDefaultOpenDate } from '@/constants/productionCalendar'
 import { FabricFaultTabs } from '@/components/floor/FabricFaultTabs'
 
 type Media = { url: string; kind: 'image' | 'video' }
@@ -27,7 +27,7 @@ type Data = {
 /** A picture / video picked on the phone, uploading or uploaded. */
 type Pending = { key: string; kind: 'image' | 'video'; preview: string; progress: number; url?: string; error?: string }
 
-const today = () => getCalendarToday()
+const today = () => getProductionDefaultOpenDate()
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit' })
 
 /** Phone photos are 4–12 MB; 2000 px JPEG keeps every fault visible at a fraction of the size. */
