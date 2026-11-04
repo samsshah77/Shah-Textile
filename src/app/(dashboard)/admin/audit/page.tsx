@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { AdminTabs } from '@/components/admin/AdminTabs'
+import { AdminTableSkeleton } from '@/components/admin/AdminSkeleton'
 
 type Row = {
   id: string
@@ -130,7 +131,7 @@ export default function AdminAuditPage() {
       </div>
 
       {error && <div className="alert alert-danger py-2 small">{error}</div>}
-      {!data && !error && <div className="text-secondary small">Load ho raha hai…</div>}
+      {!data && !error && <AdminTableSkeleton rows={8} cols={5} />}
 
       {data && (
         <>

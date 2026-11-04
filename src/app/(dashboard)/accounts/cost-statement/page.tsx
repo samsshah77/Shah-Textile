@@ -11,6 +11,7 @@ import type { CostInputs, CostStatement, NamedAmount } from '@/lib/accounts/type
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, LockControl, MonthPicker } from '@/components/accounts/ui'
+import { AccountsCostStatementSkeleton } from '@/components/accounts/AccountsSkeleton'
 
 type Money = number | undefined
 
@@ -198,7 +199,7 @@ function CostStatementContent() {
         }
       />
 
-      <LoadState loading={loading} error={error} hasData={Boolean(cs)}>
+      <LoadState loading={loading} error={error} hasData={Boolean(cs)} variant="statement">
         {cs && (
           <div className="erp-card p-6 sm:p-8 bg-white print:p-0 print:border-none print:shadow-none">
             {editing && (
@@ -387,7 +388,7 @@ function CostStatementContent() {
 
 export default function CostStatementPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AccountsCostStatementSkeleton />}>
       <CostStatementContent />
     </Suspense>
   )

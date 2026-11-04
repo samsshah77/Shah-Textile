@@ -12,6 +12,7 @@ import type { PettyCashEntry, PettyCashKind, PettyCashStatement } from '@/lib/ac
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { LoadState, LockControl, MonthPicker, useSaveStatus } from '@/components/accounts/ui'
+import { AccountsTableSkeleton } from '@/components/accounts/AccountsSkeleton'
 
 const KIND_LABEL: Record<PettyCashKind, string> = {
   OPENING: 'Opening balance',
@@ -268,7 +269,7 @@ function PettyCashContent() {
 
 export default function PettyCashPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AccountsTableSkeleton />}>
       <PettyCashContent />
     </Suspense>
   )

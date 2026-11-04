@@ -122,7 +122,7 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
         }
       />
 
-      <LoadState loading={loading} error={error} hasData={Boolean(rows)}>
+      <LoadState loading={loading} error={error} hasData={Boolean(rows)} variant="cards">
         <div className="erp-card overflow-hidden">
           <div className="px-3 pt-3">
             <SheetHeader title={`${noun.toUpperCase()}S`} subtitle={<>Period: {period}</>} />

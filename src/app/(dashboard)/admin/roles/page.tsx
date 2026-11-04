@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { AdminTabs } from '@/components/admin/AdminTabs'
+import { AdminTableSkeleton } from '@/components/admin/AdminSkeleton'
 
 type Role = { id: string; key: string; label: string; department: string | null; description: string | null }
 type User = { roleKey: string; status: string; isActive: boolean }
@@ -22,6 +23,7 @@ const ACCESS: Array<{ value: 'fault' | 'view'; label: string; hint: string }> = 
 export default function AdminRolesPage() {
   const [roles, setRoles] = useState<Role[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<{ label: string; department: string; access: 'fault' | 'view' }>({ label: '', department: '', access: 'fault' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -37,6 +39,8 @@ export default function AdminRolesPage() {
       setUsers(u.users || [])
     } catch {
       setError('Roles load nahi hue')
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -112,29 +116,33 @@ export default function AdminRolesPage() {
         </form>
       </div>
 
-      <div className="table-responsive card shadow-sm">
-        <table className="table table-sm small align-middle mb-0">
-          <thead className="table-light">
-            <tr>
-              <th>Role</th>
-              <th>Kya kar sakta hai</th>
-              <th className="text-end">Log</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roles.map((r) => (
-              <tr key={r.id}>
-                <td className="fw-semibold">
-                  {r.label}
-                  {r.department && <div className="text-secondary fw-normal">{r.department}</div>}
-                </td>
-                <td>{BUILT_IN[r.key] || r.description || '—'}</td>
-                <td className="text-end">{count(r.key)}</td>
+      {loading ? (
+        <AdminTableSkeleton rows={4} cols={3} />
+      ) : (
+        <div className="table-responsive card shadow-sm">
+          <table className="table table-sm small align-middle mb-0">
+            <thead className="table-light">
+              <tr>
+                <th>Role</th>
+                <th>Kya kar sakta hai</th>
+                <th className="text-end">Log</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {roles.map((r) => (
+                <tr key={r.id}>
+                  <td className="fw-semibold">
+                    {r.label}
+                    {r.department && <div className="text-secondary fw-normal">{r.department}</div>}
+                  </td>
+                  <td>{BUILT_IN[r.key] || r.description || '—'}</td>
+                  <td className="text-end">{count(r.key)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

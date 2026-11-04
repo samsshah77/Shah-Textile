@@ -142,3 +142,31 @@ export function ProductionReportSkeleton() {
     </div>
   )
 }
+
+/** Floor Fault Reports Skeleton (/floor/fault-reports) */
+export function FaultReportsSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div className="d-flex flex-column gap-3" aria-busy="true" aria-label="Loading fault reports">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="card shadow-sm">
+          <div className="card-body p-3">
+            <div className="d-flex align-items-center gap-2 mb-2.5">
+              <Bone style={{ height: 24, width: 75, borderRadius: 6 }} />
+              <Bone style={{ height: 24, width: 65, borderRadius: 6 }} />
+              <Bone className="ms-auto" style={{ height: 14, width: 70 }} />
+            </div>
+            <div className="space-y-1.5 mb-3">
+              <Bone style={{ height: 14, width: `${75 + (i % 2) * 20}%` }} />
+              <Bone style={{ height: 12, width: '50%' }} />
+            </div>
+            <div className="d-flex gap-2">
+              <Bone style={{ height: 60, width: 60, borderRadius: 8 }} />
+              <Bone style={{ height: 60, width: 60, borderRadius: 8 }} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+

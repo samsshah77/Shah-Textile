@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { AdminTabs } from '@/components/admin/AdminTabs'
+import { AdminSystemSkeleton } from '@/components/admin/AdminSkeleton'
 
 type SystemInfo = {
   server: { time: string; timeZone: string; startedAt: string; node: string; memoryMb: number }
@@ -94,7 +95,7 @@ export default function AdminSystemPage() {
       </div>
       {error && <div className="alert alert-danger py-2 small">{error}</div>}
       {notice && <div className="alert alert-success py-2 small">{notice}</div>}
-      {!info && !error && <div className="text-secondary small">Load ho raha hai…</div>}
+      {!info && !error && <AdminSystemSkeleton />}
 
       {info && (
         <>

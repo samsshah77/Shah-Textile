@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AdminTabs } from '@/components/admin/AdminTabs'
+import { AdminTableSkeleton } from '@/components/admin/AdminSkeleton'
 import { useAuth } from '@/context/AuthContext'
 
 type User = {
@@ -57,6 +58,7 @@ export default function AdminUsersPage() {
   const { user: me } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [q, setQ] = useState('')
@@ -79,6 +81,8 @@ export default function AdminUsersPage() {
       setError(u.users ? '' : u.error || 'Users load nahi hue')
     } catch {
       setError('Users load nahi hue')
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -218,13 +222,17 @@ export default function AdminUsersPage() {
         </form>
       </div>
 
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-        <h2 className="h6 fw-bold mb-0">Sab users ({shown.length})</h2>
-        <input className="form-control form-control-sm" style={{ width: 220 }} placeholder="Dhoondein" value={q} onChange={(e) => setQ(e.target.value)} aria-label="User dhoondein" />
-      </div>
-      <div className="table-responsive card shadow-sm">
-        <table className="table table-sm align-middle mb-0 small">
-          <thead className="table-light">
+      {loading ? (
+        <AdminTableSkeleton rows={6} cols={5} />
+      ) : (
+        <>
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h2 className="h6 fw-bold mb-0">Sab users ({shown.length})</h2>
+            <input className="form-control form-control-sm" style={{ width: 220 }} placeholder="Dhoondein" value={q} onChange={(e) => setQ(e.target.value)} aria-label="User dhoondein" />
+          </div>
+          <div className="table-responsive card shadow-sm">
+            <table className="table table-sm align-middle mb-0 small">
+              <thead className="table-light">
             <tr>
               <th>Naam</th>
               <th>Email</th>
@@ -289,6 +297,8 @@ export default function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
       <p className="form-text small mt-2">
         Role se tay hota hai ke kaun kya dekh sakta hai (Roles tab dekhein). Naya role Roles tab se banta hai. Salary aur Accounts sirf Tufail badal sakte hain, Javed sahab dekh sakte hain.
       </p>

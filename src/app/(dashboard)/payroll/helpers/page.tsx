@@ -33,6 +33,7 @@ import { PayrollUnsavedBanner } from '@/components/payroll/PayrollUnsavedBanner'
 import { usePayrollDirtyTracker } from '@/hooks/usePayrollDirtyTracker'
 import { usePayrollModals } from '@/hooks/usePayrollModals'
 import { removeRowConfirm, REMOVE_ROW_TITLE } from '@/components/payroll/removeRowConfirm'
+import { PayrollSkeleton } from '@/components/payroll/PayrollSkeleton'
 import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
@@ -710,7 +711,7 @@ function HelpersPayrollContent() {
 
 export default function HelpersPayrollPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Helpers Sheet...</div>}>
+    <Suspense fallback={<PayrollSkeleton />}>
       <HelpersPayrollContent />
     </Suspense>
   )

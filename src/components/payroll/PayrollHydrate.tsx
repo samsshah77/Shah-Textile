@@ -7,6 +7,7 @@ import {
   hydratePayrollFromDb,
   type PayrollLoadState,
 } from '@/services/payrollService'
+import { PayrollSkeleton } from '@/components/payroll/PayrollSkeleton'
 
 /**
  * Salary pages render only after the real data has loaded from the server — never on
@@ -56,9 +57,5 @@ export default function PayrollHydrate({ children }: { children?: ReactNode }) {
     )
   }
 
-  return (
-    <div className="m-6 text-sm text-slate-500" aria-busy="true">
-      Salary data load ho raha hai…
-    </div>
-  )
+  return <PayrollSkeleton />
 }

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { getProductionCurrentMonth } from '@/constants/productionCalendar'
 import { monthOptions, monthRange } from '@/services/floorReportsClient'
+import { ProductionTableSkeleton } from '@/components/floor/ProductionSkeleton'
 import type { FloorProblem } from '@/lib/floor/dataCheck'
 
 type CheckResult = {
@@ -75,7 +76,7 @@ export default function FloorDataCheckPage() {
         Ye page sirf dikhata hai — kuch nahi badalta. Ghalat row Daily Entry par us din khol kar theek karein.
       </div>
       {error && <div className="alert alert-danger">{error}</div>}
-      {!shown && !error && <div className="text-muted small">Check ho raha hai…</div>}
+      {!shown && !error && <ProductionTableSkeleton rows={8} cols={4} title="Production check ho raha hai..." />}
       {shown && (
         <>
           <div className={total ? 'alert alert-warning py-2 small' : 'alert alert-success py-2 small'}>

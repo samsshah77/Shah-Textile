@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminTabs } from '@/components/admin/AdminTabs'
+import { AdminPermissionsSkeleton } from '@/components/admin/AdminSkeleton'
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
@@ -84,7 +85,8 @@ export default function PermissionsPage() {
   if (!data) {
     return (
       <main className="page-content !w-full !max-w-6xl !mx-0 !p-0">
-        {error ? <div className="form-message error">{error}</div> : <p>Loading permissions…</p>}
+        <AdminTabs />
+        {error ? <div className="form-message error">{error}</div> : <AdminPermissionsSkeleton />}
       </main>
     );
   }

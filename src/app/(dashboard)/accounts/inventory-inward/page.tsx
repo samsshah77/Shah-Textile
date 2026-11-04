@@ -14,6 +14,7 @@ import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData, useAccountsMonth } from '@/hooks/useAccounts'
 import { BillEditorModal } from '@/components/accounts/BillEditorModal'
 import { LoadState, LockControl, MonthPicker, partyTint, machineBadge, useSaveStatus } from '@/components/accounts/ui'
+import { AccountsTableSkeleton } from '@/components/accounts/AccountsSkeleton'
 import { closeSidebar } from '@/lib/sidebarToggle'
 import { useResizableColumns } from '@/hooks/useResizableColumns'
 import { ResizableTh } from '@/components/shared/ResizableTh'
@@ -625,7 +626,7 @@ function DailyInwardContent() {
 
 export default function DailyInwardExpenseUnifiedPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AccountsTableSkeleton />}>
       <DailyInwardContent />
     </Suspense>
   )

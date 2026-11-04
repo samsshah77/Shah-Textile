@@ -20,6 +20,7 @@ import { isMonthLocked } from '@/services/payroll/payrollStorage'
 import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
+import { PayrollSkeleton } from '@/components/payroll/PayrollSkeleton'
 
 /**
  * Petty cash to ask for with this fortnight's cheque. Tufail types it; without a typed
@@ -531,7 +532,7 @@ function DisbursementSynopsisContent() {
 
 export default function DisbursementSynopsisPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Synopsis...</div>}>
+    <Suspense fallback={<PayrollSkeleton />}>
       <DisbursementSynopsisContent />
     </Suspense>
   )

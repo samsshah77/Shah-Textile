@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { startVoiceNote, type VoiceRecording } from '@/lib/voiceNote'
 import { getCalendarToday, getProductionDefaultOpenDate } from '@/constants/productionCalendar'
 import { FabricFaultTabs } from '@/components/floor/FabricFaultTabs'
+import { FaultReportsSkeleton } from '@/components/floor/ProductionSkeleton'
 
 type Media = { url: string; kind: 'image' | 'video' }
 type Report = {
@@ -448,7 +449,7 @@ export default function FaultReportsPage() {
         )}
       </div>
 
-      {!data && !loadError && <div className="text-secondary small">Load ho raha hai…</div>}
+      {!data && !loadError && <FaultReportsSkeleton count={4} />}
       {data && shown.length === 0 && <div className="text-secondary small border rounded p-4 text-center">Is din koi fault nahi bheja gaya.</div>}
 
       <div className="d-flex flex-column gap-3">

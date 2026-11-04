@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext'
 import { accountsApi } from '@/services/accounts/accountsApi'
 import { useAccountsData } from '@/hooks/useAccounts'
 import { LoadState } from '@/components/accounts/ui'
+import { AccountsTableSkeleton } from '@/components/accounts/AccountsSkeleton'
 import type { MonthImportPreview, MonthImportResult } from '@/server/accounts/monthImport'
 
 const BADGE: Record<string, string> = {
@@ -224,7 +225,7 @@ function MonthImport() {
 
 export default function MonthImportPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AccountsTableSkeleton />}>
       <MonthImport />
     </Suspense>
   )

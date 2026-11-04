@@ -168,19 +168,46 @@ export function machineBadge(machine: string): string {
   return 'bg-slate-500 text-white'
 }
 
-/** Spinner on first load, error box on failure; later reloads keep the old view. */
+import {
+  AccountsTableSkeleton,
+  AccountsCardsSkeleton,
+  AccountsLedgerSkeleton,
+  AccountsCostStatementSkeleton,
+} from '@/components/accounts/AccountsSkeleton'
+
+/** Rich Skeleton on first load, error box on failure; later reloads keep the current view. */
 export function LoadState({
   loading,
   error,
   hasData,
+  variant = 'table',
+  rows = 8,
+  cols = 8,
   children,
 }: {
   loading: boolean
   error: string | null
   hasData: boolean
+  variant?: 'table' | 'cards' | 'ledger' | 'statement'
+  rows?: number
+  cols?: number
   children: React.ReactNode
 }) {
-  if (error && !hasData) return <div className="alert alert-danger py-2 px-3 small">{error}</div>
-  if (!hasData) return <p className="px-3 py-4 text-muted-foreground text-sm">{loading ? 'Load ho raha hai…' : ''}</p>
+  if (error && !hasData) {
+    return (
+      <div className="alert alert-danger py-3 px-4 rounded-xl text-sm border border-rose-200 bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200 shadow-xs">
+        <p className="font-semibold mb-1">Accounts data load nahi ho saka</p>
+        <p className="text-xs opacity-90">{error}</p>
+      </div>
+    )
+  }
+
+  if (!hasData) {
+    if (variant === 'cards') return <AccountsCardsSkeleton count={rows} />
+    if (variant === 'ledger') return <AccountsLedgerSkeleton />
+    if (variant === 'statement') return <AccountsCostStatementSkeleton />
+    return <AccountsTableSkeleton rows={rows} cols={cols} />
+  }
+
   return <>{children}</>
 }

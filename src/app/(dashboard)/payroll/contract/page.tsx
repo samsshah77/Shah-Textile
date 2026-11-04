@@ -18,6 +18,7 @@ import { ContractOvertimeTab } from '@/components/payroll/contract/ContractOvert
 import { ContractNetPaymentTab } from '@/components/payroll/contract/ContractNetPaymentTab'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
+import { PayrollSkeleton } from '@/components/payroll/PayrollSkeleton'
 
 function ContractPayrollContent() {
   const sheetPrint = usePrintOrientation('contract')
@@ -187,7 +188,7 @@ function ContractPayrollContent() {
 
 export default function ContractEmployeesPayrollPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Contract Sheet...</div>}>
+    <Suspense fallback={<PayrollSkeleton />}>
       <ContractPayrollContent />
     </Suspense>
   )

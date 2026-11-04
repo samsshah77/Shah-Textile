@@ -18,6 +18,7 @@ import { WeaverOvertimeTab } from '@/components/payroll/weavers/WeaverOvertimeTa
 import { WeaverNetPaymentTab } from '@/components/payroll/weavers/WeaverNetPaymentTab'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
+import { PayrollSkeleton } from '@/components/payroll/PayrollSkeleton'
 
 function WeaversPayrollContent() {
   const sheetPrint = usePrintOrientation('weavers')
@@ -247,7 +248,7 @@ function WeaversPayrollContent() {
 
 export default function WeaversPayrollPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Weavers Sheet...</div>}>
+    <Suspense fallback={<PayrollSkeleton />}>
       <WeaversPayrollContent />
     </Suspense>
   )

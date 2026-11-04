@@ -119,7 +119,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
         }
       />
 
-      <LoadState loading={loading} error={error} hasData={Boolean(ledger)}>
+      <LoadState loading={loading} error={error} hasData={Boolean(ledger)} variant="ledger">
         {ledger && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">

@@ -2057,6 +2057,17 @@ tr.sara-quality-held-history > td:first-child {
   }
 }
 
+[data-theme='dark'] .sara-skel,
+.dark .sara-skel {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.12) 40%,
+    rgba(255, 255, 255, 0.05) 80%
+  );
+  background-size: 200% 100%;
+}
+
 /* Master grid cards */
 .master-grid {
   display: grid;

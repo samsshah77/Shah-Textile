@@ -28,6 +28,7 @@ import { ExportPdfButton } from '@/components/shared/ExportPdfButton'
 import { ProfileAvatar } from '@/components/payroll/ProfileAvatar'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { EmployeeSalaryHistoryModal } from '@/components/payroll/EmployeeSalaryHistoryModal'
+import { PayrollProfilesSkeleton } from '@/components/payroll/PayrollSkeleton'
 
 const HR_TABS = [
   { id: 'ALL', label: 'All' },
@@ -47,6 +48,7 @@ function EmployeeProfilesContent() {
   const initialTab = (searchParams.get('tab') || 'ALL').toUpperCase()
 
   const [employees, setEmployees] = useState<EmployeeProfile[]>([])
+  const [loading, setLoading] = useState(true)
   const [activeMonth, setActiveMonth] = useState<string>('2026-09')
   const [search, setSearch] = useState(initialSearch)
   const [filterCategory, setFilterCategory] = useState<string>(initialTab)
@@ -61,8 +63,12 @@ function EmployeeProfilesContent() {
 
   useEffect(() => {
     const init = async () => {
-      await hydratePayrollFromDb()
-      reload()
+      try {
+        await hydratePayrollFromDb()
+        reload()
+      } finally {
+        setLoading(false)
+      }
     }
     void init()
     const handleSync = () => reload()
@@ -117,6 +123,10 @@ function EmployeeProfilesContent() {
       ? emp.ratePerDay30 || emp.ratePerDay31 || Math.round((emp.salary || 0) / 30)
       : emp.salary
     return { cat, isDaily, pay }
+  }
+
+  if (loading) {
+    return <PayrollProfilesSkeleton />
   }
 
   return (
@@ -411,7 +421,7 @@ function EmployeeProfilesContent() {
 
 export default function EmployeeProfilesPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-slate-400">Loading profiles…</div>}>
+    <Suspense fallback={<PayrollProfilesSkeleton />}>
       <EmployeeProfilesContent />
     </Suspense>
   )

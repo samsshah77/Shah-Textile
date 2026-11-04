@@ -36,6 +36,7 @@ import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PrintOrientationSelect } from '@/components/shared/PrintOrientationSelect'
 import { usePrintOrientation } from '@/hooks/usePrintOrientation'
 import { SignatureBox, useSignatureBoxHeight } from '@/components/shared/SignatureBox'
+import { PayrollSkeleton } from '@/components/payroll/PayrollSkeleton'
 
 const DEFAULT_CONTRACTOR_WIDTHS = {
   serialNo: 56,
@@ -762,7 +763,7 @@ function ContractorsPayrollContent() {
 
 export default function ContractorsPayrollPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Contractors Sheet...</div>}>
+    <Suspense fallback={<PayrollSkeleton />}>
       <ContractorsPayrollContent />
     </Suspense>
   )
