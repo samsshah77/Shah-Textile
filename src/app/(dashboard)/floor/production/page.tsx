@@ -40,6 +40,9 @@ import { FloorMonthLockBar, useFloorMonthLocked } from '@/components/floor/Floor
 import { getCalendarToday, getProductionToday, productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
 import { monthOptions } from '@/services/floorReportsClient'
 import { DateNav } from '@/components/shared/DateNav'
+import { fetchBeamsAsOf } from '@/lib/floor/beamStints'
+import { longDateFromYmd } from '@/lib/longDate'
+import type { BeamMaster } from '@/services/production/masterTypes'
 
 function ProductionWorkspaceContent() {
   const router = useRouter()
@@ -232,7 +235,28 @@ function ProductionWorkspaceContent() {
   // Beams tab always shows the beams as they are now and stays editable on any date; a mount /
   // take-off done while a past date is selected is dated that day. (Beam changes are still
   // recorded day-wise on the server — floor_beam_history.)
-  const beamCounts = useMemo(() => beamStockCounts(beams), [beams])
+  // Past day: the beams as they stood that day (beam history) — Beams tab (view) and the
+  // Looms table's "beam attach karein" note. Today, or Beams with Edit on: the live beams.
+  const isPastDay = selectedDate < getCalendarToday()
+  const wantPastBeams = isPastDay && (isBeamsTab || currentTab === 'looms')
+  const [pastBeams, setPastBeams] = useState<{ date: string; beams: BeamMaster[] } | null>(null)
+  useEffect(() => {
+    if (!wantPastBeams) return
+    let live = true
+    fetchBeamsAsOf<BeamMaster>(selectedDate)
+      .then((list) => {
+        if (live) setPastBeams({ date: selectedDate, beams: list })
+      })
+      .catch(() => {
+        if (live) setPastBeams(null)
+      })
+    return () => {
+      live = false
+    }
+  }, [wantPastBeams, selectedDate, beams])
+  const dayBeams = wantPastBeams && pastBeams?.date === selectedDate ? pastBeams.beams : null
+  const showDayBeams = Boolean(dayBeams) && !beamEdit
+  const beamCounts = useMemo(() => beamStockCounts(showDayBeams && dayBeams ? dayBeams : beams), [beams, dayBeams, showDayBeams])
   const qualityCounts = useMemo(
     () => qualityStatusCounts(qualities, selectedDate),
     [qualities, selectedDate]
@@ -614,6 +638,7 @@ function ProductionWorkspaceContent() {
                 sheetDate={selectedDate}
                 onUpdate={updateLoom}
                 beams={beams}
+                noteBeams={currentTab === 'looms' ? dayBeams : null}
                 onEndBeam={sendBeamToSizing}
                 onAddQualitySegment={addQualitySegment}
                 onRemoveQualitySegment={removeQualitySegment}
@@ -637,9 +662,16 @@ function ProductionWorkspaceContent() {
               />
             )}
 
+            {currentTab === 'beams' && beamFilter !== 'ENDED' && showDayBeams && (
+              <div className="alert alert-info py-2 mb-2 small d-print-none" role="status">
+                <i className="bi bi-clock-history me-1" />
+                <strong>{longDateFromYmd(selectedDate)}</strong> ko beams ki state (sirf dekhne ke liye). Beam lagana / utarna
+                ho to Edit dabayein — tab aaj ki list khulegi aur kaam is date se hoga.
+              </div>
+            )}
             {currentTab === 'beams' && beamFilter !== 'ENDED' && (
               <BeamMasterTable
-                beams={beams}
+                beams={showDayBeams && dayBeams ? dayBeams : beams}
                 looms={looms}
                 qualities={qualities}
                 selectedDate={selectedDate}
@@ -651,7 +683,7 @@ function ProductionWorkspaceContent() {
                 onSendToSizing={sendBeamToSizing}
                 entries={entries}
                 onDelete={deleteBeam}
-                readOnly={!tabEdit}
+                readOnly={!tabEdit || showDayBeams}
                 filter={beamFilter}
                 onFilterChange={setBeamFilter}
                 toolbarInChrome

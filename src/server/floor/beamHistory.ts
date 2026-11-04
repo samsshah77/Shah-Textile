@@ -20,6 +20,9 @@ const DDL = [
     "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
   )`,
   `CREATE INDEX IF NOT EXISTS "floor_beam_history_day_idx" ON "floor_beam_history"("beamNo", "effectiveDate", "id")`,
+  // Rows of an Ended record removed from the Ended tab (a beam ended twice by mistake):
+  // kept, but left out of every view. Reversible.
+  `ALTER TABLE "floor_beam_history" ADD COLUMN IF NOT EXISTS "hidden" BOOLEAN NOT NULL DEFAULT false`,
 ]
 
 /** Before this day there is no record of where a beam was; it counts as in the store. */
@@ -122,7 +125,7 @@ export async function beamsAsOf(date: string): Promise<BeamMaster[]> {
   const rows = await prisma.$queryRawUnsafe<Array<{ beamNo: string; state: unknown }>>(
     `SELECT DISTINCT ON ("beamNo") "beamNo", "state"
        FROM "floor_beam_history"
-      WHERE "effectiveDate" <= $1::date
+      WHERE "effectiveDate" <= $1::date AND NOT "hidden"
       ORDER BY "beamNo", "effectiveDate" DESC, "id" DESC`,
     date
   )
@@ -141,6 +144,11 @@ export type BeamLoomStint = {
   swLot: string | null
   warp: string
   qualityId: string | null
+  /** History rows of this stint: the first one, and the one that took it off (for edits). */
+  firstId: string
+  closeId: string | null
+  /** The closing row took the beam off every loom (not straight onto another loom). */
+  closeOffLoom: boolean
 }
 
 /**
@@ -150,9 +158,10 @@ export type BeamLoomStint = {
  */
 export async function beamLoomStints(from: string, to: string): Promise<BeamLoomStint[]> {
   await ensureBeamHistoryTable()
-  const rows = await prisma.$queryRawUnsafe<Array<{ beamNo: string; effectiveDate: Date | string; state: unknown }>>(
-    `SELECT "beamNo", to_char("effectiveDate", 'YYYY-MM-DD') AS "effectiveDate", "state"
+  const rows = await prisma.$queryRawUnsafe<Array<{ id: string; beamNo: string; effectiveDate: Date | string; state: unknown }>>(
+    `SELECT "id"::text AS "id", "beamNo", to_char("effectiveDate", 'YYYY-MM-DD') AS "effectiveDate", "state"
        FROM "floor_beam_history"
+      WHERE NOT "hidden"
       ORDER BY "beamNo", "id"`
   )
   // Rows are read in the order they were recorded (id), not by their day: a mount entered
@@ -161,8 +170,8 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
   const out: BeamLoomStint[] = []
   let cur: BeamLoomStint | null = null
   let curBeam = ''
-  const close = (end: string) => {
-    if (cur) out.push({ ...cur, to: end < cur.from ? cur.from : end })
+  const close = (end: string, rowId: string, offLoom: boolean) => {
+    if (cur) out.push({ ...cur, to: end < cur.from ? cur.from : end, closeId: rowId, closeOffLoom: offLoom })
     cur = null
   }
   for (const r of rows) {
@@ -180,7 +189,7 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
     const mount = isYmd(day(state?.mountedOn)) ? day(state?.mountedOn) : c && onLoom && loom === c.loom ? c.from : effective
     if (c && (!onLoom || loom !== c.loom || mount !== c.from)) {
       const ended = day(state?.beamEndedOn)
-      close(isYmd(ended) && !onLoom ? ended : effective)
+      close(isYmd(ended) && !onLoom ? ended : effective, r.id, !onLoom)
     }
     if (onLoom && state && !cur) {
       // Put back on the same loom from the same day right after coming off (a beam ended by
@@ -188,7 +197,7 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
       const last = out[out.length - 1]
       if (last && last.beamNo === r.beamNo && last.loom === loom && last.from === mount && last.to != null) {
         out.pop()
-        cur = { ...last, to: null }
+        cur = { ...last, to: null, closeId: null, closeOffLoom: false }
       }
     }
     if (onLoom && state) {
@@ -201,6 +210,10 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
         swLot: state.swLot ?? null,
         warp: state.warp || '',
         qualityId: state.qualityId ?? null,
+        // Same stint: it started at its first row.
+        firstId: (cur as BeamLoomStint | null)?.firstId ?? r.id,
+        closeId: null,
+        closeOffLoom: false,
       }
       // Same stint: keep the latest length / Sw# / quality written while it was on the loom.
       cur = next
@@ -208,4 +221,65 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
   }
   if (cur) out.push(cur)
   return out.filter((s) => s.from <= to && (s.to == null || s.to >= from))
+}
+
+/** The stint of `beamNo` that starts at history row `firstId` (any date range). */
+async function findStint(beamNo: string, firstId: string): Promise<{ stint: BeamLoomStint; next: BeamLoomStint | null } | null> {
+  const all = (await beamLoomStints('0000-01-01', '9999-12-31')).filter((s) => s.beamNo === beamNo)
+  const i = all.findIndex((s) => s.firstId === firstId)
+  if (i < 0) return null
+  return { stint: all[i], next: all[i + 1] || null }
+}
+
+export class BeamHistoryEditError extends Error {
+  readonly status = 400
+}
+
+/**
+ * Ended tab → change the day a beam came off ("Utra"). Only an ended run that went off every
+ * loom; the new day stays inside the run (not before it started, not after the next run of
+ * the same beam started, not after today). Changes that one history row only.
+ */
+export async function setStintEndDate(beamNo: string, firstId: string, newTo: string, today: string): Promise<BeamLoomStint> {
+  await ensureBeamHistoryTable()
+  const found = await findStint(beamNo, firstId)
+  if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
+  const { stint, next } = found
+  if (stint.to == null || !stint.closeId) throw new BeamHistoryEditError('Ye beam abhi loom pe laga hai — pehle End karein.')
+  if (!stint.closeOffLoom) throw new BeamHistoryEditError('Ye beam seedha doosri loom pe gaya tha — Utra ki date wahan ke Laga se badalti hai.')
+  if (!isYmd(newTo)) throw new BeamHistoryEditError('Date sahi nahi.')
+  if (newTo < stint.from) throw new BeamHistoryEditError(`Utra ${stint.from} (Laga) se pehle nahi ho sakta.`)
+  if (newTo > today) throw new BeamHistoryEditError('Aane wali date nahi ho sakti.')
+  if (next && newTo > next.from) throw new BeamHistoryEditError(`Is beam ka agla run ${next.from} ko shuru hua — Utra us se baad nahi ho sakta.`)
+  await prisma.$executeRawUnsafe(
+    `UPDATE "floor_beam_history"
+        SET "effectiveDate" = $1::date,
+            "state" = jsonb_set(COALESCE("state", '{}'::jsonb), '{beamEndedOn}', to_jsonb($1::text))
+      WHERE "id" = $2::bigint AND "beamNo" = $3`,
+    newTo,
+    stint.closeId,
+    beamNo
+  )
+  return { ...stint, to: newTo }
+}
+
+/**
+ * Ended tab → remove a record (the same beam ended twice by mistake). The rows of that run
+ * are hidden, not deleted. Only an ended run that went off every loom.
+ */
+export async function hideStint(beamNo: string, firstId: string): Promise<BeamLoomStint> {
+  await ensureBeamHistoryTable()
+  const found = await findStint(beamNo, firstId)
+  if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
+  const { stint } = found
+  if (stint.to == null || !stint.closeId) throw new BeamHistoryEditError('Ye beam abhi loom pe laga hai — ye record hataya nahi ja sakta.')
+  if (!stint.closeOffLoom) throw new BeamHistoryEditError('Ye beam seedha doosri loom pe gaya tha — ye record hataya nahi ja sakta.')
+  await prisma.$executeRawUnsafe(
+    `UPDATE "floor_beam_history" SET "hidden" = true
+      WHERE "beamNo" = $1 AND "id" BETWEEN $2::bigint AND $3::bigint`,
+    beamNo,
+    stint.firstId,
+    stint.closeId
+  )
+  return stint
 }

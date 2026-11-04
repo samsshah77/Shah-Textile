@@ -79,6 +79,8 @@ interface LoomMasterTableProps {
   beams?: BeamMaster[]
   /** End (Empty Beam) a beam that came off a loom; dateStr = the sheet day. */
   onEndBeam?: (beamNo: string, dateStr: string) => void
+  /** Past day: the beams as they stood that day, for the "Beam attach karein" note. */
+  noteBeams?: BeamMaster[] | null
 }
 
 export function LoomMasterTable({
@@ -99,6 +101,7 @@ export function LoomMasterTable({
   onAddModalOpenChange,
   beams = [],
   onEndBeam,
+  noteBeams,
 }: LoomMasterTableProps) {
   const [mode, setMode] = useState<TableGridMode>('table')
   const [modelFilter, setModelFilter] = useState<'ALL' | LoomCategory>('ALL')
@@ -196,12 +199,13 @@ export function LoomMasterTable({
    * Running looms with a quality on sheetDate but no beam mounted — the beam still has to be
    * attached in the Beams table. Only checked when the beams register was passed in.
    */
+  const beamsForNote = noteBeams ?? beams
   const needsBeam = (loom: LoomMaster) =>
-    beams.length > 0 &&
+    beamsForNote.length > 0 &&
     loom.isActive !== false &&
     dayStatus(loom) === 'RUNNING' &&
     Boolean(dayQualitySelectValue(loom)) &&
-    getMountedBeamsOnLoom(beams, loom.loomNumber).length === 0
+    getMountedBeamsOnLoom(beamsForNote, loom.loomNumber).length === 0
   const loomsNeedingBeam = filteredLooms.filter(needsBeam)
 
   /**

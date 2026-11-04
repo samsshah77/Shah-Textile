@@ -12,6 +12,10 @@ export type BeamStint = {
   swLot: string | null
   warp: string
   qualityId: string | null
+  /** History rows of this run (for Ended → Edit). */
+  firstId?: string
+  closeId?: string | null
+  closeOffLoom?: boolean
 }
 
 /** Every beam-on-loom stint that overlaps from…to (read-only). */
@@ -52,4 +56,24 @@ export function rowsFromBeams(entries: DailyLoomProductionEntry[], beams: BeamSt
 /** Meters the beam(s) made while on the loom (any quality). */
 export function beamMadeMeters(entries: DailyLoomProductionEntry[], beams: BeamStint[], today: string): number {
   return rowsFromBeams(entries, beams, today).reduce((sum, e) => sum + Math.max(0, entryMeters(e)), 0)
+}
+
+/** Ended → Edit: change the day a beam came off, or remove a record. Throws the server's message. */
+export async function editBeamStint(body: { action: 'setEnd' | 'remove'; beamNo: string; firstId: string; to?: string; oldTo?: string }): Promise<void> {
+  const r = await fetch('/api/floor/beam-history', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Save nahi ho saka.')
+}
+
+/** Every beam as it stood at the end of `date` (Beams tab, past days). */
+export async function fetchBeamsAsOf<T>(date: string): Promise<T[]> {
+  const r = await fetch(`/api/floor/beam-history?date=${date}`, { credentials: 'same-origin', cache: 'no-store' })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(d?.error || 'Beams load nahi ho sake.')
+  return Array.isArray(d.beams) ? d.beams : []
 }

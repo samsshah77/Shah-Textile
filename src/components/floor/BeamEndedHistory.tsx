@@ -11,7 +11,7 @@ import { formatSwLotForDailyEntry } from '@/services/beamTrack'
 import { longDateFromYmd } from '@/lib/longDate'
 import type { BeamMaster, MountBeamResult } from '@/services/productionMastersService'
 import { useAlertDialog } from '@/context/AlertDialogContext'
-import { beamMadeMeters, entryMeters, fetchBeamStints, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
+import { beamMadeMeters, editBeamStint, entryMeters, fetchBeamStints, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
 
 type EndedRow = BeamStint & {
   to: string
@@ -126,6 +126,47 @@ export function BeamEndedHistory({
     })
   }
   const showActions = editing && canEdit && Boolean(onRestore)
+  /** Utra date can be changed / record removed: an ended run that went off every loom. */
+  const editable = (r: EndedRow) => Boolean(r.firstId && r.closeOffLoom)
+
+  const runEdit = async (body: Parameters<typeof editBeamStint>[0], done: string) => {
+    try {
+      await editBeamStint(body)
+      setReload((n) => n + 1)
+      showSuccessSoon({ title: 'Saved', message: done })
+    } catch (err) {
+      showError({ title: 'Save nahi hua', message: err instanceof Error ? err.message : 'Save nahi ho saka.' })
+    }
+  }
+
+  const changeEnd = (r: EndedRow, to: string) => {
+    if (!r.firstId || !to || to === r.to) return
+    showConfirm({
+      title: `Beam ${r.beamNo} — Utra ki date badlein?`,
+      message: `Loom ${r.loom} se utarne ki date ${longDateFromYmd(r.to)} se ${longDateFromYmd(to)} ho jayegi. Is beam ke Din, Bana aur Zaya isi hisaab se dobara banenge. Daily Entry ki production nahi badlegi.`,
+      type: 'confirm',
+      confirmText: 'Haan, badlo',
+      cancelText: 'Cancel',
+      onConfirm: () =>
+        runEdit(
+          { action: 'setEnd', beamNo: r.beamNo, firstId: r.firstId!, to, oldTo: r.to },
+          `Beam ${r.beamNo} ki Utra date ${longDateFromYmd(to)} ho gayi.`
+        ),
+    })
+  }
+
+  const removeRecord = (r: EndedRow) => {
+    if (!r.firstId) return
+    showConfirm({
+      title: `Beam ${r.beamNo} ka ye record hatayein?`,
+      message: `Loom ${r.loom} · Laga ${longDateFromYmd(r.from)} · Utra ${longDateFromYmd(r.to)}. Sirf tab hatayein jab ye ghalti se dobara bana ho (beam ek hi dafa utra tha). Ye record Ended list aur beam ke hisaab se nikal jayega; Daily Entry ki production nahi badlegi.`,
+      type: 'confirm',
+      confirmText: 'Haan, hatao',
+      cancelText: 'Cancel',
+      onConfirm: () =>
+        runEdit({ action: 'remove', beamNo: r.beamNo, firstId: r.firstId!, oldTo: r.to }, `Beam ${r.beamNo} ka record hata diya.`),
+    })
+  }
 
   const totals = useMemo(() => {
     let length = 0
@@ -187,14 +228,14 @@ export function BeamEndedHistory({
                 <th>Lambai (m)</th>
                 <th>Bana (m)</th>
                 <th>Zaya (m)</th>
-                {showActions && <th className="d-print-none">Ghalti?</th>}
+                {showActions && <th className="d-print-none">Edit</th>}
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => {
                 const rest = r.length > 0 ? r.length - r.made : null
                 return (
-                  <tr key={`${r.beamNo}-${r.loom}-${r.from}`}>
+                  <tr key={`${r.beamNo}-${r.loom}-${r.from}-${r.firstId || ''}`}>
                     <td>{i + 1}</td>
                     <td className="fw-semibold">
                       <Link href={`/floor/reports/beam?beam=${encodeURIComponent(r.beamNo)}`}>{r.beamNo}</Link>
@@ -203,7 +244,31 @@ export function BeamEndedHistory({
                     <td>{r.swLot ? formatSwLotForDailyEntry(r.swLot) : '—'}</td>
                     <td className="text-start">{r.warp || '—'}</td>
                     <td>{longDateFromYmd(r.from)}</td>
-                    <td>{longDateFromYmd(r.to)}</td>
+                    <td>
+                      {showActions && editable(r) ? (
+                        <input
+                          type="date"
+                          className="form-control form-control-sm d-print-none"
+                          style={{ width: 'auto', minWidth: 140 }}
+                          key={r.to}
+                          defaultValue={r.to}
+                          min={r.from}
+                          max={today}
+                          onBlur={(e) => {
+                            const v = e.currentTarget.value
+                            if (v && v !== r.to) changeEnd(r, v)
+                            else e.currentTarget.value = r.to
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                          }}
+                          aria-label={`Beam ${r.beamNo} utra date`}
+                          title="Utra ki date badlein"
+                        />
+                      ) : (
+                        longDateFromYmd(r.to)
+                      )}
+                    </td>
                     <td>{r.days || '—'}</td>
                     <td className="text-start">{r.qualities.length ? r.qualities.join(', ') : '—'}</td>
                     <td>{r.length > 0 ? formatNumber(r.length, 0) : '—'}</td>
@@ -219,14 +284,21 @@ export function BeamEndedHistory({
                     </td>
                     {showActions && (
                       <td className="d-print-none">
-                        {restorable.has(r) ? (
-                          <button type="button" className="btn btn-sm btn-outline-primary py-0 text-nowrap" onClick={() => restore(r)}>
-                            <i className="bi bi-arrow-counterclockwise me-1" />
-                            Wapis loom pe
-                          </button>
-                        ) : (
-                          <span className="text-secondary small" title="Beam ab kisi loom pe hai, dobara bhara gaya, ya baad mein phir laga">—</span>
-                        )}
+                        <div className="d-flex flex-wrap gap-1 justify-content-center">
+                          {restorable.has(r) && (
+                            <button type="button" className="btn btn-sm btn-outline-primary py-0 text-nowrap" onClick={() => restore(r)}>
+                              <i className="bi bi-arrow-counterclockwise me-1" />
+                              Wapis loom pe
+                            </button>
+                          )}
+                          {editable(r) && (
+                            <button type="button" className="btn btn-sm btn-outline-danger py-0 text-nowrap" onClick={() => removeRecord(r)}>
+                              <i className="bi bi-trash me-1" />
+                              Hatayein
+                            </button>
+                          )}
+                          {!restorable.has(r) && !editable(r) && <span className="text-secondary small">—</span>}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -239,7 +311,7 @@ export function BeamEndedHistory({
       <div className="card-footer small text-secondary">
         Beam history se: har line ek dafa loom se utarna. Beam dobara bhar ke lage tab bhi ye record waisa hi rehta hai.
         Bana = us loom ki Daily Entry, us beam ke Sw/Wp lot ke din. Zaya = lambai − bana. Mahina upar date se badlein.
-        Ghalti se End hua beam: Edit → &quot;Wapis loom pe&quot;.
+        Edit mein: Utra ki date badlein, ghalti se dobara bana record &quot;Hatayein&quot;, ya ghalti se End hua beam &quot;Wapis loom pe&quot;.
       </div>
     </div>
   )
