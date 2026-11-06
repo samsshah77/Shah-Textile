@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { isYmd } from '@/server/floor/faultAccess'
 import {
   BeamHistoryEditError,
+  addPastStint,
   beamLoomStints,
   beamRuns,
   beamsAsOf,
@@ -61,15 +62,45 @@ export async function GET(request: NextRequest) {
 /**
  * Beam History / Ended → Edit: { action: 'setStart', beamNo, firstId, from } changes the day a
  * beam went on a loom; 'setEnd' (to) the day it came off; 'remove' hides a run made by mistake.
- * Needs Beams edit; a locked production month cannot be changed.
+ * 'add' (loom, from, to, swLot) adds a past run. Needs Beams edit; a locked production month
+ * cannot be changed.
  */
 export async function POST(request: NextRequest) {
   const check = await requireAccess(request, 'prod_beams', 'edit')
   if (check.error) return check.error
   const body = (await request.json().catch(() => null)) as
-    | { action?: string; beamNo?: string; firstId?: string; to?: string; from?: string; oldTo?: string; oldFrom?: string }
+    | {
+        action?: string
+        beamNo?: string
+        firstId?: string
+        to?: string
+        from?: string
+        oldTo?: string
+        oldFrom?: string
+        loom?: number | string
+        swLot?: string | null
+      }
     | null
   const beamNo = String(body?.beamNo || '').trim()
+  if (body?.action === 'add') {
+    if (!beamNo) return NextResponse.json({ ok: false, error: 'Beam nahi mila.' }, { status: 400 })
+    try {
+      const from = String(body.from || '')
+      const to = String(body.to || '')
+      if (!isYmd(from) || !isYmd(to)) return NextResponse.json({ ok: false, error: 'Laga aur Utra dono dates chahiye.' }, { status: 400 })
+      await assertDateOpen(from)
+      await assertDateOpen(to)
+      const swLot = String(body.swLot || '').trim().slice(0, 40) || null
+      const stint = await addPastStint(beamNo, Number(body.loom), from, to, swLot, getProductionToday())
+      return NextResponse.json({ ok: true, stint })
+    } catch (err) {
+      if (err instanceof FloorLockedError || err instanceof BeamHistoryEditError) {
+        return NextResponse.json({ ok: false, error: err.message }, { status: err.status })
+      }
+      console.error('[beam-history add]', err)
+      return NextResponse.json({ ok: false, error: 'Save nahi ho saka.' }, { status: 500 })
+    }
+  }
   const firstId = String(body?.firstId || '').trim()
   if (!beamNo || !/^\d+$/.test(firstId)) return NextResponse.json({ ok: false, error: 'Beam / record nahi mila.' }, { status: 400 })
   try {

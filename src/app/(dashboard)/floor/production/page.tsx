@@ -662,6 +662,14 @@ function ProductionWorkspaceContent() {
               />
             )}
 
+            {currentTab === 'beams' && beamFilter !== 'ENDED' && isPastDay && beamEdit && (
+              <div className="alert alert-warning py-2 mb-2 small d-print-none" role="status">
+                <i className="bi bi-pencil-square me-1" />
+                Edit mein <strong>abhi ki (live) list</strong> hai — {longDateFromYmd(selectedDate)} wali nahi, is liye kuch beam
+                alag dikhenge. Yahan lagaya / utara beam {longDateFromYmd(selectedDate)} ki date se hoga. Purane record ki dates
+                theek karni hon to beam ka <strong>History</strong> button use karein.
+              </div>
+            )}
             {currentTab === 'beams' && beamFilter !== 'ENDED' && showDayBeams && (
               <div className="alert alert-info py-2 mb-2 small d-print-none" role="status">
                 <i className="bi bi-clock-history me-1" />

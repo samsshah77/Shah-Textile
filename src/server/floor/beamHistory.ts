@@ -23,7 +23,15 @@ const DDL = [
   // Rows of an Ended record removed from the Ended tab (a beam ended twice by mistake):
   // kept, but left out of every view. Reversible.
   `ALTER TABLE "floor_beam_history" ADD COLUMN IF NOT EXISTS "hidden" BOOLEAN NOT NULL DEFAULT false`,
+  // Order of the rows of one beam: normally the row id (the order they were recorded). A past
+  // run added from Beam History gets a value between two existing rows, so it sits in its
+  // place in time. Empty = the id.
+  `ALTER TABLE "floor_beam_history" ADD COLUMN IF NOT EXISTS "ord" DOUBLE PRECISION`,
 ]
+
+/** Sort key of a history row (see "ord" above). */
+const KEY = `COALESCE("ord", "id"::float8)`
+const keyOf = (idParam: string) => `(SELECT ${KEY} FROM "floor_beam_history" WHERE "id" = ${idParam}::bigint)`
 
 /** Before this day there is no record of where a beam was; it counts as in the store. */
 const BASELINE_DAY = '2000-01-01'
@@ -119,14 +127,19 @@ export async function recordBeamChanges(changes: BeamChange[]): Promise<void> {
   }
 }
 
-/** Every beam as it stood at the end of `date` (beams added later or deleted by then are left out). */
+/**
+ * Every beam as it stood at the end of `date` (beams added later or deleted by then are left out).
+ * The latest *recorded* row dated on or before that day wins (row id, like the runs below): a
+ * mount entered later with an earlier date — e.g. a beam ended by mistake and put back — must
+ * win over the off-loom row it corrects, or the beam shows in stock while it is on the loom.
+ */
 export async function beamsAsOf(date: string): Promise<BeamMaster[]> {
   await ensureBeamHistoryTable()
   const rows = await prisma.$queryRawUnsafe<Array<{ beamNo: string; state: unknown }>>(
     `SELECT DISTINCT ON ("beamNo") "beamNo", "state"
        FROM "floor_beam_history"
       WHERE "effectiveDate" <= $1::date AND NOT "hidden"
-      ORDER BY "beamNo", "effectiveDate" DESC, "id" DESC`,
+      ORDER BY "beamNo", ${KEY} DESC, "id" DESC`,
     date
   )
   return rows
@@ -163,7 +176,7 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
     `SELECT h."id"::text AS "id", h."beamNo", to_char(h."effectiveDate", 'YYYY-MM-DD') AS "effectiveDate", h."state"
        FROM "floor_beam_history" h
       WHERE NOT h."hidden"
-      ORDER BY h."beamNo", h."id"`
+      ORDER BY h."beamNo", COALESCE(h."ord", h."id"::float8), h."id"`
   )
   // Rows are read in the order they were recorded (id), not by their day: a mount entered
   // later with an earlier date (e.g. back-dated after the beam came back from sizing today)
@@ -292,13 +305,14 @@ export async function setStintStartDate(beamNo: string, firstId: string, newFrom
     if (!fromPrevLoom && prev.to && newFrom < prev.to) throw new BeamHistoryEditError(`Pichla run ${prev.to} ko khatam hua — Laga us se pehle nahi ho sakta.`)
   }
   const oldFrom = stint.from
-  const lastId = stint.closeId ? `(${Number(stint.closeId)} - 1)` : '9223372036854775807'
+  // This run's rows: from its first row up to (not including) the row that closed it.
+  const before = stint.closeId ? `AND ${KEY} < ${keyOf(`'${Number(stint.closeId)}'`)}` : ''
   await prisma.$transaction([
     prisma.$executeRawUnsafe(
       `UPDATE "floor_beam_history"
           SET "state" = jsonb_set("state", '{mountedOn}', to_jsonb($1::text)),
               "effectiveDate" = CASE WHEN to_char("effectiveDate", 'YYYY-MM-DD') = $2 THEN $1::date ELSE "effectiveDate" END
-        WHERE "beamNo" = $3 AND "id" BETWEEN $4::bigint AND ${lastId}
+        WHERE "beamNo" = $3 AND ${KEY} >= ${keyOf('$4')} ${before}
           AND "state" IS NOT NULL AND "state"->>'usedInLoom' = $5`,
       newFrom,
       oldFrom,
@@ -332,15 +346,16 @@ export async function hideStint(beamNo: string, firstId: string): Promise<BeamLo
   if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
   const { stint, prev } = found
   if (stint.to == null || !stint.closeId) throw new BeamHistoryEditError('Ye beam abhi isi run mein loom pe laga hai — ye record hataya nahi ja sakta.')
-  const lastId = stint.closeOffLoom ? Number(stint.closeId) : Number(stint.closeId) - 1
   const fromPrevLoom = Boolean(prev && prev.closeId === stint.firstId)
   await prisma.$transaction([
     prisma.$executeRawUnsafe(
       `UPDATE "floor_beam_history" SET "hidden" = true
-        WHERE "beamNo" = $1 AND "id" BETWEEN $2::bigint AND $3::bigint`,
+        WHERE "beamNo" = $1
+          AND ${KEY} ${fromPrevLoom ? '>' : '>='} ${keyOf('$2')}
+          AND ${KEY} ${stint.closeOffLoom ? '<=' : '<'} ${keyOf('$3')}`,
       beamNo,
-      fromPrevLoom ? String(Number(stint.firstId) + 1) : stint.firstId,
-      String(lastId)
+      stint.firstId,
+      stint.closeId
     ),
     // Came straight from the previous loom: keep that row as "taken off" so the previous run
     // ends that day instead of running on into this one.
@@ -360,4 +375,108 @@ export async function hideStint(beamNo: string, firstId: string): Promise<BeamLo
       : []),
   ])
   return stint
+}
+
+/**
+ * Add a past run: the beam sat on `loom` from `from` to `to` (both days in the past) — for
+ * runs from before the beam history was kept, or never entered. Only history rows are added,
+ * placed in time between the runs before and after it; the beam itself (where it is now) and
+ * Daily Entry production do not change. Must not overlap another run of this beam. Removable
+ * again with Hatayein. Sw# empty = all of that loom's production in those days counts.
+ */
+export async function addPastStint(
+  beamNo: string,
+  loom: number,
+  from: string,
+  to: string,
+  swLot: string | null,
+  today: string
+): Promise<BeamLoomStint> {
+  await ensureBeamHistoryTable()
+  if (!Number.isInteger(loom) || loom <= 0 || loom > 9999) throw new BeamHistoryEditError('Loom number sahi nahi.')
+  if (!isYmd(from) || !isYmd(to)) throw new BeamHistoryEditError('Laga aur Utra dono dates chahiye.')
+  if (to < from) throw new BeamHistoryEditError('Utra Laga se pehle nahi ho sakta.')
+  if (to >= today) throw new BeamHistoryEditError('Purana run sirf guzri hui dates ka — Utra aaj se pehle ka ho.')
+  const runs = await beamRuns(beamNo)
+  // The runs before / after the new one; none may overlap it.
+  let prev: BeamLoomStint | null = null
+  let next: BeamLoomStint | null = null
+  for (const r of runs) {
+    const end = r.to ?? '9999-12-31'
+    if (end <= from) prev = r
+    else if (r.from >= to) next = next ?? r
+    else
+      throw new BeamHistoryEditError(
+        `Is beam ka Loom ${r.loom} pe run ${r.from} → ${r.to ?? 'abhi tak'} pehle se hai — dates us se takrati hain.`
+      )
+  }
+  if (next && runs.indexOf(next) !== runs.indexOf(prev as BeamLoomStint) + 1) {
+    throw new BeamHistoryEditError('Runs ki tarteeb nahi mil rahi — page refresh karke dobara karein.')
+  }
+  const rows = await prisma.$queryRawUnsafe<Array<{ id: string; key: number; effectiveDate: string; state: unknown }>>(
+    `SELECT "id"::text AS "id", ${KEY} AS "key", to_char("effectiveDate", 'YYYY-MM-DD') AS "effectiveDate", "state"
+       FROM "floor_beam_history" WHERE "beamNo" = $1 AND NOT "hidden" ORDER BY ${KEY}, "id"`,
+    beamNo
+  )
+  // Gap between the two runs: after the row that closed `prev`, before the first row of `next`.
+  const keyOfId = (id: string | null | undefined) => rows.find((r) => r.id === id)?.key
+  const lowKey = prev ? keyOfId(prev.closeId) ?? -Infinity : -Infinity
+  const highKey = next ? keyOfId(next.firstId) ?? Infinity : Infinity
+  // Inside the gap: after the rows dated up to `to` (so the new run wins on its days).
+  let at = rows.findIndex((r) => r.key > lowKey)
+  if (at < 0) at = rows.length
+  while (at < rows.length && rows[at].key < highKey && rows[at].effectiveDate <= to) at++
+  const lo = at > 0 ? Number(rows[at - 1].key) : 0
+  const hi = at < rows.length ? Number(rows[at].key) : lo + 1
+  const step = (hi - lo) / 4
+  if (!(step > 0)) throw new BeamHistoryEditError('Yahan run nahi jod sakte — page refresh karke dobara karein.')
+
+  const live = await prisma.floorBeam.findUnique({ where: { beamNo } })
+  const liveState = live ? normalizeBeam(live as unknown as BeamMaster) : null
+  const baseRaw = at > 0 ? rows[at - 1].state : null
+  const base: BeamMaster | null = baseRaw && typeof baseRaw === 'object' ? normalizeBeam({ ...(baseRaw as BeamMaster), beamNo }) : liveState
+  if (!base) throw new BeamHistoryEditError('Ye beam nahi mila.')
+  const L = String(loom)
+  const mounted = normalizeBeam({
+    ...base,
+    usedInLoom: L,
+    location: L,
+    fillStatus: 'FULL',
+    mountedOn: from,
+    beamEndedOn: null,
+    endedFromLoom: null,
+    swLot: swLot || null,
+  })
+  const ended = normalizeBeam({
+    ...mounted,
+    usedInLoom: null,
+    location: 'SIZING',
+    fillStatus: 'EMPTY',
+    mountedOn: null,
+    beamEndedOn: to,
+    endedFromLoom: L,
+  })
+  const ins = (date: string, state: BeamMaster, ord: number) =>
+    prisma.$executeRawUnsafe(
+      `INSERT INTO "floor_beam_history" ("beamNo","effectiveDate","state","ord") VALUES ($1, $2::date, $3::jsonb, $4::float8)`,
+      beamNo,
+      date,
+      JSON.stringify(state),
+      ord
+    )
+  // Added at the very end of the history (nothing recorded after it): the beam's state now
+  // follows from the next day, so a past day after the run does not show the beam on that loom
+  // and today shows the beam as it is.
+  const atEnd = at >= rows.length
+  const nextDay = new Date(`${to}T00:00:00Z`)
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+  const afterDay = nextDay.toISOString().slice(0, 10)
+  await prisma.$transaction([
+    ins(from, mounted, lo + step),
+    ins(to, ended, lo + 2 * step),
+    ...(atEnd && liveState && !liveState.usedInLoom ? [ins(afterDay < today ? afterDay : today, liveState, lo + 3 * step)] : []),
+  ])
+  const added = (await beamRuns(beamNo)).find((r) => r.loom === loom && r.from === from && r.to === to)
+  if (!added) throw new BeamHistoryEditError('Run jud gaya lekin dikh nahi raha — page refresh karein.')
+  return added
 }

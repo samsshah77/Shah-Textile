@@ -55,6 +55,8 @@ export function BeamHistoryDialog({
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
   const today = getProductionToday()
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ loom: '', swLot: '', from: '', to: '' })
 
   useEffect(() => {
     let live = true
@@ -74,7 +76,7 @@ export function BeamHistoryDialog({
   }, [beamNo, reload])
 
   const save = useCallback(
-    async (body: Parameters<typeof editBeamStint>[0], done: string) => {
+    async (body: Parameters<typeof editBeamStint>[0], done: string): Promise<boolean> => {
       try {
         await editBeamStint(body)
         setReload((n) => n + 1)
@@ -82,9 +84,11 @@ export function BeamHistoryDialog({
         await reloadFromServer(KEY_BEAMS)
         onChanged?.()
         showSuccessSoon({ title: 'Saved', message: done })
+        return true
       } catch (err) {
         showError({ title: 'Save nahi hua', message: err instanceof Error ? err.message : 'Save nahi ho saka.' })
         setReload((n) => n + 1)
+        return false
       }
     },
     [onChanged, showError, showSuccessSoon]
@@ -116,6 +120,27 @@ export function BeamHistoryDialog({
       'Haan, hatao',
       () => void save({ action: 'remove', beamNo, firstId: r.firstId!, oldTo: r.to! }, 'Run hata diya.')
     )
+
+  const addRun = () => {
+    const loom = Number(form.loom)
+    if (!Number.isInteger(loom) || loom <= 0) return showError({ title: 'Loom chahiye', message: 'Loom number likhein.' })
+    if (!form.from || !form.to) return showError({ title: 'Dates chahiye', message: 'Laga aur Utra dono dates bharein.' })
+    if (form.to < form.from) return showError({ title: 'Date sahi nahi', message: 'Utra Laga se pehle nahi ho sakta.' })
+    ask(
+      `Beam ${beamNo} — purana run jodein?`,
+      `Loom ${loom} · Laga ${longDateFromYmd(form.from)} · Utra ${longDateFromYmd(form.to)}${form.swLot.trim() ? ` · Sw # ${form.swLot.trim()}` : ''}. Sirf beam ki history mein judega — beam abhi jahan hai wahin rahega, Daily Entry production nahi badlegi. Quality us loom ki Daily Entry se aayegi.`,
+      'Haan, jodo',
+      () =>
+        void save(
+          { action: 'add', beamNo, loom, from: form.from, to: form.to, swLot: form.swLot.trim() || null },
+          `Loom ${loom} ka run jud gaya.`
+        ).then((ok) => {
+          if (!ok) return
+          setAdding(false)
+          setForm({ loom: '', swLot: '', from: '', to: '' })
+        })
+    )
+  }
 
   return (
     <div
@@ -199,6 +224,70 @@ export function BeamHistoryDialog({
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+          {canEdit && runs != null && !error && (
+            <div className="p-2 border-top">
+              {!adding ? (
+                <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setAdding(true)}>
+                  <i className="bi bi-plus-lg me-1" />
+                  Purana run jodein
+                </button>
+              ) : (
+                <div className="d-flex flex-wrap align-items-end gap-2 small">
+                  <label className="d-flex flex-column">
+                    Loom
+                    <input
+                      type="number"
+                      min={1}
+                      className="form-control form-control-sm"
+                      style={{ width: 90 }}
+                      value={form.loom}
+                      onChange={(e) => setForm((f) => ({ ...f, loom: e.target.value }))}
+                    />
+                  </label>
+                  <label className="d-flex flex-column">
+                    Sw # (optional)
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      style={{ width: 110 }}
+                      value={form.swLot}
+                      onChange={(e) => setForm((f) => ({ ...f, swLot: e.target.value }))}
+                    />
+                  </label>
+                  <label className="d-flex flex-column">
+                    Laga
+                    <input
+                      type="date"
+                      className="form-control form-control-sm"
+                      max={today}
+                      value={form.from}
+                      onChange={(e) => setForm((f) => ({ ...f, from: e.target.value }))}
+                    />
+                  </label>
+                  <label className="d-flex flex-column">
+                    Utra
+                    <input
+                      type="date"
+                      className="form-control form-control-sm"
+                      min={form.from || undefined}
+                      max={today}
+                      value={form.to}
+                      onChange={(e) => setForm((f) => ({ ...f, to: e.target.value }))}
+                    />
+                  </label>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={addRun}>
+                    Save
+                  </button>
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setAdding(false)}>
+                    Cancel
+                  </button>
+                  <div className="w-100 text-secondary">
+                    Sirf guzri hui dates. Sw # khali chhorein to us loom ki un dinon ki saari production is beam ki ginni jayegi.
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -60,9 +60,12 @@ export function beamMadeMeters(entries: DailyLoomProductionEntry[], beams: BeamS
 
 /** Ended → Edit: change the day a beam came off, or remove a record. Throws the server's message. */
 export async function editBeamStint(body: {
-  action: 'setStart' | 'setEnd' | 'remove'
+  action: 'setStart' | 'setEnd' | 'remove' | 'add'
   beamNo: string
-  firstId: string
+  /** Not for 'add'. */
+  firstId?: string
+  loom?: number
+  swLot?: string | null
   from?: string
   to?: string
   oldFrom?: string
