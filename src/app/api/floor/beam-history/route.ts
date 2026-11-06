@@ -4,9 +4,11 @@ import { isYmd } from '@/server/floor/faultAccess'
 import {
   BeamHistoryEditError,
   beamLoomStints,
+  beamRuns,
   beamsAsOf,
   hideStint,
   setStintEndDate,
+  setStintStartDate,
 } from '@/server/floor/beamHistory'
 import { FloorLockedError, assertDateOpen } from '@/server/floor/locks'
 import { getProductionToday } from '@/constants/productionCalendar'
@@ -20,6 +22,17 @@ export const runtime = 'nodejs'
  */
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams
+  const beam = (sp.get('beam') || '').trim()
+  if (beam) {
+    const check = await requireAccess(request, ['prod_beams', 'tracking', 'prod_quality'], 'view')
+    if (check.error) return check.error
+    try {
+      return NextResponse.json({ beamNo: beam, runs: await beamRuns(beam) })
+    } catch (err) {
+      console.error('[beam-history runs]', err)
+      return NextResponse.json({ error: 'Beam history load nahi ho saki.' }, { status: 500 })
+    }
+  }
   if (sp.get('stints') === '1') {
     const check = await requireAccess(request, ['tracking', 'prod_beams', 'prod_quality', 'prod_sheet'], 'view')
     if (check.error) return check.error
@@ -46,15 +59,15 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Beams → Ended → Edit: { action: 'setEnd', beamNo, firstId, to } changes the day a beam came
- * off; { action: 'remove', beamNo, firstId } hides a record (beam ended twice by mistake).
+ * Beam History / Ended → Edit: { action: 'setStart', beamNo, firstId, from } changes the day a
+ * beam went on a loom; 'setEnd' (to) the day it came off; 'remove' hides a run made by mistake.
  * Needs Beams edit; a locked production month cannot be changed.
  */
 export async function POST(request: NextRequest) {
   const check = await requireAccess(request, 'prod_beams', 'edit')
   if (check.error) return check.error
   const body = (await request.json().catch(() => null)) as
-    | { action?: string; beamNo?: string; firstId?: string; to?: string; from?: string; oldTo?: string }
+    | { action?: string; beamNo?: string; firstId?: string; to?: string; from?: string; oldTo?: string; oldFrom?: string }
     | null
   const beamNo = String(body?.beamNo || '').trim()
   const firstId = String(body?.firstId || '').trim()
@@ -66,6 +79,14 @@ export async function POST(request: NextRequest) {
       if (isYmd(body.oldTo)) await assertDateOpen(body.oldTo)
       await assertDateOpen(to)
       const stint = await setStintEndDate(beamNo, firstId, to, getProductionToday())
+      return NextResponse.json({ ok: true, stint })
+    }
+    if (body?.action === 'setStart') {
+      const from = String(body.from || '')
+      if (!isYmd(from)) return NextResponse.json({ ok: false, error: 'Date sahi nahi.' }, { status: 400 })
+      if (isYmd(body.oldFrom)) await assertDateOpen(body.oldFrom)
+      await assertDateOpen(from)
+      const stint = await setStintStartDate(beamNo, firstId, from, getProductionToday())
       return NextResponse.json({ ok: true, stint })
     }
     if (body?.action === 'remove') {

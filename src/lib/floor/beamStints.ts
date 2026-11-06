@@ -59,7 +59,15 @@ export function beamMadeMeters(entries: DailyLoomProductionEntry[], beams: BeamS
 }
 
 /** Ended → Edit: change the day a beam came off, or remove a record. Throws the server's message. */
-export async function editBeamStint(body: { action: 'setEnd' | 'remove'; beamNo: string; firstId: string; to?: string; oldTo?: string }): Promise<void> {
+export async function editBeamStint(body: {
+  action: 'setStart' | 'setEnd' | 'remove'
+  beamNo: string
+  firstId: string
+  from?: string
+  to?: string
+  oldFrom?: string
+  oldTo?: string
+}): Promise<void> {
   const r = await fetch('/api/floor/beam-history', {
     method: 'POST',
     credentials: 'same-origin',
@@ -76,4 +84,12 @@ export async function fetchBeamsAsOf<T>(date: string): Promise<T[]> {
   const d = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(d?.error || 'Beams load nahi ho sake.')
   return Array.isArray(d.beams) ? d.beams : []
+}
+
+/** Every run of one beam, oldest first (Beam History dialog). */
+export async function fetchBeamRuns(beamNo: string): Promise<BeamStint[]> {
+  const r = await fetch(`/api/floor/beam-history?beam=${encodeURIComponent(beamNo)}`, { credentials: 'same-origin', cache: 'no-store' })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(d?.error || 'Beam history load nahi ho saki.')
+  return Array.isArray(d.runs) ? d.runs : []
 }

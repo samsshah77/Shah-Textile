@@ -684,6 +684,7 @@ function ProductionWorkspaceContent() {
                 entries={entries}
                 onDelete={deleteBeam}
                 readOnly={!tabEdit || showDayBeams}
+                historyEdit={tabEdit}
                 filter={beamFilter}
                 onFilterChange={setBeamFilter}
                 toolbarInChrome

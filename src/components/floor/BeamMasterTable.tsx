@@ -19,6 +19,7 @@ import {
   statusOnLoomForDate,
 } from '@/services/productionMastersService'
 import type { DailyLoomProductionEntry } from '@/types/production'
+import { BeamHistoryDialog } from '@/components/floor/BeamHistoryDialog'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
@@ -138,7 +139,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   length: 95,
   machine: 100,
   status: 180,
-  track: 88,
+  track: 150,
 }
 
 /** ENDED = record of beams taken off a loom (beam history, see BeamEndedHistory). */
@@ -234,6 +235,8 @@ interface BeamMasterTableProps {
   onAddModalOpenChange?: (open: boolean) => void
   /** Daily Entry rows — the loom's status on selectedDate (B/End / B/Cut flags its beam). */
   entries?: DailyLoomProductionEntry[]
+  /** May correct dates in Beam History (Beams edit permission). */
+  historyEdit?: boolean
 }
 
 function formatShortDate(dateStr?: string | null) {
@@ -321,7 +324,9 @@ export function BeamMasterTable({
   addModalOpen: addModalOpenProp,
   onAddModalOpenChange,
   entries = [],
+  historyEdit = false,
 }: BeamMasterTableProps) {
+  const [historyBeam, setHistoryBeam] = useState<string | null>(null)
   const { canEditProduction } = useAuth()
   const { showError, showConfirm, showSuccessSoon } = useAlertDialog()
   const [filterInternal, setFilterInternal] = useState<BeamFilterType>('IN_STOCK')
@@ -344,7 +349,7 @@ export function BeamMasterTable({
   }
 
   const { widths, setColumnWidth, resetColumnWidth } = useResizableColumns(
-    'sara_beam_col_widths_v11',
+    'sara_beam_col_widths_v12',
     DEFAULT_WIDTHS
   )
   const activeLooms = looms.filter((l) => l.isActive)
@@ -687,6 +692,15 @@ export function BeamMasterTable({
                         onClick={() => openTrack(b)}
                       >
                         Track
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary py-0"
+                        style={{ fontSize: '0.72rem' }}
+                        title="Beam kab kis loom pe laga / utra — dates theek karein"
+                        onClick={() => setHistoryBeam(b.beamNo)}
+                      >
+                        History
                       </button>
                       {masterEdit && onDelete && (
                         <button
@@ -1088,14 +1102,25 @@ export function BeamMasterTable({
                         )}
                       </td>
                       <td className="px-2">
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-primary py-0"
-                          style={{ fontSize: '0.72rem' }}
-                          onClick={() => openTrack(b)}
-                        >
-                          Track
-                        </button>
+                        <div className="d-flex gap-1 justify-content-center">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary py-0"
+                            style={{ fontSize: '0.72rem' }}
+                            onClick={() => openTrack(b)}
+                          >
+                            Track
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary py-0"
+                            style={{ fontSize: '0.72rem' }}
+                            title="Beam kab kis loom pe laga / utra — dates theek karein"
+                            onClick={() => setHistoryBeam(b.beamNo)}
+                          >
+                            History
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -1122,6 +1147,9 @@ export function BeamMasterTable({
         beams={beams}
         qualities={qualities}
       />
+      {historyBeam && (
+        <BeamHistoryDialog beamNo={historyBeam} canEdit={historyEdit} onClose={() => setHistoryBeam(null)} />
+      )}
     </div>
   )
 }

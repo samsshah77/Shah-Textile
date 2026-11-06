@@ -11,6 +11,7 @@ import { formatSwLotForDailyEntry } from '@/services/beamTrack'
 import { longDateFromYmd } from '@/lib/longDate'
 import type { BeamMaster, MountBeamResult } from '@/services/productionMastersService'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { BeamHistoryDialog } from '@/components/floor/BeamHistoryDialog'
 import { beamMadeMeters, editBeamStint, entryMeters, fetchBeamStints, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
 
 type EndedRow = BeamStint & {
@@ -49,6 +50,7 @@ export function BeamEndedHistory({
   const [editing, setEditing] = useState(false)
   // Bumped after a restore so the history is read again.
   const [reload, setReload] = useState(0)
+  const [historyBeam, setHistoryBeam] = useState<string | null>(null)
   // Rows put back on their loom here — hidden at once, before the history is read again.
   const [restored, setRestored] = useState<string[]>([])
   // What was loaded, and for which month (a different month = still loading).
@@ -291,13 +293,21 @@ export function BeamEndedHistory({
                               Wapis loom pe
                             </button>
                           )}
-                          {editable(r) && (
+                          {r.firstId && (
                             <button type="button" className="btn btn-sm btn-outline-danger py-0 text-nowrap" onClick={() => removeRecord(r)}>
                               <i className="bi bi-trash me-1" />
                               Hatayein
                             </button>
                           )}
-                          {!restorable.has(r) && !editable(r) && <span className="text-secondary small">—</span>}
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary py-0 text-nowrap"
+                            onClick={() => setHistoryBeam(r.beamNo)}
+                            title="Is beam ke saare runs — Laga / Utra dates theek karein"
+                          >
+                            <i className="bi bi-clock-history me-1" />
+                            History
+                          </button>
                         </div>
                       </td>
                     )}
@@ -308,6 +318,14 @@ export function BeamEndedHistory({
           </table>
         )}
       </TablePanScroll>
+      {historyBeam && (
+        <BeamHistoryDialog
+          beamNo={historyBeam}
+          canEdit={canEdit}
+          onClose={() => setHistoryBeam(null)}
+          onChanged={() => setReload((n) => n + 1)}
+        />
+      )}
       <div className="card-footer small text-secondary">
         Beam history se: har line ek dafa loom se utarna. Beam dobara bhar ke lage tab bhi ye record waisa hi rehta hai.
         Bana = us loom ki Daily Entry, us beam ke Sw/Wp lot ke din. Zaya = lambai − bana. Mahina upar date se badlein.
