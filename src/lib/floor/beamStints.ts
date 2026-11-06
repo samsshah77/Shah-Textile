@@ -96,3 +96,35 @@ export async function fetchBeamRuns(beamNo: string): Promise<BeamStint[]> {
   if (!r.ok) throw new Error(d?.error || 'Beam history load nahi ho saki.')
   return Array.isArray(d.runs) ? d.runs : []
 }
+
+export type RunLotPlan = {
+  lot: string
+  empty: string[]
+  same: string[]
+  other: Array<{ date: string; lot: string }>
+  noRow: string[]
+}
+
+async function postHistory<T>(body: Record<string, unknown>): Promise<T> {
+  const r = await fetch('/api/floor/beam-history', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Save nahi ho saka.')
+  return d as T
+}
+
+/** Beam History: which Daily Entry days of a run would get its Sw # (nothing is written). */
+export const planRunLots = (beamNo: string, firstId: string) =>
+  postHistory<{ loom: number; from: string; to: string; plan: RunLotPlan }>({ action: 'lotPlan', beamNo, firstId })
+
+/** Beam History: write the run's Sw # into the empty Sw # cells of Daily Entry. */
+export const fillRunLots = (beamNo: string, firstId: string) =>
+  postHistory<{ loom: number; lot: string; filled: string[]; failed: Array<{ date: string; reason: string }> }>({
+    action: 'fillLots',
+    beamNo,
+    firstId,
+  })

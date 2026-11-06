@@ -12,6 +12,7 @@ import {
   setStintStartDate,
 } from '@/server/floor/beamHistory'
 import { FloorLockedError, assertDateOpen } from '@/server/floor/locks'
+import { fillRunLots, planRunLots, runLot } from '@/server/floor/beamLotFill'
 import { getProductionToday } from '@/constants/productionCalendar'
 import { requireAccess } from '@/server/userAccess'
 
@@ -62,7 +63,8 @@ export async function GET(request: NextRequest) {
 /**
  * Beam History / Ended → Edit: { action: 'setStart', beamNo, firstId, from } changes the day a
  * beam went on a loom; 'setEnd' (to) the day it came off; 'remove' hides a run made by mistake.
- * 'add' (loom, from, to, swLot) adds a past run. Needs Beams edit; a locked production month
+ * 'add' (loom, from, to, swLot) adds a past run. 'lotPlan' / 'fillLots' (firstId) show / write
+ * the run's Sw # into the empty Sw # cells of Daily Entry for its loom and days. Needs Beams edit; a locked production month
  * cannot be changed.
  */
 export async function POST(request: NextRequest) {
@@ -104,6 +106,19 @@ export async function POST(request: NextRequest) {
   const firstId = String(body?.firstId || '').trim()
   if (!beamNo || !/^\d+$/.test(firstId)) return NextResponse.json({ ok: false, error: 'Beam / record nahi mila.' }, { status: 400 })
   try {
+    if (body?.action === 'lotPlan' || body?.action === 'fillLots') {
+      const run = (await beamRuns(beamNo)).find((r) => r.firstId === firstId)
+      if (!run) return NextResponse.json({ ok: false, error: 'Ye record nahi mila — page refresh karein.' }, { status: 400 })
+      const today = getProductionToday()
+      const to = run.to ?? today
+      const lot = runLot(beamNo, run.swLot)
+      if (body.action === 'lotPlan') {
+        return NextResponse.json({ ok: true, loom: run.loom, from: run.from, to, plan: await planRunLots(run.loom, run.from, to, lot) })
+      }
+      const actor = { name: check.user.name || check.user.email || 'Floor Operator', isAdmin: (check.user.roleKey || '').toLowerCase() === 'admin' }
+      const result = await fillRunLots(run.loom, run.from, to, lot, actor)
+      return NextResponse.json({ ok: true, loom: run.loom, lot, ...result })
+    }
     if (body?.action === 'setEnd') {
       const to = String(body.to || '')
       if (!isYmd(to)) return NextResponse.json({ ok: false, error: 'Date sahi nahi.' }, { status: 400 })

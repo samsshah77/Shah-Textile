@@ -5,9 +5,9 @@ import { useAlertDialog } from '@/context/AlertDialogContext'
 import { getProductionToday } from '@/constants/productionCalendar'
 import { longDateFromYmd } from '@/lib/longDate'
 import { formatSwLotForDailyEntry } from '@/services/beamTrack'
-import { editBeamStint, fetchBeamRuns, type BeamStint } from '@/lib/floor/beamStints'
+import { editBeamStint, fetchBeamRuns, fillRunLots, planRunLots, type BeamStint } from '@/lib/floor/beamStints'
 import { reloadFromServer } from '@/services/production/floorSync'
-import { KEY_BEAMS } from '@/services/production/floorStore'
+import { KEY_BEAMS, KEY_SHEET } from '@/services/production/floorStore'
 
 /** Date box that saves when it loses focus / Enter (not on every key). */
 function DayInput({ value, min, max, onCommit, label }: { value: string; min?: string; max?: string; onCommit: (v: string) => void; label: string }) {
@@ -50,7 +50,7 @@ export function BeamHistoryDialog({
   onClose: () => void
   onChanged?: () => void
 }) {
-  const { showConfirm, showError, showSuccessSoon } = useAlertDialog()
+  const { showConfirm, showError, showSuccessSoon, showInfo } = useAlertDialog()
   const [runs, setRuns] = useState<BeamStint[] | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -121,6 +121,59 @@ export function BeamHistoryDialog({
       () => void save({ action: 'remove', beamNo, firstId: r.firstId!, oldTo: r.to! }, 'Run hata diya.')
     )
 
+  const shortDays = (days: string[]) =>
+    days.length <= 6 ? days.map((d) => d.slice(8, 10) + '/' + d.slice(5, 7)).join(', ') : `${days.length} din`
+
+  /** Daily Entry Sw # for a run: show what would change, then write the empty cells only. */
+  const lotsToSheet = async (r: BeamStint) => {
+    try {
+      const { loom, from, to, plan } = await planRunLots(beamNo, r.firstId!)
+      const lines = [
+        `Loom ${loom} · ${longDateFromYmd(from)} → ${longDateFromYmd(to)} · Sw #: ${plan.lot}`,
+        plan.empty.length ? `✔ ${plan.empty.length} din Sw # khali hai — yahan "${plan.lot}" likh diya jayega (${shortDays(plan.empty)}).` : '',
+        plan.same.length ? `• ${plan.same.length} din pe pehle se yahi Sw # likha hai.` : '',
+        plan.other.length
+          ? `• ${plan.other.length} din pe doosra Sw # likha hai — wo nahi badlega (${plan.other
+              .slice(0, 4)
+              .map((o) => `${o.date.slice(8, 10)}/${o.date.slice(5, 7)}: ${o.lot}`)
+              .join(', ')}${plan.other.length > 4 ? ' …' : ''}). Ghalat hai to Daily Entry mein khud badlein.`
+          : '',
+        plan.noRow.length ? `• ${plan.noRow.length} din ki Daily Entry bani hi nahi (${shortDays(plan.noRow)}).` : '',
+      ].filter(Boolean)
+      if (!plan.empty.length) {
+        showInfo({ title: 'Likhne ko kuch nahi', message: lines.join('\n') })
+        return
+      }
+      ask(
+        'Daily Entry mein Sw # likhein?',
+        `${lines.join('\n')}\n\nSirf Sw # column — meters aur quality nahi badlenge.`,
+        'Haan, likho',
+        () =>
+          void (async () => {
+            try {
+              const res = await fillRunLots(beamNo, r.firstId!)
+              // Fresh copies of the days written, so an open Daily Entry shows the Sw # (and no save conflict).
+              for (const d of res.filled) await reloadFromServer(`${KEY_SHEET}_${d}`).catch(() => false)
+              onChanged?.()
+              setReload((n) => n + 1)
+              if (res.failed.length) {
+                showError({
+                  title: `${res.filled.length} din likha, ${res.failed.length} din nahi`,
+                  message: res.failed.map((f) => `${f.date}: ${f.reason}`).join('\n'),
+                })
+              } else {
+                showSuccessSoon({ title: 'Saved', message: `${res.filled.length} din Daily Entry mein "${res.lot}" likh diya.` })
+              }
+            } catch (err) {
+              showError({ title: 'Save nahi hua', message: err instanceof Error ? err.message : 'Save nahi ho saka.' })
+            }
+          })()
+      )
+    } catch (err) {
+      showError({ title: 'Load nahi hua', message: err instanceof Error ? err.message : 'Load nahi ho saka.' })
+    }
+  }
+
   const addRun = () => {
     const loom = Number(form.loom)
     if (!Number.isInteger(loom) || loom <= 0) return showError({ title: 'Loom chahiye', message: 'Loom number likhein.' })
@@ -134,10 +187,15 @@ export function BeamHistoryDialog({
         void save(
           { action: 'add', beamNo, loom, from: form.from, to: form.to, swLot: form.swLot.trim() || null },
           `Loom ${loom} ka run jud gaya.`
-        ).then((ok) => {
+        ).then(async (ok) => {
           if (!ok) return
           setAdding(false)
           setForm({ loom: '', swLot: '', from: '', to: '' })
+          // Then offer to write its Sw # into Daily Entry (empty cells only).
+          const added = (await fetchBeamRuns(beamNo).catch(() => [])).find(
+            (x) => x.loom === loom && x.from === form.from && x.to === form.to
+          )
+          if (added?.firstId) window.setTimeout(() => void lotsToSheet(added), 1200)
         })
     )
   }
@@ -211,12 +269,25 @@ export function BeamHistoryDialog({
                         </td>
                         {canEdit && (
                           <td>
-                            {r.to != null && r.firstId ? (
-                              <button type="button" className="btn btn-sm btn-outline-danger py-0" onClick={() => remove(r)} title="Ghalti se bana run hatayein">
-                                <i className="bi bi-trash me-1" />
-                                Hatayein
-                              </button>
-                            ) : null}
+                            <div className="d-flex gap-1 justify-content-center flex-wrap">
+                              {r.firstId ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary py-0"
+                                  onClick={() => void lotsToSheet(r)}
+                                  title="Is run ka Sw # Daily Entry ke khali Sw # column mein likhein"
+                                >
+                                  <i className="bi bi-journal-arrow-down me-1" />
+                                  Daily Entry Sw #
+                                </button>
+                              ) : null}
+                              {r.to != null && r.firstId ? (
+                                <button type="button" className="btn btn-sm btn-outline-danger py-0" onClick={() => remove(r)} title="Ghalti se bana run hatayein">
+                                  <i className="bi bi-trash me-1" />
+                                  Hatayein
+                                </button>
+                              ) : null}
+                            </div>
                           </td>
                         )}
                       </tr>
