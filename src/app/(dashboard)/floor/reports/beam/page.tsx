@@ -17,6 +17,11 @@ import {
   type BeamTrackResult,
 } from '@/services/productionMastersService'
 import { formatNumber } from '@/lib/utils'
+import { entryMeters, fetchBeamRuns, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
+import { listPersistedSheetEntries } from '@/services/production/floorStore'
+import { getProductionToday } from '@/constants/productionCalendar'
+import { formatSwLotForDailyEntry } from '@/services/beamTrack'
+import type { DailyLoomProductionEntry } from '@/types/production'
 
 function formatShortDate(dateStr?: string | null) {
   if (!dateStr) return ''
@@ -31,27 +36,87 @@ function formatShortDate(dateStr?: string | null) {
   }
 }
 
+/**
+ * One run from the beam history (loom, Laga → Utra), as a Track: the Daily Entry rows of that
+ * loom in those days whose Sw # is this run's (or empty) — same rows the Ended tab counts.
+ */
+function trackFromRun(
+  run: BeamStint,
+  base: BeamTrackResult | null,
+  entries: DailyLoomProductionEntry[],
+  today: string
+): BeamTrackResult {
+  const rows = rowsFromBeams(entries, [run], today)
+  const byDate = new Map<string, number>()
+  for (const e of rows) {
+    const m = Math.max(0, entryMeters(e))
+    if (m <= 0) continue
+    const d = String(e.date).slice(0, 10)
+    byDate.set(d, (byDate.get(d) || 0) + m)
+  }
+  const days = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, meters]) => ({ date, meters, loomNumbers: [run.loom] }))
+  const consumed = days.reduce((sum, d) => sum + d.meters, 0)
+  const length = Number(run.length) || base?.length || 0
+  const qualities = [...new Set(rows.map((e) => String(e.qualityName || '').trim()).filter((n) => n && n !== '—' && n !== '-'))]
+  return {
+    beamNo: run.beamNo,
+    swLot: run.swLot ? formatSwLotForDailyEntry(run.swLot) : null,
+    warp: run.warp || base?.warp || '',
+    qualityId: run.qualityId,
+    qualityName: qualities.join(', ') || null,
+    length,
+    consumed,
+    balance: length - consumed,
+    from: run.from,
+    to: run.to || today,
+    loomHint: String(run.loom),
+    days,
+    totalThreads: base?.totalThreads || 0,
+    loomType: base?.loomType || '',
+  }
+}
+
+const runLabel = (r: BeamStint) =>
+  `Loom ${r.loom} · ${formatShortDate(r.from)} → ${r.to ? formatShortDate(r.to) : 'abhi tak'}${r.swLot ? ` · ${formatSwLotForDailyEntry(r.swLot)}` : ''}`
+
 function BeamTrackContent() {
   const searchParams = useSearchParams()
   const beamNo = (searchParams.get('beam') || '').trim()
 
   const [loading, setLoading] = useState(true)
-  const [track, setTrack] = useState<BeamTrackResult | null>(null)
+  const [liveTrack, setLiveTrack] = useState<BeamTrackResult | null>(null)
+  // Runs of this beam from the beam history (Beam History dialog); '' = the beam as it is now.
+  const [runs, setRuns] = useState<BeamStint[]>([])
+  const [runId, setRunId] = useState('')
+  const [entries, setEntries] = useState<DailyLoomProductionEntry[]>([])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      setTrack(null)
+      setLiveTrack(null)
+      setRuns([])
+      setRunId('')
       try {
         await hydrateFloorFromDb()
         await refreshFloorMastersFromDb()
         await preloadAllFloorSheets()
         if (cancelled || !beamNo) return
-        setTrack(productionMastersService.buildBeamTrack(beamNo))
+        const live = productionMastersService.buildBeamTrack(beamNo)
+        const list = await fetchBeamRuns(beamNo).catch(() => [] as BeamStint[])
+        if (cancelled) return
+        setLiveTrack(live)
+        setEntries(listPersistedSheetEntries())
+        setRuns(list)
+        // Beam off the loom now (its last run ended), or nothing for it as it is now: open its
+        // latest run (that loom, those days). On a loom now: the current run as before.
+        const latest = list[list.length - 1]
+        if (latest?.firstId && (latest.to != null || !live || live.days.length === 0)) setRunId(latest.firstId)
       } catch (err) {
         console.error('[beam track] load failed', err)
-        if (!cancelled) setTrack(null)
+        if (!cancelled) setLiveTrack(null)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -60,6 +125,12 @@ function BeamTrackContent() {
       cancelled = true
     }
   }, [beamNo])
+
+  const selectedRun = runId ? runs.find((r) => r.firstId === runId) || null : null
+  const track = useMemo(
+    () => (selectedRun ? trackFromRun(selectedRun, liveTrack, entries, getProductionToday()) : liveTrack),
+    [selectedRun, liveTrack, entries]
+  )
 
   const daySeries = useMemo(
     () =>
@@ -121,6 +192,27 @@ function BeamTrackContent() {
             <span className="ms-2 badge text-bg-light border">Loom {track.loomHint}</span>
           )}
           {loading && <span className="ms-2 badge text-bg-light border">Loading…</span>}
+          {!loading && runs.length > 0 && (
+            <div className="mt-2 d-flex flex-wrap align-items-center gap-2 d-print-none">
+              <label htmlFor="beam-run" className="small fw-semibold mb-0">
+                Run dekhein:
+              </label>
+              <select
+                id="beam-run"
+                className="form-select form-select-sm"
+                style={{ width: 'auto', maxWidth: '100%' }}
+                value={runId}
+                onChange={(e) => setRunId(e.target.value)}
+              >
+                <option value="">Beam abhi (current)</option>
+                {[...runs].reverse().map((r) => (
+                  <option key={r.firstId} value={r.firstId}>
+                    {runLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <Link href="/floor/production?tab=beams" className="btn btn-sm btn-outline-secondary">
           ← Back to Beams
@@ -170,7 +262,13 @@ function BeamTrackContent() {
                   <h3 className="card-title mb-0">Daily meters — Beam #{track.beamNo}</h3>
                 </div>
                 <div className="card-body">
-                  {daySeries.length === 0 ? (
+                  {daySeries.length === 0 && selectedRun ? (
+                    <div className="text-secondary small py-4 text-center">
+                      Is run ke dinon mein Loom {selectedRun.loom} ki Daily Entry mein is beam ka Sw # / meters nahi mile.
+                      <br />
+                      Beams → History → is run ke aage <strong>Daily Entry Sw #</strong> dabayein.
+                    </div>
+                  ) : daySeries.length === 0 ? (
                     <div className="text-secondary small py-4 text-center">
                       Consumed 0 = Daily Entry pe is beam ka lot/Sw# match nahi, ya meters nahi.
                       <br />
