@@ -153,6 +153,10 @@ export const costInputs = z.object({
     .record(z.string().regex(/^[a-zA-Z0-9_]{1,40}$/), z.string().trim().max(120))
     .refine((r) => Object.keys(r).length <= 60, 'Bahut zyada naam')
     .optional(),
+  order: z
+    .record(z.string().regex(/^[a-zA-Z0-9_]{1,40}$/), z.array(z.string().max(200)).max(300))
+    .refine((r) => Object.keys(r).length <= 20, 'Bahut zyada lists')
+    .optional(),
 })
 
 export const costSave = z.object({

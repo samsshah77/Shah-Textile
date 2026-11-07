@@ -209,6 +209,8 @@ export interface CostInputs {
   monthlyProductionMeters?: number | null
   /** Row / heading names changed on the Cost Statement (key → text); carried to later months. */
   labels?: Record<string, string>
+  /** Row order per list (list key → row ids, top first); carried to later months. */
+  order?: Record<string, string[]>
 }
 
 export interface CostStatement {

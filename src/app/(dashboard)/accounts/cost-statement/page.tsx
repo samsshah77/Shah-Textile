@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { Edit3, Eye, RotateCcw, Save, Printer, Link2, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Edit3, Eye, RotateCcw, Save, Printer, Link2, Plus, Trash2 } from 'lucide-react'
 import { SheetHeader } from '@/components/shared/SheetHeader'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useAuth } from '@/context/AuthContext'
@@ -58,7 +58,9 @@ function Block({
           <tbody className="divide-y divide-slate-200">
             {rows.map((r, i) => (
               <tr key={r.key || i}>
-                <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700">{r.label}</td>
+                <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700">
+                  <div className="flex items-center gap-1">{r.label}</div>
+                </td>
                 <td className="py-1.5 px-3 text-right">{editRow ? editRow(r) : rs(r.value)}</td>
               </tr>
             ))}
@@ -166,9 +168,79 @@ function CostStatementContent() {
       className="w-36 text-right font-mono bg-amber-50 border border-amber-300 rounded px-2 py-0.5"
     />
   )
-  const manual = (key: keyof CostInputs, label: string, value: number) => (
+  // ---- Row order (Edit → ▲ ▼): saved per list, carried to later months like the names.
+  const orderOf = (group: string): string[] => (editing ? draft?.order?.[group] : cs?.inputs?.order?.[group]) || []
+  /** Rows in the saved order; rows not in it (new contractor / party) after them, as they came. */
+  const arrange = <T extends { id: string }>(group: string, items: T[]): T[] => {
+    const order = orderOf(group)
+    const at = (id: string) => {
+      const i = order.indexOf(id)
+      return i < 0 ? order.length : i
+    }
+    return items.map((it, i) => ({ it, i })).sort((a, b) => at(a.it.id) - at(b.it.id) || a.i - b.i).map((x) => x.it)
+  }
+  const moveTo = (group: string, ids: string[], i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= ids.length) return
+    const next = [...ids]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setDraft((d) => (d ? { ...d, order: { ...(d.order || {}), [group]: next } } : d))
+  }
+  const moveBtns = (count: number, i: number, onMove: (dir: -1 | 1) => void) =>
+    editing ? (
+      <span className="inline-flex shrink-0 print:hidden">
+        <button
+          type="button"
+          disabled={i === 0}
+          onClick={() => onMove(-1)}
+          className="p-0.5 text-slate-500 hover:text-[#0066cc] disabled:opacity-25 cursor-pointer"
+          aria-label="Upar"
+          title="Upar"
+        >
+          <ArrowUp className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          disabled={i === count - 1}
+          onClick={() => onMove(1)}
+          className="p-0.5 text-slate-500 hover:text-[#0066cc] disabled:opacity-25 cursor-pointer"
+          aria-label="Neeche"
+          title="Neeche"
+        >
+          <ArrowDown className="size-3.5" />
+        </button>
+      </span>
+    ) : null
+  /** Block rows in order, with ▲ ▼ in front of each name while editing. */
+  const ordered = <T extends { id: string; label: React.ReactNode }>(group: string, items: T[]): T[] => {
+    const list = arrange(group, items)
+    const ids = list.map((r) => r.id)
+    return list.map((r, i) => ({
+      ...r,
+      label: (
+        <>
+          {moveBtns(list.length, i, (dir) => moveTo(group, ids, i, dir))}
+          {r.label}
+        </>
+      ),
+    }))
+  }
+  const moveStore = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= store.length) return
+    const next = [...store]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setStore(next)
+  }
+
+  const manual = (key: keyof CostInputs, label: string, value: number, btns?: React.ReactNode) => (
     <tr key={key}>
-      <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700 font-semibold">{L(key, label)}</td>
+      <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700 font-semibold">
+        <div className="flex items-center gap-1">
+          {btns}
+          {L(key, label)}
+        </div>
+      </td>
       <td className="py-1.5 px-3 text-right font-mono">
         {editing ? num(draft?.[key] as Money, (v) => setField(key, v), labelText(key, label)) : rs(value)}
       </td>
@@ -228,8 +300,8 @@ function CostStatementContent() {
           <div className="erp-card p-6 sm:p-8 bg-white print:p-0 print:border-none print:shadow-none">
             {editing && (
               <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 print:hidden">
-                Peelay khaane badal sakte hain — har heading aur line ka naam bhi. Salaries, contractors, purchases aur petty cash ki raqam
-                apni sheets se khud aati hai (contractor / party ke naam bhi wahin se). Badle hue naam agle mahinon mein bhi rehte hain.
+                Peelay khaane badal sakte hain — har heading aur line ka naam bhi, aur ▲ ▼ se lines ki tarteeb. Salaries, contractors, purchases aur petty cash ki raqam
+                apni sheets se khud aati hai (contractor / party ke naam bhi wahin se). Badle hue naam aur tarteeb agle mahinon mein bhi rehte hain.
               </div>
             )}
             <div className="mb-5">
@@ -256,36 +328,52 @@ function CostStatementContent() {
               title={L('h_salaries', 'Salaries & Wages')}
               total={cs.salariesAndWages.total}
               badge={<Badge label="Salary sheets" />}
-              rows={[
-                { key: 'sal_contract', label: L('sal_contract', 'Contract Employee Salary'), value: cs.salariesAndWages.staffSalary },
-                { key: 'sal_contractOt', label: L('sal_contractOt', 'Contract Employee Overtime'), value: cs.salariesAndWages.staffOvertime },
-                { key: 'sal_contractEff', label: L('sal_contractEff', 'Contract Employee Efficency'), value: cs.salariesAndWages.contractEmployeeEfficiency },
-                { key: 'sal_weaver', label: L('sal_weaver', 'Weaver Wages'), value: cs.salariesAndWages.weaverWages },
-                { key: 'sal_weaverHol', label: L('sal_weaverHol', 'Weaver Holy Days Amount'), value: cs.salariesAndWages.weaverHolidays },
-                { key: 'sal_weaverEff', label: L('sal_weaverEff', 'Weaver Efficency'), value: cs.salariesAndWages.weaverEfficiency },
-                { key: 'sal_helper', label: L('sal_helper', 'Helper Wages'), value: cs.salariesAndWages.helperWages },
-              ]}
+              rows={ordered('salaries', [
+                { id: 'sal_contract', key: 'sal_contract', label: L('sal_contract', 'Contract Employee Salary'), value: cs.salariesAndWages.staffSalary },
+                { id: 'sal_contractOt', key: 'sal_contractOt', label: L('sal_contractOt', 'Contract Employee Overtime'), value: cs.salariesAndWages.staffOvertime },
+                { id: 'sal_contractEff', key: 'sal_contractEff', label: L('sal_contractEff', 'Contract Employee Efficency'), value: cs.salariesAndWages.contractEmployeeEfficiency },
+                { id: 'sal_weaver', key: 'sal_weaver', label: L('sal_weaver', 'Weaver Wages'), value: cs.salariesAndWages.weaverWages },
+                { id: 'sal_weaverHol', key: 'sal_weaverHol', label: L('sal_weaverHol', 'Weaver Holy Days Amount'), value: cs.salariesAndWages.weaverHolidays },
+                { id: 'sal_weaverEff', key: 'sal_weaverEff', label: L('sal_weaverEff', 'Weaver Efficency'), value: cs.salariesAndWages.weaverEfficiency },
+                { id: 'sal_helper', key: 'sal_helper', label: L('sal_helper', 'Helper Wages'), value: cs.salariesAndWages.helperWages },
+              ])}
             />
             <Block
               title={L('h_contractors', 'Contractors Bill Amount')}
               total={cs.contractorsTotal}
               badge={<Badge label="Contractors sheet" />}
-              rows={cs.contractorsBills.map((c) => ({ label: `${c.name}${c.role ? ` (${c.role})` : ''}`, value: c.amount }))}
+              rows={ordered(
+                'contractors',
+                cs.contractorsBills.map((c) => ({
+                  id: c.name.trim().toLowerCase(),
+                  key: `c:${c.name}`,
+                  label: `${c.name}${c.role ? ` (${c.role})` : ''}`,
+                  value: c.amount,
+                }))
+              )}
             />
 
             <div className="rounded-lg border border-slate-200 overflow-hidden mb-4">
               <table className="w-full text-xs border-collapse">
                 <tbody className="divide-y divide-slate-200">
-                  {manual('powerAndLight', 'Power & Light', cs.powerAndLight)}
-                  {manual('vehicleFuel', 'Vehicle Fuel', cs.vehicleFuel)}
-                  {manual('generatorFuel', 'Generator Fuel', cs.generatorFuel)}
+                  {(() => {
+                    const list = arrange('lines1', [
+                      { id: 'powerAndLight', label: 'Power & Light', value: cs.powerAndLight },
+                      { id: 'vehicleFuel', label: 'Vehicle Fuel', value: cs.vehicleFuel },
+                      { id: 'generatorFuel', label: 'Generator Fuel', value: cs.generatorFuel },
+                    ] as { id: keyof CostInputs; label: string; value: number }[])
+                    const ids = list.map((r) => r.id)
+                    return list.map((r, i) =>
+                      manual(r.id, r.label, r.value, moveBtns(list.length, i, (dir) => moveTo('lines1', ids, i, dir)))
+                    )
+                  })()}
                 </tbody>
               </table>
             </div>
 
-            <Block title={L('h_machinery', 'Machinery Parts / Traders')} total={cs.machineryTotal} badge={<Badge label="Daily Inward" />} rows={cs.machineryParts.map((r) => ({ label: r.name, value: r.amount }))} />
-            <Block title={L('h_electric', 'Electric / Maintenance')} total={cs.electricTotal} badge={<Badge label="Daily Inward" />} rows={cs.electricMaintenance.map((r) => ({ label: r.name, value: r.amount }))} />
-            <Block title={L('h_repair', 'Repair Expense')} total={cs.repairTotal} badge={<Badge label="Daily Inward" />} rows={cs.repairDetails.map((r) => ({ label: r.name, value: r.amount }))} />
+            <Block title={L('h_machinery', 'Machinery Parts / Traders')} total={cs.machineryTotal} badge={<Badge label="Daily Inward" />} rows={ordered('machinery', cs.machineryParts.map((r) => ({ id: r.name.trim().toLowerCase(), key: `p:${r.name}`, label: r.name, value: r.amount })))} />
+            <Block title={L('h_electric', 'Electric / Maintenance')} total={cs.electricTotal} badge={<Badge label="Daily Inward" />} rows={ordered('electric', cs.electricMaintenance.map((r) => ({ id: r.name.trim().toLowerCase(), key: `p:${r.name}`, label: r.name, value: r.amount })))} />
+            <Block title={L('h_repair', 'Repair Expense')} total={cs.repairTotal} badge={<Badge label="Daily Inward" />} rows={ordered('repair', cs.repairDetails.map((r) => ({ id: r.name.trim().toLowerCase(), key: `p:${r.name}`, label: r.name, value: r.amount })))} />
 
             <div className="rounded-lg border border-slate-200 overflow-hidden mb-4">
               <table className="w-full text-xs border-collapse">
@@ -306,6 +394,7 @@ function CostStatementContent() {
                       <td className="py-1.5 px-3 border-r border-slate-200">
                         {editing ? (
                           <div className="flex items-center gap-1">
+                            {moveBtns(store.length, i, (dir) => moveStore(i, dir))}
                             <input
                               aria-label="Store item"
                               value={s.name}
@@ -343,16 +432,31 @@ function CostStatementContent() {
             <div className="rounded-lg border border-slate-200 overflow-hidden mb-4">
               <table className="w-full text-xs border-collapse">
                 <tbody className="divide-y divide-slate-200">
-                  {manual('waterSupplies', 'Water Supplies', cs.waterSupplies)}
-                  <tr>
-                    <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700 font-semibold">
-                      {L('pettyCash', 'Petty Cash')} <Badge label="Petty cash journal" />
-                    </td>
-                    <td className="py-1.5 px-3 text-right font-mono">{rs(cs.pettyCash)}</td>
-                  </tr>
-                  {manual('guardSalary', 'Guard Salary', cs.guardSalary)}
-                  {manual('solarPanelSystem', 'Solar Panel System', cs.solarPanelSystem)}
-                  {manual('depreciationProduction', 'Depreciation Exp (Production)', cs.depreciationProduction)}
+                  {(() => {
+                    const list = arrange('lines2', [
+                      { id: 'waterSupplies', label: 'Water Supplies', value: cs.waterSupplies },
+                      { id: 'pettyCash', label: 'Petty Cash', value: cs.pettyCash },
+                      { id: 'guardSalary', label: 'Guard Salary', value: cs.guardSalary },
+                      { id: 'solarPanelSystem', label: 'Solar Panel System', value: cs.solarPanelSystem },
+                      { id: 'depreciationProduction', label: 'Depreciation Exp (Production)', value: cs.depreciationProduction },
+                    ])
+                    const ids = list.map((r) => r.id)
+                    return list.map((r, i) => {
+                      const btns = moveBtns(list.length, i, (dir) => moveTo('lines2', ids, i, dir))
+                      if (r.id !== 'pettyCash') return manual(r.id as keyof CostInputs, r.label, r.value, btns)
+                      return (
+                        <tr key="pettyCash">
+                          <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700 font-semibold">
+                            <div className="flex items-center gap-1">
+                              {btns}
+                              {L('pettyCash', 'Petty Cash')} <Badge label="Petty cash journal" />
+                            </div>
+                          </td>
+                          <td className="py-1.5 px-3 text-right font-mono">{rs(cs.pettyCash)}</td>
+                        </tr>
+                      )
+                    })
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -366,22 +470,24 @@ function CostStatementContent() {
               title={L('h_admin', 'Admin & Selling Exp')}
               total={cs.adminTotal}
               badge={<Badge label="Manual" tone="amber" />}
-              rows={[
-                { label: L('adm_salaries', 'Salaries'), name: labelText('adm_salaries', 'Salaries'), value: cs.adminExpenses.salaries, key: 'salaries' },
-                { label: L('adm_overtime', 'Overtime'), name: labelText('adm_overtime', 'Overtime'), value: cs.adminExpenses.overtime, key: 'overtime' },
+              rows={ordered('admin', [
+                { id: 'salaries', label: L('adm_salaries', 'Salaries'), name: labelText('adm_salaries', 'Salaries'), value: cs.adminExpenses.salaries, key: 'salaries' },
+                { id: 'overtime', label: L('adm_overtime', 'Overtime'), name: labelText('adm_overtime', 'Overtime'), value: cs.adminExpenses.overtime, key: 'overtime' },
                 {
+                  id: 'telephoneInternet',
                   label: L('adm_telephone', 'Telephone & Internet'),
                   name: labelText('adm_telephone', 'Telephone & Internet'),
                   value: cs.adminExpenses.telephoneInternet,
                   key: 'telephoneInternet',
                 },
                 {
+                  id: 'depreciationAdmin',
                   label: L('adm_depreciation', 'Depreciation Exp (Admin)'),
                   name: labelText('adm_depreciation', 'Depreciation Exp (Admin)'),
                   value: cs.adminExpenses.depreciationAdmin,
                   key: 'depreciationAdmin',
                 },
-              ]}
+              ])}
               editRow={
                 editing
                   ? (r) => {

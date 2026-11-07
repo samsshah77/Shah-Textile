@@ -303,8 +303,13 @@ export function payrollTotals(store: Record<string, unknown>, month: string) {
   }
 
   return {
-    // Contract employees only: staff salaries go in Admin & Selling Exp (typed there).
-    staffSalary: Math.round(total(contract, 'basicSalary')),
+    // Contract employees only (staff salaries go in Admin & Selling Exp, typed there).
+    // = Salary Synopsis 16–31, "Contract Employees Salaries (Net Basic)" + its Advance column:
+    // net basic is basic − advance − ticket (ticket is a cut from the salary).
+    staffSalary: Math.round(
+      Math.max(0, total(contract, 'basicSalary') - total(contract, 'advanceDeduction') - total(contract, 'ticketCharges')) +
+        total(contract, 'advanceDeduction')
+    ),
     staffOvertime: Math.round(total(contract, 'otAmount')),
     contractEmployeeEfficiency: Math.round(total(contract, 'efficiencyAmount')),
     weaverWages: Math.round(total(weavers, 'grossAmount')),
@@ -328,6 +333,7 @@ export const RECURRING_COST_FIELDS = [
   'depreciationProduction',
   'adminExpenses',
   'labels',
+  'order',
 ] as const
 
 /** The August 2026 Excel Cost Statement (manual lines), used when nothing was saved yet. */
