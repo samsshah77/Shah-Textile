@@ -117,6 +117,9 @@ export default function DashboardPage() {
   // "Monthly Tracking" links only for people who may open Tracking (Administration → Permissions).
   const { canView } = useAuth()
   const trackingOk = canView('tracking')
+  // Links to the Production Sheet / Daily Entry only for people who may open them (e.g. not the owner's view-only login).
+  const sheetOk = canView('prod_sheet')
+  const entryOk = canView('prod_entry')
   const productionToday = getProductionToday()
   const productionYesterday = getProductionYesterday()
   /** Open on Today — yesterday user khud select karega. */
@@ -214,16 +217,23 @@ export default function DashboardPage() {
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 mt-3 pt-1">
         <DateNav value={selectedDate} onChange={setSelectedDate} max={productionToday} />
 
-        <Link href={sheetHref} className="btn btn-sm btn-primary ms-auto">
-          Open Production Sheet
-          <i className="bi bi-arrow-right-short ms-1" />
-        </Link>
+        {sheetOk && (
+          <Link href={sheetHref} className="btn btn-sm btn-primary ms-auto">
+            Open Production Sheet
+            <i className="bi bi-arrow-right-short ms-1" />
+          </Link>
+        )}
       </div>
 
       {!loading && !hasSheet && (
         <div className="alert alert-light border py-2 mb-3 small" role="status">
-          Is date ki production sheet abhi enter nahi hui — zeros dikh rahe hain. Pehle{' '}
-          <Link href="/floor/production">Production</Link> se data bharo.
+          Is date ki production sheet abhi enter nahi hui — zeros dikh rahe hain.
+          {entryOk && (
+            <>
+              {' '}
+              Pehle <Link href="/floor/production">Production</Link> se data bharo.
+            </>
+          )}
         </div>
       )}
 
@@ -287,9 +297,11 @@ export default function DashboardPage() {
           <div className="card h-100">
             <div className="card-header d-flex justify-content-between align-items-center">
               <h3 className="card-title mb-0">Production — aakhri {CHART_DAYS} din</h3>
-              <Link href={sheetHref} className="small">
-                Production Sheet
-              </Link>
+              {sheetOk && (
+                <Link href={sheetHref} className="small">
+                  Production Sheet
+                </Link>
+              )}
             </div>
             <div className="card-body">
               {daySeries.length > 0 ? (

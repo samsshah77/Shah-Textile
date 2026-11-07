@@ -215,7 +215,7 @@ function ProductionWorkspaceContent() {
     looms: 'Looms',
     beams: 'Beams',
     yarn: 'Yarn Stock',
-    quality: 'Quality',
+    quality: 'Active Qualities',
     'quality-ends': 'Quality Ends',
   }
 

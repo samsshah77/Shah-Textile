@@ -67,7 +67,7 @@ const FLOOR_ITEMS: NavLeaf[] = [
       (sp.get('tab') === 'yarn' || sp.get('tab') === 'weft-stock'),
   },
   {
-    title: 'Quality',
+    title: 'Active Qualities',
     href: '/floor/production?tab=quality',
     icon: 'bi-tags',
     activeCheck: (p, sp) =>
@@ -271,7 +271,7 @@ const FLOOR_ITEM_AREA: Record<string, AccessArea | 'any'> = {
   Looms: 'prod_looms',
   Beams: 'prod_beams',
   'Yarn Stock': 'prod_yarn',
-  Quality: 'prod_quality',
+  'Active Qualities': 'prod_quality',
   'Quality Ends': 'prod_quality',
   'Data Check': 'prod_entry',
   'Fabric Fault': 'prod_fabric_fault',

@@ -218,6 +218,8 @@ function formatShortDate(dateStr?: string | null) {
 
 /** Excel “Total” tab — day×loom meters matrix + fortnight / monthly rollups + charts. */
 function ProductionTotalTrackingContent() {
+  // "Open Production Sheet" only for people who may open it (not the owner's view-only login).
+  const sheetOk = useAuth().canView('prod_sheet')
   const searchParams = useSearchParams()
   const qualityId = searchParams.get('quality')
   const qualityNameParam = searchParams.get('name')
@@ -939,10 +941,12 @@ function ProductionTotalTrackingContent() {
                   ? 'Active looms — Loom × Day'
                   : 'Total matrix — Loom × Day (meters)'}
           </h3>
-          <Link href="/floor/production" className="btn btn-sm btn-primary">
-            Open Production Sheet
-            <i className="bi bi-arrow-right-short ms-1" />
-          </Link>
+          {sheetOk && (
+            <Link href="/floor/production" className="btn btn-sm btn-primary">
+              Open Production Sheet
+              <i className="bi bi-arrow-right-short ms-1" />
+            </Link>
+          )}
         </div>
         <TablePanScroll className="card-body p-0">
           <table className="table table-sm table-bordered mb-0 align-middle text-nowrap">
