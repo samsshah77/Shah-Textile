@@ -283,7 +283,6 @@ export function payrollTotals(store: Record<string, unknown>, month: string) {
   }
   const total = (list: PayRow[], field: string) => sum(list, (r) => Number(r[field]) || 0)
 
-  const staff = rows(STORAGE_KEYS.STAFF, 'employeeName')
   const contract = rows(STORAGE_KEYS.CONTRACT, 'employeeName')
   const weavers = rows(STORAGE_KEYS.WEAVERS, 'employeeName', ['1-15', '16-31'])
   const helpers = rows(STORAGE_KEYS.HELPERS, 'employeeName', ['1-15', '16-31'])
@@ -304,8 +303,9 @@ export function payrollTotals(store: Record<string, unknown>, month: string) {
   }
 
   return {
-    staffSalary: Math.round(total(staff, 'basicSalary') + total(contract, 'basicSalary')),
-    staffOvertime: Math.round(total(staff, 'otAmount') + total(contract, 'otAmount')),
+    // Contract employees only: staff salaries go in Admin & Selling Exp (typed there).
+    staffSalary: Math.round(total(contract, 'basicSalary')),
+    staffOvertime: Math.round(total(contract, 'otAmount')),
     contractEmployeeEfficiency: Math.round(total(contract, 'efficiencyAmount')),
     weaverWages: Math.round(total(weavers, 'grossAmount')),
     weaverHolidays: Math.round(total(weavers, 'holidayAmount')),
@@ -327,6 +327,7 @@ export const RECURRING_COST_FIELDS = [
   'solarPanelSystem',
   'depreciationProduction',
   'adminExpenses',
+  'labels',
 ] as const
 
 /** The August 2026 Excel Cost Statement (manual lines), used when nothing was saved yet. */

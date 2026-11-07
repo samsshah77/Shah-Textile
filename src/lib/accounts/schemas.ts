@@ -149,6 +149,10 @@ export const costInputs = z.object({
     .optional(),
   storeInventory: z.array(namedAmount).max(200).optional(),
   monthlyProductionMeters: z.coerce.number().finite().min(0).max(1e9).nullable().optional(),
+  labels: z
+    .record(z.string().regex(/^[a-zA-Z0-9_]{1,40}$/), z.string().trim().max(120))
+    .refine((r) => Object.keys(r).length <= 60, 'Bahut zyada naam')
+    .optional(),
 })
 
 export const costSave = z.object({

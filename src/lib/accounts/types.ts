@@ -207,6 +207,8 @@ export interface CostInputs {
   storeInventory?: NamedAmount[]
   /** Leave empty to use the production ledger's meters. */
   monthlyProductionMeters?: number | null
+  /** Row / heading names changed on the Cost Statement (key → text); carried to later months. */
+  labels?: Record<string, string>
 }
 
 export interface CostStatement {

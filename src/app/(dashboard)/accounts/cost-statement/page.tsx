@@ -36,11 +36,11 @@ function Block({
   rows,
   editRow,
 }: {
-  title: string
+  title: React.ReactNode
   total: number
   badge?: React.ReactNode
-  rows: { label: string; value: number; key?: string }[]
-  editRow?: (row: { label: string; value: number; key?: string }) => React.ReactNode
+  rows: { label: React.ReactNode; value: number; key?: string; name?: string }[]
+  editRow?: (row: { label: React.ReactNode; value: number; key?: string; name?: string }) => React.ReactNode
 }) {
   return (
     <div className="rounded-lg border border-slate-200 overflow-hidden mb-4">
@@ -57,7 +57,7 @@ function Block({
         {rows.length > 0 && (
           <tbody className="divide-y divide-slate-200">
             {rows.map((r, i) => (
-              <tr key={`${r.label}-${i}`}>
+              <tr key={r.key || i}>
                 <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700">{r.label}</td>
                 <td className="py-1.5 px-3 text-right">{editRow ? editRow(r) : rs(r.value)}</td>
               </tr>
@@ -104,6 +104,31 @@ function CostStatementContent() {
   const store = (draft?.storeInventory ?? cs?.storeInventory ?? []) as NamedAmount[]
   const setStore = (list: NamedAmount[]) => setDraft((d) => (d ? { ...d, storeInventory: list } : d))
 
+  /** A heading / row name: the saved one (or the default); a text box while editing. */
+  const labelText = (key: string, def: string) => {
+    const saved = (editing ? draft?.labels?.[key] : cs?.inputs?.labels?.[key])?.trim()
+    return saved || def
+  }
+  const setLabel = (key: string, def: string, text: string) =>
+    setDraft((d) => {
+      if (!d) return d
+      const labels = { ...(d.labels || {}) }
+      if (!text.trim() || text.trim() === def) delete labels[key]
+      else labels[key] = text
+      return { ...d, labels }
+    })
+  const L = (key: string, def: string, className?: string) =>
+    editing ? (
+      <input
+        aria-label={`Naam: ${def}`}
+        value={draft?.labels?.[key] ?? def}
+        onChange={(e) => setLabel(key, def, e.target.value)}
+        className={cn('w-full max-w-md bg-amber-50 border border-amber-300 rounded px-2 py-0.5 font-sans text-slate-800', className)}
+      />
+    ) : (
+      labelText(key, def)
+    )
+
   const save = async () => {
     if (!cs || !draft) return
     setBusy(true)
@@ -143,9 +168,9 @@ function CostStatementContent() {
   )
   const manual = (key: keyof CostInputs, label: string, value: number) => (
     <tr key={key}>
-      <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700 font-semibold">{label}</td>
+      <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700 font-semibold">{L(key, label)}</td>
       <td className="py-1.5 px-3 text-right font-mono">
-        {editing ? num(draft?.[key] as Money, (v) => setField(key, v), label) : rs(value)}
+        {editing ? num(draft?.[key] as Money, (v) => setField(key, v), labelText(key, label)) : rs(value)}
       </td>
     </tr>
   )
@@ -179,7 +204,7 @@ function CostStatementContent() {
                   </>
                 ) : (
                   <button type="button" onClick={startEdit} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
-                    <Edit3 className="size-3.5" /> Edit manual lines
+                    <Edit3 className="size-3.5" /> Edit
                   </button>
                 ))}
               {canEdit && cs?.inputsVersion ? (
@@ -203,7 +228,8 @@ function CostStatementContent() {
           <div className="erp-card p-6 sm:p-8 bg-white print:p-0 print:border-none print:shadow-none">
             {editing && (
               <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 print:hidden">
-                Peelay khaane manual hain. Salaries, contractors, purchases aur petty cash apni sheets se khud aate hain — unhein wahan badlein.
+                Peelay khaane badal sakte hain — har heading aur line ka naam bhi. Salaries, contractors, purchases aur petty cash ki raqam
+                apni sheets se khud aati hai (contractor / party ke naam bhi wahin se). Badle hue naam agle mahinon mein bhi rehte hain.
               </div>
             )}
             <div className="mb-5">
@@ -225,23 +251,23 @@ function CostStatementContent() {
               <p className="-mt-2 text-right text-[10px] text-slate-500 print:hidden">{manualSource}</p>
             </div>
 
-            <h3 className="text-xs font-bold uppercase tracking-wider mb-3">Cost Of Production</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider mb-3">{L('h_cop', 'Cost Of Production', 'uppercase')}</h3>
             <Block
-              title="Salaries & Wages"
+              title={L('h_salaries', 'Salaries & Wages')}
               total={cs.salariesAndWages.total}
               badge={<Badge label="Salary sheets" />}
               rows={[
-                { label: 'Staff & Contract Employee Salary', value: cs.salariesAndWages.staffSalary },
-                { label: 'Staff & Contract Employee Overtime', value: cs.salariesAndWages.staffOvertime },
-                { label: 'Contract Employee Efficency', value: cs.salariesAndWages.contractEmployeeEfficiency },
-                { label: 'Weaver Wages', value: cs.salariesAndWages.weaverWages },
-                { label: 'Weaver Holy Days Amount', value: cs.salariesAndWages.weaverHolidays },
-                { label: 'Weaver Efficency', value: cs.salariesAndWages.weaverEfficiency },
-                { label: 'Helper Wages', value: cs.salariesAndWages.helperWages },
+                { key: 'sal_contract', label: L('sal_contract', 'Contract Employee Salary'), value: cs.salariesAndWages.staffSalary },
+                { key: 'sal_contractOt', label: L('sal_contractOt', 'Contract Employee Overtime'), value: cs.salariesAndWages.staffOvertime },
+                { key: 'sal_contractEff', label: L('sal_contractEff', 'Contract Employee Efficency'), value: cs.salariesAndWages.contractEmployeeEfficiency },
+                { key: 'sal_weaver', label: L('sal_weaver', 'Weaver Wages'), value: cs.salariesAndWages.weaverWages },
+                { key: 'sal_weaverHol', label: L('sal_weaverHol', 'Weaver Holy Days Amount'), value: cs.salariesAndWages.weaverHolidays },
+                { key: 'sal_weaverEff', label: L('sal_weaverEff', 'Weaver Efficency'), value: cs.salariesAndWages.weaverEfficiency },
+                { key: 'sal_helper', label: L('sal_helper', 'Helper Wages'), value: cs.salariesAndWages.helperWages },
               ]}
             />
             <Block
-              title="Contractors Bill Amount"
+              title={L('h_contractors', 'Contractors Bill Amount')}
               total={cs.contractorsTotal}
               badge={<Badge label="Contractors sheet" />}
               rows={cs.contractorsBills.map((c) => ({ label: `${c.name}${c.role ? ` (${c.role})` : ''}`, value: c.amount }))}
@@ -257,16 +283,16 @@ function CostStatementContent() {
               </table>
             </div>
 
-            <Block title="Machinery Parts / Traders" total={cs.machineryTotal} badge={<Badge label="Daily Inward" />} rows={cs.machineryParts.map((r) => ({ label: r.name, value: r.amount }))} />
-            <Block title="Electric / Maintenance" total={cs.electricTotal} badge={<Badge label="Daily Inward" />} rows={cs.electricMaintenance.map((r) => ({ label: r.name, value: r.amount }))} />
-            <Block title="Repair Expense" total={cs.repairTotal} badge={<Badge label="Daily Inward" />} rows={cs.repairDetails.map((r) => ({ label: r.name, value: r.amount }))} />
+            <Block title={L('h_machinery', 'Machinery Parts / Traders')} total={cs.machineryTotal} badge={<Badge label="Daily Inward" />} rows={cs.machineryParts.map((r) => ({ label: r.name, value: r.amount }))} />
+            <Block title={L('h_electric', 'Electric / Maintenance')} total={cs.electricTotal} badge={<Badge label="Daily Inward" />} rows={cs.electricMaintenance.map((r) => ({ label: r.name, value: r.amount }))} />
+            <Block title={L('h_repair', 'Repair Expense')} total={cs.repairTotal} badge={<Badge label="Daily Inward" />} rows={cs.repairDetails.map((r) => ({ label: r.name, value: r.amount }))} />
 
             <div className="rounded-lg border border-slate-200 overflow-hidden mb-4">
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-700">
                     <th className="py-2.5 px-3 text-left font-sans w-2/3 border-r border-slate-200">
-                      Store Inventory Expense
+                      {L('h_store', 'Store Inventory Expense')}
                       <Badge label="Manual · items issued from store" tone="amber" />
                     </th>
                     <th className="py-2.5 px-3 text-right font-mono font-bold bg-slate-100/60">
@@ -320,7 +346,7 @@ function CostStatementContent() {
                   {manual('waterSupplies', 'Water Supplies', cs.waterSupplies)}
                   <tr>
                     <td className="py-2 px-3 border-r border-slate-200 font-sans text-slate-700 font-semibold">
-                      Petty Cash <Badge label="Petty cash journal" />
+                      {L('pettyCash', 'Petty Cash')} <Badge label="Petty cash journal" />
                     </td>
                     <td className="py-1.5 px-3 text-right font-mono">{rs(cs.pettyCash)}</td>
                   </tr>
@@ -332,25 +358,35 @@ function CostStatementContent() {
             </div>
 
             <div className="flex items-center justify-between rounded-lg bg-slate-900 text-white px-4 py-3 mb-6 font-bold">
-              <span className="uppercase text-xs tracking-wider">Total Cost Of Production</span>
+              <span className="uppercase text-xs tracking-wider flex-1">{L('t_cop', 'Total Cost Of Production', 'text-slate-900 uppercase')}</span>
               <span className="font-mono">{rs(cs.totalCostOfProduction)}</span>
             </div>
 
             <Block
-              title="Admin & Selling Exp"
+              title={L('h_admin', 'Admin & Selling Exp')}
               total={cs.adminTotal}
               badge={<Badge label="Manual" tone="amber" />}
               rows={[
-                { label: 'Salaries', value: cs.adminExpenses.salaries, key: 'salaries' },
-                { label: 'Overtime', value: cs.adminExpenses.overtime, key: 'overtime' },
-                { label: 'Telephone & Internet', value: cs.adminExpenses.telephoneInternet, key: 'telephoneInternet' },
-                { label: 'Depreciation Exp (Admin)', value: cs.adminExpenses.depreciationAdmin, key: 'depreciationAdmin' },
+                { label: L('adm_salaries', 'Salaries'), name: labelText('adm_salaries', 'Salaries'), value: cs.adminExpenses.salaries, key: 'salaries' },
+                { label: L('adm_overtime', 'Overtime'), name: labelText('adm_overtime', 'Overtime'), value: cs.adminExpenses.overtime, key: 'overtime' },
+                {
+                  label: L('adm_telephone', 'Telephone & Internet'),
+                  name: labelText('adm_telephone', 'Telephone & Internet'),
+                  value: cs.adminExpenses.telephoneInternet,
+                  key: 'telephoneInternet',
+                },
+                {
+                  label: L('adm_depreciation', 'Depreciation Exp (Admin)'),
+                  name: labelText('adm_depreciation', 'Depreciation Exp (Admin)'),
+                  value: cs.adminExpenses.depreciationAdmin,
+                  key: 'depreciationAdmin',
+                },
               ]}
               editRow={
                 editing
                   ? (r) => {
                       const k = r.key as keyof NonNullable<CostInputs['adminExpenses']>
-                      return num(draft?.adminExpenses?.[k], (v) => setAdmin(k, v), r.label)
+                      return num(draft?.adminExpenses?.[k], (v) => setAdmin(k, v), r.name || String(r.key))
                     }
                   : undefined
               }
@@ -358,12 +394,12 @@ function CostStatementContent() {
 
             <div className="grid sm:grid-cols-3 gap-3">
               <div className="rounded-lg bg-[#0066cc] text-white px-4 py-3">
-                <div className="text-[10px] uppercase font-bold opacity-80">Total Conversion Cost</div>
+                <div className="text-[10px] uppercase font-bold opacity-80">{L('t_conversion', 'Total Conversion Cost', 'text-slate-900 normal-case')}</div>
                 <div className="text-xl font-black font-mono">{rs(cs.totalConversionCost)}</div>
               </div>
               <div className="rounded-lg border border-slate-200 px-4 py-3">
                 <div className="text-[10px] uppercase font-bold text-slate-500">
-                  Monthly Production (m)
+                  {L('t_meters', 'Monthly Production (m)', 'normal-case')}
                   <span className="ml-1 normal-case font-normal">{cs.sources.meters === 'saved' ? '· manual' : '· production ledger'}</span>
                 </div>
                 <div className="text-xl font-black font-mono">
@@ -374,7 +410,7 @@ function CostStatementContent() {
                 {editing && <div className="text-[10px] text-slate-500">Khaali chhorein to production module ke meters lagenge.</div>}
               </div>
               <div className="rounded-lg border border-slate-200 px-4 py-3">
-                <div className="text-[10px] uppercase font-bold text-slate-500">Per Meter Cost</div>
+                <div className="text-[10px] uppercase font-bold text-slate-500">{L('t_perMeter', 'Per Meter Cost', 'normal-case')}</div>
                 <div className="text-xl font-black font-mono">{cs.perMeterCost ? cs.perMeterCost.toFixed(2) : '—'}</div>
               </div>
             </div>
