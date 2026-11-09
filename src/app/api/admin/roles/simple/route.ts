@@ -50,7 +50,16 @@ async function createRole(req: NextRequest) {
     return NextResponse.json({ error: 'Is naam ka role pehle se hai' }, { status: 409 })
 
   const preset = ROLE_ACCESS[access]
-  const modules = await prisma.module.findMany({ where: { key: { in: Object.keys(preset.grants) } }, select: { id: true, key: true } })
+  // Ready-made module grants, where the database has the permission catalog tables. The live
+  // database has no "modules" table: the role is still made (no grants) and what each person sees
+  // is set on Administration → Permissions, which works without them.
+  const modules = await prisma.module
+    .findMany({ where: { key: { in: Object.keys(preset.grants) } }, select: { id: true, key: true } })
+    .catch((err: unknown) => {
+      const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : ''
+      if (code === 'P2021') return [] as Array<{ id: string; key: string }>
+      throw err
+    })
   // Worked out before the transaction: a query on the plain client inside it waits for a second
   // database connection, and with a small pool (live server) that never comes → timeout → 500.
   const key = await keyFor(label)
