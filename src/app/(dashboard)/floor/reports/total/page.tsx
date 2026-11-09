@@ -31,6 +31,7 @@ import {
 import { longDateFromYmd } from '@/lib/longDate'
 import type { DailyLoomProductionEntry, MonthlyMatrixDay } from '@/types/production'
 import type { QualityMaster } from '@/services/productionMastersService'
+import { LoadingChip } from '@/components/shared/Loaders'
 
 function buildMonthOptions(): { value: string; label: string }[] {
   // Production months (2nd → 1st of next month): on the 1st the open month is still the last one.
@@ -740,9 +741,7 @@ function ProductionTotalTrackingContent() {
                 (Ended {formatShortDate(qualityFocus.endedOn)})
               </span>
             )}
-            {loading && (
-              <span className="ms-2 badge text-bg-light border">Loading…</span>
-            )}
+            {loading && <LoadingChip />}
             {!loading && qualityMonthTotal != null && (
               <span className="ms-2 badge text-bg-light border">
                 {formatNumber(qualityMonthTotal, 0)} m this run / month

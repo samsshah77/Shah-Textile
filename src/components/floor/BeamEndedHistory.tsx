@@ -13,6 +13,7 @@ import type { BeamMaster, MountBeamResult } from '@/services/productionMastersSe
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { BeamHistoryDialog } from '@/components/floor/BeamHistoryDialog'
 import { beamMadeMeters, editBeamStint, entryMeters, fetchBeamStints, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
+import { SectionLoader } from '@/components/shared/Loaders'
 
 type EndedRow = BeamStint & {
   to: string
@@ -209,7 +210,7 @@ export function BeamEndedHistory({
       </div>
       <TablePanScroll className="card-body p-0">
         {stints == null ? (
-          <div className="p-3 small text-secondary">Load ho raha hai…</div>
+          <SectionLoader minHeight={160} />
         ) : error ? (
           <div className="p-3 small text-danger">{error}</div>
         ) : rows.length === 0 ? (

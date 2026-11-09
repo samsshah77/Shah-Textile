@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { monthLabel } from '@/lib/accounts/util'
 import type { MonthLock } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
+import { SectionLoader } from '@/components/shared/Loaders'
 
 /** Month dropdown used on every Accounts page. */
 export function MonthPicker({
@@ -181,6 +182,7 @@ export function LoadState({
   children: React.ReactNode
 }) {
   if (error && !hasData) return <div className="alert alert-danger py-2 px-3 small">{error}</div>
-  if (!hasData) return <p className="px-3 py-4 text-muted-foreground text-sm">{loading ? 'Load ho raha hai…' : ''}</p>
+  // No data yet (still loading, or waiting for the month list first): spinner in the page.
+  if (!hasData) return <SectionLoader label={loading ? 'Load ho raha hai…' : 'Khul raha hai…'} />
   return <>{children}</>
 }

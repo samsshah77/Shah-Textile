@@ -22,6 +22,7 @@ import { listPersistedSheetEntries } from '@/services/production/floorStore'
 import { getProductionToday } from '@/constants/productionCalendar'
 import { formatSwLotForDailyEntry } from '@/services/beamTrack'
 import type { DailyLoomProductionEntry } from '@/types/production'
+import { LoadingChip } from '@/components/shared/Loaders'
 
 function formatShortDate(dateStr?: string | null) {
   if (!dateStr) return ''
@@ -191,7 +192,7 @@ function BeamTrackContent() {
           {!loading && track?.loomHint && (
             <span className="ms-2 badge text-bg-light border">Loom {track.loomHint}</span>
           )}
-          {loading && <span className="ms-2 badge text-bg-light border">Loading…</span>}
+          {loading && <LoadingChip />}
           {!loading && runs.length > 0 && (
             <div className="mt-2 d-flex flex-wrap align-items-center gap-2 d-print-none">
               <label htmlFor="beam-run" className="small fw-semibold mb-0">

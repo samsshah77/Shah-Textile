@@ -29,6 +29,18 @@ async function keyFor(label: string) {
 
 /** Create a role from a plain name and one of the ready-made access choices. Admin only. */
 export async function POST(req: NextRequest) {
+  try {
+    return await createRole(req)
+  } catch (err) {
+    // Any other failure: say why (admin-only screen), instead of a bare 500.
+    const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : ''
+    console.error('[roles/simple] failed', err)
+    const reason = err instanceof Error ? err.message.split('\n').filter(Boolean).pop()?.slice(0, 160) : ''
+    return NextResponse.json({ error: `Role nahi bana${code ? ` (${code})` : ''}${reason ? `: ${reason}` : ''}` }, { status: 500 })
+  }
+}
+
+async function createRole(req: NextRequest) {
   const admin = await requireAdminUser(req)
   if (!admin) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   const parsed = schema.safeParse(await req.json().catch(() => null))
@@ -39,16 +51,30 @@ export async function POST(req: NextRequest) {
 
   const preset = ROLE_ACCESS[access]
   const modules = await prisma.module.findMany({ where: { key: { in: Object.keys(preset.grants) } }, select: { id: true, key: true } })
-  const role = await prisma.$transaction(async (tx) => {
-    const created = await tx.role.create({
-      data: { key: await keyFor(label), label, department: department || null, description: preset.label, canSignup: false },
-      select: { id: true, key: true, label: true, department: true, description: true },
+  // Worked out before the transaction: a query on the plain client inside it waits for a second
+  // database connection, and with a small pool (live server) that never comes → timeout → 500.
+  const key = await keyFor(label)
+  let role: { id: string; key: string; label: string; department: string | null; description: string | null }
+  try {
+    role = await prisma.$transaction(async (tx) => {
+      const created = await tx.role.create({
+        data: { key, label, department: department || null, description: preset.label, canSignup: false },
+        select: { id: true, key: true, label: true, department: true, description: true },
+      })
+      for (const m of modules)
+        for (const action of preset.grants[m.key] || [])
+          await tx.roleModuleGrant.create({ data: { roleId: created.id, moduleId: m.id, action, effect: 'ALLOW', scope: 'ALL' } })
+      return created
     })
-    for (const m of modules)
-      for (const action of preset.grants[m.key] || [])
-        await tx.roleModuleGrant.create({ data: { roleId: created.id, moduleId: m.id, action, effect: 'ALLOW', scope: 'ALL' } })
-    return created
-  })
+  } catch (err) {
+    const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : ''
+    if (code === 'P2002') return NextResponse.json({ error: 'Is naam ka role pehle se hai — doosra naam rakhein' }, { status: 409 })
+    console.error('[roles/simple] create failed', err)
+    // Admin-only screen: show the database's reason (first line, no data values) so it can be fixed.
+    const reason = err instanceof Error ? err.message.split('\n').filter(Boolean).pop()?.slice(0, 160) : ''
+    return NextResponse.json({ error: `Role nahi bana${code ? ` (${code})` : ''}${reason ? `: ${reason}` : ''}` }, { status: 500 })
+  }
+  // The role is made; a failed log line must not turn that into an error.
   await writeAudit({ req, actor: admin, module: 'auth', action: 'role.create', entityKey: 'roles', entityId: role.id, changes: { label, access: preset.label } })
   return NextResponse.json({ role }, { status: 201 })
 }

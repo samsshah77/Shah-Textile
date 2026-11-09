@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { setNavLoading, type NavLoadingKind } from '@/lib/navLoading'
 
 /**
  * Slim top-of-viewport progress bar during App Router navigations.
@@ -26,14 +27,18 @@ function NavigationProgressInner() {
     failsafe.current = null
   }
 
-  const start = useCallback(() => {
+  const start = useCallback((kind: Exclude<NavLoadingKind, null> = 'page') => {
     if (activeRef.current) return
     activeRef.current = true
     setCompleting(false)
     // Delay so instant/prefetched navigations don't flash
-    showTimer.current = setTimeout(() => setVisible(true), 80)
+    showTimer.current = setTimeout(() => {
+      setVisible(true)
+      setNavLoading(kind)
+    }, 120)
     failsafe.current = setTimeout(() => {
       activeRef.current = false
+      setNavLoading(null)
       setCompleting(true)
       doneTimer.current = setTimeout(() => {
         setVisible(false)
@@ -43,6 +48,7 @@ function NavigationProgressInner() {
   }, [])
 
   const finish = useCallback(() => {
+    setNavLoading(null)
     if (!activeRef.current) {
       setVisible(false)
       setCompleting(false)
@@ -90,10 +96,11 @@ function NavigationProgressInner() {
       }
       if (url.origin !== window.location.origin) return
       if (url.pathname === window.location.pathname && url.search === window.location.search) return
-      start()
+      // Another page, or the same page with another tab / filter (?tab=…).
+      start(url.pathname === window.location.pathname ? 'tab' : 'page')
     }
 
-    const onPopState = () => start()
+    const onPopState = () => start('page')
 
     document.addEventListener('click', onClick, true)
     window.addEventListener('popstate', onPopState)
@@ -101,6 +108,7 @@ function NavigationProgressInner() {
       document.removeEventListener('click', onClick, true)
       window.removeEventListener('popstate', onPopState)
       clearTimers()
+      setNavLoading(null)
     }
   }, [start])
 

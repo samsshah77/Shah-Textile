@@ -58,7 +58,7 @@ export default function AdminRolesPage() {
         body: JSON.stringify(form),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Role nahi bana')
+      if (!res.ok) throw new Error(data.error || `Role nahi bana (server ${res.status})`)
       setNotice(`"${form.label}" role ban gaya. Ab Users tab mein kisi ko yeh role de sakte hain.`)
       setForm({ label: '', department: '', access: form.access })
       await load()

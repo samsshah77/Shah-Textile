@@ -8,6 +8,7 @@ import { formatSwLotForDailyEntry } from '@/services/beamTrack'
 import { editBeamStint, fetchBeamRuns, fillRunLots, planRunLots, type BeamStint } from '@/lib/floor/beamStints'
 import { reloadFromServer } from '@/services/production/floorSync'
 import { KEY_BEAMS, KEY_SHEET } from '@/services/production/floorStore'
+import { SectionLoader } from '@/components/shared/Loaders'
 
 /** Date box that saves when it loses focus / Enter (not on every key). */
 function DayInput({ value, min, max, onCommit, label }: { value: string; min?: string; max?: string; onCommit: (v: string) => void; label: string }) {
@@ -222,7 +223,7 @@ export function BeamHistoryDialog({
           {error ? (
             <div className="p-3 text-danger small">{error}</div>
           ) : runs == null ? (
-            <div className="p-3 small text-secondary">Load ho raha hai…</div>
+            <SectionLoader compact />
           ) : runs.length === 0 ? (
             <div className="p-3 small text-secondary">Is beam ka koi loom record nahi.</div>
           ) : (

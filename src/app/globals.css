@@ -2798,3 +2798,192 @@ tr.sara-beam-to-end > td {
   border-left-color: #dc3545;
 }
 
+
+/* ------------------------------------------------------------------ loaders
+ * One look everywhere (plain CSS: works on the Bootstrap and the Tailwind pages).
+ * Page opening  → page area dims + big spinner card (RouteLoader 'page').
+ * Tab / filter  → small pill at the top of the page area (RouteLoader 'tab').
+ * Part of a page → SectionLoader (spinner + text in the middle of that space).
+ * Sign out / app start → full-screen card, centred.
+ */
+.sara-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(13, 110, 253, 0.18);
+  border-top-color: #0d6efd;
+  animation: sara-spin 0.75s linear infinite;
+  vertical-align: middle;
+}
+.sara-spinner--sm {
+  width: 0.95rem;
+  height: 0.95rem;
+  border-width: 2px;
+}
+.sara-spinner--md {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+.sara-spinner--lg {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-width: 4px;
+}
+@keyframes sara-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sara-section-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 1.5rem 1rem;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+}
+.sara-section-loader--compact {
+  flex-direction: row;
+  padding: 0.85rem 1rem;
+  gap: 0.5rem;
+}
+
+.sara-loading-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #cfe2ff;
+  background: #f0f6ff;
+  color: #0b5ed7;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.sara-content-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sara-route-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 1020;
+  pointer-events: none;
+}
+.sara-route-loader--page {
+  pointer-events: auto;
+  background: rgba(241, 245, 249, 0.72);
+  backdrop-filter: blur(1.5px);
+  animation: sara-fade-in 0.15s ease-out;
+}
+.sara-route-loader__card {
+  position: sticky;
+  top: 32vh;
+  margin: 18vh auto 0;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.4rem 2rem;
+  border-radius: 0.85rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+}
+.sara-route-loader__title {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+.sara-route-loader--tab {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+.sara-route-loader__pill {
+  position: sticky;
+  top: 0.6rem;
+  margin-top: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+  animation: sara-fade-in 0.15s ease-out;
+}
+.sara-route-loader__pill .sara-spinner {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+}
+
+.sara-fullscreen-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #f1f5f9;
+}
+.sara-fullscreen-loader--dark {
+  background: rgba(15, 23, 42, 0.82);
+  animation: sara-fade-in 0.15s ease-out;
+}
+.sara-fullscreen-loader__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.6rem;
+  min-width: 15rem;
+  max-width: 100%;
+  padding: 1.6rem 2rem;
+  border-radius: 0.9rem;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.25);
+}
+.sara-fullscreen-loader__title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #0f172a;
+}
+.sara-fullscreen-loader__sub {
+  font-size: 0.82rem;
+  color: #64748b;
+}
+@keyframes sara-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media print {
+  .sara-route-loader,
+  .sara-fullscreen-loader,
+  .sara-loading-chip {
+    display: none !important;
+  }
+}

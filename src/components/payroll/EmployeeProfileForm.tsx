@@ -20,6 +20,7 @@ import { ArrowLeft, Clock, Loader2, Pencil, UserPlus, UserX, X, History } from '
 import { ProfileAvatar } from '@/components/payroll/ProfileAvatar'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { EmployeeSalaryHistoryModal } from '@/components/payroll/EmployeeSalaryHistoryModal'
+import { SectionLoader } from '@/components/shared/Loaders'
 
 const DOJ_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
 
@@ -425,10 +426,7 @@ export function EmployeeProfileForm({
 
   if (!ready) {
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-500 py-12">
-        <Loader2 className="size-4 animate-spin" />
-        Loading…
-      </div>
+      <SectionLoader label="Profile load ho raha hai…" minHeight={320} />
     )
   }
 
