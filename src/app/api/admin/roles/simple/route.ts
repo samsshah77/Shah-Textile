@@ -67,7 +67,7 @@ async function createRole(req: NextRequest) {
   try {
     role = await prisma.$transaction(async (tx) => {
       const created = await tx.role.create({
-        data: { key, label, department: department || null, description: preset.label, canSignup: false },
+        data: { key, label, department: department || null, description: 'Permissions page se set', canSignup: false },
         select: { id: true, key: true, label: true, department: true, description: true },
       })
       for (const m of modules)
