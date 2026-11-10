@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BeamMaster,
   LoomMaster,
@@ -333,6 +333,7 @@ export function BeamMasterTable({
   const filter = filterProp ?? filterInternal
   const setFilter = onFilterChange ?? setFilterInternal
   const [lotKindFilter, setLotKindFilter] = useState<'ALL' | LotKind>('ALL')
+  const [search, setSearch] = useState('')
   const [isAddModalOpenLocal, setIsAddModalOpenLocal] = useState(false)
   const [mode, setMode] = useState<TableGridMode>('table')
   const [tableEditLocal, setTableEditLocal] = useState(false)
@@ -387,8 +388,45 @@ export function BeamMasterTable({
     return { all, sw, wp }
   }, [baseBeamsForTab])
 
+  /** Search: beam #, Sw / Wp #, loom #, warp, quality, machine type. */
+  const searchText = search.trim().toLowerCase()
+  const matchesSearch = useCallback(
+    (b: BeamMaster) => {
+      if (!searchText) return true
+      const quality = b.qualityId ? qualities.find((q) => q.id === b.qualityId) : null
+      const hay = [
+        b.beamNo,
+        b.swLot,
+        b.swLot ? formatSwLotForDailyEntry(b.swLot) : '',
+        b.usedInLoom ? `loom ${b.usedInLoom}` : '',
+        b.usedInLoom,
+        b.warp,
+        b.loomType,
+        quality?.name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return searchText.split(/\s+/).every((w) => hay.includes(w))
+    },
+    [searchText, qualities]
+  )
+  /** Matches in the other tabs (so a beam is found even when this tab does not hold it). */
+  const searchElsewhere = useMemo(() => {
+    if (!searchText) return [] as Array<{ tab: BeamFilterType; label: string; count: number }>
+    const tabs: Array<{ tab: BeamFilterType; label: string; test: (b: BeamMaster) => boolean }> = [
+      { tab: 'IN_STOCK', label: 'In Stock', test: (b) => !b.usedInLoom && (b.location || 'STORE') === 'STORE' },
+      { tab: 'ON_LOOM', label: 'On Loom', test: (b) => Boolean(b.usedInLoom) },
+      { tab: 'AT_SIZING', label: 'Empty Beam', test: (b) => isEmptyBeam(b) },
+    ]
+    return tabs
+      .filter((t) => t.tab !== filter)
+      .map((t) => ({ tab: t.tab, label: t.label, count: beams.filter((b) => t.test(b) && matchesSearch(b)).length }))
+      .filter((t) => t.count > 0)
+  }, [searchText, beams, filter, matchesSearch])
+
   const filteredBeams = useMemo(() => {
-    let list = baseBeamsForTab
+    let list = baseBeamsForTab.filter(matchesSearch)
 
     if (lotKindFilter !== 'ALL') {
       list = list.filter((b) => parseLotKind(b.swLot).kind === lotKindFilter)
@@ -410,14 +448,17 @@ export function BeamMasterTable({
       return (a.beamNo || '').localeCompare(b.beamNo || '', undefined, { numeric: true })
     }
     return list.slice().sort(swSort)
-  }, [baseBeamsForTab, lotKindFilter])
+  }, [baseBeamsForTab, lotKindFilter, matchesSearch])
 
   /**
    * Beams still mounted on a loom that is on B/End or B/Cut for selectedDate — the loom
    * came off but the beam was not ended yet. Highlighted, with a prompt to end them.
    */
+  /** Daily Entry rows of selectedDate — each loom's state that day (Running, B/End, Knotting…). */
+  const dayRows = useMemo(() => mergeSheetEntriesForDate(selectedDate, entries), [selectedDate, entries])
+  const loomDayStatus = (l: LoomMaster): LoomStatus => statusOnLoomForDate(l, dayRows) as LoomStatus
+
   const beamsToEnd = useMemo(() => {
-    const dayRows = mergeSheetEntriesForDate(selectedDate, entries)
     const out = new Map<string, LoomStatus>()
     for (const b of beams) {
       if (!b.usedInLoom) continue
@@ -427,7 +468,7 @@ export function BeamMasterTable({
       if (st === 'BEAM_END' || st === 'BEAM_CUT') out.set(b.beamNo, st)
     }
     return out
-  }, [beams, looms, entries, selectedDate])
+  }, [beams, looms, dayRows])
 
   const endFlaggedBeam = (b: BeamMaster) => {
     const label = beamsToEnd.get(b.beamNo) === 'BEAM_CUT' ? 'B/Cut' : 'B/End'
@@ -582,7 +623,7 @@ export function BeamMasterTable({
                   Loom {l.loomNumber}
                   {l.model ? ` (${l.model})` : ''}
                   {isTwin ? ` [Twin Beam${count > 0 ? `: ${count}/${max}` : ''}]` : ''}
-                  {isFull ? ' — FULL' : ` — ${LOOM_STATUS_LABEL[l.status as LoomStatus]}`}
+                  {isFull ? ' — FULL' : ` — ${LOOM_STATUS_LABEL[loomDayStatus(l)] || loomDayStatus(l)}`}
                 </option>
               )
             })}
@@ -602,6 +643,19 @@ export function BeamMasterTable({
         </div>
 
         <div className="d-flex flex-wrap gap-2 align-items-center ms-auto justify-content-end">
+          <div className="input-group input-group-sm" style={{ width: 230 }}>
+            <span className="input-group-text bg-white">
+              <i className="bi bi-search" />
+            </span>
+            <input
+              type="search"
+              className="form-control"
+              placeholder="Beam #, Sw #, loom, quality…"
+              aria-label="Beam dhoondein"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <div className="btn-group btn-group-sm" role="group" aria-label="Sw / Wp filter">
             <button
               type="button"
@@ -638,6 +692,21 @@ export function BeamMasterTable({
           )}
         </div>
       </div>
+      {searchText && (
+        <div className="px-3 py-2 small border-bottom bg-light d-flex flex-wrap gap-2 align-items-center d-print-none">
+          <span>
+            &quot;{search.trim()}&quot; — is tab mein <strong>{filteredBeams.length}</strong>
+          </span>
+          {searchElsewhere.map((t) => (
+            <button key={t.tab} type="button" className="btn btn-sm btn-outline-primary py-0" onClick={() => setFilter(t.tab)}>
+              {t.label} mein {t.count} →
+            </button>
+          ))}
+          <button type="button" className="btn btn-sm btn-link py-0 ms-auto" onClick={() => setSearch('')}>
+            Search hatayein
+          </button>
+        </div>
+      )}
 
       {beamsToEnd.size > 0 && (
         <div className="alert alert-danger rounded-0 border-start-0 border-end-0 mb-0 py-2 px-3 small d-flex flex-wrap align-items-center gap-2">

@@ -243,17 +243,23 @@ function ProductionWorkspaceContent() {
   useEffect(() => {
     if (!wantPastBeams) return
     let live = true
-    fetchBeamsAsOf<BeamMaster>(selectedDate)
-      .then((list) => {
-        if (live) setPastBeams({ date: selectedDate, beams: list })
-      })
-      .catch(() => {
-        if (live) setPastBeams(null)
-      })
+    const load = () =>
+      fetchBeamsAsOf<BeamMaster>(selectedDate)
+        .then((list) => {
+          if (live) setPastBeams({ date: selectedDate, beams: list })
+        })
+        .catch(() => {
+          if (live) setPastBeams(null)
+        })
+    void load()
+    // A beam just mounted / taken off is saved to the server a moment later (then its history
+    // row is written): read the day again after that, so the view does not keep the old state.
+    const again = [setTimeout(() => void load(), 2500), setTimeout(() => void load(), 6000)]
     return () => {
       live = false
+      again.forEach(clearTimeout)
     }
-  }, [wantPastBeams, selectedDate, beams])
+  }, [wantPastBeams, selectedDate, beams, beamEdit])
   const dayBeams = wantPastBeams && pastBeams?.date === selectedDate ? pastBeams.beams : null
   const showDayBeams = Boolean(dayBeams) && !beamEdit
   const beamCounts = useMemo(() => beamStockCounts(showDayBeams && dayBeams ? dayBeams : beams), [beams, dayBeams, showDayBeams])
