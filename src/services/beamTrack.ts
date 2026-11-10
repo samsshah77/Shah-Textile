@@ -202,5 +202,6 @@ export function buildBeamTrackFromEntries(
     days,
     totalThreads: Number(beam.totalThreads) || 0,
     loomType: beam.loomType || '',
+
   }
 }
