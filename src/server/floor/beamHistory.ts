@@ -265,14 +265,14 @@ export class BeamHistoryEditError extends Error {
 export async function setStintEndDate(beamNo: string, firstId: string, newTo: string, today: string): Promise<BeamLoomStint> {
   await ensureBeamHistoryTable()
   const found = await findStint(beamNo, firstId)
-  if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
+  if (!found) throw new BeamHistoryEditError('Record not found. Please refresh the page.')
   const { stint, next } = found
-  if (stint.to == null || !stint.closeId) throw new BeamHistoryEditError('Ye beam abhi loom pe laga hai — pehle End karein.')
-  if (!stint.closeOffLoom) throw new BeamHistoryEditError('Ye beam seedha doosri loom pe gaya tha — Utra ki date agle run ke Laga se badlein.')
-  if (!isYmd(newTo)) throw new BeamHistoryEditError('Date sahi nahi.')
-  if (newTo < stint.from) throw new BeamHistoryEditError(`Utra ${stint.from} (Laga) se pehle nahi ho sakta.`)
-  if (newTo > today) throw new BeamHistoryEditError('Aane wali date nahi ho sakti.')
-  if (next && newTo > next.from) throw new BeamHistoryEditError(`Is beam ka agla run ${next.from} ko shuru hua — Utra us se baad nahi ho sakta.`)
+  if (stint.to == null || !stint.closeId) throw new BeamHistoryEditError('This beam is still on a loom. End it first.')
+  if (!stint.closeOffLoom) throw new BeamHistoryEditError('This beam went straight to another loom. Change the Removed date through the next run’s Mounted date.')
+  if (!isYmd(newTo)) throw new BeamHistoryEditError('Invalid date.')
+  if (newTo < stint.from) throw new BeamHistoryEditError(`Removed date cannot be before ${stint.from} (Mounted).`)
+  if (newTo > today) throw new BeamHistoryEditError('Date cannot be in the future.')
+  if (next && newTo > next.from) throw new BeamHistoryEditError(`This beam’s next run started on ${next.from}. Removed date cannot be after that.`)
   await prisma.$executeRawUnsafe(
     `UPDATE "floor_beam_history"
         SET "effectiveDate" = $1::date,
@@ -294,15 +294,15 @@ export async function setStintEndDate(beamNo: string, firstId: string, newTo: st
 export async function setStintStartDate(beamNo: string, firstId: string, newFrom: string, today: string): Promise<BeamLoomStint> {
   await ensureBeamHistoryTable()
   const found = await findStint(beamNo, firstId)
-  if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
+  if (!found) throw new BeamHistoryEditError('Record not found. Please refresh the page.')
   const { stint, prev } = found
-  if (!isYmd(newFrom)) throw new BeamHistoryEditError('Date sahi nahi.')
-  if (newFrom > today) throw new BeamHistoryEditError('Aane wali date nahi ho sakti.')
-  if (stint.to != null && newFrom > stint.to) throw new BeamHistoryEditError(`Laga ${stint.to} (Utra) se baad nahi ho sakta.`)
+  if (!isYmd(newFrom)) throw new BeamHistoryEditError('Invalid date.')
+  if (newFrom > today) throw new BeamHistoryEditError('Date cannot be in the future.')
+  if (stint.to != null && newFrom > stint.to) throw new BeamHistoryEditError(`Mounted date cannot be after ${stint.to} (Removed).`)
   if (prev) {
     const fromPrevLoom = prev.closeId === stint.firstId
-    if (fromPrevLoom && newFrom < prev.from) throw new BeamHistoryEditError(`Pichla run ${prev.from} ko shuru hua — Laga us se pehle nahi ho sakta.`)
-    if (!fromPrevLoom && prev.to && newFrom < prev.to) throw new BeamHistoryEditError(`Pichla run ${prev.to} ko khatam hua — Laga us se pehle nahi ho sakta.`)
+    if (fromPrevLoom && newFrom < prev.from) throw new BeamHistoryEditError(`The previous run started on ${prev.from}. Mounted date cannot be before that.`)
+    if (!fromPrevLoom && prev.to && newFrom < prev.to) throw new BeamHistoryEditError(`The previous run ended on ${prev.to}. Mounted date cannot be before that.`)
   }
   const oldFrom = stint.from
   // This run's rows: from its first row up to (not including) the row that closed it.
@@ -343,9 +343,9 @@ export async function setStintStartDate(beamNo: string, firstId: string, newFrom
 export async function hideStint(beamNo: string, firstId: string): Promise<BeamLoomStint> {
   await ensureBeamHistoryTable()
   const found = await findStint(beamNo, firstId)
-  if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
+  if (!found) throw new BeamHistoryEditError('Record not found. Please refresh the page.')
   const { stint, prev } = found
-  if (stint.to == null || !stint.closeId) throw new BeamHistoryEditError('Ye beam abhi isi run mein loom pe laga hai — ye record hataya nahi ja sakta.')
+  if (stint.to == null || !stint.closeId) throw new BeamHistoryEditError('This beam is still on the loom in this run. This record cannot be removed.')
   const fromPrevLoom = Boolean(prev && prev.closeId === stint.firstId)
   await prisma.$transaction([
     prisma.$executeRawUnsafe(
@@ -382,26 +382,54 @@ export async function hideStint(beamNo: string, firstId: string): Promise<BeamLo
  * history rows only. The beam as it is now (a later run, the Beams table) does not change.
  * The run still on a loom is changed in the Beams table, not here.
  */
+/** An ended run's own details — the beam as it was in that run (not the beam as it is now). */
+export type RunDetailsPatch = {
+  swLot?: string | null
+  warp?: string
+  length?: number
+  reed?: number
+  width?: number
+  totalThreads?: number
+  beamRepeat?: string | null
+  loomType?: string
+}
+
+/** The run of `beamNo` on `loom` that covers `date` (Beams table, a past date in Edit). */
+export async function runOnDay(beamNo: string, loom: number, date: string): Promise<BeamLoomStint | null> {
+  const runs = (await beamRuns(beamNo)).filter((r) => r.loom === loom && r.from <= date && (r.to == null || r.to >= date))
+  return runs[runs.length - 1] || null
+}
+
 export async function setStintDetails(
   beamNo: string,
   firstId: string,
-  patch: { swLot?: string | null; warp?: string; length?: number }
+  patch: RunDetailsPatch
 ): Promise<BeamLoomStint> {
   await ensureBeamHistoryTable()
   const found = await findStint(beamNo, firstId)
-  if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
+  if (!found) throw new BeamHistoryEditError('Record not found. Please refresh the page.')
   const { stint } = found
   if (stint.to == null || !stint.closeId) {
-    throw new BeamHistoryEditError('Ye beam abhi isi run mein loom pe hai — is ki details Beams table mein badlein.')
+    throw new BeamHistoryEditError('This beam is still on the loom in this run. Change its details in the Beams table.')
   }
   const set: Record<string, unknown> = {}
   if (patch.swLot !== undefined) set.swLot = patch.swLot ? String(patch.swLot).trim().slice(0, 40) || null : null
   if (patch.warp !== undefined) set.warp = String(patch.warp ?? '').trim().slice(0, 120)
   if (patch.length !== undefined) {
     const n = Number(patch.length)
-    if (!Number.isFinite(n) || n < 0 || n > 1e7) throw new BeamHistoryEditError('Length sahi nahi.')
+    if (!Number.isFinite(n) || n < 0 || n > 1e7) throw new BeamHistoryEditError('Invalid length.')
     set.length = Math.round(n * 100) / 100
   }
+  const num = (v: unknown, label: string, max: number) => {
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0 || n > max) throw new BeamHistoryEditError(`Invalid ${label}.`)
+    return Math.round(n * 100) / 100
+  }
+  if (patch.reed !== undefined) set.reed = num(patch.reed, 'reed', 10000)
+  if (patch.width !== undefined) set.width = num(patch.width, 'width', 10000)
+  if (patch.totalThreads !== undefined) set.totalThreads = Math.round(num(patch.totalThreads, 'threads', 1e7))
+  if (patch.beamRepeat !== undefined) set.beamRepeat = patch.beamRepeat ? String(patch.beamRepeat).trim().slice(0, 40) || null : null
+  if (patch.loomType !== undefined) set.loomType = String(patch.loomType ?? '').trim().slice(0, 20)
   if (!Object.keys(set).length) return stint
   // This run's rows: from its first row up to (not including) the row that took it off.
   await prisma.$executeRawUnsafe(
@@ -434,10 +462,10 @@ export async function addPastStint(
   today: string
 ): Promise<BeamLoomStint> {
   await ensureBeamHistoryTable()
-  if (!Number.isInteger(loom) || loom <= 0 || loom > 9999) throw new BeamHistoryEditError('Loom number sahi nahi.')
-  if (!isYmd(from) || !isYmd(to)) throw new BeamHistoryEditError('Laga aur Utra dono dates chahiye.')
-  if (to < from) throw new BeamHistoryEditError('Utra Laga se pehle nahi ho sakta.')
-  if (to >= today) throw new BeamHistoryEditError('Purana run sirf guzri hui dates ka — Utra aaj se pehle ka ho.')
+  if (!Number.isInteger(loom) || loom <= 0 || loom > 9999) throw new BeamHistoryEditError('Invalid loom number.')
+  if (!isYmd(from) || !isYmd(to)) throw new BeamHistoryEditError('Both Mounted and Removed dates are required.')
+  if (to < from) throw new BeamHistoryEditError('Removed date cannot be before the Mounted date.')
+  if (to >= today) throw new BeamHistoryEditError('A past run must use past dates. The Removed date must be before today.')
   const runs = await beamRuns(beamNo)
   // The runs before / after the new one; none may overlap it.
   let prev: BeamLoomStint | null = null
@@ -448,11 +476,11 @@ export async function addPastStint(
     else if (r.from >= to) next = next ?? r
     else
       throw new BeamHistoryEditError(
-        `Is beam ka Loom ${r.loom} pe run ${r.from} → ${r.to ?? 'abhi tak'} pehle se hai — dates us se takrati hain.`
+        `This beam already has a run on Loom ${r.loom} (${r.from} → ${r.to ?? 'now'}). The dates overlap.`
       )
   }
   if (next && runs.indexOf(next) !== runs.indexOf(prev as BeamLoomStint) + 1) {
-    throw new BeamHistoryEditError('Runs ki tarteeb nahi mil rahi — page refresh karke dobara karein.')
+    throw new BeamHistoryEditError('Could not work out the run order. Please refresh the page and try again.')
   }
   const rows = await prisma.$queryRawUnsafe<Array<{ id: string; key: number; effectiveDate: string; state: unknown }>>(
     `SELECT "id"::text AS "id", ${KEY} AS "key", to_char("effectiveDate", 'YYYY-MM-DD') AS "effectiveDate", "state"
@@ -470,13 +498,13 @@ export async function addPastStint(
   const lo = at > 0 ? Number(rows[at - 1].key) : 0
   const hi = at < rows.length ? Number(rows[at].key) : lo + 1
   const step = (hi - lo) / 4
-  if (!(step > 0)) throw new BeamHistoryEditError('Yahan run nahi jod sakte — page refresh karke dobara karein.')
+  if (!(step > 0)) throw new BeamHistoryEditError('Cannot add a run here. Please refresh the page and try again.')
 
   const live = await prisma.floorBeam.findUnique({ where: { beamNo } })
   const liveState = live ? normalizeBeam(live as unknown as BeamMaster) : null
   const baseRaw = at > 0 ? rows[at - 1].state : null
   const base: BeamMaster | null = baseRaw && typeof baseRaw === 'object' ? normalizeBeam({ ...(baseRaw as BeamMaster), beamNo }) : liveState
-  if (!base) throw new BeamHistoryEditError('Ye beam nahi mila.')
+  if (!base) throw new BeamHistoryEditError('Beam not found.')
   const L = String(loom)
   const mounted = normalizeBeam({
     ...base,
@@ -518,6 +546,6 @@ export async function addPastStint(
     ...(atEnd && liveState && !liveState.usedInLoom ? [ins(afterDay < today ? afterDay : today, liveState, lo + 3 * step)] : []),
   ])
   const added = (await beamRuns(beamNo)).find((r) => r.loom === loom && r.from === from && r.to === to)
-  if (!added) throw new BeamHistoryEditError('Run jud gaya lekin dikh nahi raha — page refresh karein.')
+  if (!added) throw new BeamHistoryEditError('The run was added but is not showing yet. Please refresh the page.')
   return added
 }

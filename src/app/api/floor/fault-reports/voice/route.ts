@@ -15,31 +15,31 @@ const isWav = (b: Buffer) => b.length > 44 && b.subarray(0, 4).toString('ascii')
 export async function POST(request: NextRequest) {
   const check = await faultUser(request, 'CREATE')
   if (check.error) return check.error
-  if (!voiceEnabled()) return NextResponse.json({ error: 'Awaz se likhna abhi on nahi (server par Groq ya Gemini key nahi).' }, { status: 503 })
+  if (!voiceEnabled()) return NextResponse.json({ error: 'Voice typing is not enabled (no Groq or Gemini key on the server).' }, { status: 503 })
   let form: FormData
   try {
     form = await request.formData()
   } catch {
-    return NextResponse.json({ error: 'Awaz nahi pahunchi' }, { status: 400 })
+    return NextResponse.json({ error: 'No audio received' }, { status: 400 })
   }
   const file = form.get('file')
   if (!file || !(file instanceof File) || file.size <= 0 || file.size > MAX_BYTES)
-    return NextResponse.json({ error: 'Awaz 2 minute se choti honi chahiye' }, { status: 400 })
+    return NextResponse.json({ error: 'Audio must be shorter than 2 minutes' }, { status: 400 })
   const buffer = Buffer.from(await file.arrayBuffer())
-  if (!isWav(buffer)) return NextResponse.json({ error: 'Awaz ka format ghalat' }, { status: 400 })
+  if (!isWav(buffer)) return NextResponse.json({ error: 'Invalid audio format' }, { status: 400 })
   try {
     const text = await transcribeFault(buffer, 'audio/wav')
-    if (!text) return NextResponse.json({ error: 'Awaz saaf samajh nahi aayi — dobara bolein ya likh dein.' }, { status: 422 })
+    if (!text) return NextResponse.json({ error: 'Could not understand the audio. Please speak again or type it.' }, { status: 422 })
     return NextResponse.json({ text })
   } catch (e) {
     const status = (e as { status?: number }).status || 0
     console.error('[fault-voice]', status, e instanceof Error ? e.message : e)
     const message =
       status === 401 || status === 403
-        ? 'Server ki AI key (Groq / Gemini) ghalat hai.'
+        ? 'The server AI key (Groq / Gemini) is invalid.'
         : status === 429
-          ? 'AI service ki hadd / quota poora. Likh kar bhejein.'
-          : 'Awaz se likhna abhi nahi hua — likh kar bhejein.'
+          ? 'AI service limit / quota reached. Please type the fault instead.'
+          : 'Voice typing failed. Please type the fault instead.'
     return NextResponse.json({ error: message }, { status: 502 })
   }
 }

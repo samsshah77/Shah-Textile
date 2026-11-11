@@ -29,18 +29,18 @@ export async function POST(request: NextRequest) {
   try {
     form = await request.formData()
   } catch {
-    return NextResponse.json({ error: 'File nahi pahunchi (shayad bohat bari hai)' }, { status: 400 })
+    return NextResponse.json({ error: 'File not received (it may be too large)' }, { status: 400 })
   }
   const file = form.get('file')
-  if (!file || !(file instanceof File) || file.size <= 0) return NextResponse.json({ error: 'File nahi mili' }, { status: 400 })
-  if (file.size > MAX_VIDEO) return NextResponse.json({ error: 'File 100 MB se bari hai — choti video lein' }, { status: 400 })
+  if (!file || !(file instanceof File) || file.size <= 0) return NextResponse.json({ error: 'No file found' }, { status: 400 })
+  if (file.size > MAX_VIDEO) return NextResponse.json({ error: 'File is larger than 100 MB. Please use a shorter video.' }, { status: 400 })
   const buffer = Buffer.from(await file.arrayBuffer())
 
   const img = sniffImage(buffer)
   const ext = img && img !== '.gif' ? img : sniffVideo(buffer)
-  if (!ext) return NextResponse.json({ error: 'Sirf photo (JPG/PNG/WEBP) ya video (MP4/MOV/WEBM)' }, { status: 400 })
+  if (!ext) return NextResponse.json({ error: 'Only photos (JPG/PNG/WEBP) or videos (MP4/MOV/WEBM)' }, { status: 400 })
   const kind = img && img !== '.gif' ? 'image' : 'video'
-  if (kind === 'image' && buffer.length > MAX_IMAGE) return NextResponse.json({ error: 'Photo 10 MB se bari hai' }, { status: 400 })
+  if (kind === 'image' && buffer.length > MAX_IMAGE) return NextResponse.json({ error: 'Photo is larger than 10 MB' }, { status: 400 })
 
   const filename = `fault-${localStamp()}-${randomBytes(8).toString('hex')}${ext}`
   const dir = path.join(process.cwd(), 'public', 'uploads', 'faults')

@@ -67,11 +67,11 @@ export function useQualityAddForm(core: QualityCore) {
     const duplicate = findLiveQualityByName(qualities, name) || qualities.find((q) => qualityNameKey(q.name) === key)
     if (duplicate) {
       showError({
-        title: 'Quality pehle se maujood hai',
+        title: 'Quality already exists',
         message:
           (duplicate.status ?? 'ACTIVE') === 'ACTIVE' || (duplicate.status ?? '') === 'HOLD'
-            ? `"${duplicate.name}" Active/Hold pe pehle se hai. Same naam do baar nahi. Ends pe ho to wahan se Reuse (zero se) karo.`
-            : `"${duplicate.name}" Ends list me pehle se hai. Naya Add mat karo — Ends se Reuse (zero se) karo, ya Continue (same meters).`,
+            ? `"${duplicate.name}" is already in Active / Hold. The same name cannot be added twice. If it is in Ends, use Reuse (from zero) there.`
+            : `"${duplicate.name}" is already in the Ends list. Do not add it again; use Reuse (from zero) or Continue (same meters) from Ends.`,
       })
       return
     }
@@ -94,7 +94,7 @@ export function useQualityAddForm(core: QualityCore) {
     }
     showSuccessSoon({
       title: 'Quality Added',
-      message: `"${name}" add ho gayi — thodi der highlight.`,
+      message: `"${name}" added (highlighted for a moment).`,
     })
   }
 
@@ -102,18 +102,18 @@ export function useQualityAddForm(core: QualityCore) {
     ? {
         icon: 'bi-pause-circle',
         title: 'No qualities on Hold',
-        hint: 'Active se Hold karne par yahan dikhengi — baad mein Resume se wapas Active.',
+        hint: 'Qualities put on Hold from Active show here; use Resume to move them back to Active.',
       }
     : isEndedView
       ? {
           icon: 'bi-stop-circle',
-          title: `Is mahine ${formatShortDate(sheetDate)} tak koi quality end nahi hui`,
-          hint: 'Upar mahina ya date badal kar dekhein. Jab End karoge, Ends list yahan aayegi.',
+          title: `No quality ended this month up to ${formatShortDate(sheetDate)}`,
+          hint: 'Change the month or date above to check. Ended qualities will be listed here.',
         }
       : {
           icon: 'bi-stars',
           title: 'No active qualities yet',
-          hint: 'Add Quality se naya run banao, phir Looms pe assign karo — list yahan dikhegi.',
+          hint: 'Create a run with Add Quality, then assign it on Looms. It will be listed here.',
         }
 
 

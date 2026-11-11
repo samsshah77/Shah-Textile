@@ -9,7 +9,7 @@ import { productionMonthOf } from '@/constants/productionCalendar'
 export class FloorLockedError extends Error {
   readonly status = 423
   constructor(month: string) {
-    super(`${month} ka production mahina lock hai — tabdeeli nahi ho sakti. Javed Sir unlock kar sakte hain.`)
+    super(`Production month ${month} is locked and cannot be changed. Javed Sir can unlock it.`)
     this.name = 'FloorLockedError'
   }
 }

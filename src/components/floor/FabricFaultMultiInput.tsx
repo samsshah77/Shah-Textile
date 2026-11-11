@@ -128,7 +128,7 @@ export function FabricFaultMultiInput({
               type="button"
               className="btn btn-sm btn-outline-danger py-0 px-1 flex-shrink-0"
               style={{ fontSize: '0.7rem', lineHeight: 1.2 }}
-              title="Is fault ko hatao"
+              title="Remove this fault"
               onClick={() => removeLine(i)}
             >
               <i className="bi bi-x" />
@@ -140,7 +140,7 @@ export function FabricFaultMultiInput({
         type="button"
         className="btn btn-sm btn-outline-secondary py-0 px-2 flex-shrink-0"
         style={{ fontSize: '0.7rem' }}
-        title="Isi loom pe aur fabric fault add karo"
+        title="Add another fabric fault on this loom"
         onClick={addLine}
       >
         <i className="bi bi-plus-lg" />

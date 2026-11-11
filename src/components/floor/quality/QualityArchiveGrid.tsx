@@ -69,7 +69,7 @@ export function QualityArchiveGrid({ t }: { t: QualityMasterTableState }) {
                       className="form-control form-control-sm"
                       style={{ width: 140 }}
                       value={qualityStartDay(q)}
-                      title="Start date — is se pehle quality / Track nahi dikhegi"
+                      title="Start date — the quality / Track will not show before this date"
                       onChange={(e) => patchQualityStart(q, e.target.value)}
                     />
                   ) : (

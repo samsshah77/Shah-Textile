@@ -380,7 +380,7 @@ export function useQualityCore(props: QualityMasterTableProps) {
             setTableEdit(false)
             showSuccessSoon({
               title: 'Saved',
-              message: 'Quality edits save ho gayi hain.',
+              message: 'Quality changes saved.',
             })
           } else {
             setTableEdit(true)
@@ -396,16 +396,16 @@ export function useQualityCore(props: QualityMasterTableProps) {
     if (!masterEdit) return
     if (qualityHistoryOnActivePastDay(q, sheetDate)) return
     showConfirm({
-      title: 'Quality Delete Karein?',
-      message: `Kya aap waqai quality "${q.name}" ko delete karna chahte hain? Ye permanent delete ho jayegi.`,
+      title: 'Delete quality?',
+      message: `Delete quality "${q.name}"? It will be deleted permanently.`,
       type: 'confirm',
-      confirmText: 'Haan, Delete Karein',
+      confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         onDelete(q.id)
         showSuccessSoon({
           title: 'Deleted',
-          message: `"${q.name}" delete ho gayi.`,
+          message: `"${q.name}" deleted.`,
         })
       },
     })
@@ -467,7 +467,7 @@ export function useQualityCore(props: QualityMasterTableProps) {
         <span
           className="badge text-bg-warning"
           style={{ fontSize: '0.65rem' }}
-          title="Hold — past history (Resume Hold tab se)"
+          title="Hold — past history (resume it from the Hold tab)"
         >
           H
         </span>
@@ -478,7 +478,7 @@ export function useQualityCore(props: QualityMasterTableProps) {
         <span
           className="badge text-bg-secondary"
           style={{ fontSize: '0.65rem' }}
-          title="Ended — past history (us din active thi; Ends tab pe ab)"
+          title="Ended — past history (it was active on that day; now in the Ends tab)"
         >
           E
         </span>

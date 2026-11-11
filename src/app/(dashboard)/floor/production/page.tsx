@@ -240,6 +240,8 @@ function ProductionWorkspaceContent() {
   const isPastDay = selectedDate < getCalendarToday()
   const wantPastBeams = isPastDay && (isBeamsTab || currentTab === 'looms')
   const [pastBeams, setPastBeams] = useState<{ date: string; beams: BeamMaster[] } | null>(null)
+  /** Bumped after an older run is changed in the Beams table — read the day again. */
+  const [pastBeamsTick, setPastBeamsTick] = useState(0)
   useEffect(() => {
     if (!wantPastBeams) return
     let live = true
@@ -259,7 +261,7 @@ function ProductionWorkspaceContent() {
       live = false
       again.forEach(clearTimeout)
     }
-  }, [wantPastBeams, selectedDate, beams, beamEdit])
+  }, [wantPastBeams, selectedDate, beams, beamEdit, pastBeamsTick])
   const dayBeams = wantPastBeams && pastBeams?.date === selectedDate ? pastBeams.beams : null
   const showDayBeams = Boolean(dayBeams) && !beamEdit
   const beamCounts = useMemo(() => beamStockCounts(showDayBeams && dayBeams ? dayBeams : beams), [beams, dayBeams, showDayBeams])
@@ -286,7 +288,7 @@ function ProductionWorkspaceContent() {
                     style={{ width: 'auto', minWidth: 160, height: '2.25rem' }}
                     value={endsMonth}
                     onChange={(e) => setEndsMonth(e.target.value)}
-                    aria-label="Mahina"
+                    aria-label="Month"
                   >
                     {endsMonthOptions.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -418,10 +420,10 @@ function ProductionWorkspaceContent() {
                     type="button"
                     className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5 shadow-xs"
                     onClick={() => setEntryScanOpen(true)}
-                    title="Register photo se Loom ke mutabiq Weight, Shift A aur Shift B auto-fill karein"
+                    title="Auto-fill Weight, Shift A and Shift B per loom from a register photo"
                   >
                     <i className="bi bi-camera-fill" />
-                    <span>Photo se Entry</span>
+                    <span>Entry from photo</span>
                   </button>
                 </>
               )}
@@ -585,7 +587,7 @@ function ProductionWorkspaceContent() {
           <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 mb-0 fw-medium" role="status">
             <i className="bi bi-shield-lock-fill text-warning fs-5 flex-shrink-0" />
             <span>
-              <strong>View only</strong> — is tab mein tabdeeli ki ijazat nahi.
+              <strong>View only</strong> — you cannot make changes in this tab.
             </span>
           </div>
         )}
@@ -671,16 +673,17 @@ function ProductionWorkspaceContent() {
             {currentTab === 'beams' && beamFilter !== 'ENDED' && isPastDay && beamEdit && (
               <div className="alert alert-warning py-2 mb-2 small d-print-none" role="status">
                 <i className="bi bi-pencil-square me-1" />
-                Edit mein <strong>abhi ki (live) list</strong> hai — {longDateFromYmd(selectedDate)} wali nahi, is liye kuch beam
-                alag dikhenge. Yahan lagaya / utara beam {longDateFromYmd(selectedDate)} ki date se hoga. Purane record ki dates
-                theek karni hon to beam ka <strong>History</strong> button use karein.
+                Edit shows the <strong>current (live) list</strong>. Beams mounted / removed here are dated{' '}
+                {longDateFromYmd(selectedDate)}. A <strong>grey-blue row</strong> is a beam that was in an older run on this day
+                (now ended): it shows that run, and changes there change that run only. To correct dates, use the beam’s{' '}
+                <strong>History</strong> button.
               </div>
             )}
             {currentTab === 'beams' && beamFilter !== 'ENDED' && showDayBeams && (
               <div className="alert alert-info py-2 mb-2 small d-print-none" role="status">
                 <i className="bi bi-clock-history me-1" />
-                <strong>{longDateFromYmd(selectedDate)}</strong> ko beams ki state (sirf dekhne ke liye). Beam lagana / utarna
-                ho to Edit dabayein — tab aaj ki list khulegi aur kaam is date se hoga.
+                Beams as they were on <strong>{longDateFromYmd(selectedDate)}</strong> (view only). To mount / remove a beam,
+                press Edit — the current list opens and changes are dated this day.
               </div>
             )}
             {currentTab === 'beams' && beamFilter !== 'ENDED' && (
@@ -700,6 +703,7 @@ function ProductionWorkspaceContent() {
                 readOnly={!tabEdit || showDayBeams}
                 historyEdit={tabEdit}
                 dayState={isPastDay && pastBeams?.date === selectedDate ? pastBeams.beams : undefined}
+                onDayStateChanged={() => setPastBeamsTick((n) => n + 1)}
                 filter={beamFilter}
                 onFilterChange={setBeamFilter}
                 toolbarInChrome

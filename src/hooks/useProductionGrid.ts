@@ -369,8 +369,8 @@ export function useProductionGrid() {
           showError({
             title: 'Beam DB save pending',
             message:
-              'Beam list mein aa gaya, lekin server confirm slow hai. Refresh ke baad bhi dikhna chahiye — warna dubara Add try karo.',
-            confirmText: 'Theek hai',
+              'The beam is in the list, but the server is slow to confirm. It should still show after a refresh; if not, add it again.',
+            confirmText: 'OK',
             type: 'warning',
           })
         }
@@ -378,9 +378,9 @@ export function useProductionGrid() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Beam add failed'
         showError({
-          title: 'Beam add nahi hua',
+          title: 'Beam not added',
           message: msg,
-          confirmText: 'Theek hai',
+          confirmText: 'OK',
           type: 'error',
         })
         throw err
@@ -537,7 +537,7 @@ export function useProductionGrid() {
             showError({
               title: 'Reuse save fail',
               message:
-                'Quality Active pe aa gayi lekin DB me save nahi hui. Internet/login check karke dobara Reuse dabao — warna refresh pe gayab ho sakti hai.',
+                'The quality is back in Active but was not saved to the database. Check the internet / login and press Reuse again, or it may disappear after a refresh.',
             })
           }
         })

@@ -2987,3 +2987,21 @@ tr.sara-beam-to-end > td {
     display: none !important;
   }
 }
+
+/* Beams table, a past date in Edit: a beam that was in an older run that day, now ended —
+   the row shows that run (changes go to that run only). Grey-blue so it reads as "old". */
+tr.sara-old-run-row > td {
+  background-color: #e7ecf3 !important;
+  color: #475569;
+}
+.table.table-hover > tbody > tr.sara-old-run-row:hover > td {
+  background-color: #dde4ee !important;
+}
+tr.sara-old-run-row > td:first-child {
+  box-shadow: inset 4px 0 0 #64748b;
+}
+.master-grid-card.sara-old-run-card {
+  background-color: #e7ecf3 !important;
+  border-color: #94a3b8 !important;
+  border-left: 4px solid #64748b !important;
+}

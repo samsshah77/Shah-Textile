@@ -104,7 +104,7 @@ export function RegisterScanDialog({
       const data = await res.json().catch(() => ({}))
       if (data.url) setPhotoUrl(data.url)
       if (!res.ok) {
-        setError(data.error || 'Photo nahi parhi gayi. Manual entry karein.')
+        setError(data.error || 'Could not read the photo. Please enter manually.')
         return
       }
       const list = (data.rows || []) as Array<{
@@ -131,7 +131,7 @@ export function RegisterScanDialog({
       )
       setStatus((s) => (s ? { ...s, usedToday: s.usedToday + 1 } : s))
     } catch {
-      setError('Internet / server ka masla. Manual entry karein.')
+      setError('Internet / server problem. Please enter manually.')
     } finally {
       setBusy(false)
     }
@@ -145,15 +145,15 @@ export function RegisterScanDialog({
     const out: Array<{ text: string; bad?: boolean }> = []
     const loom = Number(r.loom)
     const onSheet = sheetLoom.get(loom)
-    if (!onSheet) out.push({ text: 'Yeh loom aaj ki sheet mein nahi', bad: true })
-    else if (onSheet.parts > 1) out.push({ text: `${onSheet.parts} parts — Part 1 mein jayega` })
+    if (!onSheet) out.push({ text: 'This loom is not on today’s sheet', bad: true })
+    else if (onSheet.parts > 1) out.push({ text: `${onSheet.parts} parts — goes into Part 1` })
     const a = toNum(r.shiftA)
     const b = toNum(r.shiftB)
     if (r.total !== null && a !== null && b !== null && Math.abs(a + b - r.total) > 0.01)
       out.push({ text: `A + B = ${a + b}, register Total ${r.total}`, bad: true })
-    if (r.unsure) out.push({ text: 'Likhai saaf nahi — register se dekh lein' })
+    if (r.unsure) out.push({ text: 'Handwriting unclear — check against the register' })
     if (onSheet && ((onSheet.entry.shiftAMeters || 0) > 0 || (onSheet.entry.shiftBMeters || 0) > 0))
-      out.push({ text: `Sheet mein pehle se A ${onSheet.entry.shiftAMeters || 0} / B ${onSheet.entry.shiftBMeters || 0} — badal jayega` })
+      out.push({ text: `Sheet already has A ${onSheet.entry.shiftAMeters || 0} / B ${onSheet.entry.shiftBMeters || 0} — will be replaced` })
     return out
   }
 
@@ -186,7 +186,7 @@ export function RegisterScanDialog({
                 <i className="bi bi-camera me-1" /> Register se bharein — Weight, A, B
               </h5>
               <div className="small text-secondary">
-                Photo se number parhe jayenge. Check kar ke &quot;Table mein daalo&quot; dabaein — Save / Finalize pehle jaise.
+                The numbers are read from the photo. Check them, then press &quot;Add to table&quot; — Save / Finalize work as usual.
               </div>
             </div>
             <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
@@ -195,7 +195,7 @@ export function RegisterScanDialog({
           <div className="modal-body px-3 py-3">
             {status && !status.enabled && (
               <div className="alert alert-warning small mb-3">
-                Photo se entry abhi on nahi hai — server par AI key nahi lagi. Tab tak manual entry karein.
+                Photo entry is not enabled — no AI key on the server. Please enter manually for now.
               </div>
             )}
 
@@ -222,17 +222,17 @@ export function RegisterScanDialog({
                 >
                   {busy ? (
                     <>
-                      <span className="spinner-border spinner-border-sm me-2" /> Parh rahe hain… (20–40 second)
+                      <span className="spinner-border spinner-border-sm me-2" /> Reading… (20–40 seconds)
                     </>
                   ) : (
                     <>
-                      <i className="bi bi-camera me-1" /> Photo lein / chunein
+                      <i className="bi bi-camera me-1" /> Take / choose photo
                     </>
                   )}
                 </button>
                 <div className="small text-secondary text-center">
-                  Page seedha upar se, achi roshni mein, poora frame mein.
-                  {status?.enabled && ` Aaj ${status.usedToday}/${status.dailyLimit} photos.`}
+                  Shoot the page straight from above, in good light, with the whole page in frame.
+                  {status?.enabled && ` Today ${status.usedToday}/${status.dailyLimit} photos.`}
                 </div>
               </div>
             )}
@@ -269,7 +269,7 @@ export function RegisterScanDialog({
                                   className="form-check-input"
                                   checked={r.use}
                                   onChange={(e) => edit(r.key, { use: e.target.checked })}
-                                  aria-label={`Loom ${r.loom} table mein daalo`}
+                                  aria-label={`Add loom ${r.loom} to the table`}
                                 />
                               </td>
                               <td>
@@ -300,12 +300,12 @@ export function RegisterScanDialog({
                     </table>
                   </div>
                   <div className="small text-secondary">
-                    {rows.length} lines parhi gayin · {chosen.length} table mein jayengi. Lal / peeli lines register se mila lein.
+                    {rows.length} lines read · {chosen.length} will go into the table. Check the red / yellow lines against the register.
                   </div>
                 </div>
                 <div className="col-lg-4">
                   {photoUrl && (
-                    <a href={photoUrl} target="_blank" rel="noreferrer" title="Photo bari kar ke dekhein">
+                    <a href={photoUrl} target="_blank" rel="noreferrer" title="Enlarge the photo">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={photoUrl} alt="Register photo" className="img-fluid rounded border" />
                     </a>
@@ -330,11 +330,11 @@ export function RegisterScanDialog({
               </button>
             )}
             <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
-              Band karein
+              Close
             </button>
             {rows && (
               <button type="button" className="btn btn-sm btn-success" disabled={chosen.length === 0} onClick={apply}>
-                <i className="bi bi-check2 me-1" /> Table mein daalo ({chosen.length})
+                <i className="bi bi-check2 me-1" /> Add to table ({chosen.length})
               </button>
             )}
           </div>

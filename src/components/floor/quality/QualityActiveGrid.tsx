@@ -104,7 +104,7 @@ export function QualityActiveGrid({ t }: { t: QualityMasterTableState }) {
                 type="date"
                 className="form-control form-control-sm"
                 value={qualityStartDay(q)}
-                title="Start date — is se pehle quality / Track nahi dikhegi"
+                title="Start date — the quality / Track will not show before this date"
                 onChange={(e) => patchQualityStart(q, e.target.value)}
               />
             ) : (

@@ -29,19 +29,30 @@ const RECENT = { wa: 'sara_share_recent_wa_v2', email: 'sara_share_recent_email_
 function recent(kind: keyof typeof RECENT): string[] {
   try {
     const v = JSON.parse(window.localStorage.getItem(RECENT[kind]) || '[]')
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 10) : []
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 15) : []
   } catch {
     return []
   }
 }
-function remember(kind: keyof typeof RECENT, value: string) {
-  const v = value.trim()
-  if (!v) return
+function remember(kind: keyof typeof RECENT, value: string | string[]) {
+  const incoming = (Array.isArray(value) ? value : [value])
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean)
+  if (!incoming.length) return
   try {
-    window.localStorage.setItem(RECENT[kind], JSON.stringify([v, ...recent(kind).filter((x) => x !== v)].slice(0, 10)))
+    const merged = Array.from(new Set([...incoming, ...recent(kind).map((x) => x.toLowerCase())])).slice(0, 15)
+    window.localStorage.setItem(RECENT[kind], JSON.stringify(merged))
   } catch {
     /* storage blocked */
   }
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+function parseEmails(raw: string): string[] {
+  return raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
 }
 
 function pdfFile(att: PdfAttachment): File {
@@ -61,9 +72,10 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
   const [tab, setTab] = useState<'whatsapp' | 'email'>('whatsapp')
   const [message, setMessage] = useState(defaultMessage)
   const [number, setNumber] = useState('')
-  const [email, setEmail] = useState('')
+  const [emailInput, setEmailInput] = useState('')
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([])
   const [recentWa] = useState(() => recent('wa'))
-  const [recentEmail] = useState(() => recent('email'))
+  const [recentEmail, setRecentEmail] = useState(() => recent('email'))
   const [emailReady, setEmailReady] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -89,10 +101,47 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
     }
   }, [])
 
+  const allRecipients = Array.from(new Set([...selectedEmails, ...parseEmails(emailInput)]))
+
+  const addTypedEmails = () => {
+    const typed = parseEmails(emailInput)
+    if (!typed.length) return
+    const bad = typed.find((e) => !EMAIL_RE.test(e))
+    if (bad) {
+      setNote({ ok: false, text: `Sahi email likhein: "${bad}"` })
+      return
+    }
+    setNote(null)
+    setSelectedEmails((prev) => Array.from(new Set([...prev, ...typed])))
+    remember('email', typed)
+    setRecentEmail(recent('email'))
+    setEmailInput('')
+  }
+
+  const toggleSavedEmail = (addr: string) => {
+    const clean = addr.trim().toLowerCase()
+    setSelectedEmails((prev) =>
+      prev.includes(clean) ? prev.filter((x) => x !== clean) : [...prev, clean]
+    )
+    setNote(null)
+  }
+
+  const removeSavedEmail = (addr: string) => {
+    const clean = addr.trim().toLowerCase()
+    const next = recentEmail.filter((x) => x.toLowerCase() !== clean)
+    setRecentEmail(next)
+    setSelectedEmails((prev) => prev.filter((x) => x !== clean))
+    try {
+      window.localStorage.setItem(RECENT.email, JSON.stringify(next))
+    } catch {
+      /* storage blocked */
+    }
+  }
+
   const waNumber = formatWhatsAppNumber(number)
   const waLink = `https://wa.me/${waNumber.length >= 10 ? waNumber : ''}?text=${encodeURIComponent(message)}`
   const subject = `${documentTitle} — Sara Textile`
-  const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`
+  const mailto = `mailto:${allRecipients.map(encodeURIComponent).join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`
 
   const shareWithPdf = async () => {
     if (!getPdfAttachment) return
@@ -110,9 +159,14 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
   }
 
   const sendEmail = async () => {
-    const to = email.trim()
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-      setNote({ ok: false, text: 'Sahi email likhein (misaal: name@gmail.com)' })
+    const recipients = allRecipients
+    if (recipients.length === 0) {
+      setNote({ ok: false, text: 'Kam az kam ek email likhein ya select karein' })
+      return
+    }
+    const invalid = recipients.find((e) => !EMAIL_RE.test(e))
+    if (invalid) {
+      setNote({ ok: false, text: `Sahi email likhein: "${invalid}"` })
       return
     }
     setBusy(true)
@@ -125,12 +179,16 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ to, subject, text: message, fileBase64: cleanBase64, filename: att?.filename }),
+        body: JSON.stringify({ to: recipients, subject, text: message, fileBase64: cleanBase64, filename: att?.filename }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || `Email nahi gayi (${res.status})`)
-      remember('email', to)
-      setNote({ ok: true, text: `Email ${to} ko chali gayi${att ? ' (PDF ke sath)' : ''}.` })
+      remember('email', recipients)
+      setRecentEmail(recent('email'))
+      setSelectedEmails(recipients)
+      setEmailInput('')
+      const label = recipients.length === 1 ? recipients[0] : `${recipients.length} emails (${recipients.join(', ')})`
+      setNote({ ok: true, text: `Email ${label} ko chali gayi${att ? ' (PDF ke sath)' : ''}.` })
     } catch (e) {
       setNote({ ok: false, text: e instanceof Error ? e.message : 'Email nahi gayi' })
     } finally {
@@ -182,15 +240,113 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
               </>
             ) : (
               <>
-                <label className="form-label small mb-1" htmlFor="share-email">
-                  Email
-                </label>
-                <input id="share-email" type="email" className="form-control form-control-sm mb-3" placeholder="name@gmail.com" list="share-recent-email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                <datalist id="share-recent-email">
-                  {recentEmail.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
+                <div className="d-flex align-items-center justify-content-between mb-1">
+                  <label className="form-label small mb-0" htmlFor="share-email">
+                    Emails <span className="text-secondary">(ek ya zyada select / add karein)</span>
+                  </label>
+                  {allRecipients.length > 0 && (
+                    <span className="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                      {allRecipients.length} selected
+                    </span>
+                  )}
+                </div>
+
+                <div className="input-group input-group-sm mb-2">
+                  <input
+                    id="share-email"
+                    type="text"
+                    className="form-control"
+                    placeholder="name@gmail.com (comma ya Enter se add karein)"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault()
+                        addTypedEmails()
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary"
+                    onClick={addTypedEmails}
+                    disabled={!emailInput.trim()}
+                    title="List mein shamil karein"
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {selectedEmails.length > 0 && (
+                  <div className="d-flex flex-wrap gap-1 mb-2">
+                    {selectedEmails.map((addr) => (
+                      <span
+                        key={addr}
+                        className="badge bg-primary d-inline-flex align-items-center gap-1 fw-normal py-1 px-2"
+                        style={{ fontSize: 11.5 }}
+                      >
+                        {addr}
+                        <button
+                          type="button"
+                          className="btn-close btn-close-white"
+                          style={{ fontSize: 8 }}
+                          aria-label={`Remove ${addr}`}
+                          onClick={() => toggleSavedEmail(addr)}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {recentEmail.length > 0 && (
+                  <div className="mb-3">
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <span className="text-secondary" style={{ fontSize: 11.5 }}>
+                        Saved emails (click kar ke select karein):
+                      </span>
+                      {recentEmail.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-link btn-sm p-0 text-decoration-none"
+                          style={{ fontSize: 11.5 }}
+                          onClick={() => {
+                            const allSelected = recentEmail.every((e) => selectedEmails.includes(e.toLowerCase()))
+                            setSelectedEmails(allSelected ? [] : recentEmail.map((e) => e.toLowerCase()))
+                          }}
+                        >
+                          {recentEmail.every((e) => selectedEmails.includes(e.toLowerCase())) ? 'Unselect all' : 'Select all'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="d-flex flex-wrap gap-1">
+                      {recentEmail.map((addr) => {
+                        const active = selectedEmails.includes(addr.toLowerCase())
+                        return (
+                          <div key={addr} className="btn-group btn-group-sm" role="group">
+                            <button
+                              type="button"
+                              className={`btn btn-sm py-0 px-2 ${active ? 'btn-primary' : 'btn-outline-secondary'}`}
+                              style={{ fontSize: 11.5 }}
+                              onClick={() => toggleSavedEmail(addr)}
+                            >
+                              {active ? '✓ ' : '+ '}
+                              {addr}
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm py-0 px-1 ${active ? 'btn-primary' : 'btn-outline-secondary'}`}
+                              style={{ fontSize: 10 }}
+                              title="Saved list se hatayein"
+                              onClick={() => removeSavedEmail(addr)}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
@@ -228,14 +384,20 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                 </a>
               )
             ) : emailReady ? (
-              <button type="button" className="btn btn-sm btn-primary" onClick={() => void sendEmail()} disabled={busy || !email.trim()}>
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => void sendEmail()} disabled={busy || allRecipients.length === 0}>
                 <i className="bi bi-send me-1" />
-                {busy ? 'Bhej raha hai…' : getPdfAttachment ? 'Email bhejein (PDF ke sath)' : 'Email bhejein'}
+                {busy
+                  ? 'Bhej raha hai…'
+                  : `${getPdfAttachment ? 'Email bhejein (PDF ke sath)' : 'Email bhejein'}${allRecipients.length > 1 ? ` (${allRecipients.length})` : ''}`}
               </button>
             ) : (
-              <a className="btn btn-sm btn-primary" href={mailto} onClick={() => remember('email', email)}>
+              <a
+                className={`btn btn-sm btn-primary ${allRecipients.length === 0 ? 'disabled' : ''}`}
+                href={mailto}
+                onClick={() => remember('email', allRecipients)}
+              >
                 <i className="bi bi-envelope-open me-1" />
-                Email app kholein
+                Email app kholein{allRecipients.length > 1 ? ` (${allRecipients.length})` : ''}
               </a>
             )}
           </div>

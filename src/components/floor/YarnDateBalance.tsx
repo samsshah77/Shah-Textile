@@ -64,26 +64,26 @@ export function YarnDateBalance({
   return (
     <div className="card-body p-0">
       <div className="p-3 bg-light border-bottom small">
-        <strong>{periodLabel}</strong> — shuru ka stock + jo aya − jo gaya = aakhir ka stock. Yeh hisab sirf in tareekhon tak ki entries se banta hai,
-        baad ki entry is ko nahi badalti. Din / hafta / mahina upar date bar se badlein.
+        <strong>{periodLabel}</strong> — opening stock + received − issued = closing stock. It uses only the entries up to these dates;
+        later entries do not change it. Change the day / week / month in the date bar above.
       </div>
       <div className="table-responsive">
         <table className="table table-sm table-bordered table-hover align-middle mb-0 small">
           <thead className="table-light">
             <tr>
               <th>Yarn</th>
-              <th className="text-end">Shuru ka stock ({u})</th>
+              <th className="text-end">Opening stock ({u})</th>
               <th className="text-end text-success">Aya ({u})</th>
               <th className="text-end">Bags</th>
               <th className="text-end text-danger">Gaya ({u})</th>
-              <th className="text-end">Aakhir ka stock ({u})</th>
+              <th className="text-end">Closing stock ({u})</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center text-secondary py-4">
-                  Is waqt ka koi yarn hisab nahi.
+                  No yarn records for this period.
                 </td>
               </tr>
             )}

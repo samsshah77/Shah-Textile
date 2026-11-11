@@ -287,7 +287,7 @@ export async function POST(req: NextRequest) {
     if (action === 'setMonthLock') {
       const admin = await currentUser(req)
       if (!admin || !isAdminUser(admin)) {
-        return NextResponse.json({ ok: false, error: 'Production mahina sirf Javed Sir lock / unlock kar sakte hain.' }, { status: 403 })
+        return NextResponse.json({ ok: false, error: 'Only Javed Sir can lock or unlock a production month.' }, { status: 403 })
       }
       const p = parse(monthLockSchema, body)
       const lock = await setMonthLock(p.month, p.locked, admin.name || admin.email || 'Admin')
@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
     // ---- Several lists / days as one all-or-nothing change (quality pose, End …) ----
     if (action === 'saveBatch') {
       const p = parse(batchSchema, body)
-      if (!p.lists.length && !p.days.length) return bad('Kuch bheja nahi gaya.')
+      if (!p.lists.length && !p.days.length) return bad('Nothing was sent.')
       const listBefore = []
       for (const cs of p.lists) {
         const ids = cs.upserts.map((u) => String(cs.key === KEY_LOOMS ? u.row.loomNumber : cs.key === KEY_BEAMS ? u.row.beamNo : u.row.id))

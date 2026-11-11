@@ -214,13 +214,13 @@ export function AddBeamModal({
     }
 
     if (!swLot.trim()) {
-      setError('Sw # zaroori hai.')
+      setError('Sw # is required.')
       focusField('swLot')
       return
     }
 
     if (existingBeamNos.some((no) => no.toLowerCase() === trimmedNo.toLowerCase())) {
-      setError(`Beam "${trimmedNo}" pehle se maujood hai.`)
+      setError(`Beam "${trimmedNo}" already exists.`)
       focusField('beamNo')
       return
     }

@@ -51,7 +51,7 @@ function ReportLines({
             <div className="d-flex align-items-center gap-1 text-truncate" style={{ maxWidth: '78%' }}>
               <i className="bi bi-camera-video text-primary flex-shrink-0" />
               <span className="fw-semibold text-dark">{r.createdBy || 'Floor'}:</span>
-              <span className="text-truncate">{r.text || '(sirf photo / video)'}</span>
+              <span className="text-truncate">{r.text || '(photo / video only)'}</span>
             </div>
             {hasMedia ? (
               <button
@@ -62,7 +62,7 @@ function ReportLines({
                   ev.stopPropagation()
                   onOpenMedia()
                 }}
-                title="Photo / Video dialog mein dekhein"
+                title="View photos / videos"
               >
                 {photoCount > 0 && (
                   <span>
@@ -174,11 +174,11 @@ export function FabricFaultTable({
           </div>
         </div>
         <div className="small text-secondary">
-          Date: <strong>{selectedDate}</strong> — Shift A / B alag dialog se.
+          Date: <strong>{selectedDate}</strong> — Shift A / B in their own dialog.
           {reports.length > 0 && (
             <span className="badge text-bg-light border ms-1 py-1 px-2 text-dark">
               <i className="bi bi-camera-video text-primary me-1" />
-              {reports.length} floor report{reports.length > 1 ? 's' : ''} (photos/videos table me)
+              {reports.length} floor report{reports.length > 1 ? 's' : ''} (photos / videos in the table)
             </span>
           )}
         </div>
@@ -187,11 +187,11 @@ export function FabricFaultTable({
       {rows.length === 0 && reportOnlyLooms.length === 0 ? (
         <EmptyPlaceholder
           icon="bi-exclamation-diamond"
-          title={onlyWithFault ? 'Is din koi fabric fault nahi' : 'Koi loom row nahi'}
+          title={onlyWithFault ? 'No fabric faults on this day' : 'No loom rows'}
           hint={
             onlyWithFault
-              ? 'Daily Entry ya yahan dialog se Shift A / B fault likho.'
-              : 'Pehle Daily Entry / Production day load karo.'
+              ? 'Enter Shift A / B faults in Daily Entry or in the dialog here.'
+              : 'Load the Daily Entry / production day first.'
           }
         />
       ) : (
@@ -272,7 +272,7 @@ export function FabricFaultTable({
                           <button
                             type="button"
                             className="btn btn-sm btn-info py-0 px-1.5 text-white"
-                            title="Floor Photos & Videos dekhein"
+                            title="View floor photos & videos"
                             onClick={() =>
                               setMediaModalTarget({ loomNumber: e.loomNumber, qualityName: e.qualityName })
                             }
@@ -289,7 +289,7 @@ export function FabricFaultTable({
                 <tr key={`report-${n}`} className="table-info">
                   <td className="fw-semibold px-2">{n}</td>
                   <td className="px-2 small text-secondary" colSpan={3}>
-                    Sheet par row nahi — sirf floor report
+                    No sheet row — floor report only
                   </td>
                   <td className="small px-2">
                     <ReportLines

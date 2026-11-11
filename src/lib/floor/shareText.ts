@@ -20,9 +20,9 @@ export function productionWhatsAppText(date: string, rows: DailyLoomProductionEn
     ``,
     `Production: *${n(s.meters)} m* (A ${n(s.shiftA)} / B ${n(s.shiftB)})`,
     `Efficiency: ${Math.round(s.efficiency)}% · 24h: ${Math.round(s.efficiency24)}%`,
-    `Looms chal rahe: ${s.running} / ${s.looms}`,
+    `Looms running: ${s.running} / ${s.looms}`,
   ]
   if (s.weightKg > 0) lines.push(`Weight: ${n(s.weightKg)} kg`)
-  if (s.stopped.length) lines.push(`Band: ${s.stopped.map((x) => `L${x.loom} ${x.status}`).join(', ')}`)
+  if (s.stopped.length) lines.push(`Stopped: ${s.stopped.map((x) => `L${x.loom} ${x.status}`).join(', ')}`)
   return lines.join('\n')
 }

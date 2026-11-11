@@ -134,9 +134,9 @@ export function FabricFaultMediaDialog({
               {loomReports.length === 0 ? (
                 <div className="text-center py-5 text-secondary">
                   <i className="bi bi-camera-video fs-1 d-block mb-2 text-muted" />
-                  <p className="mb-0 fw-semibold">Is loom par koi floor report nahi mili.</p>
+                  <p className="mb-0 fw-semibold">No floor reports for this loom.</p>
                   <p className="small text-muted">
-                    Floor inspectors jab mobile se photo ya video bhejenge to yahan dikhegi.
+                    Photos and videos sent by floor inspectors from their phones will show here.
                   </p>
                 </div>
               ) : (
@@ -185,7 +185,7 @@ export function FabricFaultMediaDialog({
                                 {report.media.length > 1 ? 's' : ''} attached
                               </span>
                             ) : (
-                              <span>Sirf text note</span>
+                              <span>Text note only</span>
                             )}
                           </div>
                         </div>
@@ -197,7 +197,7 @@ export function FabricFaultMediaDialog({
                             <div className="p-2.5 rounded bg-light border mb-3">
                               <div className="small text-muted fw-semibold mb-1">
                                 <i className="bi bi-chat-left-quote me-1 text-primary" />
-                                Fault Note / Awaz ka matan:
+                                Fault note / voice text:
                               </div>
                               <div
                                 className="fw-medium text-dark"
@@ -208,7 +208,7 @@ export function FabricFaultMediaDialog({
                             </div>
                           ) : (
                             <div className="small text-muted fst-italic mb-2">
-                              (Text note nahi likha gaya — sirf photo / video bheji gayi)
+                              (No text note — only a photo / video was sent)
                             </div>
                           )}
 
@@ -230,7 +230,7 @@ export function FabricFaultMediaDialog({
                                       backgroundColor: '#f1f5f9',
                                     }}
                                     onClick={() => setFullscreenImage(img.url)}
-                                    title="Full view dekhne ke liye click karein"
+                                    title="Click for full view"
                                   >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
@@ -297,7 +297,7 @@ export function FabricFaultMediaDialog({
             <div className="modal-footer py-2 px-3 bg-light border-top">
               <span className="small text-muted me-auto">
                 <i className="bi bi-info-circle me-1" />
-                Photos ko click karke bara karke dekh sakte hain.
+                Click a photo to enlarge it.
               </span>
               <button
                 type="button"
@@ -335,7 +335,7 @@ export function FabricFaultMediaDialog({
                 target="_blank"
                 rel="noreferrer"
                 className="btn btn-sm btn-outline-light py-1 px-2"
-                title="Nayi tab mein asil photo kholein"
+                title="Open the original photo in a new tab"
               >
                 <i className="bi bi-box-arrow-up-right me-1" />
                 Original

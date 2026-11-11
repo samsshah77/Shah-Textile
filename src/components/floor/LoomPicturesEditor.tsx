@@ -41,16 +41,16 @@ export function LoomPicturesEditor({ images, onChange, loomLabel = 'Loom' }: Loo
 
   const removeAt = (index: number) => {
     showConfirm({
-      title: 'Photo Delete Karein?',
-      message: 'Kya aap ye photo delete karna chahte hain? Ye action undo nahi hoga.',
+      title: 'Delete photo?',
+      message: 'Delete this photo? This cannot be undone.',
       type: 'confirm',
-      confirmText: 'Haan, Delete',
+      confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         onChange(images.filter((_, i) => i !== index))
         showSuccessSoon({
           title: 'Deleted',
-          message: 'Photo delete ho gayi.',
+          message: 'Photo deleted.',
         })
       },
     })

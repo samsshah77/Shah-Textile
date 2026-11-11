@@ -104,7 +104,7 @@ export function BeamHistoryDialog({
         }
       })
       .catch((err) => {
-        if (live) setError(err instanceof Error ? err.message : 'Load nahi hua.')
+        if (live) setError(err instanceof Error ? err.message : 'Could not load.')
       })
     return () => {
       live = false
@@ -122,7 +122,7 @@ export function BeamHistoryDialog({
         showSuccessSoon({ title: 'Saved', message: done })
         return true
       } catch (err) {
-        showError({ title: 'Save nahi hua', message: err instanceof Error ? err.message : 'Save nahi ho saka.' })
+        showError({ title: 'Not saved', message: err instanceof Error ? err.message : 'Could not save.' })
         setReload((n) => n + 1)
         return false
       }
@@ -135,43 +135,43 @@ export function BeamHistoryDialog({
 
   const changeStart = (r: BeamStint, from: string) =>
     ask(
-      `Beam ${beamNo} — Laga ki date badlein?`,
-      `Loom ${r.loom} pe lagne ki date ${longDateFromYmd(r.from)} se ${longDateFromYmd(from)} ho jayegi. Production (Daily Entry) nahi badlegi — sirf beam ka hisaab (Din / Bana / Zaya) aur quality tracking.`,
-      'Haan, badlo',
-      () => void save({ action: 'setStart', beamNo, firstId: r.firstId!, from, oldFrom: r.from }, `Laga date ${longDateFromYmd(from)} ho gayi.`)
+      `Beam ${beamNo} — change the Mounted date?`,
+      `The date it was mounted on Loom ${r.loom} changes from ${longDateFromYmd(r.from)} to ${longDateFromYmd(from)}. Production (Daily Entry) does not change — only the beam figures (Days / Woven / Wastage) and quality tracking.`,
+      'Yes, change',
+      () => void save({ action: 'setStart', beamNo, firstId: r.firstId!, from, oldFrom: r.from }, `Mounted date set to ${longDateFromYmd(from)}.`)
     )
 
   const changeEnd = (r: BeamStint, to: string) =>
     ask(
-      `Beam ${beamNo} — Utra ki date badlein?`,
-      `Loom ${r.loom} se utarne ki date ${longDateFromYmd(r.to!)} se ${longDateFromYmd(to)} ho jayegi. Production (Daily Entry) nahi badlegi — sirf beam ka hisaab aur quality tracking.`,
-      'Haan, badlo',
-      () => void save({ action: 'setEnd', beamNo, firstId: r.firstId!, to, oldTo: r.to! }, `Utra date ${longDateFromYmd(to)} ho gayi.`)
+      `Beam ${beamNo} — change the Removed date?`,
+      `The date it came off Loom ${r.loom} changes from ${longDateFromYmd(r.to!)} to ${longDateFromYmd(to)}. Production (Daily Entry) does not change — only the beam figures and quality tracking.`,
+      'Yes, change',
+      () => void save({ action: 'setEnd', beamNo, firstId: r.firstId!, to, oldTo: r.to! }, `Removed date set to ${longDateFromYmd(to)}.`)
     )
 
   /** An ended run's own Sw # / Warp / Length — the beam as it is now does not change. */
   const changeDetail = (r: BeamStint, field: 'swLot' | 'warp' | 'length', v: string) => {
     if (field === 'length' && (!Number.isFinite(Number(v)) || Number(v) < 0)) {
-      showError({ title: 'Length sahi nahi', message: 'Length number mein likhein.' })
+      showError({ title: 'Invalid length', message: 'Enter the length as a number.' })
       setReload((n) => n + 1)
       return
     }
     void save(
       { action: 'details', beamNo, firstId: r.firstId!, [field]: field === 'length' ? Number(v) : v || null },
-      `Loom ${r.loom} wale run ki ${field === 'swLot' ? 'Sw #' : field === 'warp' ? 'Warp' : 'Length'} badal di (abhi wala beam nahi badla).`
+      `${field === 'swLot' ? 'Sw #' : field === 'warp' ? 'Warp' : 'Length'} changed for the Loom ${r.loom} run (the current beam is unchanged).`
     )
   }
 
   const remove = (r: BeamStint) =>
     ask(
-      `Beam ${beamNo} ka ye run hatayein?`,
-      `Loom ${r.loom} · Laga ${longDateFromYmd(r.from)} · Utra ${longDateFromYmd(r.to!)}. Sirf ghalti se bana run hatayein. Production (Daily Entry) nahi badlegi.`,
-      'Haan, hatao',
+      `Remove this run of beam ${beamNo}?`,
+      `Loom ${r.loom} · Mounted ${longDateFromYmd(r.from)} · Removed ${longDateFromYmd(r.to!)}. Only remove a run created by mistake. Production (Daily Entry) does not change.`,
+      'Yes, remove',
       () => void save({ action: 'remove', beamNo, firstId: r.firstId!, oldTo: r.to! }, 'Run hata diya.')
     )
 
   const shortDays = (days: string[]) =>
-    days.length <= 6 ? days.map((d) => d.slice(8, 10) + '/' + d.slice(5, 7)).join(', ') : `${days.length} din`
+    days.length <= 6 ? days.map((d) => d.slice(8, 10) + '/' + d.slice(5, 7)).join(', ') : `${days.length} days`
 
   /** Daily Entry Sw # for a run: show what would change, then write the empty cells only. */
   const lotsToSheet = async (r: BeamStint) => {
@@ -179,24 +179,24 @@ export function BeamHistoryDialog({
       const { loom, from, to, plan } = await planRunLots(beamNo, r.firstId!)
       const lines = [
         `Loom ${loom} · ${longDateFromYmd(from)} → ${longDateFromYmd(to)} · Sw #: ${plan.lot}`,
-        plan.empty.length ? `✔ ${plan.empty.length} din Sw # khali hai — yahan "${plan.lot}" likh diya jayega (${shortDays(plan.empty)}).` : '',
-        plan.same.length ? `• ${plan.same.length} din pe pehle se yahi Sw # likha hai.` : '',
+        plan.empty.length ? `✔ ${plan.empty.length} days have an empty Sw # — "${plan.lot}" will be written there (${shortDays(plan.empty)}).` : '',
+        plan.same.length ? `• ${plan.same.length} days already have this Sw #.` : '',
         plan.other.length
-          ? `• ${plan.other.length} din pe doosra Sw # likha hai — wo nahi badlega (${plan.other
+          ? `• ${plan.other.length} days have a different Sw # — those stay unchanged (${plan.other
               .slice(0, 4)
               .map((o) => `${o.date.slice(8, 10)}/${o.date.slice(5, 7)}: ${o.lot}`)
-              .join(', ')}${plan.other.length > 4 ? ' …' : ''}). Ghalat hai to Daily Entry mein khud badlein.`
+              .join(', ')}${plan.other.length > 4 ? ' …' : ''}). If they are wrong, change them in Daily Entry.`
           : '',
-        plan.noRow.length ? `• ${plan.noRow.length} din ki Daily Entry bani hi nahi (${shortDays(plan.noRow)}).` : '',
+        plan.noRow.length ? `• ${plan.noRow.length} days have no Daily Entry (${shortDays(plan.noRow)}).` : '',
       ].filter(Boolean)
       if (!plan.empty.length) {
-        showInfo({ title: 'Likhne ko kuch nahi', message: lines.join('\n') })
+        showInfo({ title: 'Nothing to write', message: lines.join('\n') })
         return
       }
       ask(
-        'Daily Entry mein Sw # likhein?',
-        `${lines.join('\n')}\n\nSirf Sw # column — meters aur quality nahi badlenge.`,
-        'Haan, likho',
+        'Write the Sw # into Daily Entry?',
+        `${lines.join('\n')}\n\nOnly the Sw # column changes — meters and quality stay the same.`,
+        'Yes, write',
         () =>
           void (async () => {
             try {
@@ -207,35 +207,35 @@ export function BeamHistoryDialog({
               setReload((n) => n + 1)
               if (res.failed.length) {
                 showError({
-                  title: `${res.filled.length} din likha, ${res.failed.length} din nahi`,
+                  title: `${res.filled.length} days written, ${res.failed.length} days not`,
                   message: res.failed.map((f) => `${f.date}: ${f.reason}`).join('\n'),
                 })
               } else {
-                showSuccessSoon({ title: 'Saved', message: `${res.filled.length} din Daily Entry mein "${res.lot}" likh diya.` })
+                showSuccessSoon({ title: 'Saved', message: `"${res.lot}" written into Daily Entry for ${res.filled.length} days.` })
               }
             } catch (err) {
-              showError({ title: 'Save nahi hua', message: err instanceof Error ? err.message : 'Save nahi ho saka.' })
+              showError({ title: 'Not saved', message: err instanceof Error ? err.message : 'Could not save.' })
             }
           })()
       )
     } catch (err) {
-      showError({ title: 'Load nahi hua', message: err instanceof Error ? err.message : 'Load nahi ho saka.' })
+      showError({ title: 'Could not load', message: err instanceof Error ? err.message : 'Could not load.' })
     }
   }
 
   const addRun = () => {
     const loom = Number(form.loom)
-    if (!Number.isInteger(loom) || loom <= 0) return showError({ title: 'Loom chahiye', message: 'Loom number likhein.' })
-    if (!form.from || !form.to) return showError({ title: 'Dates chahiye', message: 'Laga aur Utra dono dates bharein.' })
-    if (form.to < form.from) return showError({ title: 'Date sahi nahi', message: 'Utra Laga se pehle nahi ho sakta.' })
+    if (!Number.isInteger(loom) || loom <= 0) return showError({ title: 'Loom required', message: 'Enter the loom number.' })
+    if (!form.from || !form.to) return showError({ title: 'Dates required', message: 'Enter both the Mounted and Removed dates.' })
+    if (form.to < form.from) return showError({ title: 'Invalid date', message: 'Removed date cannot be before the Mounted date.' })
     ask(
-      `Beam ${beamNo} — purana run jodein?`,
-      `Loom ${loom} · Laga ${longDateFromYmd(form.from)} · Utra ${longDateFromYmd(form.to)}${form.swLot.trim() ? ` · Sw # ${form.swLot.trim()}` : ''}. Sirf beam ki history mein judega — beam abhi jahan hai wahin rahega, Daily Entry production nahi badlegi. Quality us loom ki Daily Entry se aayegi.`,
-      'Haan, jodo',
+      `Beam ${beamNo} — add a past run?`,
+      `Loom ${loom} · Mounted ${longDateFromYmd(form.from)} · Removed ${longDateFromYmd(form.to)}${form.swLot.trim() ? ` · Sw # ${form.swLot.trim()}` : ''}. This is added to the beam history only — the beam stays where it is now and Daily Entry production does not change. The quality comes from that loom's Daily Entry.`,
+      'Yes, add',
       () =>
         void save(
           { action: 'add', beamNo, loom, from: form.from, to: form.to, swLot: form.swLot.trim() || null },
-          `Loom ${loom} ka run jud gaya.`
+          `Loom ${loom} run added.`
         ).then(async (ok) => {
           if (!ok) return
           setAdding(false)
@@ -264,7 +264,7 @@ export function BeamHistoryDialog({
             Beam {beamNo} — History
           </h3>
           <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
-            Band karein
+            Close
           </button>
         </div>
         <div className="card-body p-0">
@@ -273,7 +273,7 @@ export function BeamHistoryDialog({
           ) : runs == null ? (
             <SectionLoader compact />
           ) : runs.length === 0 ? (
-            <div className="p-3 small text-secondary">Is beam ka koi loom record nahi.</div>
+            <div className="p-3 small text-secondary">No loom records for this beam.</div>
           ) : (
             <div className="table-responsive">
               <table className="table table-sm table-bordered align-middle mb-0 text-center" style={{ fontSize: 13 }}>
@@ -284,8 +284,8 @@ export function BeamHistoryDialog({
                     <th>Sw / Wp #</th>
                     <th>Warp</th>
                     <th>Length</th>
-                    <th>Laga</th>
-                    <th>Utra</th>
+                    <th>Mounted</th>
+                    <th>Removed</th>
                     {canEdit && <th />}
                   </tr>
                 </thead>
@@ -317,7 +317,7 @@ export function BeamHistoryDialog({
                           </>
                         ) : (
                           <>
-                            <td title={r.to == null && edit ? 'Abhi wala run — Beams table mein badlein' : undefined}>
+                            <td title={r.to == null && edit ? 'Current run — change it in the Beams table' : undefined}>
                               {r.swLot ? formatSwLotForDailyEntry(r.swLot) : '—'}
                             </td>
                             <td className="text-start">{r.warp || '—'}</td>
@@ -326,20 +326,20 @@ export function BeamHistoryDialog({
                         )}
                         <td>
                           {edit ? (
-                            <DayInput value={r.from} max={r.to || today} onCommit={(v) => changeStart(r, v)} label="Laga" />
+                            <DayInput value={r.from} max={r.to || today} onCommit={(v) => changeStart(r, v)} label="Mounted" />
                           ) : (
                             longDateFromYmd(r.from)
                           )}
                         </td>
                         <td>
                           {r.to == null ? (
-                            <span className="badge text-bg-success">Abhi laga hai</span>
+                            <span className="badge text-bg-success">On loom now</span>
                           ) : !r.closeOffLoom ? (
-                            <span className="small" title="Is din seedha agli loom pe gaya — agle run ki Laga date badlein">
+                            <span className="small" title="Went straight to the next loom this day — change the next run's Mounted date">
                               {longDateFromYmd(r.to)} <span className="text-secondary">→ Loom {next?.loom ?? ''}</span>
                             </span>
                           ) : edit ? (
-                            <DayInput value={r.to} min={r.from} max={next ? next.from : today} onCommit={(v) => changeEnd(r, v)} label="Utra" />
+                            <DayInput value={r.to} min={r.from} max={next ? next.from : today} onCommit={(v) => changeEnd(r, v)} label="Removed" />
                           ) : (
                             longDateFromYmd(r.to)
                           )}
@@ -352,16 +352,16 @@ export function BeamHistoryDialog({
                                   type="button"
                                   className="btn btn-sm btn-outline-primary py-0"
                                   onClick={() => void lotsToSheet(r)}
-                                  title="Is run ka Sw # Daily Entry ke khali Sw # column mein likhein"
+                                  title="Write this run's Sw # into the empty Sw # cells of Daily Entry"
                                 >
                                   <i className="bi bi-journal-arrow-down me-1" />
                                   Daily Entry Sw #
                                 </button>
                               ) : null}
                               {r.to != null && r.firstId ? (
-                                <button type="button" className="btn btn-sm btn-outline-danger py-0" onClick={() => remove(r)} title="Ghalti se bana run hatayein">
+                                <button type="button" className="btn btn-sm btn-outline-danger py-0" onClick={() => remove(r)} title="Remove a run created by mistake">
                                   <i className="bi bi-trash me-1" />
-                                  Hatayein
+                                  Remove
                                 </button>
                               ) : null}
                             </div>
@@ -379,7 +379,7 @@ export function BeamHistoryDialog({
               {!adding ? (
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setAdding(true)}>
                   <i className="bi bi-plus-lg me-1" />
-                  Purana run jodein
+                  Add past run
                 </button>
               ) : (
                 <div className="d-flex flex-wrap align-items-end gap-2 small">
@@ -405,7 +405,7 @@ export function BeamHistoryDialog({
                     />
                   </label>
                   <label className="d-flex flex-column">
-                    Laga
+                    Mounted
                     <input
                       type="date"
                       className="form-control form-control-sm"
@@ -415,7 +415,7 @@ export function BeamHistoryDialog({
                     />
                   </label>
                   <label className="d-flex flex-column">
-                    Utra
+                    Removed
                     <input
                       type="date"
                       className="form-control form-control-sm"
@@ -432,7 +432,7 @@ export function BeamHistoryDialog({
                     Cancel
                   </button>
                   <div className="w-100 text-secondary">
-                    Sirf guzri hui dates. Sw # khali chhorein to us loom ki un dinon ki saari production is beam ki ginni jayegi.
+                    Past dates only. If Sw # is left empty, all production on that loom on those days counts for this beam.
                   </div>
                 </div>
               )}
@@ -440,11 +440,11 @@ export function BeamHistoryDialog({
           )}
         </div>
         <div className="card-footer small text-dark">
-          Date box mein date badal kar Enter dabayein. Sirf beam ka hisaab (Din, Bana, Zaya) aur quality tracking badalti hai —
-          Daily Entry ki production waisi hi rehti hai. Aage peeche ke runs se takrane wali date save nahi hogi.
+          Change a date and press Enter. Only the beam figures (Days, Woven, Wastage) and quality tracking change —
+          Daily Entry production stays the same. A date that overlaps the run before or after is not saved.
           <br />
-          Khatam (utre hue) run ki Sw # / Warp / Length yahan badlein — sirf usi run mein badlegi, abhi chalne wala beam waisa hi
-          rahega. Abhi chalne wale run ki details Beams table mein badlein.
+          Change an ended run’s Sw # / Warp / Length here — it changes only that run; the beam running now stays the same.
+          Change the current run’s details in the Beams table.
         </div>
       </div>
     </div>

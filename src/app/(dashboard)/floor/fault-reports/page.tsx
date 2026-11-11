@@ -60,9 +60,9 @@ function uploadFile(blob: Blob, name: string, onProgress: (p: number) => void): 
         /* not JSON (e.g. the web server refused a very big file) */
       }
       if (xhr.status === 200 && data.url && data.kind) resolve({ url: data.url, kind: data.kind })
-      else reject(new Error(data.error || (xhr.status === 413 ? 'File bohat bari hai — choti video lein' : 'Upload nahi hui')))
+      else reject(new Error(data.error || (xhr.status === 413 ? 'File is too large — use a shorter video' : 'Upload failed')))
     }
-    xhr.onerror = () => reject(new Error('Internet ka masla — dobara try karein'))
+    xhr.onerror = () => reject(new Error('Internet problem — please try again'))
     const fd = new FormData()
     fd.append('file', blob, name)
     xhr.send(fd)
@@ -106,11 +106,11 @@ export default function FaultReportsPage() {
     try {
       const res = await fetch(`/api/floor/fault-reports?date=${date}`, { credentials: 'same-origin', cache: 'no-store' })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Load nahi hua')
+      if (!res.ok) throw new Error(json.error || 'Could not load')
       setData(json)
       setLoadError('')
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Load nahi hua')
+      setLoadError(e instanceof Error ? e.message : 'Could not load')
     }
   }, [date])
 
@@ -139,7 +139,7 @@ export default function FaultReportsPage() {
           )
           setPending((p) => p.map((x) => (x.key === key ? { ...x, progress: 100, url: media.url, kind: media.kind } : x)))
         } catch (e) {
-          setPending((p) => p.map((x) => (x.key === key ? { ...x, error: e instanceof Error ? e.message : 'Upload nahi hui' } : x)))
+          setPending((p) => p.map((x) => (x.key === key ? { ...x, error: e instanceof Error ? e.message : 'Upload failed' } : x)))
         }
       })()
     }
@@ -163,10 +163,10 @@ export default function FaultReportsPage() {
       fd.append('file', wav, 'voice.wav')
       const res = await fetch('/api/floor/fault-reports/voice', { method: 'POST', body: fd, credentials: 'same-origin' })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Awaz se likhna nahi hua')
+      if (!res.ok) throw new Error(json.error || 'Voice typing failed')
       setText((t) => (t.trim() ? `${t.trim()}\n${json.text}` : json.text))
     } catch (e) {
-      setFormMsg({ ok: false, text: e instanceof Error ? e.message : 'Awaz se likhna nahi hua' })
+      setFormMsg({ ok: false, text: e instanceof Error ? e.message : 'Voice typing failed' })
     } finally {
       setVoiceBusy(false)
     }
@@ -180,7 +180,7 @@ export default function FaultReportsPage() {
       started = await startVoiceNote(() => void stopVoice(started))
       setRec(started)
     } catch (e) {
-      setFormMsg({ ok: false, text: e instanceof Error && e.name !== 'NotAllowedError' ? e.message : 'Mic ki ijazat dein (browser mein).' })
+      setFormMsg({ ok: false, text: e instanceof Error && e.name !== 'NotAllowedError' ? e.message : 'Allow microphone access in the browser.' })
     }
   }
 
@@ -189,8 +189,8 @@ export default function FaultReportsPage() {
 
   const send = async () => {
     setFormMsg(null)
-    if (!loom) return setFormMsg({ ok: false, text: 'Pehle loom chunein.' })
-    if (!text.trim() && ready.length === 0) return setFormMsg({ ok: false, text: 'Photo / video lein ya fault likhein.' })
+    if (!loom) return setFormMsg({ ok: false, text: 'Select a loom first.' })
+    if (!text.trim() && ready.length === 0) return setFormMsg({ ok: false, text: 'Add a photo / video or describe the fault.' })
     setSending(true)
     try {
       const res = await fetch('/api/floor/fault-reports', {
@@ -206,15 +206,15 @@ export default function FaultReportsPage() {
         }),
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Bheja nahi gaya')
+      if (!res.ok) throw new Error(json.error || 'Not sent')
       pending.forEach((p) => URL.revokeObjectURL(p.preview))
       setPending([])
       setText('')
       // Loom (and shift) stay selected, so the next fault on the same loom needs no re-select
-      setFormMsg({ ok: true, text: `Loom ${json.report.loomNumber} (Shift ${json.report.shift || shift}) ka fault bhej diya — Fabric Fault page par update ho gaya.` })
+      setFormMsg({ ok: true, text: `Fault sent for Loom ${json.report.loomNumber} (Shift ${json.report.shift || shift}). The Fabric Fault page is updated.` })
       void load()
     } catch (e) {
-      setFormMsg({ ok: false, text: e instanceof Error ? e.message : 'Bheja nahi gaya' })
+      setFormMsg({ ok: false, text: e instanceof Error ? e.message : 'Not sent' })
     } finally {
       setSending(false)
     }
@@ -253,18 +253,18 @@ export default function FaultReportsPage() {
         }),
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Update fail ho gaya')
+      if (!res.ok) throw new Error(json.error || 'Update failed')
       setEditingReport(null)
       await load()
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : 'Update nahi ho saka')
+      window.alert(e instanceof Error ? e.message : 'Could not update')
     } finally {
       setUpdating(false)
     }
   }
 
   const remove = async (r: Report) => {
-    if (!window.confirm(`Loom ${r.loomNumber} (Shift ${r.shift || 'A'}) ki yeh entry hata dein?`)) return
+    if (!window.confirm(`Remove this entry for Loom ${r.loomNumber} (Shift ${r.shift || 'A'})?`)) return
     try {
       const res = await fetch(`/api/floor/fault-reports/${r.id}`, { method: 'DELETE', credentials: 'same-origin' })
       const json = await res.json().catch(() => ({}))
@@ -312,7 +312,7 @@ export default function FaultReportsPage() {
                   Loom
                 </label>
                 <select id="fault-loom" className="form-select" value={loom} onChange={(e) => setLoom(e.target.value)}>
-                  <option value="">— Loom chunein —</option>
+                  <option value="">— Select loom —</option>
                   {data.looms.map((l) => (
                     <option key={l.loomNumber} value={l.loomNumber}>
                       Loom {l.loomNumber}
@@ -347,7 +347,7 @@ export default function FaultReportsPage() {
             <div className="d-flex flex-wrap gap-2 mb-2">
               <input ref={photoRef} type="file" accept="image/*" capture="environment" className="d-none" aria-label="Photo lein" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
               <input ref={videoRef} type="file" accept="video/*" capture="environment" className="d-none" aria-label="Video lein" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
-              <input ref={galleryRef} type="file" accept="image/*,video/*" multiple className="d-none" aria-label="Gallery se chunein" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
+              <input ref={galleryRef} type="file" accept="image/*,video/*" multiple className="d-none" aria-label="Choose from gallery" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
               <button type="button" className="btn btn-outline-primary" onClick={() => photoRef.current?.click()}>
                 <i className="bi bi-camera me-1" /> Photo
               </button>
@@ -398,7 +398,7 @@ export default function FaultReportsPage() {
               id="fault-text"
               className="form-control mb-2"
               rows={3}
-              placeholder="Fault likhein — ya 🎤 dabakar bolein"
+              placeholder="Describe the fault — or press 🎤 and speak"
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
@@ -413,7 +413,7 @@ export default function FaultReportsPage() {
                   <button type="button" className="btn btn-outline-danger" disabled={voiceBusy} onClick={() => void startVoice()}>
                     {voiceBusy ? (
                       <>
-                        <span className="spinner-border spinner-border-sm me-1" /> Likh rahe hain…
+                        <span className="spinner-border spinner-border-sm me-1" /> Typing…
                       </>
                     ) : (
                       <>
@@ -423,7 +423,7 @@ export default function FaultReportsPage() {
                   </button>
                 ))}
               <button type="button" className="btn btn-success ms-auto px-4" disabled={sending || uploading || Boolean(rec) || voiceBusy} onClick={() => void send()}>
-                {sending ? 'Bhej rahe hain…' : uploading ? 'Upload ho raha hai…' : 'Bhejein'}
+                {sending ? 'Sending…' : uploading ? 'Uploading…' : 'Send'}
               </button>
             </div>
             {formMsg && <div className={`small mt-2 ${formMsg.ok ? 'text-success' : 'text-danger'}`}>{formMsg.text}</div>}
@@ -433,7 +433,7 @@ export default function FaultReportsPage() {
 
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
         <h2 className="h6 fw-bold mb-0">
-          {date === today() ? 'Aaj' : date} ke faults ({shown.length})
+          Faults for {date === today() ? 'today' : date} ({shown.length})
         </h2>
         {data && data.reports.length > 0 && (
           <select className="form-select form-select-sm" style={{ width: 150 }} value={filterLoom} onChange={(e) => setFilterLoom(e.target.value)} aria-label="Loom filter">
@@ -450,7 +450,7 @@ export default function FaultReportsPage() {
       </div>
 
       {!data && !loadError && <SectionLoader />}
-      {data && shown.length === 0 && <div className="text-secondary small border rounded p-4 text-center">Is din koi fault nahi bheja gaya.</div>}
+      {data && shown.length === 0 && <div className="text-secondary small border rounded p-4 text-center">No faults were sent on this day.</div>}
 
       <div className="d-flex flex-column gap-3">
         {shown.map((r) => (
@@ -556,7 +556,7 @@ export default function FaultReportsPage() {
                       onClick={cancelEdit}
                       disabled={updating}
                     >
-                      Radd karein
+                      Cancel
                     </button>
                     <button
                       type="button"
@@ -564,7 +564,7 @@ export default function FaultReportsPage() {
                       onClick={() => void saveEdit()}
                       disabled={updating}
                     >
-                      {updating ? 'Mehfooz ho raha hai…' : 'Mehfooz karein'}
+                      {updating ? 'Saving…' : 'Save'}
                     </button>
                   </div>
                 </div>

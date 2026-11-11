@@ -377,7 +377,7 @@ async function flushKey(key: string): Promise<boolean> {
   if (status === 0 || status >= 500) {
     // Network / server trouble: keep the edits and try again shortly.
     restoreExplicit(prepared)
-    notifyFloorSaveProblem(409, { error: 'Server se raabta nahi ho saka — tabdeeli abhi save nahi hui, thodi der mein dobara koshish hogi.' })
+    notifyFloorSaveProblem(409, { error: 'Could not reach the server. The change is not saved yet; it will retry shortly.' })
     scheduleRetry(key)
     return false
   }
@@ -461,7 +461,7 @@ async function flushBatch(keys: string[]): Promise<boolean> {
     if (status === 0 || status >= 500) {
       // Network trouble: keep the edits; they go again (list by list / day by day) shortly.
       for (const p of real) restoreExplicit(p)
-      notifyFloorSaveProblem(409, { error: 'Server se raabta nahi ho saka — tabdeeli abhi save nahi hui, thodi der mein dobara koshish hogi.' })
+      notifyFloorSaveProblem(409, { error: 'Could not reach the server. The change is not saved yet; it will retry shortly.' })
       for (const p of real) scheduleRetry(p.key)
       return false
     }

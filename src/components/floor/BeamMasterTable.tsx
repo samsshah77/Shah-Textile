@@ -20,6 +20,7 @@ import {
 } from '@/services/productionMastersService'
 import type { DailyLoomProductionEntry } from '@/types/production'
 import { BeamHistoryDialog } from '@/components/floor/BeamHistoryDialog'
+import { editRunOnDay } from '@/lib/floor/beamStints'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
@@ -204,7 +205,7 @@ export function BeamStockFilterBar({
         type="button"
         className={`btn ${filter === 'ENDED' ? 'btn-danger' : 'btn-outline-danger'}`}
         onClick={() => onChange('ENDED')}
-        title="Loom se utre beams ka record (restock ke baad bhi rehta hai)"
+        title="Record of beams taken off looms (kept even after restocking)"
       >
         Ended
       </button>
@@ -237,10 +238,12 @@ interface BeamMasterTableProps {
   entries?: DailyLoomProductionEntry[]
   /**
    * A past date is open: every beam as it stood that day. A beam that was then on a loom in an
-   * older run (ended since) cannot be edited here — that would change the beam as it is now;
-   * the old run's details are changed in its History.
+   * older run (ended since) shows that run's details in Edit (shaded row); changes there go to
+   * that run only, never to the beam as it is now.
    */
   dayState?: BeamMaster[]
+  /** An older run was changed here — read the day's beams again. */
+  onDayStateChanged?: () => void
   /** May correct dates in Beam History (Beams edit permission). */
   historyEdit?: boolean
 }
@@ -332,6 +335,7 @@ export function BeamMasterTable({
   entries = [],
   historyEdit = false,
   dayState,
+  onDayStateChanged,
 }: BeamMasterTableProps) {
   const [historyBeam, setHistoryBeam] = useState<string | null>(null)
   const { canEditProduction } = useAuth()
@@ -498,16 +502,16 @@ export function BeamMasterTable({
   const endFlaggedBeam = (b: BeamMaster) => {
     const label = beamsToEnd.get(b.beamNo) === 'BEAM_CUT' ? 'B/Cut' : 'B/End'
     showConfirm({
-      title: `Beam ${b.beamNo} End karein?`,
-      message: `Loom #${b.usedInLoom} ${label} pe hai. Beam ${b.beamNo}${b.swLot ? ` (${formatSwLotForDailyEntry(b.swLot)})` : ''} ko End (Empty Beam) kar dein? ${longDateFromYmd(selectedDate)} ki date se.`,
+      title: `End beam ${b.beamNo}?`,
+      message: `Loom #${b.usedInLoom} is on ${label}. End beam ${b.beamNo}${b.swLot ? ` (${formatSwLotForDailyEntry(b.swLot)})` : ''} (move to Empty Beam) from ${longDateFromYmd(selectedDate)}?`,
       type: 'confirm',
-      confirmText: 'Haan, End karo',
-      cancelText: 'Abhi nahi',
+      confirmText: 'Yes, end it',
+      cancelText: 'Not now',
       onConfirm: () => {
         onSendToSizing(b.beamNo, selectedDate)
         showSuccessSoon({
-          title: 'Beam End ho gaya',
-          message: `Beam ${b.beamNo} Empty Beam mein chala gaya. Ghalti se hua ho to Ended → Edit se wapis loom pe laga sakte hain.`,
+          title: 'Beam ended',
+          message: `Beam ${b.beamNo} moved to Empty Beam. If this was a mistake, put it back on the loom from Ended → Edit.`,
         })
       },
     })
@@ -518,9 +522,9 @@ export function BeamMasterTable({
   const editActive = opsEdit || masterEdit
   const editActiveAll = editActive
   const masterEditAll = masterEdit
-  /** On the open past date, this beam was on a loom in a different (older) run than now. */
+  /** On the open past date, this beam was on a loom in a different (older, ended) run than now. */
   const oldRunOnDay = useMemo(() => {
-    const out = new Map<string, { loom: string; from: string }>()
+    const out = new Map<string, { loom: string; from: string; beam: BeamMaster }>()
     if (!dayState) return out
     const live = new Map(beams.map((b) => [b.beamNo, b]))
     for (const d of dayState) {
@@ -528,37 +532,68 @@ export function BeamMasterTable({
       const now = live.get(d.beamNo)
       const sameRun =
         now && String(now.usedInLoom || '') === String(d.usedInLoom) && String(now.mountedOn || '').slice(0, 10) === String(d.mountedOn || '').slice(0, 10)
-      if (!sameRun) out.set(d.beamNo, { loom: String(d.usedInLoom), from: String(d.mountedOn || '').slice(0, 10) })
+      if (!sameRun) out.set(d.beamNo, { loom: String(d.usedInLoom), from: String(d.mountedOn || '').slice(0, 10), beam: d })
     }
     return out
   }, [dayState, beams])
-  const oldRunNote = (b: BeamMaster, compact = false) => {
+
+  // Changes typed into an older run's row: shown at once, saved to that run a moment later.
+  const [oldEdits, setOldEdits] = useState<Record<string, Partial<BeamMaster>>>({})
+  const oldPending = useRef(new Map<string, { patch: Partial<BeamMaster>; timer: ReturnType<typeof setTimeout> }>())
+  useEffect(() => {
+    // The day was read again: keep only what is still being saved.
+    setOldEdits((cur) => {
+      const keep = Object.fromEntries(Object.entries(cur).filter(([no]) => oldPending.current.has(no)))
+      return Object.keys(keep).length === Object.keys(cur).length ? cur : keep
+    })
+  }, [dayState])
+  useEffect(() => {
+    const pending = oldPending.current
+    return () => pending.forEach((p) => clearTimeout(p.timer))
+  }, [])
+  const oldRunView = (beamNo: string): BeamMaster | null => {
+    const o = oldRunOnDay.get(beamNo)
+    return o ? { ...o.beam, ...(oldEdits[beamNo] || {}) } : null
+  }
+  const OLD_RUN_FIELDS = ['swLot', 'warp', 'length', 'reed', 'width', 'totalThreads', 'beamRepeat', 'loomType'] as const
+  const patchOldRun = (b: BeamMaster, raw: Partial<BeamMaster>) => {
     const o = oldRunOnDay.get(b.beamNo)
-    if (!o || !editActiveAll) return null
-    if (compact) {
-      return (
-        <button
-          type="button"
-          className="badge rounded-pill text-bg-danger border-0 d-block mt-1"
-          style={{ fontSize: 10.5, cursor: 'pointer' }}
-          title={`${longDateFromYmd(selectedDate)} ko ye beam Loom ${o.loom} wale purane run mein tha. Yahan badalne se abhi wala beam badalta — is liye band hai. Us run ki details History mein badlein.`}
-          onClick={() => setHistoryBeam(b.beamNo)}
-        >
-          <i className="bi bi-lock-fill me-1" />
-          Purana run
-        </button>
-      )
+    if (!o) return
+    const patch: Partial<BeamMaster> = {}
+    for (const k of OLD_RUN_FIELDS) if (raw[k] !== undefined) (patch as Record<string, unknown>)[k] = raw[k]
+    if ((raw.reed !== undefined || raw.width !== undefined) && raw.totalThreads === undefined) {
+      const reed = raw.reed ?? b.reed
+      const width = raw.width ?? b.width
+      patch.totalThreads = Math.round((width || 0) * (reed || 0) * 0.95)
     }
-    return (
-      <div className="small text-danger mt-1" title="Is date par ye beam purane run mein tha. Yahan badalne se abhi wala beam badalta — is liye band hai.">
-        <i className="bi bi-lock-fill me-1" />
-        {longDateFromYmd(selectedDate)} ko Loom {o.loom} wale purane run mein tha — us run ki details{' '}
-        <button type="button" className="btn btn-link btn-sm p-0 align-baseline" onClick={() => setHistoryBeam(b.beamNo)}>
-          History
-        </button>{' '}
-        mein badlein.
-      </div>
-    )
+    if (!Object.keys(patch).length) return
+    setOldEdits((cur) => ({ ...cur, [b.beamNo]: { ...(cur[b.beamNo] || {}), ...patch } }))
+    const prev = oldPending.current.get(b.beamNo)
+    if (prev) clearTimeout(prev.timer)
+    const merged = { ...(prev?.patch || {}), ...patch }
+    const date = selectedDate
+    const timer = setTimeout(() => {
+      oldPending.current.delete(b.beamNo)
+      editRunOnDay(b.beamNo, date, Number(o.loom), merged)
+        .then(() => onDayStateChanged?.())
+        .catch((err: unknown) => {
+          setOldEdits((cur) => {
+            const next = { ...cur }
+            delete next[b.beamNo]
+            return next
+          })
+          showError({
+            title: `Beam ${b.beamNo} — old run not saved`,
+            message: err instanceof Error ? err.message : 'Could not save.',
+          })
+        })
+    }, 700)
+    oldPending.current.set(b.beamNo, { patch: merged, timer })
+  }
+  const oldRunTitle = (b: BeamMaster) => {
+    const o = oldRunOnDay.get(b.beamNo)
+    if (!o) return undefined
+    return `On ${longDateFromYmd(selectedDate)} this beam was on Loom ${o.loom}${o.from ? ` (mounted ${longDateFromYmd(o.from)})` : ''} in a run that has ended. This row shows that run; changes here change that run only, not the beam as it is now.`
   }
 
   const patchBeam = (b: BeamMaster, patch: Partial<BeamMaster>) => {
@@ -603,7 +638,7 @@ export function BeamMasterTable({
             setTableEdit(false)
             showSuccessSoon({
               title: 'Saved',
-              message: 'Beam edits save ho gayi hain.',
+              message: 'Beam changes saved.',
             })
           } else {
             setTableEdit(true)
@@ -636,9 +671,9 @@ export function BeamMasterTable({
     const res = onMount(b.beamNo, loomNum, selectedDate)
     if (!res.ok) {
       showError({
-        title: `Loom ${loomNum} pe mount nahi hua`,
+        title: `Could not mount on Loom ${loomNum}`,
         message: res.message,
-        confirmText: 'Theek hai',
+        confirmText: 'OK',
         type: 'error',
       })
     }
@@ -647,16 +682,16 @@ export function BeamMasterTable({
   const handleDeleteBeam = (b: BeamMaster) => {
     if (!masterEdit || !onDelete) return
     showConfirm({
-      title: 'Beam Delete Karein?',
-      message: `Kya aap waqai Beam "${b.beamNo}" ko inventory se delete karna chahte hain?`,
+      title: 'Delete beam?',
+      message: `Delete beam "${b.beamNo}" from the inventory?`,
       type: 'confirm',
-      confirmText: 'Haan, Delete Karein',
+      confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         onDelete(b.beamNo)
         showSuccessSoon({
           title: 'Deleted',
-          message: `Beam "${b.beamNo}" delete ho gaya.`,
+          message: `Beam "${b.beamNo}" deleted.`,
         })
       },
     })
@@ -719,8 +754,8 @@ export function BeamMasterTable({
             <input
               type="search"
               className="form-control"
-              placeholder="Beam #, Sw #, loom # (jaise 2)…"
-              aria-label="Beam dhoondein"
+              placeholder="Beam #, Sw #, loom # (e.g. 2)…"
+              aria-label="Search beams"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -764,15 +799,15 @@ export function BeamMasterTable({
       {searchText && (
         <div className="px-3 py-2 small border-bottom bg-light d-flex flex-wrap gap-2 align-items-center d-print-none">
           <span>
-            &quot;{search.trim()}&quot; — is tab mein <strong>{filteredBeams.length}</strong>
+            &quot;{search.trim()}&quot; — <strong>{filteredBeams.length}</strong> in this tab
           </span>
           {searchElsewhere.map((t) => (
             <button key={t.tab} type="button" className="btn btn-sm btn-outline-primary py-0" onClick={() => setFilter(t.tab)}>
-              {t.label} mein {t.count} →
+              {t.count} in {t.label} →
             </button>
           ))}
           <button type="button" className="btn btn-sm btn-link py-0 ms-auto" onClick={() => setSearch('')}>
-            Search hatayein
+            Clear search
           </button>
         </div>
       )}
@@ -781,7 +816,7 @@ export function BeamMasterTable({
         <div className="alert alert-danger rounded-0 border-start-0 border-end-0 mb-0 py-2 px-3 small d-flex flex-wrap align-items-center gap-2">
           <span className="fw-semibold">
             <i className="bi bi-exclamation-triangle-fill me-1" />
-            Loom B/End / B/Cut pe hai, beam abhi End nahi hua:
+            Loom is on B/End / B/Cut but the beam is not ended yet:
           </span>
           {beams
             .filter((b) => beamsToEnd.has(b.beamNo))
@@ -793,7 +828,7 @@ export function BeamMasterTable({
                 </span>
                 {!readOnly && canEditProduction && (
                   <button type="button" className="btn btn-danger btn-sm py-0 px-2" onClick={() => endFlaggedBeam(b)}>
-                    End karo
+                    End it
                   </button>
                 )}
               </span>
@@ -807,23 +842,27 @@ export function BeamMasterTable({
             <EmptyPlaceholder
               icon="bi-bounding-box"
               title="No beams in this category"
-              hint={`Filter: ${filterLabel(filter)}. Add Beam ya dusra filter try karo.`}
+              hint={`Filter: ${filterLabel(filter)}. Add a beam or try another filter.`}
             />
           ) : (
-            filteredBeams.map((b, rowIdx) => {
-              // A beam of an older run on this past date: its fields are locked here.
-              const masterEdit = masterEditAll && !oldRunOnDay.has(b.beamNo)
-              const editActive = editActiveAll && !oldRunOnDay.has(b.beamNo)
+            filteredBeams.map((liveBeam, rowIdx) => {
+              // A beam of an older (ended) run on this past date: in Edit the card shows that
+              // run, shaded, and changes go to that run only.
+              const oldView = editActiveAll ? oldRunView(liveBeam.beamNo) : null
+              const b = oldView || liveBeam
+              const masterEdit = masterEditAll
+              const editActive = editActiveAll
+              const patchRow = (patch: Partial<BeamMaster>) => (oldView ? patchOldRun(b, patch) : patchBeam(b, patch))
               return (
                 <div
                   key={b.beamNo}
-                  className={`master-grid-card${editActive ? ' sara-edit-card' : ''}${beamsToEnd.has(b.beamNo) ? ' sara-beam-to-end' : ''}`}
+                  className={`master-grid-card${oldView ? ' sara-old-run-card' : editActive ? ' sara-edit-card' : ''}${beamsToEnd.has(b.beamNo) && !oldView ? ' sara-beam-to-end' : ''}`}
+                  title={oldView ? oldRunTitle(b) : undefined}
                 >
                   <div className="d-flex justify-content-between align-items-start gap-2 border-bottom pb-2">
                     <div>
                       <div className="fw-semibold">Beam #{b.beamNo}</div>
                       <LoomStatusNote beam={b} />
-                      {oldRunNote(b)}
                     </div>
                     <div className="d-flex flex-column align-items-end gap-1">
                       <button
@@ -839,12 +878,12 @@ export function BeamMasterTable({
                         type="button"
                         className="btn btn-sm btn-outline-secondary py-0"
                         style={{ fontSize: '0.72rem' }}
-                        title="Beam kab kis loom pe laga / utra — dates theek karein"
+                        title="When the beam was mounted on / removed from each loom — correct the dates"
                         onClick={() => setHistoryBeam(b.beamNo)}
                       >
                         History
                       </button>
-                      {masterEdit && onDelete && (
+                      {masterEdit && !oldView && onDelete && (
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-danger"
@@ -868,7 +907,7 @@ export function BeamMasterTable({
                         enabled
                         navRow={rowIdx}
                         navCol={5}
-                        onCommit={(swLot) => patchBeam(b, { swLot })}
+                        onCommit={(swLot) => patchRow({ swLot })}
                       />
                     ) : (
                       <div className="small fw-semibold">
@@ -886,7 +925,7 @@ export function BeamMasterTable({
                         placeholder="optional"
                         navRow={rowIdx}
                         navCol={6}
-                        onValueChange={(v) => patchBeam(b, { beamRepeat: v.trim() || null })}
+                        onValueChange={(v) => patchRow({ beamRepeat: v.trim() || null })}
                       />
                     ) : (
                       <div className="small">{b.beamRepeat || '—'}</div>
@@ -903,7 +942,7 @@ export function BeamMasterTable({
                         placeholder="e.g. 45/1 Pv White+46/1 Pv Silver"
                         navRow={rowIdx}
                         navCol={0}
-                        onValueChange={(v) => patchBeam(b, { warp: v })}
+                        onValueChange={(v) => patchRow({ warp: v })}
                       />
                     ) : (
                       <div className="small">{b.warp || '—'}</div>
@@ -923,7 +962,7 @@ export function BeamMasterTable({
                               placeholder="60"
                               navRow={rowIdx}
                               navCol={1}
-                              onValueChange={(v) => patchBeam(b, { reed: v })}
+                              onValueChange={(v) => patchRow({ reed: v })}
                             />
                           ) : (
                             <div className="small">{b.reed}</div>
@@ -938,7 +977,7 @@ export function BeamMasterTable({
                               placeholder="66"
                               navRow={rowIdx}
                               navCol={2}
-                              onValueChange={(v) => patchBeam(b, { width: v })}
+                              onValueChange={(v) => patchRow({ width: v })}
                             />
                           ) : (
                             <div className="small">{b.width}</div>
@@ -954,7 +993,7 @@ export function BeamMasterTable({
                               navRow={rowIdx}
                               navCol={3}
                               onValueChange={(v) =>
-                                patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })
+                                patchRow({ totalThreads: Math.round(Number(v) || 0) })
                               }
                             />
                           ) : (
@@ -971,7 +1010,7 @@ export function BeamMasterTable({
                             value={b.length}
                             navRow={rowIdx}
                             navCol={4}
-                            onValueChange={(v) => patchBeam(b, { length: v })}
+                            onValueChange={(v) => patchRow({ length: v })}
                           />
                         ) : (
                           <div className="small">{b.length.toLocaleString()}</div>
@@ -986,7 +1025,7 @@ export function BeamMasterTable({
                       <select
                         className="form-select form-select-sm"
                         value={b.loomType}
-                        onChange={(e) => patchBeam(b, { loomType: e.target.value })}
+                        onChange={(e) => patchRow({ loomType: e.target.value })}
                       >
                         <option value="G6200">G6200</option>
                         <option value="G6300">G6300</option>
@@ -1075,27 +1114,29 @@ export function BeamMasterTable({
                     <EmptyPlaceholder
                       icon="bi-bounding-box"
                       title="No beams in this category"
-                      hint={`Filter: ${filterLabel(filter)}. Add Beam ya dusra filter try karo.`}
+                      hint={`Filter: ${filterLabel(filter)}. Add a beam or try another filter.`}
                       compact
                     />
                   </td>
                 </tr>
               ) : (
-                filteredBeams.map((b, rowIdx) => {
-                  // A beam of an older run on this past date: its fields are locked here.
-                  const editActive = editActiveAll && !oldRunOnDay.has(b.beamNo)
+                filteredBeams.map((liveBeam, rowIdx) => {
+                  // A beam of an older (ended) run on this past date: in Edit the row shows that
+                  // run, shaded, and changes go to that run only.
+                  const oldView = editActiveAll ? oldRunView(liveBeam.beamNo) : null
+                  const b = oldView || liveBeam
+                  const editActive = editActiveAll
+                  const patchRow = (patch: Partial<BeamMaster>) => (oldView ? patchOldRun(b, patch) : patchBeam(b, patch))
+                  const toEnd = beamsToEnd.has(b.beamNo) && !oldView
                   return (
                     <tr
                       key={b.beamNo}
-                      className={[editActive ? 'sara-edit-row' : '', beamsToEnd.has(b.beamNo) ? 'sara-beam-to-end' : ''].filter(Boolean).join(' ') || undefined}
-                      title={beamsToEnd.has(b.beamNo) ? 'Loom B/End / B/Cut pe hai — beam End karna hai' : undefined}
+                      className={[oldView ? 'sara-old-run-row' : editActive ? 'sara-edit-row' : '', toEnd ? 'sara-beam-to-end' : ''].filter(Boolean).join(' ') || undefined}
+                      title={oldView ? oldRunTitle(b) : toEnd ? 'Loom is on B/End / B/Cut — the beam needs to be ended' : undefined}
                     >
-                      <td className="fw-semibold px-2">
-                        {b.beamNo}
-                        {oldRunNote(b, true)}
-                      </td>
+                      <td className="fw-semibold px-2">{b.beamNo}</td>
                       {!compactTab && (
-                        <td className="px-1">{renderLocationSelect(b, opsEdit)}</td>
+                        <td className="px-1">{renderLocationSelect(b, opsEdit && !oldView)}</td>
                       )}
                       <td className="px-1">
                         <SwLotCell
@@ -1104,7 +1145,7 @@ export function BeamMasterTable({
                           enabled={editActive}
                           navRow={rowIdx}
                           navCol={0}
-                          onCommit={(swLot) => patchBeam(b, { swLot })}
+                          onCommit={(swLot) => patchRow({ swLot })}
                         />
                       </td>
                       <td className="px-1">
@@ -1115,7 +1156,7 @@ export function BeamMasterTable({
                             placeholder="optional"
                             navRow={rowIdx}
                             navCol={1}
-                            onValueChange={(v) => patchBeam(b, { beamRepeat: v.trim() || null })}
+                            onValueChange={(v) => patchRow({ beamRepeat: v.trim() || null })}
                           />
                         ) : (
                           <span className="small px-1">{b.beamRepeat || '—'}</span>
@@ -1140,7 +1181,7 @@ export function BeamMasterTable({
                                 placeholder="e.g. 45/1 Pv White+46/1"
                                 navRow={rowIdx}
                                 navCol={2}
-                                onValueChange={(v) => patchBeam(b, { warp: v })}
+                                onValueChange={(v) => patchRow({ warp: v })}
                               />
                             ) : (
                               <span
@@ -1159,7 +1200,7 @@ export function BeamMasterTable({
                                 placeholder="60"
                                 navRow={rowIdx}
                                 navCol={3}
-                                onValueChange={(v) => patchBeam(b, { reed: v })}
+                                onValueChange={(v) => patchRow({ reed: v })}
                               />
                             ) : (
                               <div className="text-end px-1">{b.reed}</div>
@@ -1173,7 +1214,7 @@ export function BeamMasterTable({
                                 placeholder="66"
                                 navRow={rowIdx}
                                 navCol={4}
-                                onValueChange={(v) => patchBeam(b, { width: v })}
+                                onValueChange={(v) => patchRow({ width: v })}
                               />
                             ) : (
                               <div className="text-end px-1">{b.width}</div>
@@ -1188,7 +1229,7 @@ export function BeamMasterTable({
                                 navRow={rowIdx}
                                 navCol={5}
                                 onValueChange={(v) =>
-                                  patchBeam(b, { totalThreads: Math.round(Number(v) || 0) })
+                                  patchRow({ totalThreads: Math.round(Number(v) || 0) })
                                 }
                               />
                             ) : (
@@ -1207,7 +1248,7 @@ export function BeamMasterTable({
                           <select
                             className="form-select form-select-sm"
                             value={b.loomType}
-                            onChange={(e) => patchBeam(b, { loomType: e.target.value })}
+                            onChange={(e) => patchRow({ loomType: e.target.value })}
                           >
                             <option value="G6200">G6200</option>
                             <option value="G6300">G6300</option>
@@ -1220,7 +1261,7 @@ export function BeamMasterTable({
                         )}
                       </td>
                       <td className="px-2">
-                        {opsEdit && b.usedInLoom ? (
+                        {opsEdit && b.usedInLoom && !oldView ? (
                           <div className="d-flex flex-column gap-1">
                             <LoomStatusNote beam={b} />
                             <input
@@ -1232,7 +1273,7 @@ export function BeamMasterTable({
                               onChange={(e) => patchBeam(b, { mountedOn: e.target.value })}
                             />
                           </div>
-                        ) : compactTab && opsEdit ? (
+                        ) : compactTab && opsEdit && !oldView ? (
                           <div className="d-flex flex-column gap-1 align-items-start">
                             <LoomStatusNote beam={b} />
                             <button
@@ -1262,7 +1303,7 @@ export function BeamMasterTable({
                             type="button"
                             className="btn btn-sm btn-outline-secondary py-0"
                             style={{ fontSize: '0.72rem' }}
-                            title="Beam kab kis loom pe laga / utra — dates theek karein"
+                            title="When the beam was mounted on / removed from each loom — correct the dates"
                             onClick={() => setHistoryBeam(b.beamNo)}
                           >
                             History
@@ -1286,7 +1327,7 @@ export function BeamMasterTable({
           await Promise.resolve(onAdd(newBeam))
           showSuccessSoon({
             title: 'Beam Added',
-            message: `Beam "${newBeam.beamNo}" add ho gaya.`,
+            message: `Beam "${newBeam.beamNo}" added.`,
           })
         }}
         existingBeamNos={beams.map((b) => b.beamNo)}

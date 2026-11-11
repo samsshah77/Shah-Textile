@@ -80,7 +80,7 @@ function trackFromRun(
 }
 
 const runLabel = (r: BeamStint) =>
-  `Loom ${r.loom} · ${formatShortDate(r.from)} → ${r.to ? formatShortDate(r.to) : 'abhi tak'}${r.swLot ? ` · ${formatSwLotForDailyEntry(r.swLot)}` : ''}`
+  `Loom ${r.loom} · ${formatShortDate(r.from)} → ${r.to ? formatShortDate(r.to) : 'now'}${r.swLot ? ` · ${formatSwLotForDailyEntry(r.swLot)}` : ''}`
 
 function BeamTrackContent() {
   const searchParams = useSearchParams()
@@ -151,7 +151,7 @@ function BeamTrackContent() {
         <PageHeader title="Beam Length Track" showBreadcrumbs={false} />
         <div className="alert alert-warning">
           Beam number missing.{' '}
-          <Link href="/floor/production?tab=beams">Beams tab pe jao</Link> aur Track dabao.
+          Go to the <Link href="/floor/production?tab=beams">Beams tab</Link> and press Track.
         </div>
       </div>
     )
@@ -196,7 +196,7 @@ function BeamTrackContent() {
           {!loading && runs.length > 0 && (
             <div className="mt-2 d-flex flex-wrap align-items-center gap-2 d-print-none">
               <label htmlFor="beam-run" className="small fw-semibold mb-0">
-                Run dekhein:
+                Show run:
               </label>
               <select
                 id="beam-run"
@@ -205,7 +205,7 @@ function BeamTrackContent() {
                 value={runId}
                 onChange={(e) => setRunId(e.target.value)}
               >
-                <option value="">Beam abhi (current)</option>
+                <option value="">Beam now (current)</option>
                 {[...runs].reverse().map((r) => (
                   <option key={r.firstId} value={r.firstId}>
                     {runLabel(r)}
@@ -224,8 +224,8 @@ function BeamTrackContent() {
         <ProductionReportSkeleton />
       ) : !track ? (
         <div className="alert alert-warning">
-          Beam &quot;{beamNo}&quot; nahi mili.{' '}
-          <Link href="/floor/production?tab=beams">Beams list</Link> check karo.
+          Beam &quot;{beamNo}&quot; not found.{' '}
+          Check the <Link href="/floor/production?tab=beams">Beams list</Link>.
         </div>
       ) : (
         <>
@@ -265,26 +265,26 @@ function BeamTrackContent() {
                 <div className="card-body">
                   {daySeries.length === 0 && selectedRun ? (
                     <div className="text-secondary small py-4 text-center">
-                      Is run ke dinon mein Loom {selectedRun.loom} ki Daily Entry mein is beam ka Sw # / meters nahi mile.
+                      No Sw # / meters for this beam in Loom {selectedRun.loom}’s Daily Entry during this run.
                       <br />
-                      Beams → History → is run ke aage <strong>Daily Entry Sw #</strong> dabayein.
+                      Go to Beams → History and press <strong>Daily Entry Sw #</strong> next to this run.
                     </div>
                   ) : daySeries.length === 0 ? (
                     <div className="text-secondary small py-4 text-center">
-                      Consumed 0 = Daily Entry pe is beam ka lot/Sw# match nahi, ya meters nahi.
+                      Consumed 0 = no Daily Entry rows match this beam’s lot / Sw#, or there are no meters.
                       <br />
-                      Beam pe <strong>Sw #</strong> set karo (ya Beam #), phir Daily Entry SW # column
-                      wahi hona chahiye — tab meters yahan Consumed mein aayenge.
+                      Set the <strong>Sw #</strong> (or Beam #) on the beam, and use the same value in the Daily Entry SW # column —
+                      then the meters show here under Consumed.
                       {track.swLot ? (
                         <>
                           <br />
-                          Abhi beam Sw#: <strong>{track.swLot}</strong>
+                          Current beam Sw#: <strong>{track.swLot}</strong>
                         </>
                       ) : (
                         <>
                           <br />
-                          Abhi beam pe Sw# empty — Track sirf Beam #<strong>{track.beamNo}</strong> se
-                          match karega.
+                          The beam has no Sw# yet — Track matches by Beam #<strong>{track.beamNo}</strong>
+                          only.
                         </>
                       )}
                     </div>

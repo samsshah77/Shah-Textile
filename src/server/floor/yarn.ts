@@ -109,7 +109,7 @@ export async function yarnSnapshot() {
 
 async function findYarn(tx: Tx, id: string) {
   const y = await tx.floorYarn.findUnique({ where: { id } })
-  if (!y) throw new YarnError('Ye yarn list mein nahi mila (shayad delete ho chuka). Page refresh karein.', 404)
+  if (!y) throw new YarnError('This yarn was not found (it may have been deleted). Please refresh the page.', 404)
   return y
 }
 

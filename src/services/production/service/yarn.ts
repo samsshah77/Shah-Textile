@@ -60,7 +60,7 @@ export const yarnMethods = {
         setListFromServer(KEY_YARN_MOVEMENTS, st.movements, undefined, { force: true })
         setListFromServer(KEY_YARN_ISSUANCE, st.issuances, undefined, { force: true })
       } else {
-        notifyFloorSaveProblem(status === 0 || status >= 500 ? 409 : status, data || { error: 'Yarn save nahi hua — server se raabta nahi.' })
+        notifyFloorSaveProblem(status === 0 || status >= 500 ? 409 : status, data || { error: 'Yarn not saved: could not reach the server.' })
         await refreshFloorMastersFromDb()
       }
       announceReload('yarn')

@@ -22,7 +22,7 @@ export type BeamStint = {
 export async function fetchBeamStints(from: string, to: string): Promise<BeamStint[]> {
   const r = await fetch(`/api/floor/beam-history?stints=1&from=${from}&to=${to}`, { credentials: 'same-origin', cache: 'no-store' })
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(d?.error || 'Beams load nahi ho sake.')
+  if (!r.ok) throw new Error(d?.error || 'Could not load beams.')
   return Array.isArray(d.stints) ? d.stints : []
 }
 
@@ -80,14 +80,43 @@ export async function editBeamStint(body: {
     body: JSON.stringify(body),
   })
   const d = await r.json().catch(() => ({}))
-  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Save nahi ho saka.')
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not save.')
+}
+
+/**
+ * Beams table, a past date in Edit: change the details of the older (ended) run the beam was in
+ * on `date` on `loom`. Only that run changes, not the beam as it is now. Throws the server's message.
+ */
+export async function editRunOnDay(
+  beamNo: string,
+  date: string,
+  loom: number,
+  patch: {
+    swLot?: string | null
+    warp?: string
+    length?: number
+    reed?: number
+    width?: number
+    totalThreads?: number
+    beamRepeat?: string | null
+    loomType?: string
+  }
+): Promise<void> {
+  const r = await fetch('/api/floor/beam-history', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'dayDetails', beamNo, date, loom, ...patch }),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not save.')
 }
 
 /** Every beam as it stood at the end of `date` (Beams tab, past days). */
 export async function fetchBeamsAsOf<T>(date: string): Promise<T[]> {
   const r = await fetch(`/api/floor/beam-history?date=${date}`, { credentials: 'same-origin', cache: 'no-store' })
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(d?.error || 'Beams load nahi ho sake.')
+  if (!r.ok) throw new Error(d?.error || 'Could not load beams.')
   return Array.isArray(d.beams) ? d.beams : []
 }
 
@@ -95,7 +124,7 @@ export async function fetchBeamsAsOf<T>(date: string): Promise<T[]> {
 export async function fetchBeamRuns(beamNo: string): Promise<BeamStint[]> {
   const r = await fetch(`/api/floor/beam-history?beam=${encodeURIComponent(beamNo)}`, { credentials: 'same-origin', cache: 'no-store' })
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(d?.error || 'Beam history load nahi ho saki.')
+  if (!r.ok) throw new Error(d?.error || 'Could not load beam history.')
   return Array.isArray(d.runs) ? d.runs : []
 }
 
@@ -115,7 +144,7 @@ async function postHistory<T>(body: Record<string, unknown>): Promise<T> {
     body: JSON.stringify(body),
   })
   const d = await r.json().catch(() => ({}))
-  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Save nahi ho saka.')
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not save.')
   return d as T
 }
 

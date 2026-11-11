@@ -105,10 +105,10 @@ function uploadMediaFile(
       if (xhr.status === 200 && data.url && data.kind) {
         resolve({ url: data.url, kind: data.kind })
       } else {
-        reject(new Error(data.error || 'Upload nahi hui'))
+        reject(new Error(data.error || 'Upload failed'))
       }
     }
-    xhr.onerror = () => reject(new Error('Internet ka masla — dobara koshish karein'))
+    xhr.onerror = () => reject(new Error('Internet problem — please try again'))
     const fd = new FormData()
     fd.append('file', blob, name)
     xhr.send(fd)
@@ -213,7 +213,7 @@ export function FabricFaultShiftDialog({
       setActiveRecordingShift(shift)
       setRecordingInstance(rec)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Microphone shuru nahi ho saka')
+      alert(err instanceof Error ? err.message : 'Could not start the microphone')
     }
   }
 
@@ -241,7 +241,7 @@ export function FabricFaultShiftDialog({
         alert(json.error)
       }
     } catch {
-      alert('Awaz transcribe nahi ho saki')
+      alert('Could not transcribe the audio')
     } finally {
       setVoiceBusy(false)
       setActiveRecordingShift(null)
@@ -265,7 +265,7 @@ export function FabricFaultShiftDialog({
         }
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Media upload nahi ho saka')
+      alert(err instanceof Error ? err.message : 'Media upload failed')
     } finally {
       setUploading(false)
       setUploadProgress(0)
@@ -273,7 +273,7 @@ export function FabricFaultShiftDialog({
   }
 
   const handleDeleteReport = async (reportId: string) => {
-    if (!window.confirm('Yeh fault report delete karein?')) return
+    if (!window.confirm('Delete this fault report?')) return
     try {
       const res = await fetch(`/api/floor/fault-reports/${reportId}`, {
         method: 'DELETE',
@@ -281,12 +281,12 @@ export function FabricFaultShiftDialog({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        throw new Error(data?.error || 'Delete fail ho gaya')
+        throw new Error(data?.error || 'Delete failed')
       }
       setExistingReports((prev) => prev.filter((r) => r.id !== reportId))
       onReportCreated?.()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Report delete nahi ho saki')
+      alert(err instanceof Error ? err.message : 'Could not delete the report')
     }
   }
 
@@ -300,7 +300,7 @@ export function FabricFaultShiftDialog({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        throw new Error(data?.error || 'Update fail ho gaya')
+        throw new Error(data?.error || 'Update failed')
       }
       setExistingReports((prev) =>
         prev.map((r) => (r.id === reportId ? { ...r, text: editingReportText.trim() } : r))
@@ -308,7 +308,7 @@ export function FabricFaultShiftDialog({
       setEditingReportId(null)
       onReportCreated?.()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Report update nahi ho saki')
+      alert(err instanceof Error ? err.message : 'Could not update the report')
     }
   }
 
@@ -350,11 +350,11 @@ export function FabricFaultShiftDialog({
         })
         if (!resA.ok) {
           const errData = await resA.json().catch(() => null)
-          throw new Error(errData?.error || `Shift A photo report save nahi ho saki (${resA.status})`)
+          throw new Error(errData?.error || `Could not save the Shift A photo report (${resA.status})`)
         }
         reportCreated = true
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Shift A photo report save nahi ho saki')
+        alert(err instanceof Error ? err.message : 'Could not save the Shift A photo report')
         setSaving(false)
         return
       }
@@ -376,11 +376,11 @@ export function FabricFaultShiftDialog({
         })
         if (!resB.ok) {
           const errData = await resB.json().catch(() => null)
-          throw new Error(errData?.error || `Shift B photo report save nahi ho saki (${resB.status})`)
+          throw new Error(errData?.error || `Could not save the Shift B photo report (${resB.status})`)
         }
         reportCreated = true
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Shift B photo report save nahi ho saki')
+        alert(err instanceof Error ? err.message : 'Could not save the Shift B photo report')
         setSaving(false)
         return
       }
@@ -433,7 +433,7 @@ export function FabricFaultShiftDialog({
               {uploading && (
                 <div className="alert alert-info py-2 px-3 small d-flex align-items-center gap-2 mb-3">
                   <div className="spinner-border spinner-border-sm text-primary" role="status" />
-                  <span>Media upload ho rahi hai… {uploadProgress > 0 ? `${uploadProgress}%` : ''}</span>
+                  <span>Uploading media… {uploadProgress > 0 ? `${uploadProgress}%` : ''}</span>
                 </div>
               )}
 
@@ -466,7 +466,7 @@ export function FabricFaultShiftDialog({
                               className="btn btn-sm btn-outline-danger py-0.5 px-2 d-inline-flex align-items-center gap-1"
                               onClick={() => void handleStartVoice('A')}
                               disabled={voiceBusy || activeRecordingShift !== null}
-                              title="Awaz se likhein (Voice Note)"
+                              title="Type by voice (voice note)"
                             >
                               <i className="bi bi-mic-fill" />
                               <span className="small d-none d-sm-inline">Voice</span>
@@ -489,7 +489,7 @@ export function FabricFaultShiftDialog({
                             className="btn btn-sm btn-outline-primary py-0.5 px-2 d-inline-flex align-items-center gap-1"
                             onClick={() => photoInputA.current?.click()}
                             disabled={uploading}
-                            title="Photo attach karein"
+                            title="Attach a photo"
                           >
                             <i className="bi bi-camera" />
                             <span className="small d-none d-sm-inline">Photo</span>
@@ -511,7 +511,7 @@ export function FabricFaultShiftDialog({
                             className="btn btn-sm btn-outline-primary py-0.5 px-2 d-inline-flex align-items-center gap-1"
                             onClick={() => videoInputA.current?.click()}
                             disabled={uploading}
-                            title="Video attach karein"
+                            title="Attach a video"
                           >
                             <i className="bi bi-camera-video" />
                             <span className="small d-none d-sm-inline">Video</span>
@@ -524,7 +524,7 @@ export function FabricFaultShiftDialog({
                       <FabricFaultMultiInput
                         value={shiftA}
                         canEdit={canEdit}
-                        placeholder="Shift A fabric fault (type karein ya voice dabayein)…"
+                        placeholder="Shift A fabric fault (type or press voice)…"
                         onChange={setShiftA}
                       />
 
@@ -634,7 +634,7 @@ export function FabricFaultShiftDialog({
                                   </div>
                                 </div>
                               ) : (
-                                <div>{r.text || '(sirf photo/video)'}</div>
+                                <div>{r.text || '(photo / video only)'}</div>
                               )}
                               {r.media?.length > 0 && <ReportMediaThumbs media={r.media} onOpen={setLightboxImage} />}
                             </div>
@@ -673,7 +673,7 @@ export function FabricFaultShiftDialog({
                               className="btn btn-sm btn-outline-danger py-0.5 px-2 d-inline-flex align-items-center gap-1"
                               onClick={() => void handleStartVoice('B')}
                               disabled={voiceBusy || activeRecordingShift !== null}
-                              title="Awaz se likhein (Voice Note)"
+                              title="Type by voice (voice note)"
                             >
                               <i className="bi bi-mic-fill" />
                               <span className="small d-none d-sm-inline">Voice</span>
@@ -696,7 +696,7 @@ export function FabricFaultShiftDialog({
                             className="btn btn-sm btn-outline-primary py-0.5 px-2 d-inline-flex align-items-center gap-1"
                             onClick={() => photoInputB.current?.click()}
                             disabled={uploading}
-                            title="Photo attach karein"
+                            title="Attach a photo"
                           >
                             <i className="bi bi-camera" />
                             <span className="small d-none d-sm-inline">Photo</span>
@@ -718,7 +718,7 @@ export function FabricFaultShiftDialog({
                             className="btn btn-sm btn-outline-primary py-0.5 px-2 d-inline-flex align-items-center gap-1"
                             onClick={() => videoInputB.current?.click()}
                             disabled={uploading}
-                            title="Video attach karein"
+                            title="Attach a video"
                           >
                             <i className="bi bi-camera-video" />
                             <span className="small d-none d-sm-inline">Video</span>
@@ -731,7 +731,7 @@ export function FabricFaultShiftDialog({
                       <FabricFaultMultiInput
                         value={shiftB}
                         canEdit={canEdit}
-                        placeholder="Shift B fabric fault (type karein ya voice dabayein)…"
+                        placeholder="Shift B fabric fault (type or press voice)…"
                         onChange={setShiftB}
                       />
 
@@ -841,7 +841,7 @@ export function FabricFaultShiftDialog({
                                   </div>
                                 </div>
                               ) : (
-                                <div>{r.text || '(sirf photo/video)'}</div>
+                                <div>{r.text || '(photo / video only)'}</div>
                               )}
                               {r.media?.length > 0 && <ReportMediaThumbs media={r.media} onOpen={setLightboxImage} />}
                             </div>
@@ -855,7 +855,7 @@ export function FabricFaultShiftDialog({
 
               <div className="form-text small mt-3 mb-0 text-secondary">
                 <i className="bi bi-info-circle me-1" />
-                Ahmar aur Javed Sir yahan se direct <strong>Voice (🎤)</strong>, <strong>Photo (📷)</strong> ya <strong>Video (🎥)</strong> attach kar sakte hain. Save dabane par sheet aur floor media dono update ho jayenge.
+                Ahmar and Javed Sir can attach <strong>Voice (🎤)</strong>, <strong>Photo (📷)</strong> or <strong>Video (🎥)</strong> directly here. Pressing Save updates both the sheet and the floor media.
               </div>
             </div>
 
@@ -960,8 +960,8 @@ function ReportMediaThumbs({
           type="button"
           className="position-relative p-0 border rounded overflow-hidden bg-dark"
           style={{ width: m.kind === 'video' ? 112 : 84, height: 84 }}
-          title={m.kind === 'video' ? 'Video chalayein' : 'Photo bari karein'}
-          aria-label={m.kind === 'video' ? 'Video chalayein' : 'Photo bari karein'}
+          title={m.kind === 'video' ? 'Play video' : 'Enlarge photo'}
+          aria-label={m.kind === 'video' ? 'Play video' : 'Enlarge photo'}
           onClick={() => onOpen(m.url)}
         >
           {m.kind === 'image' ? (

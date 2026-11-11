@@ -167,8 +167,8 @@ export const qualitiesMethods = {
       if (newKey && oldKey && newKey !== oldKey && (!startDay || day > startDay)) {
         notifyFloorSaveProblem(409, {
           error:
-            `"${current.name}" ${startDay || 'pehle'} se chal rahi hai — naam badalne se pichle dinon ka record alag ho jayega. ` +
-            `Naam sirf pehle din (${startDay || 'start date'}) badal sakte hain. Warna is quality ko End karein aur naye naam se nayi quality add karein.`,
+            `"${current.name}" has been running since ${startDay || 'an earlier date'}. Renaming it would split the earlier days' records. ` +
+            `You can only rename it on its first day (${startDay || 'start date'}). Otherwise, End this quality and add a new quality with the new name.`,
         })
         delete nextPatch.name
         if (Object.keys(nextPatch).length === 0) return catalogBefore
@@ -224,8 +224,8 @@ export const qualitiesMethods = {
       if (later.meters > 0) {
         notifyFloorSaveProblem(409, {
           error:
-            `"${current.name}" ki production ${later.lastDay} tak darj hai — End nahi hua. ` +
-            `Quality table se End dabayein aur warning confirm karein.`,
+            `"${current.name}" has production entered up to ${later.lastDay}, so it was not ended. ` +
+            `Press End in the Quality table and confirm the warning.`,
         })
         return catalogBefore
       }

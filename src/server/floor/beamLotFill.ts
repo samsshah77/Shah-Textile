@@ -89,7 +89,7 @@ export async function fillRunLots(
       )
       filled.push(date)
     } catch (err) {
-      failed.push({ date, reason: err instanceof Error ? err.message : 'save nahi hua' })
+      failed.push({ date, reason: err instanceof Error ? err.message : 'not saved' })
     }
   }
   return { filled, failed }

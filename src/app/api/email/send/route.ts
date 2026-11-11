@@ -35,18 +35,37 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as {
-    to?: string
+    to?: string | string[]
     subject?: string
     text?: string
     fileBase64?: string
     filename?: string
   } | null
 
-  const to = (body?.to || '').trim()
+  const rawList = Array.isArray(body?.to)
+    ? body.to.flatMap((x) => String(x || '').split(/[,;\s]+/))
+    : String(body?.to || '').split(/[,;\s]+/)
+  const recipients = Array.from(
+    new Set(rawList.map((e) => e.trim().toLowerCase()).filter(Boolean))
+  )
+
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!to || !emailRegex.test(to)) {
+  if (recipients.length === 0) {
     return NextResponse.json(
-      { error: 'Valid email address darj karein (e.g. name@domain.com)' },
+      { error: 'Kam az kam ek email address darj karein (e.g. name@domain.com)' },
+      { status: 400 }
+    )
+  }
+  const invalid = recipients.find((e) => !emailRegex.test(e))
+  if (invalid) {
+    return NextResponse.json(
+      { error: `Ye email sahi nahi hai: "${invalid}"` },
+      { status: 400 }
+    )
+  }
+  if (recipients.length > 20) {
+    return NextResponse.json(
+      { error: 'Ek waqt me zyada se zyada 20 emails par bhej sakte hain.' },
       { status: 400 }
     )
   }
@@ -71,7 +90,7 @@ export async function POST(request: NextRequest) {
     : undefined
 
   const result = await sendEmail({
-    to,
+    to: recipients,
     subject,
     text,
     attachments,

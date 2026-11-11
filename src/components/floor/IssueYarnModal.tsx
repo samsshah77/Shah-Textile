@@ -213,7 +213,7 @@ export function IssueYarnModal({
               {numIssued > yarn.balanceKg && (
                 <div className="alert alert-warning py-2 px-3 mt-3 small mb-0">
                   <i className="bi bi-exclamation-triangle-fill me-1" />
-                  Issued ({numIssued} kg) balance ({yarn.balanceKg} kg) se zyada hai.
+                  Issued ({numIssued} kg) is more than the balance ({yarn.balanceKg} kg).
                 </div>
               )}
             </div>

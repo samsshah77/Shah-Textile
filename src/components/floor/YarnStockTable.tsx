@@ -245,16 +245,16 @@ export function YarnStockTable({
   const handleDeleteYarn = (y: YarnMaster) => {
     if (!masterEdit || !onDelete) return
     showConfirm({
-      title: 'Yarn Delete Karein?',
-      message: `Kya aap waqai yarn type "${y.yarnType}" ko delete karna chahte hain?`,
+      title: 'Delete yarn?',
+      message: `Delete yarn type "${y.yarnType}"?`,
       type: 'confirm',
-      confirmText: 'Haan, Delete Karein',
+      confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         onDelete(y.id)
         showSuccessSoon({
           title: 'Deleted',
-          message: `"${y.yarnType}" delete ho gaya.`,
+          message: `"${y.yarnType}" deleted.`,
         })
       },
     })
@@ -313,7 +313,7 @@ export function YarnStockTable({
             setTableEdit(false)
             showSuccessSoon({
               title: 'Saved',
-              message: 'Yarn edits save ho gayi hain.',
+              message: 'Yarn changes saved.',
             })
           } else {
             setTableEdit(true)
@@ -453,7 +453,7 @@ export function YarnStockTable({
                 type="button"
                 className={`btn ${activeView === 'BALANCE' ? 'btn-primary' : 'btn-outline-secondary'}`}
                 onClick={() => setActiveView('BALANCE')}
-                title="Kisi din / hafte / mahine ka hisab: shuru ka stock, aya, gaya, aakhir ka stock"
+                title="Balance for a day / week / month: opening stock, received, issued, closing stock"
               >
                 <i className="bi bi-calendar-check me-1" />
                 Date-wise Hisab
@@ -515,7 +515,7 @@ export function YarnStockTable({
                     <EmptyPlaceholder
                       icon="bi-layers"
                       title="No yarn in stock"
-                      hint="Add Inward Yarn se pehla stock entry karo — yahan balance dikhega."
+                      hint="Enter the first stock with Add Inward Yarn; the balance will show here."
                     />
                   </div>
                 ) : (
@@ -692,7 +692,7 @@ export function YarnStockTable({
                           <EmptyPlaceholder
                             icon="bi-layers"
                             title="No yarn in stock"
-                            hint="Add Inward Yarn se pehla stock entry karo — yahan balance dikhega."
+                            hint="Enter the first stock with Add Inward Yarn; the balance will show here."
                             compact
                           />
                         </td>
@@ -935,7 +935,7 @@ export function YarnStockTable({
                         <EmptyPlaceholder
                           icon="bi-arrow-left-right"
                           title="No yarn movements"
-                          hint="Selected filters pe koi inward / issue record nahi. Date ya period change karke dekho."
+                          hint="No inward / issue records for these filters. Try another date or period."
                           compact
                         />
                       </td>

@@ -133,7 +133,7 @@ export function AddYarnModal({
       return
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(arrivalDate) || arrivalDate > getCalendarToday() || arrivalDate < PRODUCTION_START) {
-      setError('Sahi tareekh chunein (aaj ya pehle ki).')
+      setError('Pick a valid date (today or earlier).')
       return
     }
     if (!allBagsFilled || totalKg <= 0) {
@@ -240,7 +240,7 @@ export function AddYarnModal({
                     {showSuggest && suggestions.length > 0 && !matchedYarn && (
                       <div className="sara-yarn-suggest">
                         <div className="sara-yarn-suggest__head">
-                          {yarnType.trim() ? 'Milte julte yarn' : 'Stock mein yarn'} · {suggestions.length}
+                          {yarnType.trim() ? 'Similar yarns' : 'Yarns in stock'} · {suggestions.length}
                         </div>
                         <ul id="sara-yarn-suggest" role="listbox" className="sara-yarn-suggest__list">
                           {suggestions.map((y, i) => {
@@ -269,7 +269,7 @@ export function AddYarnModal({
                   {yarnType.trim() && (
                     <div className={`form-text small ${matchedYarn ? 'text-success' : 'text-secondary'}`}>
                       {matchedYarn
-                        ? `"${matchedYarn.yarnType}" pehle se hai (stock ${Number(matchedYarn.balanceKg || 0).toFixed(2)} kg) — yeh maal usi mein jama hoga.`
+                        ? `"${matchedYarn.yarnType}" already exists (stock ${Number(matchedYarn.balanceKg || 0).toFixed(2)} kg). This receipt will be added to it.`
                         : 'Naya yarn banega.'}
                     </div>
                   )}

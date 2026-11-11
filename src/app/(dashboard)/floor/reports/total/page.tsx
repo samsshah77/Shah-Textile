@@ -748,7 +748,7 @@ function ProductionTotalTrackingContent() {
               </span>
             )}
             {!loading && qualityMonthTotal === 0 && (
-              <span className="ms-2 small text-warning">Abhi is run pe production start nahi hui.</span>
+              <span className="ms-2 small text-warning">No production on this run yet.</span>
             )}
           </div>
         </div>
@@ -774,7 +774,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title={view === 'shifts' ? 'Shift A month' : 'Month total'}
             value={formatTotal(qualityMonthTotal ?? matrix.grandTotalMeters)}
-            subValue={`${qualityFocus ? `${qualityFocus.name} · ` : ''}${longDateFromYmd(asOf)} tak`}
+            subValue={`${qualityFocus ? `${qualityFocus.name} · ` : ''}up to ${longDateFromYmd(asOf)}`}
             biIcon="bi-calendar3"
             colorVariant="primary"
           />
@@ -1174,7 +1174,7 @@ export default function ProductionTotalTrackingPage() {
     return (
       <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 m-3 fw-medium">
         <i className="bi bi-shield-lock-fill text-warning fs-5 flex-shrink-0" />
-        <span>Tracking dekhne ki ijazat nahi.</span>
+        <span>You do not have permission to view Tracking.</span>
       </div>
     )
   }
