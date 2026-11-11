@@ -120,11 +120,12 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
     try {
       const att = getPdfAttachment ? await Promise.resolve(getPdfAttachment()) : null
       if (getPdfAttachment && !att) throw new Error('PDF ban nahi saki — dobara koshish karein')
+      const cleanBase64 = att?.base64 ? (att.base64.includes(',') ? att.base64.split(',')[1] : att.base64) : undefined
       const res = await fetch('/api/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ to, subject, text: message, fileBase64: att?.base64, filename: att?.filename }),
+        body: JSON.stringify({ to, subject, text: message, fileBase64: cleanBase64, filename: att?.filename }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || `Email nahi gayi (${res.status})`)

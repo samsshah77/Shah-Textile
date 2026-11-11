@@ -114,12 +114,15 @@ export async function sendEmail({
       subject,
       text,
       html,
-      attachments: attachments?.map((a) => ({
-        filename: a.filename,
-        content: a.content,
-        encoding: (a.encoding || 'base64') as 'base64',
-        contentType: a.contentType || 'application/pdf',
-      })),
+      attachments: attachments?.map((a) => {
+        const raw = a.content.includes(',') ? a.content.split(',')[1] : a.content
+        return {
+          filename: a.filename,
+          content: raw.trim(),
+          encoding: (a.encoding || 'base64') as 'base64',
+          contentType: a.contentType || 'application/pdf',
+        }
+      }),
     })
 
     return { success: true, messageId: info.messageId }
