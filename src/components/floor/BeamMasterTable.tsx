@@ -235,6 +235,12 @@ interface BeamMasterTableProps {
   onAddModalOpenChange?: (open: boolean) => void
   /** Daily Entry rows — the loom's status on selectedDate (B/End / B/Cut flags its beam). */
   entries?: DailyLoomProductionEntry[]
+  /**
+   * A past date is open: every beam as it stood that day. A beam that was then on a loom in an
+   * older run (ended since) cannot be edited here — that would change the beam as it is now;
+   * the old run's details are changed in its History.
+   */
+  dayState?: BeamMaster[]
   /** May correct dates in Beam History (Beams edit permission). */
   historyEdit?: boolean
 }
@@ -325,6 +331,7 @@ export function BeamMasterTable({
   onAddModalOpenChange,
   entries = [],
   historyEdit = false,
+  dayState,
 }: BeamMasterTableProps) {
   const [historyBeam, setHistoryBeam] = useState<string | null>(null)
   const { canEditProduction } = useAuth()
@@ -388,11 +395,29 @@ export function BeamMasterTable({
     return { all, sw, wp }
   }, [baseBeamsForTab])
 
-  /** Search: beam #, Sw / Wp #, loom #, warp, quality, machine type. */
+  /**
+   * Search: beam #, Sw / Wp #, loom #, warp, quality, machine type.
+   * Just a number (e.g. "2"): the beam on Loom 2 — or Sw # 2 / beam # 2 — exactly, not every
+   * beam with a 2 in it. If nothing matches exactly, any beam containing it.
+   */
   const searchText = search.trim().toLowerCase()
+  const digitsOf = (v: unknown) => String(v ?? '').replace(/\D+/g, '').replace(/^0+(?=\d)/, '')
+  const exactNumber = useCallback(
+    (b: BeamMaster, n: string) =>
+      (b.usedInLoom != null && digitsOf(b.usedInLoom) === n) ||
+      (Boolean(b.swLot) && digitsOf(b.swLot) === n) ||
+      digitsOf(b.beamNo) === n,
+    []
+  )
+  const numberQuery = /^\d+$/.test(searchText) ? searchText.replace(/^0+(?=\d)/, '') : ''
+  const numberHasExact = useMemo(
+    () => Boolean(numberQuery) && beams.some((b) => exactNumber(b, numberQuery)),
+    [numberQuery, beams, exactNumber]
+  )
   const matchesSearch = useCallback(
     (b: BeamMaster) => {
       if (!searchText) return true
+      if (numberQuery && numberHasExact) return exactNumber(b, numberQuery)
       const quality = b.qualityId ? qualities.find((q) => q.id === b.qualityId) : null
       const hay = [
         b.beamNo,
@@ -409,7 +434,7 @@ export function BeamMasterTable({
         .toLowerCase()
       return searchText.split(/\s+/).every((w) => hay.includes(w))
     },
-    [searchText, qualities]
+    [searchText, qualities, numberQuery, numberHasExact, exactNumber]
   )
   /** Matches in the other tabs (so a beam is found even when this tab does not hold it). */
   const searchElsewhere = useMemo(() => {
@@ -491,6 +516,50 @@ export function BeamMasterTable({
   const opsEdit = canEditProduction && !readOnly && tableEdit && mode === 'table'
   const masterEdit = canEditProduction && !readOnly && tableEdit && mode === 'grid'
   const editActive = opsEdit || masterEdit
+  const editActiveAll = editActive
+  const masterEditAll = masterEdit
+  /** On the open past date, this beam was on a loom in a different (older) run than now. */
+  const oldRunOnDay = useMemo(() => {
+    const out = new Map<string, { loom: string; from: string }>()
+    if (!dayState) return out
+    const live = new Map(beams.map((b) => [b.beamNo, b]))
+    for (const d of dayState) {
+      if (!d.usedInLoom) continue
+      const now = live.get(d.beamNo)
+      const sameRun =
+        now && String(now.usedInLoom || '') === String(d.usedInLoom) && String(now.mountedOn || '').slice(0, 10) === String(d.mountedOn || '').slice(0, 10)
+      if (!sameRun) out.set(d.beamNo, { loom: String(d.usedInLoom), from: String(d.mountedOn || '').slice(0, 10) })
+    }
+    return out
+  }, [dayState, beams])
+  const oldRunNote = (b: BeamMaster, compact = false) => {
+    const o = oldRunOnDay.get(b.beamNo)
+    if (!o || !editActiveAll) return null
+    if (compact) {
+      return (
+        <button
+          type="button"
+          className="badge rounded-pill text-bg-danger border-0 d-block mt-1"
+          style={{ fontSize: 10.5, cursor: 'pointer' }}
+          title={`${longDateFromYmd(selectedDate)} ko ye beam Loom ${o.loom} wale purane run mein tha. Yahan badalne se abhi wala beam badalta — is liye band hai. Us run ki details History mein badlein.`}
+          onClick={() => setHistoryBeam(b.beamNo)}
+        >
+          <i className="bi bi-lock-fill me-1" />
+          Purana run
+        </button>
+      )
+    }
+    return (
+      <div className="small text-danger mt-1" title="Is date par ye beam purane run mein tha. Yahan badalne se abhi wala beam badalta — is liye band hai.">
+        <i className="bi bi-lock-fill me-1" />
+        {longDateFromYmd(selectedDate)} ko Loom {o.loom} wale purane run mein tha — us run ki details{' '}
+        <button type="button" className="btn btn-link btn-sm p-0 align-baseline" onClick={() => setHistoryBeam(b.beamNo)}>
+          History
+        </button>{' '}
+        mein badlein.
+      </div>
+    )
+  }
 
   const patchBeam = (b: BeamMaster, patch: Partial<BeamMaster>) => {
     // Reed/width change → auto threads, unless caller set totalThreads explicitly.
@@ -650,7 +719,7 @@ export function BeamMasterTable({
             <input
               type="search"
               className="form-control"
-              placeholder="Beam #, Sw #, loom, quality…"
+              placeholder="Beam #, Sw #, loom # (jaise 2)…"
               aria-label="Beam dhoondein"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -742,6 +811,9 @@ export function BeamMasterTable({
             />
           ) : (
             filteredBeams.map((b, rowIdx) => {
+              // A beam of an older run on this past date: its fields are locked here.
+              const masterEdit = masterEditAll && !oldRunOnDay.has(b.beamNo)
+              const editActive = editActiveAll && !oldRunOnDay.has(b.beamNo)
               return (
                 <div
                   key={b.beamNo}
@@ -751,6 +823,7 @@ export function BeamMasterTable({
                     <div>
                       <div className="fw-semibold">Beam #{b.beamNo}</div>
                       <LoomStatusNote beam={b} />
+                      {oldRunNote(b)}
                     </div>
                     <div className="d-flex flex-column align-items-end gap-1">
                       <button
@@ -1009,13 +1082,18 @@ export function BeamMasterTable({
                 </tr>
               ) : (
                 filteredBeams.map((b, rowIdx) => {
+                  // A beam of an older run on this past date: its fields are locked here.
+                  const editActive = editActiveAll && !oldRunOnDay.has(b.beamNo)
                   return (
                     <tr
                       key={b.beamNo}
                       className={[editActive ? 'sara-edit-row' : '', beamsToEnd.has(b.beamNo) ? 'sara-beam-to-end' : ''].filter(Boolean).join(' ') || undefined}
                       title={beamsToEnd.has(b.beamNo) ? 'Loom B/End / B/Cut pe hai — beam End karna hai' : undefined}
                     >
-                      <td className="fw-semibold px-2">{b.beamNo}</td>
+                      <td className="fw-semibold px-2">
+                        {b.beamNo}
+                        {oldRunNote(b, true)}
+                      </td>
                       {!compactTab && (
                         <td className="px-1">{renderLocationSelect(b, opsEdit)}</td>
                       )}

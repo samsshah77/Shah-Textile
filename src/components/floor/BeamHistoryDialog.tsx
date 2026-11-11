@@ -11,6 +11,41 @@ import { KEY_BEAMS, KEY_SHEET } from '@/services/production/floorStore'
 import { SectionLoader } from '@/components/shared/Loaders'
 
 /** Date box that saves when it loses focus / Enter (not on every key). */
+/** Text box that saves when you leave it (or press Enter) — only if the value changed. */
+function TextCommit({
+  value,
+  onCommit,
+  label,
+  width,
+  numeric,
+}: {
+  value: string
+  onCommit: (v: string) => void
+  label: string
+  width: number
+  numeric?: boolean
+}) {
+  const commit = (el: HTMLInputElement) => {
+    const v = el.value.trim()
+    if (v !== value) onCommit(v)
+  }
+  return (
+    <input
+      key={value}
+      type="text"
+      inputMode={numeric ? 'decimal' : undefined}
+      aria-label={label}
+      className="form-control form-control-sm"
+      style={{ width, display: 'inline-block' }}
+      defaultValue={value}
+      onBlur={(e) => commit(e.currentTarget)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+      }}
+    />
+  )
+}
+
 function DayInput({ value, min, max, onCommit, label }: { value: string; min?: string; max?: string; onCommit: (v: string) => void; label: string }) {
   return (
     <input
@@ -114,6 +149,19 @@ export function BeamHistoryDialog({
       () => void save({ action: 'setEnd', beamNo, firstId: r.firstId!, to, oldTo: r.to! }, `Utra date ${longDateFromYmd(to)} ho gayi.`)
     )
 
+  /** An ended run's own Sw # / Warp / Length — the beam as it is now does not change. */
+  const changeDetail = (r: BeamStint, field: 'swLot' | 'warp' | 'length', v: string) => {
+    if (field === 'length' && (!Number.isFinite(Number(v)) || Number(v) < 0)) {
+      showError({ title: 'Length sahi nahi', message: 'Length number mein likhein.' })
+      setReload((n) => n + 1)
+      return
+    }
+    void save(
+      { action: 'details', beamNo, firstId: r.firstId!, [field]: field === 'length' ? Number(v) : v || null },
+      `Loom ${r.loom} wale run ki ${field === 'swLot' ? 'Sw #' : field === 'warp' ? 'Warp' : 'Length'} badal di (abhi wala beam nahi badla).`
+    )
+  }
+
   const remove = (r: BeamStint) =>
     ask(
       `Beam ${beamNo} ka ye run hatayein?`,
@@ -209,7 +257,7 @@ export function BeamHistoryDialog({
       aria-modal="true"
       onClick={onClose}
     >
-      <div className="card shadow-lg w-100 mt-4" style={{ maxWidth: 820 }} onClick={(e) => e.stopPropagation()}>
+      <div className="card shadow-lg w-100 mt-4" style={{ maxWidth: 1040 }} onClick={(e) => e.stopPropagation()}>
         <div className="card-header d-flex align-items-center justify-content-between">
           <h3 className="card-title mb-0">
             <i className="bi bi-clock-history me-2" />
@@ -234,6 +282,8 @@ export function BeamHistoryDialog({
                     <th>#</th>
                     <th>Loom</th>
                     <th>Sw / Wp #</th>
+                    <th>Warp</th>
+                    <th>Length</th>
                     <th>Laga</th>
                     <th>Utra</th>
                     {canEdit && <th />}
@@ -247,7 +297,33 @@ export function BeamHistoryDialog({
                       <tr key={`${r.firstId}-${r.from}`}>
                         <td>{i + 1}</td>
                         <td className="fw-semibold">{r.loom}</td>
-                        <td>{r.swLot ? formatSwLotForDailyEntry(r.swLot) : '—'}</td>
+                        {edit && r.to != null ? (
+                          <>
+                            <td>
+                              <TextCommit value={r.swLot || ''} width={90} label="Sw #" onCommit={(v) => changeDetail(r, 'swLot', v)} />
+                            </td>
+                            <td>
+                              <TextCommit value={r.warp || ''} width={150} label="Warp" onCommit={(v) => changeDetail(r, 'warp', v)} />
+                            </td>
+                            <td>
+                              <TextCommit
+                                value={r.length ? String(r.length) : ''}
+                                width={80}
+                                numeric
+                                label="Length"
+                                onCommit={(v) => changeDetail(r, 'length', v)}
+                              />
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td title={r.to == null && edit ? 'Abhi wala run — Beams table mein badlein' : undefined}>
+                              {r.swLot ? formatSwLotForDailyEntry(r.swLot) : '—'}
+                            </td>
+                            <td className="text-start">{r.warp || '—'}</td>
+                            <td>{r.length ? r.length.toLocaleString('en-US') : '—'}</td>
+                          </>
+                        )}
                         <td>
                           {edit ? (
                             <DayInput value={r.from} max={r.to || today} onCommit={(v) => changeStart(r, v)} label="Laga" />
@@ -366,6 +442,9 @@ export function BeamHistoryDialog({
         <div className="card-footer small text-dark">
           Date box mein date badal kar Enter dabayein. Sirf beam ka hisaab (Din, Bana, Zaya) aur quality tracking badalti hai —
           Daily Entry ki production waisi hi rehti hai. Aage peeche ke runs se takrane wali date save nahi hogi.
+          <br />
+          Khatam (utre hue) run ki Sw # / Warp / Length yahan badlein — sirf usi run mein badlegi, abhi chalne wala beam waisa hi
+          rahega. Abhi chalne wale run ki details Beams table mein badlein.
         </div>
       </div>
     </div>

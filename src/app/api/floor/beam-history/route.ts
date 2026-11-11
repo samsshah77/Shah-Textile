@@ -4,6 +4,7 @@ import { isYmd } from '@/server/floor/faultAccess'
 import {
   BeamHistoryEditError,
   addPastStint,
+  setStintDetails,
   beamLoomStints,
   beamRuns,
   beamsAsOf,
@@ -81,6 +82,8 @@ export async function POST(request: NextRequest) {
         oldFrom?: string
         loom?: number | string
         swLot?: string | null
+        warp?: string
+        length?: number | string
       }
     | null
   const beamNo = String(body?.beamNo || '').trim()
@@ -106,6 +109,19 @@ export async function POST(request: NextRequest) {
   const firstId = String(body?.firstId || '').trim()
   if (!beamNo || !/^\d+$/.test(firstId)) return NextResponse.json({ ok: false, error: 'Beam / record nahi mila.' }, { status: 400 })
   try {
+    if (body?.action === 'details') {
+      // An ended run's own Sw # / Warp / Length (not the beam as it is now).
+      const run = (await beamRuns(beamNo)).find((r) => r.firstId === firstId)
+      if (!run) return NextResponse.json({ ok: false, error: 'Ye record nahi mila — page refresh karein.' }, { status: 400 })
+      await assertDateOpen(run.from)
+      if (run.to) await assertDateOpen(run.to)
+      const stint = await setStintDetails(beamNo, firstId, {
+        ...('swLot' in body ? { swLot: body.swLot ?? null } : {}),
+        ...('warp' in body ? { warp: String(body.warp ?? '') } : {}),
+        ...('length' in body ? { length: Number(body.length) } : {}),
+      })
+      return NextResponse.json({ ok: true, stint })
+    }
     if (body?.action === 'lotPlan' || body?.action === 'fillLots') {
       const run = (await beamRuns(beamNo)).find((r) => r.firstId === firstId)
       if (!run) return NextResponse.json({ ok: false, error: 'Ye record nahi mila — page refresh karein.' }, { status: 400 })

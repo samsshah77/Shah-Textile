@@ -699,6 +699,7 @@ function ProductionWorkspaceContent() {
                 onDelete={deleteBeam}
                 readOnly={!tabEdit || showDayBeams}
                 historyEdit={tabEdit}
+                dayState={isPastDay && pastBeams?.date === selectedDate ? pastBeams.beams : undefined}
                 filter={beamFilter}
                 onFilterChange={setBeamFilter}
                 toolbarInChrome

@@ -378,6 +378,47 @@ export async function hideStint(beamNo: string, firstId: string): Promise<BeamLo
 }
 
 /**
+ * Change an ENDED run's own details (Sw #, Warp, Length) — what that run had — in its own
+ * history rows only. The beam as it is now (a later run, the Beams table) does not change.
+ * The run still on a loom is changed in the Beams table, not here.
+ */
+export async function setStintDetails(
+  beamNo: string,
+  firstId: string,
+  patch: { swLot?: string | null; warp?: string; length?: number }
+): Promise<BeamLoomStint> {
+  await ensureBeamHistoryTable()
+  const found = await findStint(beamNo, firstId)
+  if (!found) throw new BeamHistoryEditError('Ye record nahi mila — page refresh karein.')
+  const { stint } = found
+  if (stint.to == null || !stint.closeId) {
+    throw new BeamHistoryEditError('Ye beam abhi isi run mein loom pe hai — is ki details Beams table mein badlein.')
+  }
+  const set: Record<string, unknown> = {}
+  if (patch.swLot !== undefined) set.swLot = patch.swLot ? String(patch.swLot).trim().slice(0, 40) || null : null
+  if (patch.warp !== undefined) set.warp = String(patch.warp ?? '').trim().slice(0, 120)
+  if (patch.length !== undefined) {
+    const n = Number(patch.length)
+    if (!Number.isFinite(n) || n < 0 || n > 1e7) throw new BeamHistoryEditError('Length sahi nahi.')
+    set.length = Math.round(n * 100) / 100
+  }
+  if (!Object.keys(set).length) return stint
+  // This run's rows: from its first row up to (not including) the row that took it off.
+  await prisma.$executeRawUnsafe(
+    `UPDATE "floor_beam_history" SET "state" = "state" || $4::jsonb
+      WHERE "beamNo" = $1 AND NOT "hidden"
+        AND ${KEY} >= ${keyOf('$2')} AND ${KEY} < ${keyOf('$3')}
+        AND COALESCE("state"->>'usedInLoom', '') <> ''`,
+    beamNo,
+    stint.firstId,
+    stint.closeId,
+    JSON.stringify(set)
+  )
+  const after = (await beamRuns(beamNo)).find((r) => r.firstId === firstId)
+  return after || stint
+}
+
+/**
  * Add a past run: the beam sat on `loom` from `from` to `to` (both days in the past) — for
  * runs from before the beam history was kept, or never entered. Only history rows are added,
  * placed in time between the runs before and after it; the beam itself (where it is now) and
