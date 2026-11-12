@@ -1,10 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getCalendarToday } from '@/constants/productionCalendar'
 import { longDateFromYmd } from '@/lib/longDate'
 import { useAlertDialog } from '@/context/AlertDialogContext'
-import { AddYarnModal } from '@/components/floor/AddYarnModal'
 import { WhatsAppShareModal } from '@/components/shared/WhatsAppShareModal'
 import { SectionLoader } from '@/components/shared/Loaders'
 import {
@@ -17,10 +17,8 @@ import {
   yarnSupplyAction,
   yarnSupplyShareText,
   type YarnDispatch,
-  type YarnDispatchDraft,
   type YarnSupplyList,
 } from '@/lib/floor/yarnSupply'
-import type { YarnMaster } from '@/services/production/masterTypes'
 
 type View = 'open' | 'verified' | 'all'
 
@@ -48,6 +46,26 @@ function LogLine({ d }: { d: YarnDispatch }) {
           </li>
         ))}
       </ul>
+    </details>
+  )
+}
+
+/** Every bag's weight (bags of different weight show one by one). */
+function BagWeights({ kg }: { kg: number[] }) {
+  const same = kg.every((w) => w === kg[0])
+  if (same) return <div className="small text-secondary text-nowrap">{kg.length > 1 ? `each ${kg[0].toFixed(2)} kg` : `${kg[0].toFixed(2)} kg`}</div>
+  const list = kg.map((w, i) => (
+    <span key={i} className="text-nowrap">
+      B{i + 1}: {w.toFixed(2)}
+    </span>
+  ))
+  if (kg.length <= 6) {
+    return <div className="small text-secondary d-flex flex-wrap justify-content-end column-gap-2">{list}</div>
+  }
+  return (
+    <details className="small text-secondary">
+      <summary style={{ cursor: 'pointer' }}>Bag weights</summary>
+      <div className="d-flex flex-wrap justify-content-end column-gap-2">{list}</div>
     </details>
   )
 }
@@ -218,13 +236,23 @@ function IssueDialog({ d, onClose, onSaved }: { d: YarnDispatch; onClose: () => 
  *  - mode "mill" (Yarn Stock tab): verify into Yarn Stock, report issues, correct verified
  *    entries, and WhatsApp what came in.
  */
-export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mill'; selectedDate?: string }) {
+export function YarnSupplyBoard({
+  mode,
+  selectedDate,
+  embedded = false,
+  onOpenCount,
+}: {
+  mode: 'supplier' | 'mill'
+  selectedDate?: string
+  /** Inside another card (Yarn Stock → From Supplier tab): no card of its own. */
+  embedded?: boolean
+  /** Entries waiting for the mill (for a tab badge). */
+  onOpenCount?: (n: number) => void
+}) {
   const { showConfirm, showError, showSuccessSoon } = useAlertDialog()
   const [data, setData] = useState<YarnSupplyList | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [view, setView] = useState<View>('open')
-  const [sendOpen, setSendOpen] = useState(false)
-  const [editing, setEditing] = useState<YarnDispatch | null>(null)
   const [receiving, setReceiving] = useState<{ d: YarnDispatch; correcting: boolean } | null>(null)
   const [issue, setIssue] = useState<YarnDispatch | null>(null)
   const [share, setShare] = useState<{ title: string; text: string } | null>(null)
@@ -256,26 +284,6 @@ export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mi
   const open = list.filter((d) => d.status !== 'VERIFIED')
   const issues = list.filter((d) => d.status === 'ISSUE').length
   const shown = view === 'open' ? open : view === 'verified' ? list.filter((d) => d.status === 'VERIFIED') : list
-  const stockYarns = useMemo(
-    () => (data?.stock ?? []).map((y) => ({ id: y.id, yarnType: y.yarnType, balanceKg: y.balanceKg }) as YarnMaster),
-    [data]
-  )
-  const editInitial = useMemo<YarnDispatchDraft | null>(
-    () =>
-      editing
-        ? {
-            yarnType: editing.yarnType,
-            sentDate: editing.sentDate,
-            bagKg: editing.bagKg,
-            challanNo: editing.challanNo,
-            lotNo: editing.lotNo,
-            vehicleNo: editing.vehicleNo,
-            remarks: editing.remarks,
-          }
-        : null,
-    [editing]
-  )
-
   const afterSave = (msg: string) => (d: YarnDispatch | null) => {
     setReceiving(null)
     setIssue(null)
@@ -308,13 +316,17 @@ export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mi
           .catch((e: unknown) => showError({ title: 'Not deleted', message: e instanceof Error ? e.message : 'Could not delete.' })),
     })
 
+  useEffect(() => {
+    if (data) onOpenCount?.(open.length)
+  }, [data, open.length, onOpenCount])
+
   const verifiedOnShareDate = list.filter((d) => d.status === 'VERIFIED' && d.receivedDate === shareDate).length
 
   return (
     <>
-      <div className="card mb-3">
-        <div className="card-header d-flex flex-wrap align-items-center gap-2">
-          <h3 className="card-title mb-0 me-auto">
+      <div className={embedded ? '' : 'card mb-3'}>
+        <div className={`${embedded ? 'px-3 py-2 border-bottom bg-light' : 'card-header'} d-flex flex-wrap align-items-center gap-2`}>
+          <h3 className={`${embedded ? 'fs-6 fw-semibold' : 'card-title'} mb-0 me-auto`}>
             <i className="bi bi-truck me-1" />
             {mode === 'mill' ? 'Yarn from supplier' : 'Yarn sent to the mill'}
             {open.length > 0 && <span className="badge text-bg-warning ms-2">{open.length} to check</span>}
@@ -356,9 +368,9 @@ export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mi
             </div>
           )}
           {canSend && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={() => setSendOpen(true)}>
+            <Link href="/yarn-supply/send" className="btn btn-sm btn-primary">
               <i className="bi bi-send me-1" /> Send yarn
-            </button>
+            </Link>
           )}
           <button type="button" className="btn btn-sm btn-outline-secondary" onClick={load} title="Refresh">
             <i className="bi bi-arrow-clockwise" />
@@ -400,7 +412,10 @@ export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mi
                           {mode === 'mill' && d.createdBy && <div className="small text-secondary">By {d.createdBy}</div>}
                           <LogLine d={d} />
                         </td>
-                        <td className="px-2 text-end font-monospace">{d.bags}</td>
+                        <td className="px-2 text-end">
+                          <div className="font-monospace">{d.bags}</div>
+                          {d.bagKg.length > 0 && <BagWeights kg={d.bagKg} />}
+                        </td>
                         <td className="px-2 text-end font-monospace text-nowrap">{fmtKg(d.weightKg)}</td>
                         <td className="px-2 small">
                           {[d.challanNo && `Challan ${d.challanNo}`, d.lotNo && `Lot ${d.lotNo}`, d.vehicleNo && `Vehicle ${d.vehicleNo}`]
@@ -437,9 +452,9 @@ export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mi
                         <td className="px-2 text-end text-nowrap">
                           {canSend && d.status !== 'VERIFIED' && (
                             <>
-                              <button type="button" className="btn btn-sm btn-outline-primary py-0 px-2 me-1" onClick={() => setEditing(d)}>
+                              <Link href={`/yarn-supply/send?id=${encodeURIComponent(d.id)}`} className="btn btn-sm btn-outline-primary py-0 px-2 me-1">
                                 {d.status === 'ISSUE' ? 'Correct' : 'Edit'}
-                              </button>
+                              </Link>
                               <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2" onClick={() => remove(d)} title="Delete">
                                 <i className="bi bi-trash" />
                               </button>
@@ -459,6 +474,15 @@ export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mi
                             <button type="button" className="btn btn-sm btn-outline-secondary py-0 px-2 me-1" onClick={() => setReceiving({ d, correcting: true })}>
                               Edit
                             </button>
+                          )}
+                          {mode === 'supplier' && (
+                            <Link
+                              href={`/yarn-supply/challan?id=${encodeURIComponent(d.id)}`}
+                              className="btn btn-sm btn-outline-secondary py-0 px-2 ms-1"
+                              title="Print challan"
+                            >
+                              <i className="bi bi-printer" /> Challan
+                            </Link>
                           )}
                           {mode === 'mill' && d.status === 'VERIFIED' && (
                             <button
@@ -513,27 +537,6 @@ export function YarnSupplyBoard({ mode, selectedDate }: { mode: 'supplier' | 'mi
         </div>
       )}
 
-      <AddYarnModal
-        isOpen={sendOpen || editing != null}
-        onClose={() => {
-          setSendOpen(false)
-          setEditing(null)
-        }}
-        onAdd={() => undefined}
-        existingYarns={stockYarns}
-        dispatch={{
-          initial: editInitial,
-          onSubmit: async (entry) => {
-            if (editing) await yarnSupplyAction({ action: 'update', id: editing.id, entry })
-            else await yarnSupplyAction({ action: 'create', entry })
-            load()
-            showSuccessSoon({
-              title: editing ? 'Saved' : 'Sent',
-              message: editing ? 'Sent to the mill again to be checked.' : 'The mill will check it when the yarn arrives.',
-            })
-          },
-        }}
-      />
       {receiving && (
         <ReceiveDialog
           d={receiving.d}

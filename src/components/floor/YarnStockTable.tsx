@@ -1,7 +1,9 @@
 'use client'
 
 import { YarnDateBalance } from '@/components/floor/YarnDateBalance'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { YarnSupplyBoard } from '@/components/floor/YarnSupplyBoard'
+import { fetchYarnSupply } from '@/lib/floor/yarnSupply'
 import {
   LoomMaster,
   QualityMaster,
@@ -25,7 +27,7 @@ import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
 
 export type WeightUnit = 'KG' | 'LBS'
-export type YarnViewMode = 'STOCK' | 'LEDGER' | 'BALANCE'
+export type YarnViewMode = 'STOCK' | 'LEDGER' | 'BALANCE' | 'SUPPLY'
 export type YarnDateFilterMode = 'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'
 
 function parseDay(dateStr: string) {
@@ -124,6 +126,21 @@ export function YarnStockTable({
   const { showConfirm, showSuccessSoon } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [activeView, setActiveView] = useState<YarnViewMode>('STOCK')
+  /** Supplier entries waiting for the mill check (badge on the From Supplier tab). */
+  const [supplyOpen, setSupplyOpen] = useState<number | null>(null)
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      fetchYarnSupply()
+        .then((d) => alive && setSupplyOpen(d.dispatches.filter((x) => x.status !== 'VERIFIED').length))
+        .catch(() => undefined)
+    void load()
+    const t = setInterval(load, 60_000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [])
   const [unit, setUnit] = useState<WeightUnit>('KG')
   const [movementTypeFilter, setMovementTypeFilter] = useState<'ALL' | 'INWARD' | 'OUTWARD'>('ALL')
   const [ledgerLoomFilter, setLedgerLoomFilter] = useState<string>('ALL')
@@ -457,6 +474,16 @@ export function YarnStockTable({
               >
                 <i className="bi bi-calendar-check me-1" />
                 Date-wise Hisab
+              </button>
+              <button
+                type="button"
+                className={`btn ${activeView === 'SUPPLY' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => setActiveView('SUPPLY')}
+                title="Yarn the supplier has sent: verify it into stock, or report an issue"
+              >
+                <i className="bi bi-truck me-1" />
+                From Supplier
+                {supplyOpen ? <span className="badge text-bg-warning ms-1">{supplyOpen}</span> : null}
               </button>
             </div>
           </div>
@@ -809,6 +836,8 @@ export function YarnStockTable({
             )}
           </>
         )}
+
+        {activeView === 'SUPPLY' && <YarnSupplyBoard mode="mill" selectedDate={selectedDate} embedded onOpenCount={setSupplyOpen} />}
 
         {activeView === 'BALANCE' && (
           <YarnDateBalance yarn={yarn} movements={allMovements} range={dateRange} periodLabel={periodLabel} unit={unit} />

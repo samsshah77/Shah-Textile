@@ -60,9 +60,6 @@ export type YarnReceiveInput = {
   note?: string
 }
 
-/** The supplier's form (Add Yarn in "send" mode) — every text field filled ('' when empty). */
-export type YarnDispatchDraft = Required<YarnDispatchInput>
-
 export type MillYarnStock = { id: string; yarnType: string; balanceKg: number }
 
 export type YarnSupplyList = {
