@@ -24,7 +24,7 @@ import {
 } from '@/services/productionMastersService'
 import type { BeamMaster } from '@/services/production/masterTypes'
 import { getMountedBeamsOnLoom } from '@/services/production/loomBeamHelpers'
-import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
+import { PRODUCTION_TODAY, getProductionTodayMonth } from '@/constants/productionCalendar'
 import { LoomCategory, type LoomStatus } from '@/types/loom'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
@@ -200,7 +200,10 @@ export function LoomMasterTable({
    * attached in the Beams table. Only checked when the beams register was passed in.
    */
   const beamsForNote = noteBeams ?? beams
+  // Alerts start from this month: a date in an earlier month shows none.
+  const alertsOn = String(sheetDate).slice(0, 7) >= getProductionTodayMonth()
   const needsBeam = (loom: LoomMaster) =>
+    alertsOn &&
     beamsForNote.length > 0 &&
     loom.isActive !== false &&
     dayStatus(loom) === 'RUNNING' &&

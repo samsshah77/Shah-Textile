@@ -99,6 +99,9 @@ export type BeamTrackResult = {
   days: BeamTrackDay[]
   totalThreads: number
   loomType: string
+  reed?: number
+  width?: number
+  beamRepeat?: string | null
 }
 
 /**
@@ -202,6 +205,9 @@ export function buildBeamTrackFromEntries(
     days,
     totalThreads: Number(beam.totalThreads) || 0,
     loomType: beam.loomType || '',
+    reed: Number(beam.reed) || 0,
+    width: Number(beam.width) || 0,
+    beamRepeat: beam.beamRepeat ?? null,
 
   }
 }

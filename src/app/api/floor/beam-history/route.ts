@@ -157,6 +157,7 @@ export async function POST(request: NextRequest) {
         ...('swLot' in body ? { swLot: body.swLot ?? null } : {}),
         ...('warp' in body ? { warp: String(body.warp ?? '') } : {}),
         ...('length' in body ? { length: Number(body.length) } : {}),
+        ...('totalThreads' in body ? { totalThreads: Number(body.totalThreads) } : {}),
       })
       return NextResponse.json({ ok: true, stint })
     }

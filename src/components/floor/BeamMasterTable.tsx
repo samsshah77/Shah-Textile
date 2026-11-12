@@ -21,6 +21,7 @@ import {
 import type { DailyLoomProductionEntry } from '@/types/production'
 import { BeamHistoryDialog } from '@/components/floor/BeamHistoryDialog'
 import { editRunOnDay } from '@/lib/floor/beamStints'
+import { getProductionTodayMonth } from '@/constants/productionCalendar'
 import { ViewModeToggle, type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
@@ -489,6 +490,8 @@ export function BeamMasterTable({
 
   const beamsToEnd = useMemo(() => {
     const out = new Map<string, LoomStatus>()
+    // Alerts start from this month: a date in an earlier month shows none.
+    if (selectedDate.slice(0, 7) < getProductionTodayMonth()) return out
     for (const b of beams) {
       if (!b.usedInLoom) continue
       const loom = looms.find((l) => String(l.loomNumber) === String(b.usedInLoom))
@@ -497,7 +500,7 @@ export function BeamMasterTable({
       if (st === 'BEAM_END' || st === 'BEAM_CUT') out.set(b.beamNo, st)
     }
     return out
-  }, [beams, looms, dayRows])
+  }, [beams, looms, dayRows, selectedDate])
 
   const endFlaggedBeam = (b: BeamMaster) => {
     const label = beamsToEnd.get(b.beamNo) === 'BEAM_CUT' ? 'B/Cut' : 'B/End'
@@ -651,6 +654,29 @@ export function BeamMasterTable({
     ) : null
 
   const handleLocationChange = (b: BeamMaster, v: string) => {
+    // Taking a beam off its loom puts this run in the Ended tab — ask first.
+    if (b.usedInLoom && (v === 'STORE' || v === 'SIZING')) {
+      const toEmpty = v === 'SIZING'
+      const sw = b.swLot ? ` (${formatSwLotForDailyEntry(b.swLot)})` : ''
+      showConfirm({
+        title: toEmpty ? `End beam ${b.beamNo}?` : `Remove beam ${b.beamNo} from the loom?`,
+        message: toEmpty
+          ? `Beam ${b.beamNo}${sw} will be taken off Loom #${b.usedInLoom} and moved to Empty Beam from ${longDateFromYmd(selectedDate)}.\n\nThis run will show in the Ended tab.`
+          : `Beam ${b.beamNo}${sw} will be taken off Loom #${b.usedInLoom} and moved back to In Stock (Store) from ${longDateFromYmd(selectedDate)}.\n\nThis run will show in the Ended tab.`,
+        type: 'confirm',
+        confirmText: toEmpty ? 'Yes, end it' : 'Yes, remove',
+        cancelText: 'Cancel',
+        onConfirm: () => {
+          if (toEmpty) onSendToSizing(b.beamNo, selectedDate)
+          else onUnmount(b.beamNo, 'STORE', selectedDate)
+          showSuccessSoon({
+            title: toEmpty ? 'Beam ended' : 'Beam removed',
+            message: `Beam ${b.beamNo} is off Loom #${b.usedInLoom}. You can see this run in the Ended tab.`,
+          })
+        },
+      })
+      return
+    }
     if (v === 'STORE') {
       if (b.location === 'SIZING' && !b.usedInLoom) {
         onReceiveFromSizing(b.beamNo)

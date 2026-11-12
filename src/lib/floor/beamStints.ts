@@ -12,6 +12,12 @@ export type BeamStint = {
   swLot: string | null
   warp: string
   qualityId: string | null
+  /** The beam as it was in this run (older servers may not send these). */
+  reed?: number
+  width?: number
+  totalThreads?: number
+  beamRepeat?: string | null
+  loomType?: string
   /** History rows of this run (for Ended → Edit). */
   firstId?: string
   closeId?: string | null

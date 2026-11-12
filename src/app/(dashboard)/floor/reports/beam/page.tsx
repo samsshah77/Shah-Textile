@@ -74,8 +74,12 @@ function trackFromRun(
     to: run.to || today,
     loomHint: String(run.loom),
     days,
-    totalThreads: base?.totalThreads || 0,
-    loomType: base?.loomType || '',
+    // This run's own details (changed in Beams → Edit on a past date, or in History).
+    totalThreads: Number(run.totalThreads) || base?.totalThreads || 0,
+    loomType: run.loomType || base?.loomType || '',
+    reed: Number(run.reed) || base?.reed || 0,
+    width: Number(run.width) || base?.width || 0,
+    beamRepeat: run.reed != null ? run.beamRepeat ?? null : base?.beamRepeat ?? null,
   }
 }
 
@@ -308,10 +312,24 @@ function BeamTrackContent() {
                   <dl className="row mb-0">
                     <dt className="col-5 text-secondary">Beam #</dt>
                     <dd className="col-7 fw-semibold">{track.beamNo}</dd>
+                    <dt className="col-5 text-secondary">Sw / Wp #</dt>
+                    <dd className="col-7">{track.swLot || '—'}</dd>
                     <dt className="col-5 text-secondary">Warp</dt>
                     <dd className="col-7">{track.warp || '—'}</dd>
+                    <dt className="col-5 text-secondary">Reed</dt>
+                    <dd className="col-7">{track.reed || '—'}</dd>
+                    <dt className="col-5 text-secondary">Width</dt>
+                    <dd className="col-7">{track.width || '—'}</dd>
                     <dt className="col-5 text-secondary">Ends</dt>
-                    <dd className="col-7">{track.totalThreads.toLocaleString() || '—'}</dd>
+                    <dd className="col-7">{track.totalThreads ? track.totalThreads.toLocaleString() : '—'}</dd>
+                    <dt className="col-5 text-secondary">Length</dt>
+                    <dd className="col-7">{track.length ? `${track.length.toLocaleString()} m` : '—'}</dd>
+                    {track.beamRepeat ? (
+                      <>
+                        <dt className="col-5 text-secondary">Beam Repeat</dt>
+                        <dd className="col-7">{track.beamRepeat}</dd>
+                      </>
+                    ) : null}
                     <dt className="col-5 text-secondary">Machine</dt>
                     <dd className="col-7">{track.loomType || '—'}</dd>
                     <dt className="col-5 text-secondary">Loom</dt>
@@ -321,6 +339,12 @@ function BeamTrackContent() {
                     <dt className="col-5 text-secondary">To</dt>
                     <dd className="col-7">{formatShortDate(track.to) || '—'}</dd>
                   </dl>
+                  {selectedRun?.to != null && (
+                    <div className="text-secondary mt-2" style={{ fontSize: '0.75rem' }}>
+                      These are this old run’s own details. To correct them (Ends, Sw #, Warp, Length), open Beams → this beam’s{' '}
+                      <strong>History</strong>.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -149,16 +149,21 @@ export function BeamHistoryDialog({
       () => void save({ action: 'setEnd', beamNo, firstId: r.firstId!, to, oldTo: r.to! }, `Removed date set to ${longDateFromYmd(to)}.`)
     )
 
-  /** An ended run's own Sw # / Warp / Length — the beam as it is now does not change. */
-  const changeDetail = (r: BeamStint, field: 'swLot' | 'warp' | 'length', v: string) => {
-    if (field === 'length' && (!Number.isFinite(Number(v)) || Number(v) < 0)) {
-      showError({ title: 'Invalid length', message: 'Enter the length as a number.' })
+  /** An ended run's own Sw # / Warp / Length / Ends — the beam as it is now does not change. */
+  const changeDetail = (r: BeamStint, field: 'swLot' | 'warp' | 'length' | 'totalThreads', v: string) => {
+    const numeric = field === 'length' || field === 'totalThreads'
+    if (numeric && (!Number.isFinite(Number(v)) || Number(v) < 0)) {
+      showError({
+        title: field === 'length' ? 'Invalid length' : 'Invalid ends',
+        message: `Enter the ${field === 'length' ? 'length' : 'ends'} as a number.`,
+      })
       setReload((n) => n + 1)
       return
     }
+    const name = field === 'swLot' ? 'Sw #' : field === 'warp' ? 'Warp' : field === 'length' ? 'Length' : 'Ends'
     void save(
-      { action: 'details', beamNo, firstId: r.firstId!, [field]: field === 'length' ? Number(v) : v || null },
-      `${field === 'swLot' ? 'Sw #' : field === 'warp' ? 'Warp' : 'Length'} changed for the Loom ${r.loom} run (the current beam is unchanged).`
+      { action: 'details', beamNo, firstId: r.firstId!, [field]: numeric ? Number(v) : v || null },
+      `${name} changed for the Loom ${r.loom} run (the current beam is unchanged).`
     )
   }
 
@@ -284,6 +289,7 @@ export function BeamHistoryDialog({
                     <th>Sw / Wp #</th>
                     <th>Warp</th>
                     <th>Length</th>
+                    <th>Ends</th>
                     <th>Mounted</th>
                     <th>Removed</th>
                     {canEdit && <th />}
@@ -314,6 +320,15 @@ export function BeamHistoryDialog({
                                 onCommit={(v) => changeDetail(r, 'length', v)}
                               />
                             </td>
+                            <td>
+                              <TextCommit
+                                value={r.totalThreads ? String(r.totalThreads) : ''}
+                                width={80}
+                                numeric
+                                label="Ends"
+                                onCommit={(v) => changeDetail(r, 'totalThreads', v)}
+                              />
+                            </td>
                           </>
                         ) : (
                           <>
@@ -322,6 +337,7 @@ export function BeamHistoryDialog({
                             </td>
                             <td className="text-start">{r.warp || '—'}</td>
                             <td>{r.length ? r.length.toLocaleString('en-US') : '—'}</td>
+                            <td>{r.totalThreads ? r.totalThreads.toLocaleString('en-US') : '—'}</td>
                           </>
                         )}
                         <td>

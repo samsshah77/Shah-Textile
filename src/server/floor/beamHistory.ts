@@ -157,6 +157,12 @@ export type BeamLoomStint = {
   swLot: string | null
   warp: string
   qualityId: string | null
+  /** The beam as it was in this run (Track page). */
+  reed: number
+  width: number
+  totalThreads: number
+  beamRepeat: string | null
+  loomType: string
   /** History rows of this stint: the first one, and the one that took it off (for edits). */
   firstId: string
   closeId: string | null
@@ -224,6 +230,11 @@ export async function beamLoomStints(from: string, to: string): Promise<BeamLoom
         swLot: state.swLot ?? null,
         warp: state.warp || '',
         qualityId: state.qualityId ?? null,
+        reed: Number(state.reed) || 0,
+        width: Number(state.width) || 0,
+        totalThreads: Number(state.totalThreads) || 0,
+        beamRepeat: state.beamRepeat ?? null,
+        loomType: state.loomType || '',
         // Same stint: it started at its first row.
         firstId: (cur as BeamLoomStint | null)?.firstId ?? r.id,
         closeId: null,
