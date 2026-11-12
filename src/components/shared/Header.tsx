@@ -166,6 +166,9 @@ function HeaderContent() {
     if (pathname.startsWith('/floor')) {
       return { section: 'Floor Operations', page: resolveFloorPage(pathname, searchParams) }
     }
+    if (pathname.startsWith('/yarn-supply')) {
+      return { section: 'Floor Operations', page: 'Yarn Supply' }
+    }
     return { section: 'Sara Textile', page: null as string | null }
   }, [pathname, searchParams, profilePageLabel])
 

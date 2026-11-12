@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { YarnMaster, kgToLbs } from '@/services/productionMastersService'
 import { PRODUCTION_START, getCalendarToday } from '@/constants/productionCalendar'
 import { longDayDateFromYmd } from '@/lib/longDate'
+import type { YarnDispatchDraft } from '@/lib/floor/yarnSupply'
 
 const MAX_BAGS = 50
 
@@ -30,6 +31,14 @@ interface AddYarnModalProps {
   ) => void
   activeDate?: string
   existingYarns?: YarnMaster[]
+  /**
+   * Yarn Supply (the supplier's page): the same form, plus Challan / Lot / Vehicle # and
+   * Remarks, saved through `onSubmit` instead of `onAdd`. `initial` = correcting an entry.
+   */
+  dispatch?: {
+    initial?: YarnDispatchDraft | null
+    onSubmit: (d: YarnDispatchDraft) => Promise<void>
+  }
 }
 
 export function AddYarnModal({
@@ -38,6 +47,7 @@ export function AddYarnModal({
   onAdd,
   activeDate,
   existingYarns = [],
+  dispatch,
 }: AddYarnModalProps) {
   const [yarnType, setYarnType] = useState('')
   const [bagCount, setBagCount] = useState<number>(5)
@@ -49,6 +59,12 @@ export function AddYarnModal({
   const [suggestIndex, setSuggestIndex] = useState(0)
   /** Day the yarn arrived — the day open on the page unless changed here. */
   const [arrivalDate, setArrivalDate] = useState(() => activeDate || getCalendarToday())
+  const [challanNo, setChallanNo] = useState('')
+  const [lotNo, setLotNo] = useState('')
+  const [vehicleNo, setVehicleNo] = useState('')
+  const [remarks, setRemarks] = useState('')
+  const [busy, setBusy] = useState(false)
+  const initial = dispatch?.initial ?? null
 
   const bagInputRefs = useRef<(HTMLInputElement | null)[]>([])
 
@@ -60,7 +76,24 @@ export function AddYarnModal({
     setBagKg(Array(5).fill(''))
     setError(null)
     setArrivalDate(activeDate || getCalendarToday())
-  }, [isOpen, activeDate])
+    setChallanNo('')
+    setLotNo('')
+    setVehicleNo('')
+    setRemarks('')
+    setBusy(false)
+    if (initial) {
+      const n = Math.max(1, Math.min(MAX_BAGS, initial.bagKg.length || 1))
+      setYarnType(initial.yarnType)
+      setBagCount(n)
+      setBagCountText(String(n))
+      setBagKg(Array.from({ length: n }, (_, i) => (initial.bagKg[i] ? Number(initial.bagKg[i]).toFixed(2) : '')))
+      setArrivalDate(initial.sentDate)
+      setChallanNo(initial.challanNo)
+      setLotNo(initial.lotNo)
+      setVehicleNo(initial.vehicleNo)
+      setRemarks(initial.remarks)
+    }
+  }, [isOpen, activeDate, initial])
 
   useEffect(() => {
     if (!isOpen) return
@@ -141,6 +174,24 @@ export function AddYarnModal({
       return
     }
 
+    if (dispatch) {
+      setBusy(true)
+      dispatch
+        .onSubmit({
+          yarnType: trimmed,
+          sentDate: arrivalDate,
+          bagKg: numericWeights,
+          challanNo: challanNo.trim(),
+          lotNo: lotNo.trim(),
+          vehicleNo: vehicleNo.trim(),
+          remarks: remarks.trim(),
+        })
+        .then(() => onClose())
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not save.'))
+        .finally(() => setBusy(false))
+      return
+    }
+
     onAdd(
       {
         yarnType: trimmed,
@@ -176,9 +227,11 @@ export function AddYarnModal({
           <div className="modal-header bg-light py-3 px-4 border-bottom">
             <div className="d-flex align-items-center gap-2">
               <span className="badge bg-primary px-2.5 py-1.5 fs-7">
-                <i className="bi bi-box-seam me-1" /> Inward
+                <i className={`bi ${dispatch ? 'bi-truck' : 'bi-box-seam'} me-1`} /> {dispatch ? 'Supply' : 'Inward'}
               </span>
-              <h5 className="modal-title fs-6 fw-bold mb-0">Add Yarn</h5>
+              <h5 className="modal-title fs-6 fw-bold mb-0">
+                {dispatch ? (initial ? 'Correct yarn sent' : 'Send yarn to the mill') : 'Add Yarn'}
+              </h5>
             </div>
             <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
           </div>
@@ -268,9 +321,13 @@ export function AddYarnModal({
                   </div>
                   {yarnType.trim() && (
                     <div className={`form-text small ${matchedYarn ? 'text-success' : 'text-secondary'}`}>
-                      {matchedYarn
-                        ? `"${matchedYarn.yarnType}" already exists (stock ${Number(matchedYarn.balanceKg || 0).toFixed(2)} kg). This receipt will be added to it.`
-                        : 'Naya yarn banega.'}
+                      {dispatch
+                        ? matchedYarn
+                          ? `"${matchedYarn.yarnType}" is in the mill's stock (${Number(matchedYarn.balanceKg || 0).toFixed(2)} kg).`
+                          : 'A new yarn — the mill will add it to its stock when it is checked.'
+                        : matchedYarn
+                          ? `"${matchedYarn.yarnType}" already exists (stock ${Number(matchedYarn.balanceKg || 0).toFixed(2)} kg). This receipt will be added to it.`
+                          : 'A new yarn will be created.'}
                     </div>
                   )}
                 </div>
@@ -278,7 +335,7 @@ export function AddYarnModal({
                 {/* Arrival date */}
                 <div className="col-12 col-sm-6">
                   <label className="form-label small fw-semibold sara-add-beam-label mb-1" htmlFor="sara-yarn-date">
-                    Date (maal kab aaya)
+                    {dispatch ? 'Date sent' : 'Date (when the yarn arrived)'}
                   </label>
                   <input
                     id="sara-yarn-date"
@@ -334,11 +391,40 @@ export function AddYarnModal({
                   />
                 </div>
 
+                {dispatch && (
+                  <>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1" htmlFor="sara-yarn-challan">
+                        Challan / DC #
+                      </label>
+                      <input id="sara-yarn-challan" className="form-control" value={challanNo} maxLength={60} onChange={(e) => setChallanNo(e.target.value)} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1" htmlFor="sara-yarn-lot">
+                        Lot #
+                      </label>
+                      <input id="sara-yarn-lot" className="form-control" value={lotNo} maxLength={60} onChange={(e) => setLotNo(e.target.value)} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1" htmlFor="sara-yarn-vehicle">
+                        Vehicle #
+                      </label>
+                      <input id="sara-yarn-vehicle" className="form-control" value={vehicleNo} maxLength={40} onChange={(e) => setVehicleNo(e.target.value)} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label small fw-semibold sara-add-beam-label mb-1" htmlFor="sara-yarn-remarks">
+                        Remarks
+                      </label>
+                      <input id="sara-yarn-remarks" className="form-control" value={remarks} maxLength={500} onChange={(e) => setRemarks(e.target.value)} />
+                    </div>
+                  </>
+                )}
+
                 {/* Total Received Summary Box */}
                 <div className="col-12">
                   <div className="w-100 rounded border bg-light px-3 py-2 d-flex justify-content-between align-items-center">
                     <div>
-                      <div className="small text-secondary">Total received</div>
+                      <div className="small text-secondary">{dispatch ? 'Total sent' : 'Total received'}</div>
                       <div className="fw-bold">
                         {totalKg.toFixed(2)} kg
                         <span className="fw-normal text-secondary small ms-2">
@@ -438,9 +524,17 @@ export function AddYarnModal({
                 id="sara-add-yarn-submit-btn"
                 type="submit"
                 className="btn btn-sm btn-primary px-3"
-                disabled={!yarnType.trim() || !allBagsFilled || totalKg <= 0}
+                disabled={busy || !yarnType.trim() || !allBagsFilled || totalKg <= 0}
               >
-                <i className="bi bi-plus-lg me-1" /> Add Yarn
+                {dispatch ? (
+                  <>
+                    <i className={`bi ${initial ? 'bi-check-lg' : 'bi-send'} me-1`} /> {busy ? 'Saving…' : initial ? 'Save & send again' : 'Send'}
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-plus-lg me-1" /> Add Yarn
+                  </>
+                )}
               </button>
             </div>
           </form>

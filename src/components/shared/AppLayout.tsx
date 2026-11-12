@@ -16,8 +16,11 @@ import { RouteLoader, Spinner } from '@/components/shared/Loaders'
 const BODY_ERP_CLASSES = ['layout-fixed', 'sidebar-expand-lg', 'bg-body-tertiary'] as const
 
 function MainContent({ children }: { children: React.ReactNode }) {
-  const { isQualityController, isFaultInspector, canView } = useAuth()
+  const { isQualityController, isFaultInspector, canView, canViewProduction, canViewAccounts, canViewPayroll } = useAuth()
   const faultAddAllowed = canView('fault_reports')
+  // The yarn supplier sees only Yarn Supply: anything else opens that page.
+  const supplierOnly =
+    canView('yarn_supply') && !canViewProduction && !canView('tracking') && !faultAddAllowed && !canViewAccounts && !canViewPayroll
   const faultTableAllowed = canView('prod_fabric_fault')
   const pathname = usePathname()
   const router = useRouter()
@@ -34,12 +37,16 @@ function MainContent({ children }: { children: React.ReactNode }) {
       }
       return
     }
+    if (supplierOnly) {
+      if (!pathname.startsWith('/yarn-supply')) router.replace('/yarn-supply')
+      return
+    }
     if (isQualityController) {
       if (pathname.startsWith('/payroll') || pathname.startsWith('/accounts')) {
         router.replace('/dashboard')
       }
     }
-  }, [isQualityController, isFaultInspector, faultAddAllowed, faultTableAllowed, pathname, router])
+  }, [isQualityController, isFaultInspector, faultAddAllowed, faultTableAllowed, supplierOnly, pathname, router])
 
   return (
     <main className="app-main bg-body-tertiary sara-app-main">

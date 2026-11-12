@@ -29,7 +29,8 @@ export function karachiToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
-async function inYarnTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+/** One yarn change at a time (shared with Yarn Supply → Verify). */
+export async function inYarnTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
       await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext('floor:yarn'))::text`)
@@ -39,7 +40,8 @@ async function inYarnTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   )
 }
 
-async function insertMovement(
+/** Records one movement and returns its id. */
+export async function insertMovement(
   tx: Tx,
   m: {
     type: 'INWARD' | 'OUTWARD'
@@ -55,11 +57,12 @@ async function insertMovement(
   }
 ) {
   const prefix = m.kind === 'CORRECTION' ? 'mov-fix' : m.kind === 'OPENING' ? 'mov-open' : m.type === 'INWARD' ? 'mov-in' : 'mov-iss'
+  const id = newId(prefix)
   await tx.$executeRawUnsafe(
     `INSERT INTO "floor_yarn_movements"
       ("id","type","yarnId","yarnType","date","weightKg","weightLbs","bags","loomNumber","pick","lotOrSupplier","createdAt","updatedAt","kind")
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CURRENT_TIMESTAMP,$13)`,
-    newId(prefix),
+    id,
     m.type,
     m.yarnId,
     m.yarnType,
@@ -73,6 +76,19 @@ async function insertMovement(
     new Date().toISOString(),
     m.kind || 'NORMAL'
   )
+  return id
+}
+
+/** "20/1 Pv-China" and "20/1-pv china" are the same yarn (same rule as the Add Yarn form). */
+export const yarnNameKey = (s: string) => s.toLowerCase().replace(/[\s\-_.]+/g, '')
+
+/** The stock row for this yarn name — made when it is new. */
+export async function yarnRowFor(tx: Tx, yarnType: string) {
+  const key = yarnNameKey(yarnType)
+  const all = await tx.floorYarn.findMany()
+  const found = all.find((y) => yarnNameKey(y.yarnType) === key)
+  if (found) return found
+  return tx.floorYarn.create({ data: { id: newId('yarn'), yarnType: yarnType.trim() } })
 }
 
 /** Recompute the cached totals of the given yarns (all when omitted) from movements. */

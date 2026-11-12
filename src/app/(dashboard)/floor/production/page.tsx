@@ -14,6 +14,7 @@ import {
   type BeamFilterType,
 } from '@/components/floor/BeamMasterTable'
 import { YarnStockTable } from '@/components/floor/YarnStockTable'
+import { YarnSupplyBoard } from '@/components/floor/YarnSupplyBoard'
 import {
   QualityMasterTable,
   QualityStatusFilterBar,
@@ -714,6 +715,7 @@ function ProductionWorkspaceContent() {
               />
             )}
 
+            {currentTab === 'yarn' && <YarnSupplyBoard mode="mill" selectedDate={selectedDate} />}
             {currentTab === 'yarn' && (
               <YarnStockTable
                 yarn={yarn}

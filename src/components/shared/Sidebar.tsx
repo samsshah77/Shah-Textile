@@ -95,6 +95,14 @@ const FLOOR_ITEMS: NavLeaf[] = [
   },
 ]
 
+/** Yarn Supply — the supplier's page (yarn sent to the mill). */
+const YARN_SUPPLY_ITEM: NavLeaf = {
+  title: 'Yarn Supply',
+  href: '/yarn-supply',
+  icon: 'bi-truck',
+  activeCheck: (p) => p.startsWith('/yarn-supply'),
+}
+
 /** Fabric Fault → Fault Add (Kamran's phone form), for someone without the Fault Table. */
 const KAMRAN_FAULT_ITEM: NavLeaf = {
   title: 'Fabric Fault',
@@ -338,6 +346,7 @@ function SidebarContent() {
   const showFaultTable = canView('prod_fabric_fault')
   const showTracking = canView('tracking')
   const showArchive = canView('quality_archive')
+  const showYarnSupply = canView('yarn_supply')
   const areaKey = FLOOR_ITEMS.map((i) => {
     const area = FLOOR_ITEM_AREA[i.title]
     return area === 'any' ? (canViewProduction ? 1 : 0) : area && canView(area) ? 1 : 0
@@ -347,6 +356,10 @@ function SidebarContent() {
   const showDashboard = canViewProduction || showTracking
 
   const trees: NavTree[] = useMemo(() => {
+    if (showYarnSupply && !canViewProduction && !showFault && !showTracking) {
+      // The supplier: only their page.
+      return [{ title: 'Yarn Supply', icon: 'bi-truck', items: [{ ...YARN_SUPPLY_ITEM, title: 'Yarn Sent' }] }]
+    }
     if (faultOnly) {
       return [
         {
@@ -362,6 +375,7 @@ function SidebarContent() {
       // One "Fabric Fault" entry: the Fault Table when allowed (its tab bar opens Fault Add),
       // otherwise Fault Add alone.
       ...(showFault && !showFaultTable ? [KAMRAN_FAULT_ITEM] : []),
+      ...(showYarnSupply ? [YARN_SUPPLY_ITEM] : []),
     ]
     const payrollTree: NavLeaf = {
       title: 'Salary & Wages',
@@ -404,14 +418,14 @@ function SidebarContent() {
       if (showArchive) list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
     }
     return list
-  }, [faultOnly, areaKey, showFault, showFaultTable, showArchive, canViewAccounts, canViewPayroll, isAdmin])
+  }, [faultOnly, areaKey, showFault, showFaultTable, showArchive, showYarnSupply, showTracking, canViewProduction, canViewAccounts, canViewPayroll, isAdmin])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
       <div className="sidebar-brand d-flex align-items-center justify-content-between pe-2">
-        <Link href={showDashboard ? "/dashboard" : showFault ? "/floor/fault-reports" : "/dashboard"} className="brand-link flex-grow-1">
+        <Link href={showDashboard ? "/dashboard" : showFault ? "/floor/fault-reports" : showYarnSupply ? "/yarn-supply" : "/dashboard"} className="brand-link flex-grow-1">
           <img
             src="/saratextile.png"
             alt="Sara Textile"
