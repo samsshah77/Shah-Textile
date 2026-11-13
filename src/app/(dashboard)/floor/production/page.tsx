@@ -28,9 +28,11 @@ import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfBu
 import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { productionWhatsAppText } from '@/lib/floor/shareText'
 import { qualityWhatsAppText, type QualityShareData } from '@/lib/floor/qualityShare'
+import { yarnWhatsAppText } from '@/lib/floor/yarnShare'
 // jsPDF (~350 KB) loads only when a PDF is actually made.
 const loadProductionPdf = () => import('@/lib/floor/generateProductionPdf')
 const loadQualityPdf = () => import('@/lib/floor/generateQualityPdf')
+const loadYarnPdf = () => import('@/lib/floor/generateYarnPdf')
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { PRODUCTION_TAB_AREA } from '@/lib/access'
@@ -532,6 +534,24 @@ function ProductionWorkspaceContent() {
                       const data = qualityShareRef.current?.()
                       return data ? loadQualityPdf().then((m) => m.generateQualityPdfBase64(data)) : null
                     }}
+                  />
+                </>
+              ) : isYarnTab ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1.5"
+                    onClick={() => void loadYarnPdf().then((m) => m.downloadYarnPdf(yarn, selectedDate))}
+                    title="PDF save"
+                  >
+                    <i className="bi bi-file-earmark-pdf" />
+                    <span>PDF</span>
+                  </button>
+                  <WhatsAppShareButton
+                    documentTitle={`Yarn Stock ${selectedDate}`}
+                    message={() => yarnWhatsAppText(selectedDate, yarn)}
+                    onDownloadPdf={() => void loadYarnPdf().then((m) => m.downloadYarnPdf(yarn, selectedDate))}
+                    getPdfAttachment={() => loadYarnPdf().then((m) => m.generateYarnPdfBase64(yarn, selectedDate))}
                   />
                 </>
               ) : currentTab === 'quality-ends' ? (
