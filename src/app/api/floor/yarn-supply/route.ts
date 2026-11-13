@@ -7,6 +7,10 @@ import { YarnError, yarnSnapshot } from '@/server/floor/yarn'
 import {
   correctVerifiedYarnDispatch,
   createYarnDispatch,
+  createYarnRequest,
+  listYarnRequests,
+  setYarnRequestStatus,
+  updateYarnRequest,
   deleteYarnDispatch,
   getYarnDispatch,
   listYarnDispatches,
@@ -16,6 +20,7 @@ import {
   verifyYarnDispatch,
   type YarnDispatchInput,
   type YarnReceiveInput,
+  type YarnRequestInput,
 } from '@/server/floor/yarnSupply'
 
 export const runtime = 'nodejs'
@@ -28,10 +33,11 @@ export async function GET(request: NextRequest) {
   const check = await requireAccess(request, ['yarn_supply', 'prod_yarn'], 'view')
   if (check.error) return check.error
   try {
-    const [dispatches, stock] = await Promise.all([listYarnDispatches(), millYarnStock()])
+    const [dispatches, requests, stock] = await Promise.all([listYarnDispatches(), listYarnRequests(), millYarnStock()])
     return NextResponse.json({
       ok: true,
       dispatches,
+      requests,
       stock,
       canSend: allows(check.access, 'yarn_supply', 'edit'),
       canVerify: allows(check.access, 'prod_yarn', 'edit'),
@@ -47,14 +53,17 @@ type Body = {
   id?: string
   entry?: YarnDispatchInput
   receive?: YarnReceiveInput
+  request?: YarnRequestInput
   note?: string
 }
+
+const REQUEST_ACTIONS = ['requestCreate', 'requestUpdate', 'requestClose', 'requestCancel', 'requestReopen']
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Body | null
   const action = String(body?.action || '')
   const supplierAction = action === 'create' || action === 'update' || action === 'delete'
-  const millAction = action === 'issue' || action === 'verify' || action === 'correct'
+  const millAction = action === 'issue' || action === 'verify' || action === 'correct' || REQUEST_ACTIONS.includes(action)
   if (!supplierAction && !millAction) return NextResponse.json({ ok: false, error: 'Unknown action.' }, { status: 400 })
 
   const check = supplierAction
@@ -63,6 +72,35 @@ export async function POST(request: NextRequest) {
   if (check.error) return check.error
   const name = check.user.name || check.user.email || 'User'
   const id = String(body?.id || '')
+
+  if (REQUEST_ACTIONS.includes(action)) {
+    try {
+      let saved
+      if (action === 'requestCreate') saved = await createYarnRequest(body?.request as YarnRequestInput, { id: check.user.id, name })
+      else if (action === 'requestUpdate') saved = await updateYarnRequest(id, body?.request as YarnRequestInput, name)
+      else
+        saved = await setYarnRequestStatus(
+          id,
+          action === 'requestClose' ? 'CLOSED' : action === 'requestCancel' ? 'CANCELLED' : 'OPEN',
+          String(body?.note || ''),
+          name
+        )
+      await writeAudit({
+        req: request,
+        actor: check.user,
+        module: 'floor',
+        action: `yarnSupply.${action}`,
+        entityKey: 'floor_yarn_requests',
+        entityId: saved?.id || id || null,
+        after: saved,
+      })
+      return NextResponse.json({ ok: true, request: saved })
+    } catch (err) {
+      if (err instanceof YarnError) return NextResponse.json({ ok: false, error: err.message }, { status: err.status })
+      console.error('[yarn-supply POST]', action, err)
+      return NextResponse.json({ ok: false, error: 'Could not save. Please try again.' }, { status: 500 })
+    }
+  }
 
   try {
     const before = id ? await getYarnDispatch(id) : null

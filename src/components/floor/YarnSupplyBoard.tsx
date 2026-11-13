@@ -7,6 +7,7 @@ import { longDateFromYmd } from '@/lib/longDate'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { WhatsAppShareModal } from '@/components/shared/WhatsAppShareModal'
 import { SectionLoader } from '@/components/shared/Loaders'
+import { YarnRequestsPanel } from '@/components/floor/YarnRequestsPanel'
 import {
   bagsText,
   diffText,
@@ -20,7 +21,8 @@ import {
   type YarnSupplyList,
 } from '@/lib/floor/yarnSupply'
 
-type View = 'open' | 'verified' | 'all'
+/** supplier: requests | sent | verified | stock — mill: waiting | verified | requests */
+export type YarnSupplyTab = 'requests' | 'sent' | 'waiting' | 'verified' | 'stock'
 
 const shortDate = (ymd: string | null) => (ymd ? longDateFromYmd(ymd) : '—')
 
@@ -241,6 +243,8 @@ export function YarnSupplyBoard({
   selectedDate,
   embedded = false,
   onOpenCount,
+  tab,
+  onTabChange,
 }: {
   mode: 'supplier' | 'mill'
   selectedDate?: string
@@ -248,11 +252,20 @@ export function YarnSupplyBoard({
   embedded?: boolean
   /** Entries waiting for the mill (for a tab badge). */
   onOpenCount?: (n: number) => void
+  /** Open tab (kept in the address by the Yarn Supply page). */
+  tab?: YarnSupplyTab
+  onTabChange?: (t: YarnSupplyTab) => void
 }) {
   const { showConfirm, showError, showSuccessSoon } = useAlertDialog()
   const [data, setData] = useState<YarnSupplyList | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [view, setView] = useState<View>('open')
+  const [tabState, setTabState] = useState<YarnSupplyTab>(mode === 'mill' ? 'waiting' : 'requests')
+  const view: YarnSupplyTab = tab ?? tabState
+  const setView = (t: YarnSupplyTab) => {
+    setTabState(t)
+    onTabChange?.(t)
+  }
+  const [newRequest, setNewRequest] = useState(false)
   const [receiving, setReceiving] = useState<{ d: YarnDispatch; correcting: boolean } | null>(null)
   const [issue, setIssue] = useState<YarnDispatch | null>(null)
   const [share, setShare] = useState<{ title: string; text: string } | null>(null)
@@ -283,7 +296,11 @@ export function YarnSupplyBoard({
   const list = useMemo(() => data?.dispatches ?? [], [data])
   const open = list.filter((d) => d.status !== 'VERIFIED')
   const issues = list.filter((d) => d.status === 'ISSUE').length
-  const shown = view === 'open' ? open : view === 'verified' ? list.filter((d) => d.status === 'VERIFIED') : list
+  const verified = list.filter((d) => d.status === 'VERIFIED')
+  const shown = view === 'verified' ? verified : open
+  const requests = useMemo(() => data?.requests ?? [], [data])
+  const openRequests = requests.filter((q) => q.status === 'OPEN')
+  const requestById = useMemo(() => new Map(requests.map((q) => [q.id, q])), [requests])
   const afterSave = (msg: string) => (d: YarnDispatch | null) => {
     setReceiving(null)
     setIssue(null)
@@ -322,68 +339,129 @@ export function YarnSupplyBoard({
 
   const verifiedOnShareDate = list.filter((d) => d.status === 'VERIFIED' && d.receivedDate === shareDate).length
 
+  const tabs: Array<[YarnSupplyTab, string, number | null, string]> =
+    mode === 'mill'
+      ? [
+          ['waiting', 'Waiting for check', open.length, 'bi-hourglass-split'],
+          ['verified', 'Verified', null, 'bi-check2-circle'],
+          ['requests', 'Requests', openRequests.length, 'bi-clipboard-check'],
+        ]
+      : [
+          ['requests', 'Requests from mill', openRequests.length, 'bi-clipboard-check'],
+          ['sent', 'Sent — waiting', open.length, 'bi-hourglass-split'],
+          ['verified', 'Verified', null, 'bi-check2-circle'],
+          ['stock', 'Mill stock', null, 'bi-box-seam'],
+        ]
+
   return (
     <>
       <div className={embedded ? '' : 'card mb-3'}>
-        <div className={`${embedded ? 'px-3 py-2 border-bottom bg-light' : 'card-header'} d-flex flex-wrap align-items-center gap-2`}>
-          <h3 className={`${embedded ? 'fs-6 fw-semibold' : 'card-title'} mb-0 me-auto`}>
-            <i className="bi bi-truck me-1" />
-            {mode === 'mill' ? 'Yarn from supplier' : 'Yarn sent to the mill'}
-            {open.length > 0 && <span className="badge text-bg-warning ms-2">{open.length} to check</span>}
-            {issues > 0 && <span className="badge text-bg-danger ms-1">{issues} issue{issues === 1 ? '' : 's'}</span>}
-          </h3>
-          <div className="btn-group btn-group-sm" role="group">
-            {(
-              [
-                ['open', `Waiting (${open.length})`],
-                ['verified', 'Verified'],
-                ['all', 'All'],
-              ] as const
-            ).map(([k, label]) => (
-              <button key={k} type="button" className={`btn ${view === k ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setView(k)}>
-                {label}
+        <div className={`${embedded ? 'px-3 pt-2 bg-light' : 'card-header pb-0'} border-bottom`}>
+          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <h3 className={`${embedded ? 'fs-6 fw-semibold' : 'card-title'} mb-0 me-auto`}>
+              <i className="bi bi-truck me-1" />
+              {mode === 'mill' ? 'Yarn from supplier' : 'Yarn Supply'}
+              {issues > 0 && <span className="badge text-bg-danger ms-2">{issues} issue{issues === 1 ? '' : 's'}</span>}
+            </h3>
+            {mode === 'mill' && view === 'verified' && (
+              <div className="d-flex align-items-center gap-1">
+                <input
+                  type="date"
+                  className="form-control form-control-sm"
+                  style={{ width: 140 }}
+                  value={shareDate}
+                  max={getCalendarToday()}
+                  onChange={(e) => setShareDate(e.target.value)}
+                  title="Day to share"
+                />
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success text-nowrap"
+                  onClick={() => setShare({ title: `Yarn received — ${longDateFromYmd(shareDate)}`, text: receivedDayText(shareDate, list, longDateFromYmd) })}
+                  title="WhatsApp the yarn received (verified) on this day"
+                >
+                  <i className="bi bi-whatsapp me-1" />
+                  Received ({verifiedOnShareDate})
+                </button>
+              </div>
+            )}
+            {mode === 'mill' && view === 'requests' && data?.canVerify && (
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => setNewRequest(true)}>
+                <i className="bi bi-plus-lg me-1" /> Request yarn
               </button>
-            ))}
+            )}
+            {canSend && (view === 'sent' || view === 'verified') && (
+              <Link href="/yarn-supply/send" className="btn btn-sm btn-primary">
+                <i className="bi bi-send me-1" /> Send yarn
+              </Link>
+            )}
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={load} title="Refresh">
+              <i className="bi bi-arrow-clockwise" />
+            </button>
           </div>
-          {mode === 'mill' && (
-            <div className="d-flex align-items-center gap-1">
-              <input
-                type="date"
-                className="form-control form-control-sm"
-                style={{ width: 140 }}
-                value={shareDate}
-                max={getCalendarToday()}
-                onChange={(e) => setShareDate(e.target.value)}
-                title="Day to share"
-              />
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-success text-nowrap"
-                onClick={() => setShare({ title: `Yarn received — ${longDateFromYmd(shareDate)}`, text: receivedDayText(shareDate, list, longDateFromYmd) })}
-                title="WhatsApp the yarn received (verified) on this day"
-              >
-                <i className="bi bi-whatsapp me-1" />
-                Received ({verifiedOnShareDate})
-              </button>
-            </div>
-          )}
-          {canSend && (
-            <Link href="/yarn-supply/send" className="btn btn-sm btn-primary">
-              <i className="bi bi-send me-1" /> Send yarn
-            </Link>
-          )}
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={load} title="Refresh">
-            <i className="bi bi-arrow-clockwise" />
-          </button>
+          <ul className="nav nav-tabs border-bottom-0" role="tablist">
+            {tabs.map(([k, label, count, icon]) => (
+              <li key={k} className="nav-item" role="presentation">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === k}
+                  className={`nav-link py-1 px-3 ${view === k ? 'active fw-semibold' : 'text-secondary'}`}
+                  onClick={() => setView(k)}
+                >
+                  <i className={`bi ${icon} me-1`} />
+                  {label}
+                  {count ? <span className={`badge ms-1 ${k === 'requests' ? 'text-bg-primary' : 'text-bg-warning'}`}>{count}</span> : null}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
         <div className="card-body p-0">
           {loadError ? (
             <div className="p-3 text-danger small">{loadError}</div>
           ) : !data ? (
             <SectionLoader compact />
+          ) : view === 'requests' ? (
+            <YarnRequestsPanel
+              mode={mode}
+              requests={requests}
+              stock={data.stock}
+              canManage={mode === 'mill' && data.canVerify}
+              canSend={canSend}
+              newOpen={newRequest}
+              onNewClose={() => setNewRequest(false)}
+              onChanged={load}
+              onShare={setShare}
+            />
+          ) : view === 'stock' ? (
+            data.stock.length === 0 ? (
+              <div className="p-3 small text-secondary">No yarn in stock.</div>
+            ) : (
+              <table className="table table-sm mb-0" style={{ fontSize: 13 }}>
+                <thead className="table-light">
+                  <tr>
+                    <th className="px-2">Yarn</th>
+                    <th className="px-2 text-end">Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.stock.map((y) => (
+                    <tr key={y.id}>
+                      <td className="px-2">{y.yarnType}</td>
+                      <td className={`px-2 text-end font-monospace ${y.balanceKg <= 0 ? 'text-danger' : ''}`}>{fmtKg(y.balanceKg)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
           ) : shown.length === 0 ? (
             <div className="p-3 small text-secondary">
-              {view === 'open' ? (mode === 'mill' ? 'No yarn waiting to be checked.' : 'Nothing waiting — everything sent has been checked by the mill.') : 'No entries.'}
+              {view === 'verified'
+                ? 'Nothing verified yet.'
+                : mode === 'mill'
+                  ? 'No yarn waiting to be checked.'
+                  : 'Nothing waiting — everything sent has been checked by the mill.'}
             </div>
           ) : (
             <div className="table-responsive">
@@ -410,6 +488,14 @@ export function YarnSupplyBoard({
                           <div className="fw-semibold">{d.yarnType}</div>
                           {d.remarks && <div className="small text-secondary">{d.remarks}</div>}
                           {mode === 'mill' && d.createdBy && <div className="small text-secondary">By {d.createdBy}</div>}
+                          {d.requestId && requestById.get(d.requestId) && (
+                            <div className="small">
+                              <span className="badge text-bg-light border">
+                                For request: {fmtKg(requestById.get(d.requestId)!.kg)} ·{' '}
+                                {shortDate(requestById.get(d.requestId)!.createdAt.slice(0, 10))}
+                              </span>
+                            </div>
+                          )}
                           <LogLine d={d} />
                         </td>
                         <td className="px-2 text-end">
@@ -504,38 +590,6 @@ export function YarnSupplyBoard({
           )}
         </div>
       </div>
-
-      {mode === 'supplier' && data && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title mb-0">
-              <i className="bi bi-box-seam me-1" /> Mill yarn stock now
-            </h3>
-          </div>
-          <div className="card-body p-0">
-            {data.stock.length === 0 ? (
-              <div className="p-3 small text-secondary">No yarn in stock.</div>
-            ) : (
-              <table className="table table-sm mb-0" style={{ fontSize: 13 }}>
-                <thead className="table-light">
-                  <tr>
-                    <th className="px-2">Yarn</th>
-                    <th className="px-2 text-end">Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.stock.map((y) => (
-                    <tr key={y.id}>
-                      <td className="px-2">{y.yarnType}</td>
-                      <td className={`px-2 text-end font-monospace ${y.balanceKg <= 0 ? 'text-danger' : ''}`}>{fmtKg(y.balanceKg)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
 
       {receiving && (
         <ReceiveDialog

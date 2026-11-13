@@ -31,7 +31,7 @@ function Challan() {
   if (error) {
     return (
       <div className="alert alert-warning mt-3">
-        {error} <Link href="/yarn-supply">Back to Yarn Supply</Link>
+        {error} <Link href="/yarn-supply?tab=sent">Back to Yarn Supply</Link>
       </div>
     )
   }
@@ -44,7 +44,7 @@ function Challan() {
     <>
       <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } body { font-size: 10.5pt !important; } }`}</style>
       <div className="d-flex gap-2 my-3 d-print-none">
-        <Link href="/yarn-supply" className="btn btn-sm btn-outline-secondary">
+        <Link href="/yarn-supply?tab=sent" className="btn btn-sm btn-outline-secondary">
           <i className="bi bi-arrow-left" /> Back
         </Link>
         <button type="button" className="btn btn-sm btn-primary" onClick={() => window.print()}>

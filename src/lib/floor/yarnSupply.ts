@@ -38,6 +38,8 @@ export interface YarnDispatch {
   verifyNote: string
   verifiedBy: string
   verifiedAt: string | null
+  /** The mill's request this lot was sent against (null = not linked). */
+  requestId: string | null
   log: YarnDispatchLog[]
 }
 
@@ -50,6 +52,8 @@ export type YarnDispatchInput = {
   lotNo?: string
   vehicleNo?: string
   remarks?: string
+  /** Sent against this request of the mill. */
+  requestId?: string | null
 }
 
 /** What the mill received. */
@@ -60,10 +64,51 @@ export type YarnReceiveInput = {
   note?: string
 }
 
+/**
+ * The mill asks the supplier for yarn. OPEN until the mill closes or cancels it; shown as
+ * COMPLETE once the lots sent against it reach the kg asked for.
+ */
+export type YarnRequestStatus = 'OPEN' | 'COMPLETE' | 'CLOSED' | 'CANCELLED'
+
+export type YarnRequestLog = {
+  at: string
+  by: string
+  action: 'REQUESTED' | 'EDITED' | 'CLOSED' | 'CANCELLED' | 'REOPENED'
+  note?: string
+}
+
+export interface YarnRequest {
+  id: string
+  status: YarnRequestStatus
+  yarnType: string
+  kg: number
+  bags: number | null
+  neededBy: string | null
+  note: string
+  requestedBy: string
+  createdAt: string
+  closedBy: string
+  closeNote: string
+  /** Lots sent against it (not deleted): count, kg sent, kg the mill verified. */
+  lots: number
+  sentKg: number
+  receivedKg: number
+  log: YarnRequestLog[]
+}
+
+export type YarnRequestInput = {
+  yarnType: string
+  kg: number
+  bags?: number | null
+  neededBy?: string | null
+  note?: string
+}
+
 export type MillYarnStock = { id: string; yarnType: string; balanceKg: number }
 
 export type YarnSupplyList = {
   dispatches: YarnDispatch[]
+  requests: YarnRequest[]
   stock: MillYarnStock[]
   /** May send / change entries (supplier). */
   canSend: boolean
@@ -75,7 +120,13 @@ export async function fetchYarnSupply(): Promise<YarnSupplyList> {
   const r = await fetch('/api/floor/yarn-supply', { credentials: 'same-origin', cache: 'no-store' })
   const d = await r.json().catch(() => ({}))
   if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not load the yarn supply list.')
-  return { dispatches: d.dispatches || [], stock: d.stock || [], canSend: Boolean(d.canSend), canVerify: Boolean(d.canVerify) }
+  return {
+    dispatches: d.dispatches || [],
+    requests: d.requests || [],
+    stock: d.stock || [],
+    canSend: Boolean(d.canSend),
+    canVerify: Boolean(d.canVerify),
+  }
 }
 
 type ActionBody =
@@ -85,6 +136,43 @@ type ActionBody =
   | { action: 'issue'; id: string; note: string }
   | { action: 'verify'; id: string; receive: YarnReceiveInput }
   | { action: 'correct'; id: string; receive: YarnReceiveInput }
+
+type RequestActionBody =
+  | { action: 'requestCreate'; request: YarnRequestInput }
+  | { action: 'requestUpdate'; id: string; request: YarnRequestInput }
+  | { action: 'requestClose' | 'requestCancel' | 'requestReopen'; id: string; note?: string }
+
+/** Mill: ask the supplier for yarn / change / close / cancel a request. Throws the server's message. */
+export async function yarnRequestAction(body: RequestActionBody): Promise<YarnRequest | null> {
+  const r = await fetch('/api/floor/yarn-supply', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not save. Please try again.')
+  return (d.request as YarnRequest) || null
+}
+
+/** kg still to send for a request (never below 0). */
+export const requestRemainingKg = (q: YarnRequest) => Math.max(0, Math.round((q.kg - q.sentKg) * 100) / 100)
+
+/** WhatsApp text: the mill's request to the supplier. */
+export function yarnRequestShareText(q: YarnRequest): string {
+  return [
+    `*Sara Textile — Yarn request*`,
+    ``,
+    `Yarn: ${q.yarnType}`,
+    `Quantity: ${fmtKg(q.kg)}${q.bags ? ` (${bagsText(q.bags)})` : ''}`,
+    q.neededBy ? `Needed by: ${longDateFromYmd(q.neededBy)}` : '',
+    q.note ? `Note: ${q.note}` : '',
+    q.sentKg > 0 ? `Sent so far: ${fmtKg(q.sentKg)} · Remaining: ${fmtKg(requestRemainingKg(q))}` : '',
+    q.requestedBy ? `Requested by: ${q.requestedBy}` : '',
+  ]
+    .filter((l, i) => l !== '' || i === 1)
+    .join('\n')
+}
 
 /** One action. Verify / correct also refresh Yarn Stock on this screen. Throws the server's message. */
 export async function yarnSupplyAction(body: ActionBody): Promise<YarnDispatch | null> {

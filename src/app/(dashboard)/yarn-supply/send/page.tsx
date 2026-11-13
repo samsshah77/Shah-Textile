@@ -5,10 +5,12 @@ import { useSearchParams } from 'next/navigation'
 import { YarnSendForm } from '@/components/floor/YarnSendForm'
 import { SectionLoader } from '@/components/shared/Loaders'
 
-/** Yarn Supply → Send yarn (or ?id=… to correct an entry). */
+/** Yarn Supply → Send yarn (?request=… against a mill request, ?id=… to correct an entry). */
 function SendYarn() {
-  const id = useSearchParams().get('id')
-  return <YarnSendForm key={id || 'new'} editId={id} />
+  const params = useSearchParams()
+  const id = params.get('id')
+  const request = params.get('request')
+  return <YarnSendForm key={id || request || 'new'} editId={id} requestId={request} />
 }
 
 export default function YarnSendPage() {

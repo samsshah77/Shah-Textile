@@ -1,13 +1,24 @@
 'use client'
 
-import { YarnSupplyBoard } from '@/components/floor/YarnSupplyBoard'
+import { Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { YarnSupplyBoard, type YarnSupplyTab } from '@/components/floor/YarnSupplyBoard'
+import { SectionLoader } from '@/components/shared/Loaders'
 import { useAuth } from '@/context/AuthContext'
 
+const TABS: YarnSupplyTab[] = ['requests', 'sent', 'verified', 'stock']
+
 /**
- * Yarn Supply — the supplier's page: enter each lot of yarn sent to the mill; see whether the
- * mill has checked it (or reported an issue to correct) and the mill's yarn stock.
- * Permissions → "Yarn Supply": Edit for the supplier, View for Javed Sir.
+ * Yarn Supply — the supplier's page, in tabs: Requests from mill | Sent — waiting | Verified |
+ * Mill stock. Permissions → "Yarn Supply": Edit for the supplier, View for Javed Sir.
  */
+function Board() {
+  const router = useRouter()
+  const raw = useSearchParams().get('tab') as YarnSupplyTab | null
+  const tab = raw && TABS.includes(raw) ? raw : 'requests'
+  return <YarnSupplyBoard mode="supplier" tab={tab} onTabChange={(t) => router.replace(`/yarn-supply?tab=${t}`, { scroll: false })} />
+}
+
 export default function YarnSupplyPage() {
   const { canView } = useAuth()
   if (!canView('yarn_supply')) {
@@ -15,7 +26,9 @@ export default function YarnSupplyPage() {
   }
   return (
     <div className="py-3">
-      <YarnSupplyBoard mode="supplier" />
+      <Suspense fallback={<SectionLoader />}>
+        <Board />
+      </Suspense>
     </div>
   )
 }

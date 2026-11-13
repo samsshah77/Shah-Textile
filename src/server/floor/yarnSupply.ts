@@ -19,9 +19,12 @@ import type {
   YarnDispatchLog,
   YarnDispatchStatus,
   YarnReceiveInput,
+  YarnRequest,
+  YarnRequestInput,
+  YarnRequestLog,
 } from '@/lib/floor/yarnSupply'
 
-export type { YarnDispatch, YarnDispatchInput, YarnReceiveInput }
+export type { YarnDispatch, YarnDispatchInput, YarnReceiveInput, YarnRequest, YarnRequestInput }
 
 const DDL = [
   `CREATE TABLE IF NOT EXISTS "floor_yarn_dispatches" (
@@ -54,6 +57,25 @@ const DDL = [
     "deletedAt" TIMESTAMP(3)
   )`,
   `CREATE INDEX IF NOT EXISTS "floor_yarn_dispatches_status_idx" ON "floor_yarn_dispatches"("status", "sentDate")`,
+  // The mill's request a lot was sent against.
+  `ALTER TABLE "floor_yarn_dispatches" ADD COLUMN IF NOT EXISTS "requestId" TEXT`,
+  `CREATE TABLE IF NOT EXISTS "floor_yarn_requests" (
+    "id" TEXT PRIMARY KEY,
+    "status" TEXT NOT NULL DEFAULT 'OPEN',
+    "yarnType" TEXT NOT NULL,
+    "kg" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "bags" INTEGER,
+    "neededBy" TEXT,
+    "note" TEXT NOT NULL DEFAULT '',
+    "requestedBy" TEXT NOT NULL DEFAULT '',
+    "requestedById" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "closedBy" TEXT NOT NULL DEFAULT '',
+    "closeNote" TEXT NOT NULL DEFAULT '',
+    "closedAt" TIMESTAMP(3),
+    "log" JSONB NOT NULL DEFAULT '[]'::jsonb
+  )`,
 ]
 
 let ready: Promise<void> | null = null
@@ -95,6 +117,7 @@ type Row = {
   verifiedAt: Date | string | null
   yarnId: string | null
   movementId: string | null
+  requestId?: string | null
   log: unknown
 }
 
@@ -128,6 +151,7 @@ function toDispatch(r: Row): YarnDispatch {
     verifyNote: r.verifyNote || '',
     verifiedBy: r.verifiedBy || '',
     verifiedAt: iso(r.verifiedAt),
+    requestId: r.requestId || null,
     log: Array.isArray(r.log) ? (r.log as YarnDispatchLog[]) : [],
   }
 }
@@ -153,7 +177,19 @@ function cleanInput(p: YarnDispatchInput) {
     lotNo: clip(p.lotNo, 60),
     vehicleNo: clip(p.vehicleNo, 40),
     remarks: clip(p.remarks, 500),
+    requestId: p.requestId ? clip(p.requestId, 80) : null,
   }
+}
+
+/** A lot may be sent only against a request that is still open (or the one it already had). */
+async function checkRequestLink(requestId: string | null, keep?: string | null) {
+  if (!requestId || requestId === keep) return
+  const rows = await prisma.$queryRawUnsafe<Array<{ status: string }>>(
+    `SELECT "status" FROM "floor_yarn_requests" WHERE "id" = $1`,
+    requestId
+  )
+  if (!rows[0]) throw new YarnError('That request was not found. Please refresh the page.', 404)
+  if (rows[0].status !== 'OPEN') throw new YarnError('That request is closed by the mill — send without it, or ask the mill.', 409)
 }
 
 function cleanReceive(p: YarnReceiveInput) {
@@ -197,11 +233,12 @@ async function mustGet(id: string): Promise<YarnDispatch> {
 export async function createYarnDispatch(p: YarnDispatchInput, by: { id: string; name: string }): Promise<YarnDispatch> {
   await ensureYarnDispatchTable()
   const c = cleanInput(p)
+  await checkRequestLink(c.requestId)
   const id = `ysd-${Date.now()}-${randomUUID().slice(0, 8)}`
   await prisma.$executeRawUnsafe(
     `INSERT INTO "floor_yarn_dispatches"
-      ("id","status","yarnType","sentDate","bags","bagKg","weightKg","challanNo","lotNo","vehicleNo","remarks","createdBy","createdById","log")
-     VALUES ($1,'PENDING',$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
+      ("id","status","yarnType","sentDate","bags","bagKg","weightKg","challanNo","lotNo","vehicleNo","remarks","createdBy","createdById","log","requestId")
+     VALUES ($1,'PENDING',$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14)`,
     id,
     c.yarnType,
     c.sentDate,
@@ -214,7 +251,8 @@ export async function createYarnDispatch(p: YarnDispatchInput, by: { id: string;
     c.remarks,
     by.name,
     by.id,
-    JSON.stringify([logEntry(by.name, 'SENT')])
+    JSON.stringify([logEntry(by.name, 'SENT')]),
+    c.requestId
   )
   return mustGet(id)
 }
@@ -224,12 +262,13 @@ export async function updateYarnDispatch(id: string, p: YarnDispatchInput, by: s
   const before = await mustGet(id)
   if (before.status === 'VERIFIED') throw new YarnError('Already verified by the mill — it can no longer be changed here.', 409)
   const c = cleanInput(p)
+  await checkRequestLink(c.requestId, before.requestId)
   const note = before.status === 'ISSUE' ? `Corrected after: ${before.issueNote}` : undefined
   await prisma.$executeRawUnsafe(
     `UPDATE "floor_yarn_dispatches" SET
        "status" = 'PENDING', "yarnType" = $2, "sentDate" = $3, "bags" = $4, "bagKg" = $5::jsonb, "weightKg" = $6,
        "challanNo" = $7, "lotNo" = $8, "vehicleNo" = $9, "remarks" = $10, "issueNote" = '', "issueBy" = '',
-       "updatedAt" = CURRENT_TIMESTAMP, "log" = "log" || $11::jsonb
+       "updatedAt" = CURRENT_TIMESTAMP, "log" = "log" || $11::jsonb, "requestId" = $12
      WHERE "id" = $1 AND "status" <> 'VERIFIED' AND "deletedAt" IS NULL`,
     id,
     c.yarnType,
@@ -241,7 +280,8 @@ export async function updateYarnDispatch(id: string, p: YarnDispatchInput, by: s
     c.lotNo,
     c.vehicleNo,
     c.remarks,
-    JSON.stringify([logEntry(by, 'EDITED', note)])
+    JSON.stringify([logEntry(by, 'EDITED', note)]),
+    c.requestId
   )
   return mustGet(id)
 }
@@ -393,4 +433,166 @@ export async function correctVerifiedYarnDispatch(id: string, p: YarnReceiveInpu
 export async function millYarnStock(): Promise<Array<{ id: string; yarnType: string; balanceKg: number }>> {
   const rows = await prisma.floorYarn.findMany({ select: { id: true, yarnType: true, balanceKg: true }, orderBy: { yarnType: 'asc' } })
   return rows.map((y) => ({ id: y.id, yarnType: y.yarnType, balanceKg: r2(y.balanceKg) }))
+}
+
+// ── Requests: the mill asks the supplier for yarn ─────────────────────────────────────────
+
+type RequestRow = {
+  id: string
+  status: string
+  yarnType: string
+  kg: number
+  bags: number | null
+  neededBy: string | null
+  note: string
+  requestedBy: string
+  createdAt: Date | string
+  closedBy: string
+  closeNote: string
+  log: unknown
+  lots: number | bigint
+  sentKg: number | null
+  receivedKg: number | null
+}
+
+function toRequest(r: RequestRow): YarnRequest {
+  const sentKg = r2(Number(r.sentKg) || 0)
+  const kg = r2(r.kg)
+  const base = r.status === 'CANCELLED' ? 'CANCELLED' : r.status === 'CLOSED' ? 'CLOSED' : 'OPEN'
+  return {
+    id: r.id,
+    status: base === 'OPEN' && kg > 0 && sentKg >= kg ? 'COMPLETE' : base,
+    yarnType: r.yarnType,
+    kg,
+    bags: r.bags == null ? null : Number(r.bags),
+    neededBy: r.neededBy,
+    note: r.note || '',
+    requestedBy: r.requestedBy || '',
+    createdAt: iso(r.createdAt) || '',
+    closedBy: r.closedBy || '',
+    closeNote: r.closeNote || '',
+    lots: Number(r.lots) || 0,
+    sentKg,
+    receivedKg: r2(Number(r.receivedKg) || 0),
+    log: Array.isArray(r.log) ? (r.log as YarnRequestLog[]) : [],
+  }
+}
+
+const REQUEST_SELECT = `
+  SELECT q.*,
+    COUNT(d."id") AS "lots",
+    COALESCE(SUM(d."weightKg"), 0) AS "sentKg",
+    COALESCE(SUM(CASE WHEN d."status" = 'VERIFIED' THEN d."receivedKg" ELSE 0 END), 0) AS "receivedKg"
+  FROM "floor_yarn_requests" q
+  LEFT JOIN "floor_yarn_dispatches" d ON d."requestId" = q."id" AND d."deletedAt" IS NULL`
+
+export async function listYarnRequests(): Promise<YarnRequest[]> {
+  await ensureYarnDispatchTable()
+  const rows = await prisma.$queryRawUnsafe<RequestRow[]>(
+    `${REQUEST_SELECT} GROUP BY q."id"
+     ORDER BY CASE q."status" WHEN 'OPEN' THEN 0 ELSE 1 END, q."createdAt" DESC LIMIT 300`
+  )
+  return rows.map(toRequest)
+}
+
+async function mustGetRequest(id: string): Promise<YarnRequest> {
+  await ensureYarnDispatchTable()
+  const rows = await prisma.$queryRawUnsafe<RequestRow[]>(`${REQUEST_SELECT} WHERE q."id" = $1 GROUP BY q."id"`, id)
+  if (!rows[0]) throw new YarnError('This request was not found. Please refresh the page.', 404)
+  return toRequest(rows[0])
+}
+
+function cleanRequest(p: YarnRequestInput) {
+  const yarnType = clip(p?.yarnType, 120)
+  if (!yarnType) throw new YarnError('Enter the yarn.')
+  const kg = r2(Number(p.kg))
+  if (!Number.isFinite(kg) || kg <= 0 || kg > 1e7) throw new YarnError('Enter the quantity in kg.')
+  const bagsRaw = p.bags == null || String(p.bags).trim() === '' ? null : Math.round(Number(p.bags))
+  if (bagsRaw != null && (!Number.isFinite(bagsRaw) || bagsRaw < 0 || bagsRaw > 10000)) throw new YarnError('Enter a valid number of bags.')
+  const neededBy = p.neededBy ? String(p.neededBy) : null
+  if (neededBy && !isYmd(neededBy)) throw new YarnError('Pick a valid needed-by date.')
+  return { yarnType, kg, bags: bagsRaw || null, neededBy, note: clip(p.note, 500) }
+}
+
+const reqLog = (by: string, action: YarnRequestLog['action'], note?: string): YarnRequestLog => ({
+  at: new Date().toISOString(),
+  by,
+  action,
+  ...(note ? { note } : {}),
+})
+
+/** Mill: ask the supplier for yarn. */
+export async function createYarnRequest(p: YarnRequestInput, by: { id: string; name: string }): Promise<YarnRequest> {
+  await ensureYarnDispatchTable()
+  const c = cleanRequest(p)
+  const id = `ysr-${Date.now()}-${randomUUID().slice(0, 8)}`
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "floor_yarn_requests" ("id","yarnType","kg","bags","neededBy","note","requestedBy","requestedById","log")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+    id,
+    c.yarnType,
+    c.kg,
+    c.bags,
+    c.neededBy,
+    c.note,
+    by.name,
+    by.id,
+    JSON.stringify([reqLog(by.name, 'REQUESTED')])
+  )
+  return mustGetRequest(id)
+}
+
+/** Mill: change an open request. */
+export async function updateYarnRequest(id: string, p: YarnRequestInput, by: string): Promise<YarnRequest> {
+  const before = await mustGetRequest(id)
+  if (before.status === 'CLOSED' || before.status === 'CANCELLED') throw new YarnError('This request is closed — reopen it first.', 409)
+  const c = cleanRequest(p)
+  const changed = [
+    before.yarnType !== c.yarnType ? `yarn ${before.yarnType} → ${c.yarnType}` : '',
+    before.kg !== c.kg ? `kg ${before.kg} → ${c.kg}` : '',
+    (before.bags ?? null) !== c.bags ? `bags ${before.bags ?? '—'} → ${c.bags ?? '—'}` : '',
+    (before.neededBy ?? null) !== c.neededBy ? `needed by ${before.neededBy ?? '—'} → ${c.neededBy ?? '—'}` : '',
+  ]
+    .filter(Boolean)
+    .join(', ')
+  await prisma.$executeRawUnsafe(
+    `UPDATE "floor_yarn_requests" SET "yarnType" = $2, "kg" = $3, "bags" = $4, "neededBy" = $5, "note" = $6,
+       "updatedAt" = CURRENT_TIMESTAMP, "log" = "log" || $7::jsonb
+     WHERE "id" = $1`,
+    id,
+    c.yarnType,
+    c.kg,
+    c.bags,
+    c.neededBy,
+    c.note,
+    JSON.stringify([reqLog(by, 'EDITED', changed || undefined)])
+  )
+  return mustGetRequest(id)
+}
+
+/** Mill: close (done), cancel, or reopen a request. Lots already sent stay as they are. */
+export async function setYarnRequestStatus(
+  id: string,
+  to: 'CLOSED' | 'CANCELLED' | 'OPEN',
+  note: string,
+  by: string
+): Promise<YarnRequest> {
+  const before = await mustGetRequest(id)
+  const isOpen = before.status === 'OPEN' || before.status === 'COMPLETE'
+  if (to === 'OPEN' && isOpen) return before
+  if (to !== 'OPEN' && !isOpen) throw new YarnError('This request is already closed.', 409)
+  const text = clip(note, 500)
+  const action: YarnRequestLog['action'] = to === 'OPEN' ? 'REOPENED' : to === 'CLOSED' ? 'CLOSED' : 'CANCELLED'
+  await prisma.$executeRawUnsafe(
+    `UPDATE "floor_yarn_requests" SET "status" = $2, "closedBy" = $3, "closeNote" = $4,
+       "closedAt" = CASE WHEN $2 = 'OPEN' THEN NULL ELSE CURRENT_TIMESTAMP END,
+       "updatedAt" = CURRENT_TIMESTAMP, "log" = "log" || $5::jsonb
+     WHERE "id" = $1`,
+    id,
+    to,
+    to === 'OPEN' ? '' : by,
+    to === 'OPEN' ? '' : text,
+    JSON.stringify([reqLog(by, action, text || undefined)])
+  )
+  return mustGetRequest(id)
 }

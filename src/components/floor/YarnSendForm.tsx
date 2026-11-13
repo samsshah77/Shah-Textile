@@ -7,7 +7,15 @@ import { getCalendarToday } from '@/constants/productionCalendar'
 import { longDayDateFromYmd } from '@/lib/longDate'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { SectionLoader } from '@/components/shared/Loaders'
-import { fetchYarnSupply, fmtKg, yarnSupplyAction, type MillYarnStock, type YarnDispatch } from '@/lib/floor/yarnSupply'
+import {
+  fetchYarnSupply,
+  fmtKg,
+  requestRemainingKg,
+  yarnSupplyAction,
+  type MillYarnStock,
+  type YarnDispatch,
+  type YarnRequest,
+} from '@/lib/floor/yarnSupply'
 
 const MAX_BAGS = 200
 
@@ -28,11 +36,13 @@ const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
  * vehicle #, and the weight of every bag. With `editId` it corrects an entry the mill has not
  * verified yet (e.g. after "Issue reported") and sends it back for checking.
  */
-export function YarnSendForm({ editId }: { editId?: string | null }) {
+export function YarnSendForm({ editId, requestId: fromRequest }: { editId?: string | null; requestId?: string | null }) {
   const router = useRouter()
   const { showSuccessSoon } = useAlertDialog()
   const [stock, setStock] = useState<MillYarnStock[] | null>(null)
   const [editing, setEditing] = useState<YarnDispatch | null>(null)
+  const [requests, setRequests] = useState<YarnRequest[]>([])
+  const [requestId, setRequestId] = useState<string>('')
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [yarnType, setYarnType] = useState('')
@@ -57,6 +67,14 @@ export function YarnSendForm({ editId }: { editId?: string | null }) {
           return
         }
         setStock(d.stock)
+        setRequests(d.requests)
+        if (!editId && fromRequest) {
+          const q = d.requests.find((x) => x.id === fromRequest)
+          if (q && q.status === 'OPEN') {
+            setRequestId(q.id)
+            setYarnType(q.yarnType)
+          }
+        }
         if (editId) {
           const e = d.dispatches.find((x) => x.id === editId)
           if (!e) return setLoadError('This entry was not found (it may have been deleted).')
@@ -70,13 +88,14 @@ export function YarnSendForm({ editId }: { editId?: string | null }) {
           setRemarks(e.remarks)
           setBagCountText(String(e.bagKg.length || 1))
           setBagKg(e.bagKg.map((w) => w.toFixed(2)))
+          setRequestId(e.requestId || '')
         }
       })
       .catch((e: unknown) => alive && setLoadError(e instanceof Error ? e.message : 'Could not load.'))
     return () => {
       alive = false
     }
-  }, [editId])
+  }, [editId, fromRequest])
 
   const bagCount = bagKg.length
   const setBags = (n: number) => {
@@ -91,6 +110,10 @@ export function YarnSendForm({ editId }: { editId?: string | null }) {
   const weights = bagKg.map((v) => r2(parseFloat(v) || 0))
   const filled = weights.filter((w) => w > 0).length
   const totalKg = r2(weights.reduce((a, b) => a + b, 0))
+  // Requests this lot can go against: the open ones (and the one it already has).
+  const linkable = requests.filter((q) => q.status === 'OPEN' || q.id === requestId)
+  const linked = requests.find((q) => q.id === requestId) || null
+  const backHref = fromRequest ? '/yarn-supply?tab=requests' : '/yarn-supply?tab=sent'
   const matched = useMemo(() => {
     const k = yarnKey(yarnType)
     return k ? (stock || []).find((y) => yarnKey(y.yarnType) === k) || null : null
@@ -105,14 +128,23 @@ export function YarnSendForm({ editId }: { editId?: string | null }) {
     setBusy(true)
     setError(null)
     try {
-      const entry = { yarnType: name, sentDate, bagKg: weights, challanNo: challanNo.trim(), lotNo: lotNo.trim(), vehicleNo: vehicleNo.trim(), remarks: remarks.trim() }
+      const entry = {
+        yarnType: name,
+        sentDate,
+        bagKg: weights,
+        challanNo: challanNo.trim(),
+        lotNo: lotNo.trim(),
+        vehicleNo: vehicleNo.trim(),
+        remarks: remarks.trim(),
+        requestId: requestId || null,
+      }
       if (editing) await yarnSupplyAction({ action: 'update', id: editing.id, entry })
       else await yarnSupplyAction({ action: 'create', entry })
       showSuccessSoon({
         title: editing ? 'Saved' : 'Sent',
         message: editing ? 'Sent to the mill again to be checked.' : 'The mill will check it when the yarn arrives.',
       })
-      router.push('/yarn-supply')
+      router.push('/yarn-supply?tab=sent')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save.')
       setBusy(false)
@@ -131,7 +163,7 @@ export function YarnSendForm({ editId }: { editId?: string | null }) {
   return (
     <form onSubmit={submit} className="card" style={{ maxWidth: 860 }}>
       <div className="card-header d-flex align-items-center gap-2">
-        <Link href="/yarn-supply" className="btn btn-sm btn-outline-secondary">
+        <Link href={backHref} className="btn btn-sm btn-outline-secondary">
           <i className="bi bi-arrow-left" /> Back
         </Link>
         <h3 className="card-title mb-0">{editing ? 'Correct yarn sent' : 'Send yarn to the mill'}</h3>
@@ -146,6 +178,37 @@ export function YarnSendForm({ editId }: { editId?: string | null }) {
         {error && <div className="alert alert-danger py-2 px-3 small">{error}</div>}
 
         <div className="row g-3">
+          {linkable.length > 0 && (
+            <div className="col-12">
+              <label className="form-label small fw-semibold mb-1" htmlFor="ys-request">
+                Against the mill’s request
+              </label>
+              <select
+                id="ys-request"
+                className="form-select"
+                value={requestId}
+                onChange={(e) => {
+                  setRequestId(e.target.value)
+                  const q = requests.find((x) => x.id === e.target.value)
+                  if (q && !yarnType.trim()) setYarnType(q.yarnType)
+                }}
+              >
+                <option value="">— Not against a request —</option>
+                {linkable.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.yarnType} · {fmtKg(q.kg)} requested · {fmtKg(requestRemainingKg(q))} remaining
+                    {q.neededBy ? ` · needed by ${longDayDateFromYmd(q.neededBy)}` : ''}
+                  </option>
+                ))}
+              </select>
+              {linked && (
+                <div className="form-text small">
+                  Requested {fmtKg(linked.kg)} · sent so far {fmtKg(linked.sentKg)} · remaining {fmtKg(requestRemainingKg(linked))}
+                  {linked.note ? ` · ${linked.note}` : ''}
+                </div>
+              )}
+            </div>
+          )}
           <div className="col-12 col-md-6">
             <label className="form-label small fw-semibold mb-1" htmlFor="ys-yarn">
               Yarn
@@ -305,7 +368,7 @@ export function YarnSendForm({ editId }: { editId?: string | null }) {
         </div>
       </div>
       <div className="card-footer d-flex justify-content-end gap-2">
-        <Link href="/yarn-supply" className="btn btn-outline-secondary">
+        <Link href={backHref} className="btn btn-outline-secondary">
           Cancel
         </Link>
         <button id="ys-send-btn" type="submit" className="btn btn-primary px-4" disabled={busy || !yarnType.trim() || filled !== bagCount}>
