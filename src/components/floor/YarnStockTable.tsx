@@ -27,7 +27,7 @@ import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
 
 export type WeightUnit = 'KG' | 'LBS'
-export type YarnViewMode = 'STOCK' | 'LEDGER' | 'BALANCE' | 'SUPPLY'
+export type YarnViewMode = 'STOCK' | 'LEDGER' | 'BALANCE'
 export type YarnDateFilterMode = 'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY'
 
 function parseDay(dateStr: string) {
@@ -126,7 +126,9 @@ export function YarnStockTable({
   const { showConfirm, showSuccessSoon } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [activeView, setActiveView] = useState<YarnViewMode>('STOCK')
-  /** Supplier entries waiting for the mill check (badge on the From Supplier tab). */
+  /** Yarn Stock | Yarn from Supplier (its own tab on this page). */
+  const [section, setSection] = useState<'stock' | 'supply'>('stock')
+  /** Supplier entries waiting for the mill check (badge on the Yarn from Supplier tab). */
   const [supplyOpen, setSupplyOpen] = useState<number | null>(null)
   useEffect(() => {
     let alive = true
@@ -352,91 +354,73 @@ export function YarnStockTable({
 
   return (
     <div className="d-flex flex-column gap-3">
-      {/* 1. TOP SUMMARY CARDS (IN / OUT / BALANCE WITH ICONS) */}
-      <div className="row g-3">
-        <div className="col-12 col-md-4">
-          <div className="card h-100">
-            <div className="card-body p-3 d-flex align-items-center justify-content-between">
-              <div>
-                <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
-                  Total Inward (Received)
-                </span>
-                <div className="fs-4 fw-bold text-success">
-                  {totals.received.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                  <span className="fs-6 fw-semibold text-secondary">{unit.toLowerCase()}</span>
-                </div>
-                <div className="small text-muted mt-1">
-                  <span className="badge bg-success-subtle text-success me-1">
-                    <i className="bi bi-box-arrow-in-down me-1" />
-                    Inward
-                  </span>
-                  {totals.bags} Total Bags
-                </div>
-              </div>
-              <div
-                className="rounded-circle bg-success-subtle d-flex align-items-center justify-content-center"
-                style={{ width: 48, height: 48 }}
-              >
-                <i className="bi bi-box-arrow-in-down fs-4 text-success" />
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Yarn Stock | Yarn from Supplier */}
+      <ul className="nav nav-tabs" role="tablist">
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === 'stock'}
+            className={`nav-link ${section === 'stock' ? 'active fw-semibold' : 'text-secondary'}`}
+            onClick={() => setSection('stock')}
+          >
+            <i className="bi bi-boxes me-1" />
+            Yarn Stock
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === 'supply'}
+            className={`nav-link ${section === 'supply' ? 'active fw-semibold' : 'text-secondary'}`}
+            onClick={() => setSection('supply')}
+            title="Yarn the supplier has sent (verify / report issue) and the mill's yarn requests"
+          >
+            <i className="bi bi-truck me-1" />
+            Yarn from Supplier
+            {supplyOpen ? <span className="badge text-bg-warning ms-1">{supplyOpen}</span> : null}
+          </button>
+        </li>
+      </ul>
 
-        <div className="col-12 col-md-4">
-          <div className="card h-100">
-            <div className="card-body p-3 d-flex align-items-center justify-content-between">
-              <div>
-                <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
-                  Total Outward (To Looms)
-                </span>
-                <div className="fs-4 fw-bold text-danger">
-                  {totals.issued.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                  <span className="fs-6 fw-semibold text-secondary">{unit.toLowerCase()}</span>
-                </div>
-                <div className="small text-muted mt-1">
-                  <span className="badge bg-danger-subtle text-danger me-1">
-                    <i className="bi bi-box-arrow-up-right me-1" />
-                    Outward
-                  </span>
-                  {issuances.length} Dispatches Recorded
-                </div>
-              </div>
-              <div
-                className="rounded-circle bg-danger-subtle d-flex align-items-center justify-content-center"
-                style={{ width: 48, height: 48 }}
-              >
-                <i className="bi bi-box-arrow-up-right fs-4 text-danger" />
-              </div>
-            </div>
-          </div>
-        </div>
+      {section === 'supply' && <YarnSupplyBoard mode="mill" selectedDate={selectedDate} onOpenCount={setSupplyOpen} />}
 
-        <div className="col-12 col-md-4">
-          <div className="card h-100">
-            <div className="card-body p-3 d-flex align-items-center justify-content-between">
-              <div>
-                <span className="text-secondary small fw-semibold text-uppercase d-block mb-1">
-                  Available Warehouse Balance
-                </span>
-                <div className="fs-4 fw-bold text-primary">
-                  {totals.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                  <span className="fs-6 fw-semibold text-secondary">{unit.toLowerCase()}</span>
-                </div>
-                <div className="small text-muted mt-1">
-                  <span className="badge bg-primary-subtle text-primary me-1">
-                    <i className="bi bi-boxes me-1" />
-                    Net In-Stock
-                  </span>
-                  Ready for Floor Feeding
-                </div>
+      {section === 'stock' && (
+      <>
+      {/* 1. SUMMARY (IN / OUT / BALANCE) — one compact strip */}
+      <div className="card">
+        <div className="card-body py-2 px-3">
+          <div className="row g-2 text-center text-md-start">
+            <div className="col-4">
+              <div className="small text-secondary">
+                <i className="bi bi-box-arrow-in-down text-success me-1" />
+                Received
               </div>
-              <div
-                className="rounded-circle bg-primary-subtle d-flex align-items-center justify-content-center"
-                style={{ width: 48, height: 48 }}
-              >
-                <i className="bi bi-boxes fs-4 text-primary" />
+              <div className="fw-bold text-success">
+                {totals.received.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="small fw-normal text-secondary">{unit.toLowerCase()}</span>
               </div>
+              <div className="small text-secondary">{totals.bags} bags</div>
+            </div>
+            <div className="col-4 border-start">
+              <div className="small text-secondary">
+                <i className="bi bi-box-arrow-up-right text-danger me-1" />
+                Issued to looms
+              </div>
+              <div className="fw-bold text-danger">
+                {totals.issued.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="small fw-normal text-secondary">{unit.toLowerCase()}</span>
+              </div>
+              <div className="small text-secondary">{issuances.length} issues</div>
+            </div>
+            <div className="col-4 border-start">
+              <div className="small text-secondary">
+                <i className="bi bi-boxes text-primary me-1" />
+                Balance in stock
+              </div>
+              <div className="fw-bold text-primary">
+                {totals.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="small fw-normal text-secondary">{unit.toLowerCase()}</span>
+              </div>
+              <div className="small text-secondary">Ready for the floor</div>
             </div>
           </div>
         </div>
@@ -474,16 +458,6 @@ export function YarnStockTable({
               >
                 <i className="bi bi-calendar-check me-1" />
                 Date-wise Hisab
-              </button>
-              <button
-                type="button"
-                className={`btn ${activeView === 'SUPPLY' ? 'btn-primary' : 'btn-outline-secondary'}`}
-                onClick={() => setActiveView('SUPPLY')}
-                title="Yarn the supplier has sent: verify it into stock, or report an issue"
-              >
-                <i className="bi bi-truck me-1" />
-                From Supplier
-                {supplyOpen ? <span className="badge text-bg-warning ms-1">{supplyOpen}</span> : null}
               </button>
             </div>
           </div>
@@ -837,8 +811,6 @@ export function YarnStockTable({
           </>
         )}
 
-        {activeView === 'SUPPLY' && <YarnSupplyBoard mode="mill" selectedDate={selectedDate} embedded onOpenCount={setSupplyOpen} />}
-
         {activeView === 'BALANCE' && (
           <YarnDateBalance yarn={yarn} movements={allMovements} range={dateRange} periodLabel={periodLabel} unit={unit} />
         )}
@@ -1040,6 +1012,8 @@ export function YarnStockTable({
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Add Yarn Modal */}
       <AddYarnModal
