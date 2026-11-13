@@ -1,6 +1,7 @@
 'use client'
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { NamedDateInput } from '@/components/shared/NamedDateInput'
 import { PRODUCTION_START, getCalendarToday, shiftProductionDate } from '@/constants/productionCalendar'
 
 export function DateStepper({
@@ -47,16 +48,16 @@ export function DateStepper({
       >
         <ChevronLeft className={sm ? 'size-3.5' : 'size-4'} />
       </button>
-      <input
-        type="date"
-        className={`form-control ${sm ? 'form-control-sm fw-semibold' : ''}`}
-        style={{ minWidth: sm ? 140 : 0 }}
+      <NamedDateInput
+        size={size}
+        minWidth={sm ? 140 : 0}
+        className={sm ? '' : 'flex-grow-1'}
         value={value}
         min={min}
         max={cap}
         required={required}
-        aria-label={ariaLabel}
-        onChange={(e) => onChange(e.target.value)}
+        ariaLabel={ariaLabel}
+        onChange={onChange}
       />
       <button
         type="button"

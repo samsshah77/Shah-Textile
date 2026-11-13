@@ -296,14 +296,12 @@ function ProductionWorkspaceContent() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="date"
-                    className="form-control form-control-sm fw-semibold"
-                    style={{ width: 'auto', minWidth: 140, height: '2.25rem' }}
+                  <DateStepper
+                    size="sm"
                     value={endsDate}
                     max={getProductionToday()}
-                    onChange={(e) => e.target.value && setEndsDate(e.target.value)}
-                    aria-label="Quality ends date"
+                    ariaLabel="Quality ends date"
+                    onChange={(next) => next && setEndsDate(next)}
                   />
                 </>
               )}
