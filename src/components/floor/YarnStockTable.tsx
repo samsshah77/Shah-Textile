@@ -100,6 +100,10 @@ interface YarnStockTableProps {
   onTableEditChange?: (next: boolean) => void
   addModalOpen?: boolean
   onAddModalOpenChange?: (open: boolean) => void
+  section?: 'stock' | 'supply'
+  onSectionChange?: (section: 'stock' | 'supply') => void
+  requestModalOpen?: boolean
+  onRequestModalOpenChange?: (open: boolean) => void
 }
 
 export function YarnStockTable({
@@ -121,13 +125,22 @@ export function YarnStockTable({
   onTableEditChange,
   addModalOpen: addModalOpenProp,
   onAddModalOpenChange,
+  section: sectionProp,
+  onSectionChange,
+  requestModalOpen,
+  onRequestModalOpenChange,
 }: YarnStockTableProps) {
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [activeView, setActiveView] = useState<YarnViewMode>('STOCK')
   /** Yarn Stock | Yarn from Supplier (its own tab on this page). */
-  const [section, setSection] = useState<'stock' | 'supply'>('stock')
+  const [sectionState, setSectionState] = useState<'stock' | 'supply'>(sectionProp ?? 'stock')
+  const section = sectionProp ?? sectionState
+  const setSection = (next: 'stock' | 'supply') => {
+    setSectionState(next)
+    onSectionChange?.(next)
+  }
   /** Supplier entries waiting for the mill check (badge on the Yarn from Supplier tab). */
   const [supplyOpen, setSupplyOpen] = useState<number | null>(null)
   useEffect(() => {
@@ -355,37 +368,33 @@ export function YarnStockTable({
   return (
     <div className="d-flex flex-column gap-3">
       {/* Yarn Stock | Yarn from Supplier + Summary boxes in one row */}
-      <div className="d-flex flex-wrap justify-content-between align-items-end gap-2 border-bottom">
-        <ul className="nav nav-tabs border-bottom-0" role="tablist">
-          <li className="nav-item" role="presentation">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={section === 'stock'}
-              className={`nav-link ${section === 'stock' ? 'active fw-semibold' : 'text-secondary'}`}
-              onClick={() => setSection('stock')}
-            >
-              <i className="bi bi-boxes me-1" />
-              Yarn Stock
-            </button>
-          </li>
-          <li className="nav-item" role="presentation">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={section === 'supply'}
-              className={`nav-link ${section === 'supply' ? 'active fw-semibold' : 'text-secondary'}`}
-              onClick={() => setSection('supply')}
-              title="Yarn the supplier has sent (verify / report issue) and the mill's yarn requests"
-            >
-              <i className="bi bi-truck me-1" />
-              Yarn from Supplier
-              {supplyOpen ? <span className="badge text-bg-warning ms-1">{supplyOpen}</span> : null}
-            </button>
-          </li>
-        </ul>
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div className="d-inline-flex align-items-center gap-1 bg-white border rounded p-1" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === 'stock'}
+            className={`btn btn-sm px-3 py-1.5 fw-semibold ${section === 'stock' ? 'btn-primary' : 'btn-light text-dark'}`}
+            onClick={() => setSection('stock')}
+          >
+            <i className="bi bi-boxes me-1" />
+            Yarn Stock
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === 'supply'}
+            className={`btn btn-sm px-3 py-1.5 fw-semibold ${section === 'supply' ? 'btn-primary' : 'btn-light text-dark'}`}
+            onClick={() => setSection('supply')}
+            title="Yarn the supplier has sent (verify / report issue) and the mill's yarn requests"
+          >
+            <i className="bi bi-truck me-1" />
+            Yarn from Supplier
+            {supplyOpen ? <span className="badge text-bg-warning ms-1.5">{supplyOpen}</span> : null}
+          </button>
+        </div>
 
-        <div className="d-flex flex-wrap justify-content-end align-items-stretch gap-2 pb-2">
+        <div className="d-flex flex-wrap justify-content-end align-items-stretch gap-2">
           <div className="border rounded bg-white px-3 py-1.5 shadow-none">
             <div className="small text-secondary text-nowrap">
               <i className="bi bi-box-arrow-in-down text-success me-1" />
@@ -429,7 +438,16 @@ export function YarnStockTable({
         </div>
       </div>
 
-      {section === 'supply' && <YarnSupplyBoard mode="mill" selectedDate={selectedDate} onOpenCount={setSupplyOpen} />}
+      {section === 'supply' && (
+        <YarnSupplyBoard
+          mode="mill"
+          embedded
+          selectedDate={selectedDate}
+          onOpenCount={setSupplyOpen}
+          newRequestOpen={requestModalOpen}
+          onNewRequestOpenChange={onRequestModalOpenChange}
+        />
+      )}
 
       {section === 'stock' && (
       <>

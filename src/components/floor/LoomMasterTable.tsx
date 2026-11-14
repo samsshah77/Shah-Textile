@@ -552,20 +552,37 @@ export function LoomMasterTable({
    * Quality that ended on/before this day and has not been replaced on the loom:
    * shown as "Ended · NAME" (not "—") until a new quality is assigned.
    */
-  const endedQualityName = (loom: LoomMaster): string | null => {
+  const endedQualityInfo = (loom: LoomMaster): { name: string; date: string } | null => {
     const day = String(sheetDate || '').slice(0, 10)
     const rows = dayRows.filter((e) => e.loomNumber === loom.loomNumber)
+    /** The day this quality ended on this loom (per-loom end if recorded, else the quality's end). */
+    const endDay = (q: QualityMaster | null | undefined, fallback: string) => {
+      const onLoom = (q?.loomEnds || [])
+        .filter((e) => Number(e.loomNumber) === loom.loomNumber && (!day || e.date <= day))
+        .map((e) => e.date)
+        .sort()
+      return onLoom[onLoom.length - 1] || (q?.endedOn ? String(q.endedOn).slice(0, 10) : '') || fallback
+    }
     for (const row of rows) {
       if (!namedPose(row.qualityName)) continue
-      if (isQualityEndedSheetRow(row)) return (row.qualityName || '').trim()
       const owner = qualityRunThatOwnsSheetEntry({ ...row, date: day || row.date }, qualities, day || row.date)
+      if (isQualityEndedSheetRow(row)) {
+        // The quality on this row: its run owner, else by id, else the ended quality of that name.
+        const name = (row.qualityName || '').trim()
+        const q =
+          owner ||
+          (row.qualityId ? qualities.find((x) => x.id === row.qualityId) : undefined) ||
+          qualities.find((x) => normalizeQualityStatus(x.status) === 'ENDED' && x.name.trim().toLowerCase() === name.toLowerCase())
+        return { name, date: endDay(q, '') }
+      }
       if (owner && normalizeQualityStatus(owner.status) === 'ENDED') {
         const stamp = owner.endedOn ? String(owner.endedOn).slice(0, 10) : ''
-        if (stamp && day && stamp < day) return (row.qualityName || '').trim()
+        if (stamp && day && stamp < day) return { name: (row.qualityName || '').trim(), date: endDay(owner, stamp) }
       }
     }
     return null
   }
+  const endedQualityName = (loom: LoomMaster): string | null => endedQualityInfo(loom)?.name ?? null
 
   const qualityLabel = (loom: LoomMaster) => {
     const parts = dayQualityParts(loom)
@@ -594,12 +611,24 @@ export function LoomMasterTable({
     const parts = dayQualityParts(loom)
     const canRemovePart = Boolean(onRemoveQualitySegment) && editActive
     if (parts.length === 0) {
-      const ended = endedQualityName(loom)
-      if (ended) {
+      const endedInfo = endedQualityInfo(loom)
+      if (endedInfo) {
+        const ended = endedInfo.name
         return (
-          <span className="d-inline-flex align-items-center gap-1 text-muted" title={`${ended} ended — assign a new quality to start`}>
-            <span className="badge text-bg-secondary" style={{ fontSize: '0.65rem' }}>Ended</span>
-            <span className="text-truncate">{ended}</span>
+          <span
+            className="d-inline-flex flex-column text-muted"
+            style={{ lineHeight: 1.2 }}
+            title={`${ended} ended${endedInfo.date ? ` on ${formatShortDate(endedInfo.date)}` : ''} — assign a new quality to start`}
+          >
+            <span className="d-inline-flex align-items-center gap-1">
+              <span className="badge text-bg-secondary" style={{ fontSize: '0.65rem' }}>Ended</span>
+              <span className="text-truncate">{ended}</span>
+            </span>
+            {endedInfo.date && (
+              <span className="fw-normal" style={{ fontSize: '0.68rem' }}>
+                Ended on {formatShortDate(endedInfo.date)}
+              </span>
+            )}
           </span>
         )
       }

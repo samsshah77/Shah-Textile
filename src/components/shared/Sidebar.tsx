@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
@@ -17,6 +17,8 @@ interface NavLeaf {
   href: string
   icon: string
   activeCheck: (pathname: string, searchParams: URLSearchParams) => boolean
+  badge?: number | null
+  badgeClass?: string
   /** A sub-menu inside a group (Administration → Salary / Accounts for the admin). */
   children?: NavLeaf[]
 }
@@ -102,6 +104,52 @@ const YARN_SUPPLY_ITEM: NavLeaf = {
   icon: 'bi-truck',
   activeCheck: (p) => p.startsWith('/yarn-supply'),
 }
+
+/** Supplier-only sidebar items (tabs on the side). */
+const SUPPLIER_YARN_ITEMS: NavLeaf[] = [
+  {
+    title: 'Requests from mill',
+    href: '/yarn-supply?tab=requests',
+    icon: 'bi-clipboard-check',
+    activeCheck: (p, sp) => p === '/yarn-supply' && (!sp.get('tab') || sp.get('tab') === 'requests'),
+  },
+  {
+    title: 'Sent — waiting',
+    href: '/yarn-supply?tab=sent',
+    icon: 'bi-hourglass-split',
+    activeCheck: (p, sp) => p === '/yarn-supply' && sp.get('tab') === 'sent',
+  },
+  {
+    title: 'Verified',
+    href: '/yarn-supply?tab=verified',
+    icon: 'bi-check2-circle',
+    activeCheck: (p, sp) => p === '/yarn-supply' && sp.get('tab') === 'verified',
+  },
+  {
+    title: 'Send yarn',
+    href: '/yarn-supply/send',
+    icon: 'bi-send',
+    activeCheck: (p) => p.startsWith('/yarn-supply/send'),
+  },
+  {
+    title: 'Fazal Umer Inventory',
+    href: '/yarn-supply/store?tab=stock',
+    icon: 'bi-shop',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/store') && sp.get('tab') !== 'out',
+  },
+  {
+    title: 'Sizing / Sectional Warping',
+    href: '/yarn-supply/store?tab=out',
+    icon: 'bi-diagram-3',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/store') && sp.get('tab') === 'out',
+  },
+  {
+    title: 'Sara Textile stock',
+    href: '/yarn-supply?tab=stock',
+    icon: 'bi-box-seam',
+    activeCheck: (p, sp) => p === '/yarn-supply' && sp.get('tab') === 'stock',
+  },
+]
 
 /** Fabric Fault → Fault Add (Kamran's phone form), for someone without the Fault Table. */
 const KAMRAN_FAULT_ITEM: NavLeaf = {
@@ -299,7 +347,12 @@ function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: st
       <li className="nav-item">
         <Link href={item.href} className={cn('nav-link', active && 'active')} onClick={closeOnMobile}>
           <i className={cn('nav-icon bi', item.icon)} />
-          <p>{item.title}</p>
+          <p className="d-flex align-items-center justify-content-between w-100">
+            <span>{item.title}</span>
+            {item.badge ? (
+              <span className={cn('badge rounded-pill ms-auto', item.badgeClass || 'bg-primary text-white')}>{item.badge}</span>
+            ) : null}
+          </p>
         </Link>
       </li>
     )
@@ -353,12 +406,53 @@ function SidebarContent() {
   }).join('')
   /** Only the fault page (Kamran): the old "Floor Fault" menu. */
   const faultOnly = showFault && !canViewProduction && !showTracking
+  const supplierOnly = showYarnSupply && !canViewProduction && !showFault && !showTracking
   const showDashboard = canViewProduction || showTracking
 
+  const [supplierCounts, setSupplierCounts] = useState<{ requests: number; waiting: number }>({ requests: 0, waiting: 0 })
+  const canSeeYarnSidebar = supplierOnly || showYarnSupply || areaKey[3] === '1'
+  useEffect(() => {
+    if (!canSeeYarnSidebar) return
+    let alive = true
+    const load = () => {
+      fetch('/api/floor/yarn-supply', { credentials: 'same-origin', cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!alive || !d?.ok) return
+          const reqs = Array.isArray(d.requests) ? d.requests.filter((q: { status?: string }) => q.status === 'OPEN').length : 0
+          const wait = Array.isArray(d.dispatches) ? d.dispatches.filter((x: { status?: string }) => x.status !== 'VERIFIED').length : 0
+          setSupplierCounts({ requests: reqs, waiting: wait })
+        })
+        .catch(() => undefined)
+    }
+    load()
+    window.addEventListener('focus', load)
+    const t = setInterval(load, 30_000)
+    return () => {
+      alive = false
+      window.removeEventListener('focus', load)
+      clearInterval(t)
+    }
+  }, [canSeeYarnSidebar, pathname])
+
   const trees: NavTree[] = useMemo(() => {
-    if (showYarnSupply && !canViewProduction && !showFault && !showTracking) {
-      // The supplier: only their page.
-      return [{ title: 'Yarn Supply', icon: 'bi-truck', items: [{ ...YARN_SUPPLY_ITEM, title: 'Yarn Sent' }] }]
+    if (supplierOnly) {
+      // The supplier: their tabs on the side with live counts.
+      return [
+        {
+          title: 'Yarn Supply',
+          icon: 'bi-truck',
+          items: SUPPLIER_YARN_ITEMS.map((item) => {
+            if (item.href === '/yarn-supply?tab=requests') {
+              return { ...item, badge: supplierCounts.requests, badgeClass: 'bg-primary text-white' }
+            }
+            if (item.href === '/yarn-supply?tab=sent') {
+              return { ...item, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
+            }
+            return item
+          }),
+        },
+      ]
     }
     if (faultOnly) {
       return [
@@ -370,12 +464,28 @@ function SidebarContent() {
       ]
     }
 
-    const floorItems = [
-      ...FLOOR_ITEMS.filter((_, idx) => areaKey[idx] === '1'),
+    const floorItems: NavLeaf[] = [
+      ...FLOOR_ITEMS.filter((_, idx) => areaKey[idx] === '1').map((item) =>
+        item.title === 'Yarn Stock' && supplierCounts.waiting > 0
+          ? { ...item, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
+          : item
+      ),
       // One "Fabric Fault" entry: the Fault Table when allowed (its tab bar opens Fault Add),
       // otherwise Fault Add alone.
       ...(showFault && !showFaultTable ? [KAMRAN_FAULT_ITEM] : []),
-      ...(showYarnSupply ? [YARN_SUPPLY_ITEM] : []),
+      ...(showYarnSupply
+        ? [
+            supplierCounts.waiting > 0
+              ? { ...YARN_SUPPLY_ITEM, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
+              : YARN_SUPPLY_ITEM,
+            {
+              title: 'Fazal Umer Inventory',
+              href: '/yarn-supply/store?tab=stock',
+              icon: 'bi-shop',
+              activeCheck: (p: string) => p.startsWith('/yarn-supply/store'),
+            },
+          ]
+        : []),
     ]
     const payrollTree: NavLeaf = {
       title: 'Salary & Wages',
@@ -418,7 +528,7 @@ function SidebarContent() {
       if (showArchive) list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
     }
     return list
-  }, [faultOnly, areaKey, showFault, showFaultTable, showArchive, showYarnSupply, showTracking, canViewProduction, canViewAccounts, canViewPayroll, isAdmin])
+  }, [faultOnly, supplierOnly, supplierCounts, areaKey, showFault, showFaultTable, showArchive, showYarnSupply, showTracking, canViewProduction, canViewAccounts, canViewPayroll, isAdmin])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 

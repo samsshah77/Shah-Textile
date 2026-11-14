@@ -3,6 +3,7 @@
 import { qualityDisplayName, QUALITY_FABRIC_TYPES, normalizeFabricType, qualityHistoryOnActivePastDay } from '@/services/productionMastersService'
 import { ResizableTh } from '@/components/shared/ResizableTh'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
+import { BalanceText, TargetInput, metersText } from '@/components/floor/quality/QualityTargetCell'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { DEFAULT_WIDTHS, formatShortDate, LoomListCell } from '@/components/floor/quality/qualityMasterParts'
@@ -10,7 +11,7 @@ import type { QualityMasterTableState } from './useQualityMasterTable'
 
 /** Active quality table. */
 export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
-  const { onUpdate, sheetDate, qualities, widths, setColumnWidth, resetColumnWidth, qualityStartDay, patchQualityStart, orderedForView, assignedByQuality, productionByQuality, tableMinWidth, opsEdit, editActive, rowClassFor, PastHistoryBadge, rowMenu, openTrack, emptyCopy } = t
+  const { onUpdate, sheetDate, qualities, widths, setColumnWidth, resetColumnWidth, qualityStartDay, patchQualityStart, orderedForView, assignedByQuality, productionByQuality, targets, saveTarget, tableMinWidth, opsEdit, editActive, rowClassFor, PastHistoryBadge, rowMenu, openTrack, emptyCopy } = t
   return (
     <TablePanScroll className="card-body p-0">
       <table
@@ -30,40 +31,46 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
               #
             </ResizableTh>
             <ResizableTh columnKey="loom" width={widths.loom} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
-              L#
+              Loom #
             </ResizableTh>
             <ResizableTh columnKey="name" width={widths.name} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
               Quality Name
             </ResizableTh>
-            <ResizableTh columnKey="type" width={widths.type} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+            <ResizableTh columnKey="type" width={widths.type} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Fabric Type
             </ResizableTh>
-            <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+            <ResizableTh columnKey="warp" width={widths.warp} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Warp Yarn
             </ResizableTh>
-            <ResizableTh columnKey="weft" width={widths.weft} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+            <ResizableTh columnKey="weft" width={widths.weft} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Weft Yarn
             </ResizableTh>
-            <ResizableTh columnKey="weavePlan" width={widths.weavePlan} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2">
+            <ResizableTh columnKey="weavePlan" width={widths.weavePlan} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Weave Plan
             </ResizableTh>
-            <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
+            <ResizableTh columnKey="reed" width={widths.reed} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Reed
             </ResizableTh>
-            <ResizableTh columnKey="pick" width={widths.pick} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
+            <ResizableTh columnKey="pick" width={widths.pick} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Pick
             </ResizableTh>
-            <ResizableTh columnKey="width" width={widths.width} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
+            <ResizableTh columnKey="width" width={widths.width} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Width
             </ResizableTh>
-            <ResizableTh columnKey="gsm" width={widths.gsm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
+            <ResizableTh columnKey="gsm" width={widths.gsm} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               GSM
             </ResizableTh>
-            <ResizableTh columnKey="start" width={widths.start} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1">
+            <ResizableTh columnKey="start" width={widths.start} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center">
               Start
             </ResizableTh>
-            <ResizableTh columnKey="production" width={widths.production} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-end">
+            <ResizableTh columnKey="production" width={widths.production} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
               Overall
+            </ResizableTh>
+            <ResizableTh columnKey="target" width={widths.target} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
+              Target
+            </ResizableTh>
+            <ResizableTh columnKey="balance" width={widths.balance} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-2 text-center">
+              Balance
             </ResizableTh>
             <ResizableTh columnKey="actions" width={widths.actions} onResize={setColumnWidth} onReset={resetColumnWidth} className="px-1 text-center"
               style={{ fontSize: '0.75rem' }}>
@@ -74,7 +81,7 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
         <tbody>
           {orderedForView.length === 0 ? (
             <tr>
-              <td colSpan={14} className="p-0 border-0">
+              <td colSpan={16} className="p-0 border-0">
                 <EmptyPlaceholder
                   icon={emptyCopy.icon}
                   title={emptyCopy.title}
@@ -100,18 +107,18 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                 <td className="px-1 text-center text-muted fw-semibold font-monospace" style={{ fontSize: '0.8rem' }}>
                   {rowIdx + 1}
                 </td>
-                <td className="px-1">
+                <td className="px-2">
                   <LoomListCell nums={assignedByQuality.get(q.id) || []} />
                 </td>
                 <td className="px-2">
                   <span className="fw-semibold">{qualityDisplayName(q, qualities)}</span>{' '}
                   <PastHistoryBadge q={q} />
                 </td>
-                <td className="px-2 text-truncate">
+                <td className="px-2 text-truncate text-center">
                   {rowOpsEdit ? (
                     <select
-                      className="form-select form-select-sm"
-                      style={{ width: '100%', minWidth: 0 }}
+                      className="form-select form-select-sm text-center"
+                      style={{ width: '100%', minWidth: 0, textAlignLast: 'center' }}
                       value={normalizeFabricType(q.fabricType)}
                       onChange={(e) => onUpdate(q.id, { fabricType: e.target.value })}
                     >
@@ -125,10 +132,10 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                     <span className="text-secondary">{q.fabricType || '—'}</span>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <TextCellInput
-                      className="form-control form-control-sm"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       list="quality-warp-stock"
                       value={q.warpYarn || ''}
@@ -142,10 +149,10 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                     </span>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <TextCellInput
-                      className="form-control form-control-sm"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       list="quality-weft-stock"
                       value={q.weftYarn || ''}
@@ -159,10 +166,10 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                     </span>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <TextCellInput
-                      className="form-control form-control-sm"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       value={q.weavePlan || ''}
                       navRow={rowIdx}
@@ -175,10 +182,10 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                     </span>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <NumericCellInput
-                      className="form-control form-control-sm text-end"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       value={q.reed}
                       navRow={rowIdx}
@@ -186,13 +193,13 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                       onValueChange={(v) => onUpdate(q.id, { reed: v })}
                     />
                   ) : (
-                    <div className="text-end px-1">{q.reed}</div>
+                    <div className="text-center px-1">{q.reed}</div>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <NumericCellInput
-                      className="form-control form-control-sm text-end"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       value={q.pick}
                       navRow={rowIdx}
@@ -200,13 +207,13 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                       onValueChange={(v) => onUpdate(q.id, { pick: v })}
                     />
                   ) : (
-                    <div className="text-end px-1">{q.pick}</div>
+                    <div className="text-center px-1">{q.pick}</div>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <NumericCellInput
-                      className="form-control form-control-sm text-end"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       value={q.widthInch}
                       navRow={rowIdx}
@@ -214,13 +221,13 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                       onValueChange={(v) => onUpdate(q.id, { widthInch: v })}
                     />
                   ) : (
-                    <div className="text-end px-1">{q.widthInch}&quot;</div>
+                    <div className="text-center px-1">{q.widthInch}&quot;</div>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <NumericCellInput
-                      className="form-control form-control-sm text-end"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       value={q.gsm ?? 0}
                       navRow={rowIdx}
@@ -228,16 +235,16 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                       onValueChange={(v) => onUpdate(q.id, { gsm: Number(Number(v).toFixed(2)) })}
                     />
                   ) : (
-                    <div className="text-end px-1 fw-semibold font-monospace">
+                    <div className="text-center px-1 fw-semibold font-monospace">
                       {q.gsm != null && q.gsm !== 0 ? Number(q.gsm).toFixed(2) : '—'}
                     </div>
                   )}
                 </td>
-                <td className="px-1">
+                <td className="px-1 text-center">
                   {rowOpsEdit ? (
                     <input
                       type="date"
-                      className="form-control form-control-sm"
+                      className="form-control form-control-sm text-center"
                       style={{ width: '100%', minWidth: 0 }}
                       value={qualityStartDay(q)}
                       title="Start date — the quality / Track will not show before this date"
@@ -249,10 +256,22 @@ export function QualityActiveTable({ t }: { t: QualityMasterTableState }) {
                     </span>
                   )}
                 </td>
-                <td className="px-2 text-end">
+                <td className="px-2 text-center">
                   <span className="fw-bold text-success font-monospace">
                     {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
                   </span>
+                </td>
+                <td className="px-1 text-center">
+                  {rowOpsEdit ? (
+                    <TargetInput value={targets[q.id] || 0} onSave={(m) => saveTarget(q.id, m)} />
+                  ) : targets[q.id] ? (
+                    <span className="fw-semibold font-monospace">{metersText(targets[q.id])}</span>
+                  ) : (
+                    <span className="text-secondary">—</span>
+                  )}
+                </td>
+                <td className="px-2 text-center">
+                  <BalanceText target={targets[q.id] || 0} produced={overall} />
                 </td>
                 <td className="px-1 text-center">
                   <div className="d-inline-flex align-items-center gap-1">

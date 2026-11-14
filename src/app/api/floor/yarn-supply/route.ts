@@ -21,6 +21,21 @@ import {
   type YarnDispatchInput,
   type YarnReceiveInput,
   type YarnRequestInput,
+  addSupplierStock,
+  deleteSupplierStock,
+  listDeptDispatches,
+  listSupplierStock,
+  supplierStoreBalances,
+  updateSupplierStock,
+  type SupplierStockInput,
+  addSupplierTwisting,
+  deleteSupplierTwisting,
+  finishSupplierTwisting,
+  listSupplierTwisting,
+  undoSupplierTwisting,
+  updateSupplierTwisting,
+  type SupplierTwistingInput,
+  type SupplierTwistingOut,
 } from '@/server/floor/yarnSupply'
 
 export const runtime = 'nodejs'
@@ -33,11 +48,25 @@ export async function GET(request: NextRequest) {
   const check = await requireAccess(request, ['yarn_supply', 'prod_yarn'], 'view')
   if (check.error) return check.error
   try {
-    const [dispatches, requests, stock] = await Promise.all([listYarnDispatches(), listYarnRequests(), millYarnStock()])
+    // Fazal Umer's store and his Sizing / Warping lots: only for Yarn Supply users.
+    const seesStore = allows(check.access, 'yarn_supply', 'view')
+    const [dispatches, requests, stock, store, storeEntries, deptDispatches, twisting] = await Promise.all([
+      listYarnDispatches(),
+      listYarnRequests(),
+      millYarnStock(),
+      seesStore ? supplierStoreBalances() : Promise.resolve([]),
+      seesStore ? listSupplierStock() : Promise.resolve([]),
+      seesStore ? listDeptDispatches() : Promise.resolve([]),
+      seesStore ? listSupplierTwisting() : Promise.resolve([]),
+    ])
     return NextResponse.json({
       ok: true,
       dispatches,
       requests,
+      store,
+      storeEntries,
+      deptDispatches,
+      twisting,
       stock,
       canSend: allows(check.access, 'yarn_supply', 'edit'),
       canVerify: allows(check.access, 'prod_yarn', 'edit'),
@@ -54,15 +83,20 @@ type Body = {
   entry?: YarnDispatchInput
   receive?: YarnReceiveInput
   request?: YarnRequestInput
+  stock?: SupplierStockInput
+  twist?: SupplierTwistingInput
+  out?: SupplierTwistingOut
   note?: string
 }
+
+const STOCK_ACTIONS = ['stockAdd', 'stockUpdate', 'stockDelete', 'twistAdd', 'twistUpdate', 'twistDelete', 'twistDone', 'twistUndo']
 
 const REQUEST_ACTIONS = ['requestCreate', 'requestUpdate', 'requestClose', 'requestCancel', 'requestReopen']
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Body | null
   const action = String(body?.action || '')
-  const supplierAction = action === 'create' || action === 'update' || action === 'delete'
+  const supplierAction = action === 'create' || action === 'update' || action === 'delete' || STOCK_ACTIONS.includes(action)
   const millAction = action === 'issue' || action === 'verify' || action === 'correct' || REQUEST_ACTIONS.includes(action)
   if (!supplierAction && !millAction) return NextResponse.json({ ok: false, error: 'Unknown action.' }, { status: 400 })
 
@@ -72,6 +106,34 @@ export async function POST(request: NextRequest) {
   if (check.error) return check.error
   const name = check.user.name || check.user.email || 'User'
   const id = String(body?.id || '')
+
+  if (STOCK_ACTIONS.includes(action)) {
+    try {
+      let saved = null
+      if (action === 'stockAdd') saved = await addSupplierStock(body?.stock as SupplierStockInput, { id: check.user.id, name })
+      else if (action === 'stockUpdate') saved = await updateSupplierStock(id, body?.stock as SupplierStockInput)
+      else if (action === 'stockDelete') await deleteSupplierStock(id)
+      else if (action === 'twistAdd') saved = await addSupplierTwisting(body?.twist as SupplierTwistingInput, { id: check.user.id, name })
+      else if (action === 'twistUpdate') saved = await updateSupplierTwisting(id, body?.twist as SupplierTwistingInput)
+      else if (action === 'twistDelete') await deleteSupplierTwisting(id)
+      else if (action === 'twistDone') saved = await finishSupplierTwisting(id, body?.out as SupplierTwistingOut, { id: check.user.id, name })
+      else if (action === 'twistUndo') saved = await undoSupplierTwisting(id)
+      await writeAudit({
+        req: request,
+        actor: check.user,
+        module: 'floor',
+        action: `yarnSupply.${action}`,
+        entityKey: action.startsWith('twist') ? 'floor_supplier_twisting' : 'floor_supplier_stock',
+        entityId: saved?.id || id || null,
+        after: saved,
+      })
+      return NextResponse.json({ ok: true, stock: saved })
+    } catch (err) {
+      if (err instanceof YarnError) return NextResponse.json({ ok: false, error: err.message }, { status: err.status })
+      console.error('[yarn-supply POST]', action, err)
+      return NextResponse.json({ ok: false, error: 'Could not save. Please try again.' }, { status: 500 })
+    }
+  }
 
   if (REQUEST_ACTIONS.includes(action)) {
     try {

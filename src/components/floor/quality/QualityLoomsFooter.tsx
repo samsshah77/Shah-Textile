@@ -20,7 +20,7 @@ export function QualityLoomsFooter({ t }: { t: QualityMasterTableState }) {
           {availableLooms.length === 0 ? (
             <span className="small text-muted fst-italic">None (All looms assigned)</span>
           ) : (
-            <div className="d-flex flex-wrap align-items-center gap-1">
+            <div className="d-flex flex-wrap align-items-center gap-1.5">
               {availableLooms.map((loomNum) => {
                 const loomObj = looms.find((l) => l.loomNumber === loomNum)
                 const modelLabel = loomObj?.model || loomObj?.category
@@ -33,12 +33,22 @@ export function QualityLoomsFooter({ t }: { t: QualityMasterTableState }) {
                 return (
                   <span
                     key={loomNum}
-                    className="sara-available-loom-chip d-inline-flex align-items-center justify-content-center text-center font-monospace"
+                    className="sara-available-loom-chip d-inline-flex align-items-center justify-content-center text-center font-monospace fw-bold"
                     title={tooltipText}
-                    style={beamEnd ? { background: '#e2d9f3', color: '#4c2a85', borderColor: '#6f42c1' } : undefined}
+                    style={{
+                      minWidth: 40,
+                      height: 32,
+                      padding: '0 8px',
+                      fontSize: '0.875rem',
+                      borderRadius: 6,
+                      border: '1px solid',
+                      borderColor: beamEnd ? '#6f42c1' : '#cbd5e1',
+                      background: beamEnd ? '#e2d9f3' : '#ffffff',
+                      color: beamEnd ? '#4c2a85' : '#0f172a',
+                    }}
                   >
                     {loomNum}
-                    {beamEnd && <span style={{ fontSize: 9, marginLeft: 2 }}>B/E</span>}
+                    {beamEnd && <span style={{ fontSize: 10, marginLeft: 3 }}>B/E</span>}
                   </span>
                 )
               })}

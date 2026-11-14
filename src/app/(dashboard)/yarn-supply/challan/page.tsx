@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { longDateFromYmd } from '@/lib/longDate'
 import { SectionLoader } from '@/components/shared/Loaders'
-import { bagsText, fetchYarnSupply, fmtKg, type YarnDispatch } from '@/lib/floor/yarnSupply'
+import { DESTINATION_LABEL, bagsText, fetchYarnSupply, fmtKg, type YarnDispatch } from '@/lib/floor/yarnSupply'
 
 /** Yarn Supply → Print challan: one lot sent to the mill, every bag's weight, A4 portrait. */
 function Challan() {
@@ -18,7 +18,7 @@ function Challan() {
     fetchYarnSupply()
       .then((list) => {
         if (!alive) return
-        const found = list.dispatches.find((x) => x.id === id)
+        const found = [...list.dispatches, ...list.deptDispatches].find((x) => x.id === id)
         if (found) setD(found)
         else setError('This entry was not found (it may have been deleted).')
       })
@@ -37,7 +37,7 @@ function Challan() {
   }
   if (!d) return <SectionLoader />
 
-  const status = d.status === 'VERIFIED' ? 'Received & verified by the mill' : d.status === 'ISSUE' ? 'Issue reported by the mill' : 'Sent — waiting for the mill check'
+  const status = d.destination !== 'MILL' ? `Sent to ${DESTINATION_LABEL[d.destination]}` : d.status === 'VERIFIED' ? 'Received & verified by the mill' : d.status === 'ISSUE' ? 'Issue reported by the mill' : 'Sent — waiting for the mill check'
   const cell: React.CSSProperties = { border: '1px solid #334155', padding: '4px 8px' }
 
   return (
@@ -56,7 +56,7 @@ function Challan() {
         <div className="d-flex justify-content-between align-items-start border-bottom border-dark pb-2 mb-3">
           <div>
             <div className="fs-4 fw-bold">Yarn Delivery Challan</div>
-            <div className="small">To: Sara Textile</div>
+            <div className="small">To: {d.destination === 'MILL' ? 'Sara Textile' : `${DESTINATION_LABEL[d.destination]} (Fazal Umer)`}</div>
             {d.createdBy && <div className="small">From: {d.createdBy}</div>}
           </div>
           <div className="text-end small">

@@ -23,6 +23,7 @@ const KINDS = {
   loom: { dir: 'looms', prefix: 'loom' },
   profile: { dir: 'profiles', prefix: 'profile' },
   bill: { dir: 'bills', prefix: 'bill' },
+  'yarn-request': { dir: 'yarn-requests', prefix: 'yarn-req' },
 } as const
 type Kind = keyof typeof KINDS
 
@@ -30,6 +31,7 @@ async function mayUpload(user: NonNullable<Awaited<ReturnType<typeof currentUser
   const { access } = await accessFor(user)
   if (kind === 'loom') return allows(access, 'prod_looms', 'edit')
   if (kind === 'profile') return allows(access, 'payroll', 'edit')
+  if (kind === 'yarn-request') return allows(access, 'prod_yarn', 'edit')
   return allows(access, 'accounts', 'edit')
 }
 

@@ -10,6 +10,7 @@ export function DateStepper({
   min = PRODUCTION_START,
   max,
   required,
+  disabled,
   size = 'md',
   ariaLabel,
   allowFuture = true,
@@ -19,6 +20,7 @@ export function DateStepper({
   min?: string
   max?: string
   required?: boolean
+  disabled?: boolean
   size?: 'sm' | 'md'
   ariaLabel?: string
   allowFuture?: boolean
@@ -43,7 +45,7 @@ export function DateStepper({
         className={`btn ${sm ? 'btn-sm' : ''} btn-outline-secondary px-2 d-inline-flex align-items-center justify-content-center`}
         title="Previous day (<)"
         aria-label="Previous day"
-        disabled={atMin}
+        disabled={disabled || atMin}
         onClick={() => shift(-1)}
       >
         <ChevronLeft className={sm ? 'size-3.5' : 'size-4'} />
@@ -56,6 +58,7 @@ export function DateStepper({
         min={min}
         max={cap}
         required={required}
+        disabled={disabled}
         ariaLabel={ariaLabel}
         onChange={onChange}
       />
@@ -64,7 +67,7 @@ export function DateStepper({
         className={`btn ${sm ? 'btn-sm' : ''} btn-outline-secondary px-2 d-inline-flex align-items-center justify-content-center`}
         title="Next day (>)"
         aria-label="Next day"
-        disabled={atMax}
+        disabled={disabled || atMax}
         onClick={() => shift(1)}
       >
         <ChevronRight className={sm ? 'size-3.5' : 'size-4'} />
@@ -72,3 +75,4 @@ export function DateStepper({
     </div>
   )
 }
+

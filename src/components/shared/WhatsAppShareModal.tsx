@@ -25,8 +25,40 @@ export function formatWhatsAppNumber(raw: string): string {
 }
 
 // Recently used numbers / emails, on this device only — offered as suggestions.
-const RECENT = { wa: 'sara_share_recent_wa_v2', email: 'sara_share_recent_email_v2' } as const
-function recent(kind: keyof typeof RECENT): string[] {
+const RECENT = { wa: 'sara_share_recent_wa_v2', waContacts: 'sara_share_wa_contacts_v1', email: 'sara_share_recent_email_v2' } as const
+type WaContact = { name: string; number: string }
+
+function loadWaContacts(): WaContact[] {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(RECENT.waContacts) || '[]')
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw
+        .filter((x) => x && typeof x.number === 'string' && formatWhatsAppNumber(x.number).length >= 10)
+        .map((x) => ({ name: String(x.name || '').trim(), number: String(x.number).trim() }))
+        .slice(0, 20)
+    }
+    const legacy = JSON.parse(window.localStorage.getItem(RECENT.wa) || '[]')
+    if (Array.isArray(legacy)) {
+      return legacy
+        .filter((x) => typeof x === 'string' && formatWhatsAppNumber(x).length >= 10)
+        .map((n) => ({ name: '', number: n.trim() }))
+        .slice(0, 20)
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
+function saveWaContacts(list: WaContact[]) {
+  try {
+    window.localStorage.setItem(RECENT.waContacts, JSON.stringify(list.slice(0, 20)))
+  } catch {
+    /* storage blocked */
+  }
+}
+
+function recent(kind: 'email'): string[] {
   try {
     const v = JSON.parse(window.localStorage.getItem(RECENT[kind]) || '[]')
     return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 15) : []
@@ -34,7 +66,7 @@ function recent(kind: keyof typeof RECENT): string[] {
     return []
   }
 }
-function remember(kind: keyof typeof RECENT, value: string | string[]) {
+function remember(kind: 'email', value: string | string[]) {
   const incoming = (Array.isArray(value) ? value : [value])
     .map((v) => v.trim().toLowerCase())
     .filter(Boolean)
@@ -71,16 +103,18 @@ export function WhatsAppShareModal(props: WhatsAppShareModalProps) {
 function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getPdfAttachment }: WhatsAppShareModalProps) {
   const [tab, setTab] = useState<'whatsapp' | 'email'>('whatsapp')
   const [message, setMessage] = useState(defaultMessage)
+  const [waName, setWaName] = useState('')
   const [number, setNumber] = useState('')
+  const [selectedWa, setSelectedWa] = useState<string[]>([])
+  const [savedWa, setSavedWa] = useState<WaContact[]>(() => loadWaContacts())
   const [emailInput, setEmailInput] = useState('')
   const [selectedEmails, setSelectedEmails] = useState<string[]>([])
-  const [recentWa] = useState(() => recent('wa'))
   const [recentEmail, setRecentEmail] = useState(() => recent('email'))
   const [emailReady, setEmailReady] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
 
-  // Phones (Android / iPhone) can hand the PDF straight to WhatsApp through the share sheet.
+  // Phones & Windows can hand the PDF (or text) straight to WhatsApp through the native share sheet.
   const [canShareFile] = useState(() => {
     try {
       const probe = new File([new Uint8Array(1)], 'x.pdf', { type: 'application/pdf' })
@@ -89,6 +123,10 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
       return false
     }
   })
+  const [canShareText] = useState(() => typeof navigator !== 'undefined' && typeof navigator.share === 'function')
+  const typedWa = formatWhatsAppNumber(number)
+  const allWaNumbers = Array.from(new Set([...selectedWa, ...(typedWa.length >= 10 ? [typedWa] : [])]))
+  const useNativeShare = canShareFile || (!getPdfAttachment && canShareText && allWaNumbers.length === 0)
 
   useEffect(() => {
     let live = true
@@ -138,19 +176,57 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
     }
   }
 
-  const waNumber = formatWhatsAppNumber(number)
-  const waLink = `https://wa.me/${waNumber.length >= 10 ? waNumber : ''}?text=${encodeURIComponent(message)}`
+  const addWaContact = () => {
+    const formatted = formatWhatsAppNumber(number)
+    if (formatted.length < 10) {
+      setNote({ ok: false, text: 'Sahi WhatsApp number likhein (e.g. 0300 1234567)' })
+      return
+    }
+    setNote(null)
+    const entry: WaContact = { name: waName.trim(), number: formatted }
+    const next = [entry, ...savedWa.filter((c) => formatWhatsAppNumber(c.number) !== formatted)].slice(0, 20)
+    setSavedWa(next)
+    saveWaContacts(next)
+    setSelectedWa((prev) => Array.from(new Set([...prev, formatted])))
+    setWaName('')
+    setNumber('')
+  }
+
+  const toggleSavedWa = (num: string) => {
+    const clean = formatWhatsAppNumber(num)
+    setSelectedWa((prev) => (prev.includes(clean) ? prev.filter((x) => x !== clean) : [...prev, clean]))
+    setNote(null)
+  }
+
+  const removeSavedWa = (num: string) => {
+    const clean = formatWhatsAppNumber(num)
+    const next = savedWa.filter((c) => formatWhatsAppNumber(c.number) !== clean)
+    setSavedWa(next)
+    saveWaContacts(next)
+    setSelectedWa((prev) => prev.filter((x) => x !== clean))
+  }
+
+  const waLabel = (num: string) => {
+    const found = savedWa.find((c) => formatWhatsAppNumber(c.number) === num)
+    return found?.name ? `${found.name} (${num})` : num
+  }
+
+  const waLinkFor = (num: string) => `https://wa.me/${num}?text=${encodeURIComponent(message)}`
+  const waLink = `https://wa.me/${allWaNumbers[0] || ''}?text=${encodeURIComponent(message)}`
   const subject = `${documentTitle} — Sara Textile`
   const mailto = `mailto:${allRecipients.map(encodeURIComponent).join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`
 
-  const shareWithPdf = async () => {
-    if (!getPdfAttachment) return
+  const shareNative = async () => {
     setBusy(true)
     setNote(null)
     try {
-      const att = await Promise.resolve(getPdfAttachment())
-      if (!att) throw new Error('PDF ban nahi saki')
-      await navigator.share({ files: [pdfFile(att)], text: message, title: documentTitle })
+      if (getPdfAttachment && canShareFile) {
+        const att = await Promise.resolve(getPdfAttachment())
+        if (!att) throw new Error('PDF ban nahi saki')
+        await navigator.share({ files: [pdfFile(att)], text: message, title: documentTitle })
+      } else {
+        await navigator.share({ text: message, title: documentTitle })
+      }
     } catch (e) {
       if ((e as Error)?.name !== 'AbortError') setNote({ ok: false, text: e instanceof Error ? e.message : 'Share nahi ho saka' })
     } finally {
@@ -227,17 +303,127 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
             </div>
 
             {tab === 'whatsapp' ? (
+              canShareFile ? null : (
               <>
-                <label className="form-label small mb-1" htmlFor="share-number">
-                  Number <span className="text-secondary">(khali chhoren to WhatsApp mein khud chunein)</span>
-                </label>
-                <input id="share-number" className="form-control form-control-sm mb-3" inputMode="tel" placeholder="0300 1234567" list="share-recent-wa" value={number} onChange={(e) => setNumber(e.target.value)} />
-                <datalist id="share-recent-wa">
-                  {recentWa.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
+                <div className="d-flex align-items-center justify-content-between mb-1">
+                  <label className="form-label small mb-0" htmlFor="share-number">
+                    Contacts / Numbers <span className="text-secondary">(ek ya zyada select / add karein)</span>
+                  </label>
+                  {allWaNumbers.length > 0 && (
+                    <span className="badge bg-success-subtle text-success-emphasis border border-success-subtle">
+                      {allWaNumbers.length} selected
+                    </span>
+                  )}
+                </div>
+
+                <div className="input-group input-group-sm mb-2">
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ maxWidth: 140 }}
+                    placeholder="Name (optional)"
+                    value={waName}
+                    onChange={(e) => setWaName(e.target.value)}
+                  />
+                  <input
+                    id="share-number"
+                    className="form-control"
+                    inputMode="tel"
+                    placeholder="0300 1234567"
+                    value={number}
+                    onChange={(e) => setNumber(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        addWaContact()
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline-success"
+                    onClick={addWaContact}
+                    disabled={!number.trim()}
+                    title="List mein save karein"
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {allWaNumbers.length > 0 && (
+                  <div className="d-flex flex-wrap gap-1 mb-2">
+                    {allWaNumbers.map((num) => (
+                      <span
+                        key={num}
+                        className="badge bg-success d-inline-flex align-items-center gap-1 fw-normal py-1 px-2"
+                        style={{ fontSize: 11.5 }}
+                      >
+                        {waLabel(num)}
+                        <button
+                          type="button"
+                          className="btn-close btn-close-white"
+                          style={{ fontSize: 8 }}
+                          aria-label={`Remove ${num}`}
+                          onClick={() => (selectedWa.includes(num) ? toggleSavedWa(num) : setNumber(''))}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {savedWa.length > 0 && (
+                  <div className="mb-3">
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <span className="text-secondary" style={{ fontSize: 11.5 }}>
+                        Saved contacts (click kar ke select karein):
+                      </span>
+                      {savedWa.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-link btn-sm p-0 text-decoration-none"
+                          style={{ fontSize: 11.5 }}
+                          onClick={() => {
+                            const allNums = savedWa.map((c) => formatWhatsAppNumber(c.number))
+                            const allSel = allNums.every((n) => selectedWa.includes(n))
+                            setSelectedWa(allSel ? [] : allNums)
+                          }}
+                        >
+                          {savedWa.every((c) => selectedWa.includes(formatWhatsAppNumber(c.number))) ? 'Unselect all' : 'Select all'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="d-flex flex-wrap gap-1">
+                      {savedWa.map((c) => {
+                        const num = formatWhatsAppNumber(c.number)
+                        const active = selectedWa.includes(num)
+                        return (
+                          <div key={num} className="btn-group btn-group-sm" role="group">
+                            <button
+                              type="button"
+                              className={`btn btn-sm py-0 px-2 ${active ? 'btn-success' : 'btn-outline-secondary'}`}
+                              style={{ fontSize: 11.5 }}
+                              onClick={() => toggleSavedWa(num)}
+                            >
+                              {active ? '✓ ' : '+ '}
+                              {c.name ? `${c.name} (${c.number})` : c.number}
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm py-0 px-1 ${active ? 'btn-success' : 'btn-outline-secondary'}`}
+                              style={{ fontSize: 10 }}
+                              title="Saved list se hatayein"
+                              onClick={() => removeSavedWa(num)}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </>
+              )
             ) : (
               <>
                 <div className="d-flex align-items-center justify-content-between mb-1">
@@ -372,13 +558,26 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
               </button>
             )}
             {tab === 'whatsapp' ? (
-              canShareFile ? (
-                <button type="button" className="btn btn-sm btn-success" onClick={() => void shareWithPdf()} disabled={busy}>
+              useNativeShare ? (
+                <button type="button" className="btn btn-sm btn-success" onClick={() => void shareNative()} disabled={busy}>
                   <i className="bi bi-share me-1" />
-                  {busy ? 'PDF ban rahi hai…' : 'WhatsApp par PDF bhejein'}
+                  {busy ? 'PDF ban rahi hai…' : canShareFile ? 'WhatsApp par PDF bhejein' : 'WhatsApp par bhejein'}
+                </button>
+              ) : allWaNumbers.length > 1 ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-success"
+                  onClick={() => {
+                    for (const num of allWaNumbers) {
+                      window.open(waLinkFor(num), '_blank', 'noopener,noreferrer')
+                    }
+                  }}
+                >
+                  <i className="bi bi-whatsapp me-1" />
+                  WhatsApp kholein ({allWaNumbers.length})
                 </button>
               ) : (
-                <a className="btn btn-sm btn-success" href={waLink} target="_blank" rel="noopener noreferrer" onClick={() => remember('wa', number)}>
+                <a className="btn btn-sm btn-success" href={waLink} target="_blank" rel="noopener noreferrer">
                   <i className="bi bi-whatsapp me-1" />
                   WhatsApp kholein
                 </a>

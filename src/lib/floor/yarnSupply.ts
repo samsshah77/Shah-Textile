@@ -6,7 +6,12 @@ import { setListFromServer, announceReload } from '@/services/production/floorSy
 import { KEY_YARN, KEY_YARN_ISSUANCE, KEY_YARN_MOVEMENTS } from '@/services/production/floorStore'
 import { longDateFromYmd } from '@/lib/longDate'
 
-export type YarnDispatchStatus = 'PENDING' | 'ISSUE' | 'VERIFIED'
+/** PENDING / ISSUE / VERIFIED: lots to the mill. SENT: to Fazal Umer's own Sizing / Warping (record only). */
+export type YarnDispatchStatus = 'PENDING' | 'ISSUE' | 'VERIFIED' | 'SENT'
+
+/** Where a lot goes: Sara Textile mill (checked by the mill) or Fazal Umer's own departments. */
+export type YarnDestination = 'MILL' | 'SIZING' | 'WARPING'
+export const DESTINATION_LABEL: Record<YarnDestination, string> = { MILL: 'Sara Textile Mill', SIZING: 'Sizing', WARPING: 'Sectional Warping' }
 
 export type YarnDispatchLog = {
   at: string
@@ -40,6 +45,8 @@ export interface YarnDispatch {
   verifiedAt: string | null
   /** The mill's request this lot was sent against (null = not linked). */
   requestId: string | null
+  /** MILL (default), SIZING or WARPING. */
+  destination: YarnDestination
   log: YarnDispatchLog[]
 }
 
@@ -54,6 +61,75 @@ export type YarnDispatchInput = {
   remarks?: string
   /** Sent against this request of the mill. */
   requestId?: string | null
+  /** MILL (default), SIZING or WARPING. */
+  destination?: YarnDestination
+}
+
+/** Fazal Umer's store: yarn added to his inventory (dispatches take it out). */
+export interface SupplierStockEntry {
+  id: string
+  yarnType: string
+  date: string
+  bags: number
+  kg: number
+  note: string
+  /** The party Fazal Umer got this yarn from. */
+  supplierName: string
+  /** Each bag's kg (entries that came from Twisting); empty when only a total was entered. */
+  bagKg: number[]
+  createdBy: string
+  createdAt: string
+}
+
+export type SupplierStockInput = {
+  yarnType: string
+  date: string
+  bags: number
+  kg: number
+  note?: string
+  supplierName?: string
+  /** Adding to the Inventory: one weight for every bag (kg = bags × this). */
+  bagWeightKg?: number
+}
+
+/**
+ * Twisting: raw yarn comes in to Twisting first; when it is done it moves to the Inventory
+ * as the twisted yarn (its own name and kg — the difference is the twisting loss).
+ */
+export interface SupplierTwisting {
+  id: string
+  /** IN_TWISTING until moved to the Inventory (DONE). */
+  status: 'IN_TWISTING' | 'DONE'
+  inYarnType: string
+  inDate: string
+  inBags: number
+  inKg: number
+  note: string
+  /** The party the raw yarn came from. */
+  supplierName: string
+  outYarnType: string
+  outDate: string | null
+  outBags: number | null
+  outKg: number | null
+  /** Each bag's kg when it moved to the Inventory. */
+  outBagKg: number[]
+  createdBy: string
+  movedBy: string
+}
+
+export type SupplierTwistingInput = { yarnType: string; date: string; bags: number; kg: number; note?: string; supplierName?: string }
+/** Twisting done: the twisted yarn with each bag's kg (kg = their total). */
+export type SupplierTwistingOut = { yarnType: string; date: string; bagKg: number[] }
+
+/** Per yarn: added − sent (to the mill, Sizing and Warping). */
+export interface SupplierStoreBalance {
+  yarnType: string
+  inKg: number
+  inBags: number
+  outKg: number
+  outBags: number
+  balanceKg: number
+  balanceBags: number
 }
 
 /** What the mill received. */
@@ -85,23 +161,28 @@ export interface YarnRequest {
   bags: number | null
   neededBy: string | null
   note: string
+  imageUrl: string | null
   requestedBy: string
   createdAt: string
   closedBy: string
   closeNote: string
-  /** Lots sent against it (not deleted): count, kg sent, kg the mill verified. */
+  /** Lots sent against it (not deleted): count, bags sent, kg sent, kg the mill verified, verified/issue lot counts. */
   lots: number
+  sentBags: number
   sentKg: number
   receivedKg: number
+  verifiedLots: number
+  issueLots: number
   log: YarnRequestLog[]
 }
 
 export type YarnRequestInput = {
   yarnType: string
-  kg: number
+  kg?: number
   bags?: number | null
   neededBy?: string | null
   note?: string
+  imageUrl?: string | null
 }
 
 export type MillYarnStock = { id: string; yarnType: string; balanceKg: number }
@@ -109,6 +190,12 @@ export type MillYarnStock = { id: string; yarnType: string; balanceKg: number }
 export type YarnSupplyList = {
   dispatches: YarnDispatch[]
   requests: YarnRequest[]
+  /** Fazal Umer's store (only for Yarn Supply users). */
+  store: SupplierStoreBalance[]
+  storeEntries: SupplierStockEntry[]
+  twisting: SupplierTwisting[]
+  /** Lots sent to Sizing / Warping. */
+  deptDispatches: YarnDispatch[]
   stock: MillYarnStock[]
   /** May send / change entries (supplier). */
   canSend: boolean
@@ -123,6 +210,10 @@ export async function fetchYarnSupply(): Promise<YarnSupplyList> {
   return {
     dispatches: d.dispatches || [],
     requests: d.requests || [],
+    store: d.store || [],
+    storeEntries: d.storeEntries || [],
+    twisting: d.twisting || [],
+    deptDispatches: d.deptDispatches || [],
     stock: d.stock || [],
     canSend: Boolean(d.canSend),
     canVerify: Boolean(d.canVerify),
@@ -136,6 +227,14 @@ type ActionBody =
   | { action: 'issue'; id: string; note: string }
   | { action: 'verify'; id: string; receive: YarnReceiveInput }
   | { action: 'correct'; id: string; receive: YarnReceiveInput }
+  | { action: 'stockAdd'; stock: SupplierStockInput }
+  | { action: 'stockUpdate'; id: string; stock: SupplierStockInput }
+  | { action: 'stockDelete'; id: string }
+  | { action: 'twistAdd'; twist: SupplierTwistingInput }
+  | { action: 'twistUpdate'; id: string; twist: SupplierTwistingInput }
+  | { action: 'twistDelete'; id: string }
+  | { action: 'twistDone'; id: string; out: SupplierTwistingOut }
+  | { action: 'twistUndo'; id: string }
 
 type RequestActionBody =
   | { action: 'requestCreate'; request: YarnRequestInput }
@@ -164,10 +263,10 @@ export function yarnRequestShareText(q: YarnRequest): string {
     `*Sara Textile — Yarn request*`,
     ``,
     `Yarn: ${q.yarnType}`,
-    `Quantity: ${fmtKg(q.kg)}${q.bags ? ` (${bagsText(q.bags)})` : ''}`,
+    q.kg > 0 ? `Quantity: ${fmtKg(q.kg)}${q.bags ? ` (${bagsText(q.bags)})` : ''}` : `Count: ${bagsText(q.bags)}`,
     q.neededBy ? `Needed by: ${longDateFromYmd(q.neededBy)}` : '',
     q.note ? `Note: ${q.note}` : '',
-    q.sentKg > 0 ? `Sent so far: ${fmtKg(q.sentKg)} · Remaining: ${fmtKg(requestRemainingKg(q))}` : '',
+    q.sentKg > 0 ? `Sent so far: ${fmtKg(q.sentKg)}${q.kg > 0 ? ` · Remaining: ${fmtKg(requestRemainingKg(q))}` : ''}` : '',
     q.requestedBy ? `Requested by: ${q.requestedBy}` : '',
   ]
     .filter((l, i) => l !== '' || i === 1)
@@ -216,7 +315,7 @@ export function receivedDayText(date: string, list: YarnDispatch[], longDate: (d
   if (!rows.length) return `*Sara Textile — Yarn received ${longDate(date)}*\n\nNo yarn received.`
   const lines = rows.map((d, i) => {
     const diff = d.receivedKg != null && (d.receivedKg !== d.weightKg || d.receivedBags !== d.bags)
-    const extra = [d.challanNo && `Challan ${d.challanNo}`, d.lotNo && `Lot ${d.lotNo}`].filter(Boolean).join(' · ')
+    const extra = d.lotNo ? `Lot ${d.lotNo}` : ''
     return [
       `${i + 1}. ${d.yarnType} — ${bagsText(d.receivedBags)}, ${fmtKg(d.receivedKg)}`,
       extra ? `   ${extra}` : '',
@@ -244,9 +343,7 @@ export function yarnSupplyShareText(d: YarnDispatch): string {
     `*Sara Textile — Yarn received*`,
     `Yarn: ${d.yarnType}`,
     `Sent: ${longDateFromYmd(d.sentDate)} · ${bagsText(d.bags)} · ${fmtKg(d.weightKg)}`,
-    d.challanNo ? `Challan #: ${d.challanNo}` : '',
     d.lotNo ? `Lot #: ${d.lotNo}` : '',
-    d.vehicleNo ? `Vehicle #: ${d.vehicleNo}` : '',
   ]
   if (d.status === 'VERIFIED') {
     lines.push(
@@ -263,4 +360,53 @@ export function yarnSupplyShareText(d: YarnDispatch): string {
     lines.push('Status: Waiting for the mill to check')
   }
   return lines.filter(Boolean).join('\n')
+}
+
+export type TrackingPeriod = 'daily' | 'weekly' | 'monthly' | 'all'
+
+export const TRACKING_PERIODS: Array<{ value: TrackingPeriod; label: string }> = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'all', label: 'All' },
+]
+
+export function matchesTrackingPeriod(ymd: string | null | undefined, period: TrackingPeriod, anchorYmd: string): boolean {
+  if (period === 'all' || !ymd) return true
+  const d = ymd.slice(0, 10)
+  if (period === 'daily') return d === anchorYmd
+  if (period === 'monthly') return d.slice(0, 7) === anchorYmd.slice(0, 7)
+  const [ty, tm, td] = anchorYmd.split('-').map(Number)
+  const end = new Date(Date.UTC(ty, tm - 1, td))
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - 6)
+  const startYmd = start.toISOString().slice(0, 10)
+  return d >= startYmd && d <= anchorYmd
+}
+
+export function shiftTrackingDate(anchorYmd: string, period: TrackingPeriod, delta: -1 | 1): string {
+  const [y, m, d] = anchorYmd.split('-').map(Number)
+  if (period === 'monthly') {
+    const dt = new Date(Date.UTC(y, m - 1 + delta, 1))
+    return dt.toISOString().slice(0, 10)
+  }
+  const step = period === 'weekly' ? 7 * delta : delta
+  const dt = new Date(Date.UTC(y, m - 1, d + step))
+  return dt.toISOString().slice(0, 10)
+}
+
+export function formatTrackingPeriod(anchorYmd: string, period: TrackingPeriod): string {
+  if (period === 'all') return 'All'
+  if (period === 'daily') return longDateFromYmd(anchorYmd)
+  const [y, m, d] = anchorYmd.split('-').map(Number)
+  if (period === 'monthly') {
+    return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+      new Date(Date.UTC(y, m - 1, 1))
+    )
+  }
+  const end = new Date(Date.UTC(y, m - 1, d))
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - 6)
+  const fmt = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  return `${fmt.format(start)} – ${fmt.format(end)} ${end.getUTCFullYear()}`
 }

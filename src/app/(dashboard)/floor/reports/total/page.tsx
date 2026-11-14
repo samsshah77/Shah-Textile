@@ -32,6 +32,7 @@ import { longDateFromYmd } from '@/lib/longDate'
 import type { DailyLoomProductionEntry, MonthlyMatrixDay } from '@/types/production'
 import type { QualityMaster } from '@/services/productionMastersService'
 import { LoadingChip } from '@/components/shared/Loaders'
+import { DateStepper } from '@/components/floor/DateStepper'
 
 function buildMonthOptions(): { value: string; label: string }[] {
   // Production months (2nd → 1st of next month): on the 1st the open month is still the last one.
@@ -710,15 +711,13 @@ function ProductionTotalTrackingContent() {
                   </option>
                 ))}
               </select>
-              <input
-                type="date"
-                className="form-control form-control-sm fw-semibold"
-                style={{ width: 'auto', minWidth: 140 }}
+              <DateStepper
+                size="sm"
                 value={asOf}
                 max={getProductionToday()}
                 disabled={loading}
-                onChange={(e) => e.target.value && setAsOf(e.target.value)}
-                aria-label="Tracking date"
+                ariaLabel="Tracking date"
+                onChange={(next) => next && setAsOf(next)}
               />
               <ExportPdfButton filename={`Monthly-Tracking-${asOf}`} />
             </div>

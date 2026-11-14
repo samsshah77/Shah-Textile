@@ -105,6 +105,8 @@ function ProductionWorkspaceContent() {
   const [fabricFaultEdit, setFabricFaultEdit] = useState(false)
   const [yarnEdit, setYarnEdit] = useState(false)
   const [yarnAddOpen, setYarnAddOpen] = useState(false)
+  const [yarnSection, setYarnSection] = useState<'stock' | 'supply'>('stock')
+  const [yarnRequestOpen, setYarnRequestOpen] = useState(false)
   const [sheetTextSize, setSheetTextSize] = useState<SheetTextSize>('normal')
   const [isSheetExportOpen, setIsSheetExportOpen] = useState(false)
 
@@ -440,23 +442,33 @@ function ProductionWorkspaceContent() {
               )}
 
               {isYarnTab && tabEdit && (
-                <>
+                yarnSection === 'supply' ? (
                   <button
                     type="button"
-                    className={`btn btn-sm ${yarnEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
-                    onClick={() => setYarnEdit(!yarnEdit)}
+                    className="btn btn-sm btn-primary"
+                    onClick={() => setYarnRequestOpen(true)}
                   >
-                    <i className={`bi ${yarnEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
-                    {yarnEdit ? 'Done' : 'Edit'}
+                    <i className="bi bi-plus-lg me-1" /> Request yarn
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-success"
-                    onClick={() => setYarnAddOpen(true)}
-                  >
-                    <i className="bi bi-plus-lg me-1" /> Add Inward Yarn
-                  </button>
-                </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${yarnEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
+                      onClick={() => setYarnEdit(!yarnEdit)}
+                    >
+                      <i className={`bi ${yarnEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
+                      {yarnEdit ? 'Done' : 'Edit'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-success"
+                      onClick={() => setYarnAddOpen(true)}
+                    >
+                      <i className="bi bi-plus-lg me-1" /> Add Inward Yarn
+                    </button>
+                  </>
+                )
               )}
 
               {currentTab === 'sheet' ? (
@@ -764,6 +776,10 @@ function ProductionWorkspaceContent() {
                 onTableEditChange={setYarnEdit}
                 addModalOpen={yarnAddOpen}
                 onAddModalOpenChange={setYarnAddOpen}
+                section={yarnSection}
+                onSectionChange={setYarnSection}
+                requestModalOpen={yarnRequestOpen}
+                onRequestModalOpenChange={setYarnRequestOpen}
               />
             )}
 

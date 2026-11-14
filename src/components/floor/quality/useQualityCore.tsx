@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { resolveLoomCondition } from '@/constants/loomConditions'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { useQualityTargets } from '@/lib/floor/qualityTargets'
 import { peekQualityAssignFlashIds, clearQualityAssignFlashIds } from '@/lib/qualityAssignFlash'
 import type { QualityMasterTableProps, FlashTone } from '@/components/floor/quality/qualityMasterParts'
 import { qualitiesAsOfDay, DEFAULT_WIDTHS, qualityStatusCounts, QUALITY_FLASH_MS, FLASH_CLASS } from '@/components/floor/quality/qualityMasterParts'
@@ -43,6 +44,10 @@ export function useQualityCore(props: QualityMasterTableProps) {
   )
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon, showInfo, showError } = useAlertDialog()
+  // Target (meters) per quality — its own store; Balance = Target − Overall.
+  const { targets, saveTarget } = useQualityTargets(
+    useCallback((message: string) => showError({ title: 'Target not saved', message }), [showError])
+  )
   const [modeLocal, setModeLocal] = useState<TableGridMode>('table')
   const [tableEditLocal, setTableEditLocal] = useState(false)
   const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set())
@@ -557,6 +562,8 @@ export function useQualityCore(props: QualityMasterTableProps) {
     beamEndLooms,
     availableLooms,
     productionByQuality,
+    targets,
+    saveTarget,
     tableMinWidth,
     canOps,
     canArchiveOps,

@@ -5,12 +5,13 @@ import { useSearchParams } from 'next/navigation'
 import { YarnSendForm } from '@/components/floor/YarnSendForm'
 import { SectionLoader } from '@/components/shared/Loaders'
 
-/** Yarn Supply → Send yarn (?request=… against a mill request, ?id=… to correct an entry). */
+/** Yarn Supply → Send yarn (?to=SIZING|WARPING, ?request=… against a mill request, ?id=… to correct an entry). */
 function SendYarn() {
   const params = useSearchParams()
   const id = params.get('id')
   const request = params.get('request')
-  return <YarnSendForm key={id || request || 'new'} editId={id} requestId={request} />
+  const to = params.get('to')
+  return <YarnSendForm key={id || request || to || 'new'} editId={id} requestId={request} to={to} />
 }
 
 export default function YarnSendPage() {
