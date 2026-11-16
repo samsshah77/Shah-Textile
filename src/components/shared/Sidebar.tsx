@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import type { AccessArea } from '@/lib/access'
+import { markVerifiedSeen, newVerifiedCount, VERIFIED_SEEN_EVENT, verifiedSeenAt } from '@/lib/floor/yarnSupply'
 import {
   closeSidebar,
   ensureSidebarOverlay,
@@ -97,18 +98,10 @@ const FLOOR_ITEMS: NavLeaf[] = [
   },
 ]
 
-/** Yarn Supply — the supplier's page (yarn sent to the mill). */
-const YARN_SUPPLY_ITEM: NavLeaf = {
-  title: 'Yarn Supply',
-  href: '/yarn-supply',
-  icon: 'bi-truck',
-  activeCheck: (p) => p.startsWith('/yarn-supply'),
-}
-
-/** Supplier-only sidebar items (tabs on the side). */
+/** Yarn Supply module (the supplier, and Javed Sir with View): its tabs on the side. */
 const SUPPLIER_YARN_ITEMS: NavLeaf[] = [
   {
-    title: 'Requests from mill',
+    title: 'Requests from Sara Textile',
     href: '/yarn-supply?tab=requests',
     icon: 'bi-clipboard-check',
     activeCheck: (p, sp) => p === '/yarn-supply' && (!sp.get('tab') || sp.get('tab') === 'requests'),
@@ -333,8 +326,6 @@ const FLOOR_ITEM_AREA: Record<string, AccessArea | 'any'> = {
   'Fabric Fault': 'prod_fabric_fault',
 }
 
-const anyActive = (items: NavLeaf[]) => (p: string, sp: URLSearchParams) => items.some((i) => i.activeCheck(p, sp))
-
 const closeOnMobile = () => {
   if (isSidebarMobileViewport()) closeSidebar()
 }
@@ -378,7 +369,7 @@ function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: st
 function SidebarContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { canViewAccounts, canViewPayroll, canViewProduction, canView, isAdmin } = useAuth()
+  const { canViewAccounts, canViewPayroll, canViewProduction, canView, canEdit, isAdmin } = useAuth()
 
   useEffect(() => {
     ensureSidebarOverlay()
@@ -400,6 +391,7 @@ function SidebarContent() {
   const showTracking = canView('tracking')
   const showArchive = canView('quality_archive')
   const showYarnSupply = canView('yarn_supply')
+  const canSendYarn = canEdit('yarn_supply')
   const areaKey = FLOOR_ITEMS.map((i) => {
     const area = FLOOR_ITEM_AREA[i.title]
     return area === 'any' ? (canViewProduction ? 1 : 0) : area && canView(area) ? 1 : 0
@@ -410,6 +402,14 @@ function SidebarContent() {
   const showDashboard = canViewProduction || showTracking
 
   const [supplierCounts, setSupplierCounts] = useState<{ requests: number; waiting: number }>({ requests: 0, waiting: 0 })
+  const [verifiedLots, setVerifiedLots] = useState<Array<{ status: string; verifiedAt: string | null; destination?: string }>>([])
+  const [seenAt, setSeenAt] = useState(() => verifiedSeenAt())
+  useEffect(() => {
+    const onSeen = () => setSeenAt(verifiedSeenAt())
+    window.addEventListener(VERIFIED_SEEN_EVENT, onSeen)
+    return () => window.removeEventListener(VERIFIED_SEEN_EVENT, onSeen)
+  }, [])
+  const newVerified = newVerifiedCount(verifiedLots, seenAt)
   const canSeeYarnSidebar = supplierOnly || showYarnSupply || areaKey[3] === '1'
   useEffect(() => {
     if (!canSeeYarnSidebar) return
@@ -422,6 +422,9 @@ function SidebarContent() {
           const reqs = Array.isArray(d.requests) ? d.requests.filter((q: { status?: string }) => q.status === 'OPEN').length : 0
           const wait = Array.isArray(d.dispatches) ? d.dispatches.filter((x: { status?: string }) => x.status !== 'VERIFIED').length : 0
           setSupplierCounts({ requests: reqs, waiting: wait })
+          const lots = Array.isArray(d.dispatches) ? d.dispatches : []
+          if (verifiedSeenAt() == null) markVerifiedSeen(lots)
+          setVerifiedLots(lots)
         })
         .catch(() => undefined)
     }
@@ -436,24 +439,24 @@ function SidebarContent() {
   }, [canSeeYarnSidebar, pathname])
 
   const trees: NavTree[] = useMemo(() => {
-    if (supplierOnly) {
-      // The supplier: their tabs on the side with live counts.
-      return [
-        {
-          title: 'Yarn Supply',
-          icon: 'bi-truck',
-          items: SUPPLIER_YARN_ITEMS.map((item) => {
-            if (item.href === '/yarn-supply?tab=requests') {
-              return { ...item, badge: supplierCounts.requests, badgeClass: 'bg-primary text-white' }
-            }
-            if (item.href === '/yarn-supply?tab=sent') {
-              return { ...item, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
-            }
-            return item
-          }),
-        },
-      ]
+    // Yarn Supply module: the same tabs for the supplier and Javed Sir (Send yarn only with Edit).
+    const yarnTree: NavTree = {
+      title: 'Yarn Supply',
+      icon: 'bi-truck',
+      items: SUPPLIER_YARN_ITEMS.filter((item) => canSendYarn || item.href !== '/yarn-supply/send').map((item) => {
+        if (item.href === '/yarn-supply?tab=requests') {
+          return { ...item, badge: supplierCounts.requests, badgeClass: 'bg-primary text-white' }
+        }
+        if (item.href === '/yarn-supply?tab=sent') {
+          return { ...item, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
+        }
+        if (item.href === '/yarn-supply?tab=verified') {
+          return { ...item, badge: newVerified, badgeClass: 'bg-success text-white' }
+        }
+        return item
+      }),
     }
+    if (supplierOnly) return [yarnTree]
     if (faultOnly) {
       return [
         {
@@ -473,34 +476,7 @@ function SidebarContent() {
       // One "Fabric Fault" entry: the Fault Table when allowed (its tab bar opens Fault Add),
       // otherwise Fault Add alone.
       ...(showFault && !showFaultTable ? [KAMRAN_FAULT_ITEM] : []),
-      ...(showYarnSupply
-        ? [
-            supplierCounts.waiting > 0
-              ? { ...YARN_SUPPLY_ITEM, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
-              : YARN_SUPPLY_ITEM,
-            {
-              title: 'Fazal Umer Inventory',
-              href: '/yarn-supply/store?tab=stock',
-              icon: 'bi-shop',
-              activeCheck: (p: string) => p.startsWith('/yarn-supply/store'),
-            },
-          ]
-        : []),
     ]
-    const payrollTree: NavLeaf = {
-      title: 'Salary & Wages',
-      href: '/payroll/synopsis',
-      icon: 'bi-cash-stack',
-      activeCheck: anyActive(PAYROLL_ITEMS),
-      children: PAYROLL_ITEMS,
-    }
-    const accountsTree: NavLeaf = {
-      title: 'Accounts',
-      href: '/accounts/payables',
-      icon: 'bi-calculator',
-      activeCheck: anyActive(ACCOUNTS_ITEMS),
-      children: ACCOUNTS_ITEMS,
-    }
 
     const list: NavTree[] = []
     if (floorItems.length) {
@@ -510,25 +486,21 @@ function SidebarContent() {
         items: floorItems,
       })
     }
+    // Each module is its own menu: Yarn Supply, Accounts, Salary & Wages, then Administration.
+    if (showYarnSupply) list.push(yarnTree)
+    if (canViewAccounts) list.push({ title: 'Accounts', icon: 'bi-calculator', items: ACCOUNTS_ITEMS })
+    if (canViewPayroll) list.push({ title: 'Salary & Wages', icon: 'bi-cash-stack', items: PAYROLL_ITEMS })
     if (isAdmin) {
-      // Admin (Javed): Salary and Accounts live inside Administration.
       list.push({
         title: 'Administration',
         icon: 'bi-shield-lock',
-        items: [
-          ...ADMIN_ITEMS,
-          ...(showArchive ? [QUALITY_ARCHIVE_ITEM] : []),
-          ...(canViewPayroll ? [payrollTree] : []),
-          ...(canViewAccounts ? [accountsTree] : []),
-        ],
+        items: [...ADMIN_ITEMS, ...(showArchive ? [QUALITY_ARCHIVE_ITEM] : [])],
       })
-    } else {
-      if (canViewAccounts) list.push({ title: 'Accounts', icon: 'bi-calculator', items: ACCOUNTS_ITEMS })
-      if (canViewPayroll) list.push({ title: 'Salary & Wages', icon: 'bi-cash-stack', items: PAYROLL_ITEMS })
-      if (showArchive) list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
+    } else if (showArchive) {
+      list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
     }
     return list
-  }, [faultOnly, supplierOnly, supplierCounts, areaKey, showFault, showFaultTable, showArchive, showYarnSupply, showTracking, canViewProduction, canViewAccounts, canViewPayroll, isAdmin])
+  }, [faultOnly, supplierOnly, supplierCounts, newVerified, areaKey, showFault, showFaultTable, showArchive, showYarnSupply, canSendYarn, canViewAccounts, canViewPayroll, isAdmin])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 

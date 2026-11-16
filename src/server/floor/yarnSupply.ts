@@ -256,7 +256,7 @@ async function checkRequestLink(requestId: string | null, keep?: string | null) 
     requestId
   )
   if (!rows[0]) throw new YarnError('That request was not found. Please refresh the page.', 404)
-  if (rows[0].status !== 'OPEN') throw new YarnError('That request is closed by the mill — send without it, or ask the mill.', 409)
+  if (rows[0].status !== 'OPEN') throw new YarnError('That request is closed by Sara Textile — send without it, or ask Sara Textile.', 409)
 }
 
 function cleanReceive(p: YarnReceiveInput) {
@@ -393,7 +393,7 @@ export async function createYarnDispatch(p: YarnDispatchInput, by: { id: string;
 /** Supplier: correct an entry the mill has not verified yet (after an issue it goes back for checking). */
 export async function updateYarnDispatch(id: string, p: YarnDispatchInput, by: string): Promise<YarnDispatch> {
   const before = await mustGet(id)
-  if (before.status === 'VERIFIED') throw new YarnError('Already verified by the mill — it can no longer be changed here.', 409)
+  if (before.status === 'VERIFIED') throw new YarnError('Already verified by Sara Textile — it can no longer be changed here.', 409)
   const c = cleanInput(p)
   await checkRequestLink(c.requestId, before.requestId)
   const note = before.status === 'ISSUE' ? `Corrected after: ${before.issueNote}` : undefined
@@ -428,7 +428,7 @@ export async function updateYarnDispatch(id: string, p: YarnDispatchInput, by: s
 /** Supplier: remove an entry sent by mistake (not once verified). */
 export async function deleteYarnDispatch(id: string): Promise<YarnDispatch> {
   const before = await mustGet(id)
-  if (before.status === 'VERIFIED') throw new YarnError('Already verified by the mill — it cannot be deleted.', 409)
+  if (before.status === 'VERIFIED') throw new YarnError('Already verified by Sara Textile — it cannot be deleted.', 409)
   await prisma.$executeRawUnsafe(
     `UPDATE "floor_yarn_dispatches" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "status" <> 'VERIFIED'`,
     id
@@ -439,7 +439,7 @@ export async function deleteYarnDispatch(id: string): Promise<YarnDispatch> {
 /** Mill: something is wrong — the supplier sees the note and corrects the entry. */
 export async function reportYarnDispatchIssue(id: string, note: string, by: string): Promise<YarnDispatch> {
   const before = await mustGet(id)
-  if (before.destination !== 'MILL') throw new YarnError('This lot went to Sizing / Sectional Warping — the mill does not check it.', 409)
+  if (before.destination !== 'MILL') throw new YarnError('This lot went to Sizing / Sectional Warping — Sara Textile does not check it.', 409)
   if (before.status === 'VERIFIED') throw new YarnError('Already verified — use Edit to correct the received figures.', 409)
   const text = clip(note, 500)
   if (!text) throw new YarnError('Write what is wrong.')
@@ -473,7 +473,7 @@ export async function verifyYarnDispatch(id: string, p: YarnReceiveInput, by: st
     )
     if (!rows[0]) throw new YarnError('This entry was not found (it may have been deleted). Please refresh the page.', 404)
     const d = toDispatch(rows[0])
-    if (d.destination !== 'MILL') throw new YarnError('This lot went to Sizing / Sectional Warping — the mill does not check it.', 409)
+    if (d.destination !== 'MILL') throw new YarnError('This lot went to Sizing / Sectional Warping — Sara Textile does not check it.', 409)
     if (d.status === 'VERIFIED') throw new YarnError('Already verified.', 409)
     const yarn = await yarnRowFor(tx, d.yarnType)
     const movementId = await insertMovement(tx, {

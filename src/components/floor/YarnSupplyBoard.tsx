@@ -14,7 +14,9 @@ import {
   diffText,
   fetchYarnSupply,
   fmtKg,
+  markVerifiedSeen,
   matchesTrackingPeriod,
+  newVerifiedCount,
   receivedDayText,
   receivedDiff,
   yarnSupplyAction,
@@ -22,10 +24,12 @@ import {
   type TrackingPeriod,
   type YarnDispatch,
   type YarnSupplyList,
+  VERIFIED_SEEN_EVENT,
+  verifiedSeenAt,
 } from '@/lib/floor/yarnSupply'
 import { TrackingPeriodBar } from '@/components/floor/TrackingPeriodBar'
 import { YarnEmptyState } from '@/components/floor/YarnEmptyState'
-import { buildDayDispatchShareText, YarnBarcodeLookupModal, YarnDispatchBarcodeModal } from '@/components/floor/YarnDispatchBarcodeModal'
+import { YarnDispatchBarcodeModal } from '@/components/floor/YarnDispatchBarcodeModal'
 
 /** supplier: requests | sent | verified | stock — mill: waiting | verified | requests */
 export type YarnSupplyTab = 'requests' | 'sent' | 'waiting' | 'verified' | 'stock'
@@ -35,7 +39,7 @@ const shortDate = (ymd: string | null) => (ymd ? longDateFromYmd(ymd) : '—')
 function StatusBadge({ d }: { d: YarnDispatch }) {
   if (d.status === 'VERIFIED') return <span className="badge text-bg-success">Verified</span>
   if (d.status === 'ISSUE') return <span className="badge text-bg-danger">Issue reported</span>
-  return <span className="badge text-bg-warning">Waiting for mill check</span>
+  return <span className="badge text-bg-warning">Waiting for Sara Textile check</span>
 }
 
 /** Who did what, newest last (shown under the row). */
@@ -493,10 +497,21 @@ export function YarnSupplyBoard({
   const [issue, setIssue] = useState<YarnDispatch[] | null>(null)
   const [share, setShare] = useState<{ title: string; text: string } | null>(null)
   const [barcodeItems, setBarcodeItems] = useState<YarnDispatch[] | null>(null)
-  const [scanOpen, setScanOpen] = useState(false)
   const [shareDate, setShareDate] = useState(() => selectedDate || getCalendarToday())
   const [verifiedPeriod, setVerifiedPeriod] = useState<TrackingPeriod>('monthly')
   const [verifiedDate, setVerifiedDate] = useState(() => selectedDate || getCalendarToday())
+  // Supplier: new-verified badge on the Verified tab (cleared when the tab is opened).
+  const [seenAt, setSeenAt] = useState(() => verifiedSeenAt())
+  useEffect(() => {
+    const onSeen = () => setSeenAt(verifiedSeenAt())
+    window.addEventListener(VERIFIED_SEEN_EVENT, onSeen)
+    return () => window.removeEventListener(VERIFIED_SEEN_EVENT, onSeen)
+  }, [])
+  useEffect(() => {
+    if (mode !== 'supplier' || !data) return
+    // Opening Verified clears the badge; the first visit on a device starts counting from now.
+    if (view === 'verified' || verifiedSeenAt() == null) markVerifiedSeen(data.dispatches)
+  }, [mode, view, data])
 
   const load = useCallback(() => {
     fetchYarnSupply()
@@ -591,9 +606,9 @@ export function YarnSupplyBoard({
           ['requests', 'Requests', openRequests.length, 'bi-clipboard-check'],
         ]
       : [
-          ['requests', 'Requests from mill', openRequests.length, 'bi-clipboard-check'],
+          ['requests', 'Requests from Sara Textile', openRequests.length, 'bi-clipboard-check'],
           ['sent', 'Sent — waiting', open.length, 'bi-hourglass-split'],
-          ['verified', 'Verified', null, 'bi-check2-circle'],
+          ['verified', 'Verified', view === 'verified' ? null : newVerifiedCount(list, seenAt), 'bi-check2-circle'],
           ['stock', 'Sara Textile stock', null, 'bi-box-seam'],
         ]
 
@@ -601,7 +616,7 @@ export function YarnSupplyBoard({
 
   return (
     <>
-      {!embedded && (view === 'requests' || view === 'verified') && (
+      {!embedded && ((view === 'requests' && mode === 'mill') || view === 'verified') && (
         <div className="mb-3">
           <TrackingPeriodBar
             period={verifiedPeriod}
@@ -629,7 +644,7 @@ export function YarnSupplyBoard({
                       >
                         <i className={`bi ${icon} me-1`} />
                         {label}
-                        {count ? <span className={`badge ms-1 ${k === 'requests' ? 'text-bg-primary' : 'text-bg-warning'}`}>{count}</span> : null}
+                        {count ? <span className={`badge ms-1 ${k === 'requests' ? 'text-bg-primary' : k === 'verified' ? 'text-bg-success' : 'text-bg-warning'}`}>{count}</span> : null}
                       </button>
                     </li>
                   ))}
@@ -707,16 +722,6 @@ export function YarnSupplyBoard({
                     <i className="bi bi-send me-1" /> Send yarn
                   </Link>
                 )}
-                {(view === 'sent' || view === 'verified' || view === 'waiting') && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-dark"
-                    onClick={() => setScanOpen(true)}
-                    title="Scan barcode to extract stock data"
-                  >
-                    <i className="bi bi-upc-scan me-1" /> Scan Barcode
-                  </button>
-                )}
                 <button type="button" className="btn btn-sm btn-outline-secondary ms-auto" onClick={load} title="Refresh">
                   <i className="bi bi-arrow-clockwise" />
                 </button>
@@ -734,7 +739,7 @@ export function YarnSupplyBoard({
                       >
                         <i className={`bi ${icon} me-1`} />
                         {label}
-                        {count ? <span className={`badge ms-1 ${k === 'requests' ? 'text-bg-primary' : 'text-bg-warning'}`}>{count}</span> : null}
+                        {count ? <span className={`badge ms-1 ${k === 'requests' ? 'text-bg-primary' : k === 'verified' ? 'text-bg-success' : 'text-bg-warning'}`}>{count}</span> : null}
                       </button>
                     </li>
                   ))}
@@ -768,7 +773,7 @@ export function YarnSupplyBoard({
               <YarnEmptyState
                 icon="bi-box-seam"
                 title="No yarn in stock"
-                subtitle="Stock updates automatically when the mill verifies received yarn."
+                subtitle="Stock updates automatically when Sara Textile verifies received yarn."
               />
             ) : (
               <table className="table table-sm mb-0 text-center align-middle" style={{ fontSize: 13 }}>
@@ -805,7 +810,7 @@ export function YarnSupplyBoard({
               <YarnEmptyState
                 icon="bi-check2-circle"
                 title="Nothing waiting"
-                subtitle="Everything sent has been checked by the mill."
+                subtitle="Everything sent has been checked by Sara Textile."
                 action={
                   canSend ? (
                     <Link href="/yarn-supply/send" className="btn btn-sm btn-primary">
@@ -826,7 +831,7 @@ export function YarnSupplyBoard({
                     <th className="px-2">Kg sent</th>
                     <th className="px-2">Lot #</th>
                     <th className="px-2">Status</th>
-                    <th className="px-2">Received by mill</th>
+                    <th className="px-2">Received by Sara Textile</th>
                     <th className="px-2" style={{ width: 1 }} />
                   </tr>
                 </thead>
@@ -985,19 +990,6 @@ export function YarnSupplyBoard({
       )}
       {issue && <IssueDialog items={issue} onClose={() => setIssue(null)} onSaved={afterSave('Issue reported — the supplier will see it.')} />}
       {barcodeItems && <YarnDispatchBarcodeModal items={barcodeItems} onClose={() => setBarcodeItems(null)} />}
-      {scanOpen && (
-        <YarnBarcodeLookupModal
-          dispatches={list}
-          onOpenLabel={(items) => setBarcodeItems(items)}
-          onShare={(items) =>
-            setShare({
-              title: `Yarn stock — ${shortDate(items[0]?.sentDate || '')}`,
-              text: buildDayDispatchShareText(items),
-            })
-          }
-          onClose={() => setScanOpen(false)}
-        />
-      )}
       <WhatsAppShareModal isOpen={share != null} onClose={() => setShare(null)} documentTitle={share?.title || ''} defaultMessage={share?.text || ''} />
     </>
   )

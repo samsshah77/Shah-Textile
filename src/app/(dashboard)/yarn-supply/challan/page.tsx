@@ -37,7 +37,7 @@ function Challan() {
   }
   if (!d) return <SectionLoader />
 
-  const status = d.destination !== 'MILL' ? `Sent to ${DESTINATION_LABEL[d.destination]}` : d.status === 'VERIFIED' ? 'Received & verified by the mill' : d.status === 'ISSUE' ? 'Issue reported by the mill' : 'Sent — waiting for the mill check'
+  const status = d.destination !== 'MILL' ? `Sent to ${DESTINATION_LABEL[d.destination]}` : d.status === 'VERIFIED' ? 'Received & verified by Sara Textile' : d.status === 'ISSUE' ? 'Issue reported by Sara Textile' : 'Sent — waiting for Sara Textile check'
   const cell: React.CSSProperties = { border: '1px solid #334155', padding: '4px 8px' }
 
   return (

@@ -111,7 +111,7 @@ export function YarnSendForm({
         if (editId) {
           const e = [...d.dispatches, ...d.deptDispatches].find((x) => x.id === editId)
           if (!e) return setLoadError('This entry was not found (it may have been deleted).')
-          if (e.status === 'VERIFIED') return setLoadError('The mill has already verified this entry — it can no longer be changed.')
+          if (e.status === 'VERIFIED') return setLoadError('Sara Textile has already verified this entry — it can no longer be changed.')
           setEditing(e)
           setDestination(e.destination)
           setSentDate(e.sentDate)
@@ -303,8 +303,8 @@ export function YarnSendForm({
         message: !toMill
           ? `${batches.length} ${batches.length === 1 ? 'entry' : 'entries'} recorded as sent to ${DESTINATION_LABEL[destination]}.`
           : editing
-            ? 'Sent to the mill again to be checked.'
-            : `${batches.length} ${batches.length === 1 ? 'entry' : 'entries'} sent — the mill will check when the yarn arrives.`,
+            ? 'Sent to Sara Textile again to be checked.'
+            : `${batches.length} ${batches.length === 1 ? 'entry' : 'entries'} sent — Sara Textile will check when the yarn arrives.`,
       })
       router.push(toMill ? '/yarn-supply?tab=sent' : '/yarn-supply/store?tab=out')
     } catch (err) {
@@ -342,7 +342,7 @@ export function YarnSendForm({
             <i className="bi bi-arrow-left" /> Back
           </Link>
           <h3 className="h5 fw-bold mb-0">
-            {editing ? 'Correct yarn sent' : toMill ? 'Send yarn to the mill' : `Send yarn to ${DESTINATION_LABEL[destination]}`}
+            {editing ? 'Correct yarn sent' : toMill ? 'Send yarn to Sara Textile' : `Send yarn to ${DESTINATION_LABEL[destination]}`}
           </h3>
         </div>
         {batches.length > 0 && (
@@ -355,7 +355,7 @@ export function YarnSendForm({
       <div className="pb-2">
         {editing?.status === 'ISSUE' && (
           <div className="alert alert-danger py-2 px-3 small">
-            <b>Mill reported an issue:</b> {editing.issueNote}
+            <b>Sara Textile reported an issue:</b> {editing.issueNote}
             {editing.issueBy ? ` — ${editing.issueBy}` : ''}
           </div>
         )}
@@ -383,14 +383,14 @@ export function YarnSendForm({
             </div>
             <div className="form-text small">
               {toMill
-                ? 'The mill checks it when it arrives (Verify / Report issue).'
+                ? 'Sara Textile checks it when it arrives (Verify / Report issue).'
                 : `Fazal Umer's own ${DESTINATION_LABEL[destination]} — recorded only; it is taken out of the Inventory.`}
             </div>
           </div>
           {toMill && !editing && linkable.length > 0 && (
             <div className="col-12">
               <label className="form-label small fw-semibold mb-1">
-                Mill’s Open Requests <span className="text-secondary fw-normal">(tap to select)</span>
+                Sara Textile’s Open Requests <span className="text-secondary fw-normal">(tap to select)</span>
               </label>
               <div className="row g-2">
                 {linkable.map((q) => {

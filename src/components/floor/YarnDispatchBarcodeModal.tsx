@@ -25,7 +25,7 @@ export function buildDayQrPayload(items: YarnDispatch[]): string {
   const sentDate = items[0].sentDate
   const totalBags = items.reduce((a, d) => a + d.bags, 0)
   const totalKg = Math.round(items.reduce((a, d) => a + d.weightKg, 0) * 100) / 100
-  const dest = DESTINATION_LABEL[items[0].destination] || 'Sara Textile Mill'
+  const dest = DESTINATION_LABEL[items[0].destination] || 'Sara Textile'
 
   const lines = items.map((d, i) => {
     const meta = [d.lotNo ? `Lot ${d.lotNo}` : '', d.challanNo ? `Challan ${d.challanNo}` : '', d.vehicleNo ? `Vehicle ${d.vehicleNo}` : '']
@@ -76,7 +76,7 @@ export function buildDayDispatchShareText(items: YarnDispatch[]): string {
   const sentDate = items[0].sentDate
   const totalBags = items.reduce((a, d) => a + d.bags, 0)
   const totalKg = Math.round(items.reduce((a, d) => a + d.weightKg, 0) * 100) / 100
-  const dest = DESTINATION_LABEL[items[0].destination] || 'Sara Textile Mill'
+  const dest = DESTINATION_LABEL[items[0].destination] || 'Sara Textile'
 
   const lines = items.map((d, i) => {
     const statusText =
@@ -84,7 +84,7 @@ export function buildDayDispatchShareText(items: YarnDispatch[]): string {
         ? `Verified (${bagsText(d.receivedBags)}, ${fmtKg(d.receivedKg)})`
         : d.status === 'ISSUE'
           ? `Issue: ${d.issueNote || 'Reported'}`
-          : 'Waiting for mill check'
+          : 'Waiting for Sara Textile check'
     const meta = [d.lotNo ? `Lot ${d.lotNo}` : '', d.challanNo ? `Challan ${d.challanNo}` : ''].filter(Boolean).join(' · ')
     return [
       `${i + 1}. *${d.yarnType}* — ${bagsText(d.bags)}, ${fmtKg(d.weightKg)}`,
@@ -399,7 +399,7 @@ export function YarnBarcodeLookupModal({
                   <div>
                     <div className="fw-bold fs-6">Sent on {longDateFromYmd(matches[0].sentDate)}</div>
                     <div className="small text-secondary">
-                      {matches.length} {matches.length === 1 ? 'item' : 'items'} · {DESTINATION_LABEL[matches[0].destination] || 'Sara Textile Mill'}
+                      {matches.length} {matches.length === 1 ? 'item' : 'items'} · {DESTINATION_LABEL[matches[0].destination] || 'Sara Textile'}
                     </div>
                   </div>
                   <span className="badge text-bg-primary font-monospace">
@@ -450,7 +450,7 @@ export function YarnBarcodeLookupModal({
                         )}
                         {m.status === 'VERIFIED' && (
                           <div className="mt-1 text-success-emphasis">
-                            Mill received: {m.receivedDate ? longDateFromYmd(m.receivedDate) : '—'} · {bagsText(m.receivedBags)} ·{' '}
+                            Sara Textile received: {m.receivedDate ? longDateFromYmd(m.receivedDate) : '—'} · {bagsText(m.receivedBags)} ·{' '}
                             {fmtKg(m.receivedKg)}
                             {(diff.bags !== 0 || diff.kg !== 0) && (
                               <span className="text-danger-emphasis ms-2">(Diff: {diffText(diff)})</span>

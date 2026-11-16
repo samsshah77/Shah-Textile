@@ -65,13 +65,15 @@ function StockDialog({
   const [yarnType, setYarnType] = useState(twisting?.inYarnType || entry?.yarnType || '')
   const [date, setDate] = useState(twisting?.inDate || entry?.date || getCalendarToday())
   const [bags, setBags] = useState(twisting ? String(twisting.inBags || '') : entry ? String(entry.bags || '') : '')
-  const [kg, setKg] = useState(twisting ? String(twisting.inKg) : entry ? String(entry.kg) : '')
-  // Inventory (not Twisting): one bag weight for all the bags.
-  const [bagWeight, setBagWeight] = useState(entry && entry.bags > 0 ? (Math.round((entry.kg / entry.bags) * 100) / 100).toFixed(2) : '')
+  const initialBags = twisting ? twisting.inBags : entry ? entry.bags : 0
+  const initialKg = twisting ? twisting.inKg : entry ? entry.kg : 0
+  const [bagWeight, setBagWeight] = useState(
+    initialBags > 0 ? (Math.round((initialKg / initialBags) * 100) / 100).toFixed(2) : ''
+  )
   const bagCount = Number(bags) || 0
   const bagW = Math.round((parseFloat(bagWeight) || 0) * 100) / 100
-  const invKg = Math.round(bagCount * bagW * 100) / 100
-  const ready = isTwist ? Number(kg) > 0 : bagCount > 0 && bagW > 0
+  const totalKg = Math.round(bagCount * bagW * 100) / 100
+  const ready = bagCount > 0 && bagW > 0
   const [note, setNote] = useState(twisting?.note || entry?.note || '')
   const [supplierName, setSupplierName] = useState(twisting?.supplierName || entry?.supplierName || '')
   const [busy, setBusy] = useState(false)
@@ -83,8 +85,8 @@ function StockDialog({
     const stock = {
       yarnType: yarnType.trim(),
       date,
-      bags: Number(bags) || 0,
-      kg: isTwist ? Number(kg) : invKg,
+      bags: bagCount,
+      kg: totalKg,
       note: note.trim(),
       supplierName: supplierName.trim(),
       ...(isTwist ? {} : { bagWeightKg: bagW }),
@@ -172,44 +174,33 @@ function StockDialog({
                 </label>
                 <input id="ss-bags" inputMode="numeric" className="form-control text-end" value={bags} onChange={(e) => setBags(e.target.value.replace(/[^\d]/g, ''))} />
               </div>
-              {isTwist ? (
-                <div className="col-6 col-sm-4">
-                  <label className="form-label small fw-semibold mb-1" htmlFor="ss-kg">
-                    Kg
-                  </label>
-                  <input id="ss-kg" inputMode="decimal" className="form-control text-end" value={kg} onChange={(e) => setKg(e.target.value.replace(/[^\d.]/g, ''))} />
+              <div className="col-6 col-sm-4">
+                <label className="form-label small fw-semibold mb-1" htmlFor="ss-bagkg">
+                  Weight of 1 bag (kg)
+                </label>
+                <input
+                  id="ss-bagkg"
+                  inputMode="decimal"
+                  className="form-control text-end"
+                  value={bagWeight}
+                  onChange={(e) => setBagWeight(e.target.value.replace(/[^\d.]/g, ''))}
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim()
+                    if (raw !== '' && !isNaN(Number(raw))) setBagWeight(parseFloat(raw).toFixed(2))
+                  }}
+                />
+              </div>
+              <div className="col-12">
+                <div id="ss-total" className="rounded border bg-light px-3 py-2 small">
+                  Total: <b>{fmtKg(totalKg)}</b>
+                  {bagCount > 0 && bagW > 0 && (
+                    <span className="text-secondary">
+                      {' '}
+                      ({bagCount} {bagCount === 1 ? 'bag' : 'bags'} × {bagW.toFixed(2)} kg)
+                    </span>
+                  )}
                 </div>
-              ) : (
-                <div className="col-6 col-sm-4">
-                  <label className="form-label small fw-semibold mb-1" htmlFor="ss-bagkg">
-                    Weight of 1 bag (kg)
-                  </label>
-                  <input
-                    id="ss-bagkg"
-                    inputMode="decimal"
-                    className="form-control text-end"
-                    value={bagWeight}
-                    onChange={(e) => setBagWeight(e.target.value.replace(/[^\d.]/g, ''))}
-                    onBlur={(e) => {
-                      const raw = e.target.value.trim()
-                      if (raw !== '' && !isNaN(Number(raw))) setBagWeight(parseFloat(raw).toFixed(2))
-                    }}
-                  />
-                </div>
-              )}
-              {!isTwist && (
-                <div className="col-12">
-                  <div id="ss-total" className="rounded border bg-light px-3 py-2 small">
-                    Total: <b>{fmtKg(invKg)}</b>
-                    {bagCount > 0 && bagW > 0 && (
-                      <span className="text-secondary">
-                        {' '}
-                        ({bagCount} {bagCount === 1 ? 'bag' : 'bags'} × {bagW.toFixed(2)} kg)
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
+              </div>
               <div className="col-12">
                 <label className="form-label small fw-semibold mb-1" htmlFor="ss-note">
                   Note <span className="text-secondary fw-normal">(optional — e.g. lot #)</span>
@@ -612,7 +603,7 @@ export function SupplierStorePanel({ tab, onTabChange }: { tab: StoreTab; onTabC
                   <div className="fw-bold text-success">{fmtKg(totals.inKg)}</div>
                 </div>
                 <div className="col-4 py-2 border-start">
-                  <div className="text-secondary">Sent (mill + Sizing + Sectional Warping)</div>
+                  <div className="text-secondary">Sent (Sara Textile + Sizing + Sectional Warping)</div>
                   <div className="fw-bold text-danger">{fmtKg(totals.outKg)}</div>
                 </div>
                 <div className="col-4 py-2 border-start">

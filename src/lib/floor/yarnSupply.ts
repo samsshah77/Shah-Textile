@@ -11,7 +11,7 @@ export type YarnDispatchStatus = 'PENDING' | 'ISSUE' | 'VERIFIED' | 'SENT'
 
 /** Where a lot goes: Sara Textile mill (checked by the mill) or Fazal Umer's own departments. */
 export type YarnDestination = 'MILL' | 'SIZING' | 'WARPING'
-export const DESTINATION_LABEL: Record<YarnDestination, string> = { MILL: 'Sara Textile Mill', SIZING: 'Sizing', WARPING: 'Sectional Warping' }
+export const DESTINATION_LABEL: Record<YarnDestination, string> = { MILL: 'Sara Textile', SIZING: 'Sizing', WARPING: 'Sectional Warping' }
 
 export type YarnDispatchLog = {
   at: string
@@ -357,7 +357,7 @@ export function yarnSupplyShareText(d: YarnDispatch): string {
   } else if (d.status === 'ISSUE') {
     lines.push(`Status: Issue reported — ${d.issueNote}`, d.issueBy ? `By: ${d.issueBy}` : '')
   } else {
-    lines.push('Status: Waiting for the mill to check')
+    lines.push('Status: Waiting for Sara Textile to check')
   }
   return lines.filter(Boolean).join('\n')
 }
@@ -410,3 +410,46 @@ export function formatTrackingPeriod(anchorYmd: string, period: TrackingPeriod):
   const fmt = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', timeZone: 'UTC' })
   return `${fmt.format(start)} – ${fmt.format(end)} ${end.getUTCFullYear()}`
 }
+
+/**
+ * Verified tab badge: lots Sara Textile verified after this device last opened the Verified tab.
+ * Kept as the newest server "verifiedAt" already seen (server times only, so the PC clock does not matter).
+ */
+const VERIFIED_SEEN_KEY = 'sara:yarn-verified-seen-at'
+export const VERIFIED_SEEN_EVENT = 'sara:yarn-verified-seen'
+
+type VerifiedLike = { status: string; verifiedAt: string | null; destination?: string }
+
+const verifiedTimes = (list: VerifiedLike[]) =>
+  list
+    .filter((d) => d.status === 'VERIFIED' && (d.destination ?? 'MILL') === 'MILL' && d.verifiedAt)
+    .map((d) => Date.parse(d.verifiedAt as string))
+    .filter((t) => Number.isFinite(t))
+
+export function verifiedSeenAt(): number | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const v = Number(window.localStorage.getItem(VERIFIED_SEEN_KEY))
+    return v > 0 ? v : null
+  } catch {
+    return null
+  }
+}
+
+/** Remember the newest verified lot in `list` as seen (opening the Verified tab, or first visit on this device). */
+export function markVerifiedSeen(list: VerifiedLike[]) {
+  if (typeof window === 'undefined') return
+  const newest = Math.max(1, ...verifiedTimes(list))
+  const before = verifiedSeenAt()
+  if (before != null && before >= newest) return
+  try {
+    window.localStorage.setItem(VERIFIED_SEEN_KEY, String(newest))
+  } catch {
+    return
+  }
+  window.dispatchEvent(new Event(VERIFIED_SEEN_EVENT))
+}
+
+/** Lots verified after the last one seen (0 until this device has a "seen" mark). */
+export const newVerifiedCount = (list: VerifiedLike[], seenAt: number | null) =>
+  seenAt == null ? 0 : verifiedTimes(list).filter((t) => t > seenAt).length

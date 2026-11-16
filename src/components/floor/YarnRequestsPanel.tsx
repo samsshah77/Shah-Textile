@@ -450,10 +450,15 @@ export function YarnRequestsPanel({
   const [editing, setEditing] = useState<YarnRequest | null>(null)
   const [showClosed, setShowClosed] = useState(false)
   const todayYmd = anchorDate || getCalendarToday()
-  const active = requests.filter((q) => q.status === 'OPEN' || q.status === 'COMPLETE')
-  const closed = requests.filter((q) => q.status === 'CLOSED' || q.status === 'CANCELLED')
+  // The supplier sees only requests still to send; once sent they move to Sent → Verified.
+  const supplierView = mode === 'supplier'
+  const active = requests.filter((q) => q.status === 'OPEN' || (!supplierView && q.status === 'COMPLETE'))
+  const closed = supplierView ? [] : requests.filter((q) => q.status === 'CLOSED' || q.status === 'CANCELLED')
   const baseShown = showClosed ? requests : active
-  const shown = embedded || period === 'all' ? baseShown : baseShown.filter((q) => matchesTrackingPeriod(q.createdAt.slice(0, 10), period, todayYmd))
+  const shown =
+    supplierView || embedded || period === 'all'
+      ? baseShown
+      : baseShown.filter((q) => matchesTrackingPeriod(q.createdAt.slice(0, 10), period, todayYmd))
 
   const share = (q: YarnRequest) => onShare({ title: `Yarn request — ${q.yarnType}`, text: yarnRequestShareText(q) })
 
@@ -483,11 +488,11 @@ export function YarnRequestsPanel({
       {shown.length === 0 ? (
         <YarnEmptyState
           icon="bi-clipboard-check"
-          title={mode === 'mill' ? 'No open requests' : 'No requests from mill'}
+          title={mode === 'mill' ? 'No open requests' : 'No requests from Sara Textile'}
           subtitle={
             mode === 'mill'
               ? 'Use “Request yarn” to ask the supplier for stock.'
-              : 'The mill has not requested any yarn for this period.'
+              : 'Nothing to send right now. Sent yarn is in “Sent — waiting”, then “Verified”.'
           }
         />
       ) : (

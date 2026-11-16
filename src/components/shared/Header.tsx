@@ -88,6 +88,29 @@ function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
   return 'Floor'
 }
 
+/** Yarn Supply: the open tab's name (same names as the sidebar). */
+function resolveYarnSupplyPage(pathname: string, sp: URLSearchParams): string {
+  if (pathname.startsWith('/yarn-supply/send')) {
+    if (sp.get('id')) return 'Correct yarn sent'
+    const to = sp.get('to')
+    if (to === 'SIZING') return 'Send to Sizing'
+    if (to === 'WARPING') return 'Send to Sectional Warping'
+    return 'Send yarn'
+  }
+  if (pathname.startsWith('/yarn-supply/challan')) return 'Challan'
+  if (pathname.startsWith('/yarn-supply/store')) {
+    const tab = sp.get('tab')
+    if (tab === 'out') return 'Sizing / Sectional Warping'
+    if (tab === 'twist') return 'Fazal Umer Inventory — Twisting'
+    return 'Fazal Umer Inventory'
+  }
+  const tab = sp.get('tab')
+  if (tab === 'sent') return 'Sent — waiting'
+  if (tab === 'verified') return 'Verified'
+  if (tab === 'stock') return 'Sara Textile stock'
+  return 'Requests from Sara Textile'
+}
+
 function resolveAdminPage(pathname: string): string {
   if (pathname.startsWith('/admin/users')) return 'Users'
   if (pathname.startsWith('/admin/system')) return 'System'
@@ -167,7 +190,7 @@ function HeaderContent() {
       return { section: 'Floor Operations', page: resolveFloorPage(pathname, searchParams) }
     }
     if (pathname.startsWith('/yarn-supply')) {
-      return { section: 'Floor Operations', page: 'Yarn Supply' }
+      return { section: 'Yarn Supply', page: resolveYarnSupplyPage(pathname, searchParams) }
     }
     return { section: 'Sara Textile', page: null as string | null }
   }, [pathname, searchParams, profilePageLabel])
