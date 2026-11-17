@@ -29,6 +29,7 @@ import type {
   SupplierTwisting,
   SupplierTwistingInput,
   SupplierTwistingOut,
+  SupplierBalanceReset,
 } from '@/lib/floor/yarnSupply'
 
 export type {
@@ -136,6 +137,17 @@ const DDL = [
   `ALTER TABLE "floor_supplier_stock" ADD COLUMN IF NOT EXISTS "bagKg" JSONB`,
   `ALTER TABLE "floor_supplier_twisting" ADD COLUMN IF NOT EXISTS "supplierName" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "floor_supplier_twisting" ADD COLUMN IF NOT EXISTS "outBagKg" JSONB`,
+  // A lot issued to Twisting from the Balance: its dispatch (destination TWISTING) takes the kg out.
+  `ALTER TABLE "floor_supplier_twisting" ADD COLUMN IF NOT EXISTS "dispatchId" TEXT`,
+  // "Reset Balance to zero" (admin): only entries made after the latest active reset count in the Balance.
+  `CREATE TABLE IF NOT EXISTS "floor_supplier_balance_resets" (
+    "id" TEXT PRIMARY KEY,
+    "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "by" TEXT NOT NULL DEFAULT '',
+    "byId" TEXT NOT NULL DEFAULT '',
+    "undoneAt" TIMESTAMP(3),
+    "undoneBy" TEXT NOT NULL DEFAULT ''
+  )`,
 ]
 
 let ready: Promise<void> | null = null
@@ -187,7 +199,8 @@ const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
 const isYmd = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
 const clip = (s: unknown, n: number) => String(s ?? '').trim().slice(0, n)
 
-const toDestination = (v: unknown): YarnDestination => (v === 'SIZING' ? 'SIZING' : v === 'WARPING' ? 'WARPING' : 'MILL')
+const toDestination = (v: unknown): YarnDestination =>
+  v === 'SIZING' ? 'SIZING' : v === 'WARPING' ? 'WARPING' : v === 'TWISTING' ? 'TWISTING' : 'MILL'
 
 function toDispatch(r: Row): YarnDispatch {
   const status: YarnDispatchStatus =
@@ -284,11 +297,11 @@ export async function listYarnDispatches(): Promise<YarnDispatch[]> {
   return rows.map(toDispatch)
 }
 
-/** Lots sent to Fazal Umer's own Sizing / Warping (record only). */
+/** Lots sent to Fazal Umer's own Sizing / Warping (record only) and issued to Twisting. */
 export async function listDeptDispatches(): Promise<YarnDispatch[]> {
   await ensureYarnDispatchTable()
   const rows = await prisma.$queryRawUnsafe<Row[]>(
-    `SELECT * FROM "floor_yarn_dispatches" WHERE "deletedAt" IS NULL AND "destination" IN ('SIZING','WARPING')
+    `SELECT * FROM "floor_yarn_dispatches" WHERE "deletedAt" IS NULL AND "destination" IN ('SIZING','WARPING','TWISTING')
      ORDER BY "sentDate" DESC, "createdAt" DESC LIMIT 500`
   )
   return rows.map(toDispatch)
@@ -308,14 +321,27 @@ async function mustGet(id: string): Promise<YarnDispatch> {
 
 type RawClient = Pick<typeof prisma, '$queryRawUnsafe' | '$executeRawUnsafe'>
 
-/** Fazal Umer Inventory left for one yarn: added − sent anywhere (same rule as supplierStoreBalances). */
+/**
+ * SQL: the row (alias `a`) was made after the latest active "Reset Balance to zero" — only those count
+ * in the Balance. With no reset everything counts.
+ */
+const afterReset = (a: string) =>
+  `${a}."createdAt" > COALESCE((SELECT MAX(r."at") FROM "floor_supplier_balance_resets" r WHERE r."undoneAt" IS NULL), '-infinity'::timestamp)`
+
+/** Does this stock entry / dispatch count in the Balance (made after the latest reset)? */
+async function countsInBalance(db: RawClient, table: 'floor_supplier_stock' | 'floor_yarn_dispatches', id: string): Promise<boolean> {
+  const rows = await db.$queryRawUnsafe<Array<{ counts: boolean }>>(`SELECT ${afterReset('a')} AS "counts" FROM "${table}" a WHERE a."id" = $1`, id)
+  return Boolean(rows[0]?.counts)
+}
+
+/** Fazal Umer Balance left for one yarn: added − sent anywhere (same rule as supplierStoreBalances). */
 async function storeLeftKg(db: RawClient, yarnType: string): Promise<number> {
   const k = storeKey(yarnType)
   const ins = await db.$queryRawUnsafe<Array<{ yarnType: string; kg: number }>>(
-    `SELECT "yarnType", "kg" FROM "floor_supplier_stock" WHERE "deletedAt" IS NULL`
+    `SELECT a."yarnType", a."kg" FROM "floor_supplier_stock" a WHERE a."deletedAt" IS NULL AND ${afterReset('a')}`
   )
   const outs = await db.$queryRawUnsafe<Array<{ yarnType: string; weightKg: number }>>(
-    `SELECT "yarnType", "weightKg" FROM "floor_yarn_dispatches" WHERE "deletedAt" IS NULL`
+    `SELECT a."yarnType", a."weightKg" FROM "floor_yarn_dispatches" a WHERE a."deletedAt" IS NULL AND ${afterReset('a')}`
   )
   let left = 0
   for (const r of ins) if (storeKey(r.yarnType) === k) left += Number(r.kg) || 0
@@ -324,30 +350,37 @@ async function storeLeftKg(db: RawClient, yarnType: string): Promise<number> {
 }
 
 /**
- * The Inventory never goes below zero: a lot can be sent only from what is in the Inventory.
+ * The Balance never goes below zero: a lot can be sent only from what is in the Balance.
  * `keep` = the entry being corrected (its own kg counts as available; lowering an old entry is always allowed).
+ * An entry from before the Balance reset is outside the Balance, so correcting it does not touch it.
  */
-async function assertInventoryHas(db: RawClient, yarnType: string, kg: number, keep?: { yarnType: string; weightKg: number } | null) {
+async function assertInventoryHas(
+  db: RawClient,
+  yarnType: string,
+  kg: number,
+  keep?: { id: string; yarnType: string; weightKg: number } | null
+) {
+  if (keep && !(await countsInBalance(db, 'floor_yarn_dispatches', keep.id))) return
   const same = Boolean(keep && storeKey(keep.yarnType) === storeKey(yarnType))
   if (same && keep && kg <= keep.weightKg + 0.001) return
   const avail = r2((await storeLeftKg(db, yarnType)) + (same && keep ? keep.weightKg : 0))
   if (kg > avail + 0.001) {
     throw new YarnError(
       avail <= 0
-        ? `${yarnType} is not in Fazal Umer Inventory — add it to the Inventory first.`
-        : `Only ${avail} kg of ${yarnType} is in Fazal Umer Inventory — you cannot send ${r2(kg)} kg.`,
+        ? `${yarnType} is not in Fazal Umer Balance — add it to the Balance first.`
+        : `Only ${avail} kg of ${yarnType} is in Fazal Umer Balance — you cannot send ${r2(kg)} kg.`,
       409
     )
   }
 }
 
-/** Taking kg out of the Inventory (edit / delete / undo) must not leave it below zero. */
+/** Taking kg out of the Balance (edit / delete / undo) must not leave it below zero. */
 async function assertInventoryCanLose(db: RawClient, yarnType: string, kg: number) {
   if (kg <= 0) return
   const left = await storeLeftKg(db, yarnType)
   if (left - kg < -0.001) {
     throw new YarnError(
-      `Cannot do this — ${yarnType} has already been sent out of the Inventory. Only ${Math.max(0, left)} kg of it is left.`,
+      `Cannot do this — ${yarnType} has already been sent out of the Balance. Only ${Math.max(0, left)} kg of it is left.`,
       409
     )
   }
@@ -356,7 +389,42 @@ async function assertInventoryCanLose(db: RawClient, yarnType: string, kg: numbe
 /** One send / correction at a time, so two sends together cannot take the same kg. */
 const lockStore = (db: RawClient) => db.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext('floor:supplier-store'))::text`)
 
-/** Supplier: a new lot sent. */
+/** Who the yarn in the Balance came from (for a lot issued to Twisting): the suppliers of that yarn's entries. */
+async function balanceSuppliers(db: RawClient, yarnType: string): Promise<string> {
+  const k = storeKey(yarnType)
+  const rows = await db.$queryRawUnsafe<Array<{ yarnType: string; supplierName: string | null; counts: boolean }>>(
+    `SELECT a."yarnType", a."supplierName", ${afterReset('a')} AS "counts" FROM "floor_supplier_stock" a
+     WHERE a."deletedAt" IS NULL ORDER BY a."date" DESC, a."createdAt" DESC`
+  )
+  const mine = rows.filter((r) => storeKey(r.yarnType) === k && (r.supplierName || '').trim())
+  const pick = mine.some((r) => r.counts) ? mine.filter((r) => r.counts) : mine
+  const names: string[] = []
+  for (const r of pick) {
+    const n = (r.supplierName || '').trim()
+    if (!names.some((x) => x.toLowerCase() === n.toLowerCase())) names.push(n)
+  }
+  return names.join(', ').slice(0, 120)
+}
+
+type TwistLock = { id: string; status: string }
+
+/** The Twisting lot of a lot issued to Twisting (locked for this transaction). */
+async function twistOfDispatch(db: RawClient, dispatchId: string): Promise<TwistLock | null> {
+  const rows = await db.$queryRawUnsafe<TwistLock[]>(
+    `SELECT "id", "status" FROM "floor_supplier_twisting" WHERE "dispatchId" = $1 AND "deletedAt" IS NULL FOR UPDATE`,
+    dispatchId
+  )
+  return rows[0] || null
+}
+
+const DEST_NOTE: Record<YarnDestination, string | undefined> = {
+  MILL: undefined,
+  SIZING: 'To Sizing',
+  WARPING: 'To Sectional Warping',
+  TWISTING: 'To Twisting',
+}
+
+/** Supplier: a new lot sent (an issue to Twisting also opens its Twisting lot). */
 export async function createYarnDispatch(p: YarnDispatchInput, by: { id: string; name: string }): Promise<YarnDispatch> {
   await ensureYarnDispatchTable()
   const c = cleanInput(p)
@@ -381,11 +449,27 @@ export async function createYarnDispatch(p: YarnDispatchInput, by: { id: string;
       c.remarks,
       by.name,
       by.id,
-      JSON.stringify([logEntry(by.name, 'SENT', c.destination === 'MILL' ? undefined : `To ${c.destination === 'SIZING' ? 'Sizing' : 'Sectional Warping'}`)]),
+      JSON.stringify([logEntry(by.name, 'SENT', DEST_NOTE[c.destination])]),
       c.requestId,
       c.destination === 'MILL' ? 'PENDING' : 'SENT',
       c.destination
     )
+    if (c.destination === 'TWISTING') {
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "floor_supplier_twisting" ("id","inYarnType","inDate","inBags","inKg","note","createdBy","createdById","supplierName","dispatchId")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        `yst-${Date.now()}-${randomUUID().slice(0, 8)}`,
+        c.yarnType,
+        c.sentDate,
+        c.bags,
+        c.weightKg,
+        c.remarks,
+        by.name,
+        by.id,
+        await balanceSuppliers(tx, c.yarnType),
+        id
+      )
+    }
   })
   return mustGet(id)
 }
@@ -395,10 +479,17 @@ export async function updateYarnDispatch(id: string, p: YarnDispatchInput, by: s
   const before = await mustGet(id)
   if (before.status === 'VERIFIED') throw new YarnError('Already verified by Sara Textile — it can no longer be changed here.', 409)
   const c = cleanInput(p)
+  // A lot issued to Twisting stays a Twisting lot (and only the Twisting page issues new ones).
+  if (before.destination === 'TWISTING') c.destination = 'TWISTING'
+  else if (c.destination === 'TWISTING') throw new YarnError('Issue yarn to Twisting from the Twisting page.', 409)
   await checkRequestLink(c.requestId, before.requestId)
   const note = before.status === 'ISSUE' ? `Corrected after: ${before.issueNote}` : undefined
   await prisma.$transaction(async (tx) => {
     await lockStore(tx)
+    const twist = before.destination === 'TWISTING' ? await twistOfDispatch(tx, id) : null
+    if (twist?.status === 'DONE') {
+      throw new YarnError('This lot has already come back from Twisting to the Balance — Undo that on the Twisting page first.', 409)
+    }
     await assertInventoryHas(tx, c.yarnType, c.weightKg, before)
     await tx.$executeRawUnsafe(
       `UPDATE "floor_yarn_dispatches" SET
@@ -421,25 +512,47 @@ export async function updateYarnDispatch(id: string, p: YarnDispatchInput, by: s
       c.destination,
       c.destination === 'MILL' ? 'PENDING' : 'SENT'
     )
+    if (twist) {
+      await tx.$executeRawUnsafe(
+        `UPDATE "floor_supplier_twisting" SET "inYarnType" = $2, "inDate" = $3, "inBags" = $4, "inKg" = $5, "note" = $6,
+           "supplierName" = CASE WHEN $7 = '' THEN "supplierName" ELSE $7 END, "updatedAt" = CURRENT_TIMESTAMP
+         WHERE "id" = $1`,
+        twist.id,
+        c.yarnType,
+        c.sentDate,
+        c.bags,
+        c.weightKg,
+        c.remarks,
+        storeKey(c.yarnType) === storeKey(before.yarnType) ? '' : await balanceSuppliers(tx, c.yarnType)
+      )
+    }
   })
   return mustGet(id)
 }
 
-/** Supplier: remove an entry sent by mistake (not once verified). */
+/** Supplier: remove an entry sent by mistake (not once verified; a Twisting lot only while still in Twisting). */
 export async function deleteYarnDispatch(id: string): Promise<YarnDispatch> {
   const before = await mustGet(id)
   if (before.status === 'VERIFIED') throw new YarnError('Already verified by Sara Textile — it cannot be deleted.', 409)
-  await prisma.$executeRawUnsafe(
-    `UPDATE "floor_yarn_dispatches" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "status" <> 'VERIFIED'`,
-    id
-  )
+  await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    const twist = before.destination === 'TWISTING' ? await twistOfDispatch(tx, id) : null
+    if (twist?.status === 'DONE') {
+      throw new YarnError('This lot has already come back from Twisting to the Balance — Undo that on the Twisting page first.', 409)
+    }
+    await tx.$executeRawUnsafe(
+      `UPDATE "floor_yarn_dispatches" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "status" <> 'VERIFIED'`,
+      id
+    )
+    if (twist) await tx.$executeRawUnsafe(`UPDATE "floor_supplier_twisting" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, twist.id)
+  })
   return before
 }
 
 /** Mill: something is wrong — the supplier sees the note and corrects the entry. */
 export async function reportYarnDispatchIssue(id: string, note: string, by: string): Promise<YarnDispatch> {
   const before = await mustGet(id)
-  if (before.destination !== 'MILL') throw new YarnError('This lot went to Sizing / Sectional Warping — Sara Textile does not check it.', 409)
+  if (before.destination !== 'MILL') throw new YarnError('This lot did not go to Sara Textile — Sara Textile does not check it.', 409)
   if (before.status === 'VERIFIED') throw new YarnError('Already verified — use Edit to correct the received figures.', 409)
   const text = clip(note, 500)
   if (!text) throw new YarnError('Write what is wrong.')
@@ -473,7 +586,7 @@ export async function verifyYarnDispatch(id: string, p: YarnReceiveInput, by: st
     )
     if (!rows[0]) throw new YarnError('This entry was not found (it may have been deleted). Please refresh the page.', 404)
     const d = toDispatch(rows[0])
-    if (d.destination !== 'MILL') throw new YarnError('This lot went to Sizing / Sectional Warping — Sara Textile does not check it.', 409)
+    if (d.destination !== 'MILL') throw new YarnError('This lot did not go to Sara Textile — Sara Textile does not check it.', 409)
     if (d.status === 'VERIFIED') throw new YarnError('Already verified.', 409)
     const yarn = await yarnRowFor(tx, d.yarnType)
     const movementId = await insertMovement(tx, {
@@ -771,6 +884,8 @@ type StockRow = {
   bagKg: unknown
   createdBy: string
   createdAt: Date | string
+  counts?: boolean | null
+  fromTwist?: boolean | null
 }
 
 /** A JSONB list of bag weights → numbers (anything else → []). */
@@ -797,46 +912,104 @@ const toStock = (r: StockRow): SupplierStockEntry => ({
   bagKg: bagList(r.bagKg),
   createdBy: r.createdBy || '',
   createdAt: iso(r.createdAt) || '',
+  beforeReset: r.counts === false,
+  fromTwisting: Boolean(r.fromTwist),
 })
+
+/** One stock entry with its Balance flags (made before the reset? came back from Twisting?). */
+const STOCK_SELECT = `SELECT a.*, ${afterReset('a')} AS "counts",
+    EXISTS (SELECT 1 FROM "floor_supplier_twisting" t WHERE t."stockId" = a."id" AND t."deletedAt" IS NULL) AS "fromTwist"
+  FROM "floor_supplier_stock" a`
 
 export async function listSupplierStock(): Promise<SupplierStockEntry[]> {
   await ensureYarnDispatchTable()
   const rows = await prisma.$queryRawUnsafe<StockRow[]>(
-    `SELECT * FROM "floor_supplier_stock" WHERE "deletedAt" IS NULL ORDER BY "date" DESC, "createdAt" DESC LIMIT 1000`
+    `${STOCK_SELECT} WHERE a."deletedAt" IS NULL ORDER BY a."date" DESC, a."createdAt" DESC LIMIT 1000`
   )
   return rows.map(toStock)
 }
 
+async function stockById(id: string): Promise<SupplierStockEntry> {
+  const rows = await prisma.$queryRawUnsafe<StockRow[]>(`${STOCK_SELECT} WHERE a."id" = $1`, id)
+  return toStock(rows[0])
+}
+
 const storeKey = (s: string) => s.toLowerCase().replace(/[\s\-_.]+/g, '')
 
-/** Per yarn: added to the store − sent anywhere (mill, Sizing, Warping). */
+/**
+ * Per yarn (only entries after the latest Balance reset): added by hand + back from Twisting
+ * − sent to Sara Textile, Sizing / Sectional Warping and Twisting.
+ */
 export async function supplierStoreBalances(): Promise<SupplierStoreBalance[]> {
   await ensureYarnDispatchTable()
-  const ins = await prisma.$queryRawUnsafe<Array<{ yarnType: string; kg: number; bags: number }>>(
-    `SELECT "yarnType", "kg", "bags" FROM "floor_supplier_stock" WHERE "deletedAt" IS NULL`
+  const ins = await prisma.$queryRawUnsafe<Array<{ yarnType: string; kg: number; bags: number; fromTwist: boolean }>>(
+    `SELECT a."yarnType", a."kg", a."bags",
+       EXISTS (SELECT 1 FROM "floor_supplier_twisting" t WHERE t."stockId" = a."id" AND t."deletedAt" IS NULL) AS "fromTwist"
+     FROM "floor_supplier_stock" a WHERE a."deletedAt" IS NULL AND ${afterReset('a')}`
   )
-  const outs = await prisma.$queryRawUnsafe<Array<{ yarnType: string; weightKg: number; bags: number }>>(
-    `SELECT "yarnType", "weightKg", "bags" FROM "floor_yarn_dispatches" WHERE "deletedAt" IS NULL`
+  const outs = await prisma.$queryRawUnsafe<Array<{ yarnType: string; weightKg: number; bags: number; destination: string | null }>>(
+    `SELECT a."yarnType", a."weightKg", a."bags", a."destination" FROM "floor_yarn_dispatches" a
+     WHERE a."deletedAt" IS NULL AND ${afterReset('a')}`
   )
   const map = new Map<string, SupplierStoreBalance>()
   const row = (name: string) => {
     const k = storeKey(name)
     let b = map.get(k)
     if (!b) {
-      b = { yarnType: name.trim(), inKg: 0, inBags: 0, outKg: 0, outBags: 0, balanceKg: 0, balanceBags: 0 }
+      b = {
+        yarnType: name.trim(),
+        inKg: 0,
+        inBags: 0,
+        outKg: 0,
+        outBags: 0,
+        balanceKg: 0,
+        balanceBags: 0,
+        addedKg: 0,
+        addedBags: 0,
+        fromTwistKg: 0,
+        fromTwistBags: 0,
+        toMillKg: 0,
+        toMillBags: 0,
+        toDeptKg: 0,
+        toDeptBags: 0,
+        toTwistKg: 0,
+        toTwistBags: 0,
+      }
       map.set(k, b)
     }
     return b
   }
   for (const r of ins) {
     const b = row(r.yarnType)
-    b.inKg += Number(r.kg) || 0
-    b.inBags += Number(r.bags) || 0
+    const kg = Number(r.kg) || 0
+    const bags = Number(r.bags) || 0
+    b.inKg += kg
+    b.inBags += bags
+    if (r.fromTwist) {
+      b.fromTwistKg += kg
+      b.fromTwistBags += bags
+    } else {
+      b.addedKg += kg
+      b.addedBags += bags
+    }
   }
   for (const r of outs) {
     const b = row(r.yarnType)
-    b.outKg += Number(r.weightKg) || 0
-    b.outBags += Number(r.bags) || 0
+    const kg = Number(r.weightKg) || 0
+    const bags = Number(r.bags) || 0
+    b.outKg += kg
+    b.outBags += bags
+    const dest = toDestination(r.destination)
+    if (dest === 'MILL') {
+      b.toMillKg += kg
+      b.toMillBags += bags
+    } else if (dest === 'TWISTING') {
+      b.toTwistKg += kg
+      b.toTwistBags += bags
+    } else {
+      b.toDeptKg += kg
+      b.toDeptBags += bags
+    }
   }
   return [...map.values()]
     .map((b) => ({
@@ -845,6 +1018,11 @@ export async function supplierStoreBalances(): Promise<SupplierStoreBalance[]> {
       outKg: r2(b.outKg),
       balanceKg: r2(b.inKg - b.outKg),
       balanceBags: b.inBags - b.outBags,
+      addedKg: r2(b.addedKg),
+      fromTwistKg: r2(b.fromTwistKg),
+      toMillKg: r2(b.toMillKg),
+      toDeptKg: r2(b.toDeptKg),
+      toTwistKg: r2(b.toTwistKg),
     }))
     .sort((a, b) => a.yarnType.localeCompare(b.yarnType))
 }
@@ -862,7 +1040,7 @@ function cleanStock(p: SupplierStockInput, needSupplier = true) {
   return { yarnType, date: p.date, kg, bags, note: clip(p.note, 500), supplierName }
 }
 
-/** Adding to the Inventory by hand: bags × one bag weight (Twisting moves keep each bag's kg). */
+/** Adding to the Balance by hand: bags × one bag weight (Twisting moves keep each bag's kg). */
 function cleanInventoryStock(p: SupplierStockInput) {
   const bags = Math.round(Number(p?.bags))
   if (!Number.isFinite(bags) || bags < 1 || bags > 100000) throw new YarnError('Enter the number of bags.')
@@ -897,65 +1075,77 @@ export async function addSupplierStock(p: SupplierStockInput, by: { id: string; 
     by.id,
     c.supplierName
   )
-  const rows = await prisma.$queryRawUnsafe<StockRow[]>(`SELECT * FROM "floor_supplier_stock" WHERE "id" = $1`, id)
-  return toStock(rows[0])
+  return stockById(id)
 }
 
-/** An Inventory entry that came from Twisting is changed only from Twisting (undo there). */
+/**
+ * A Balance entry that came from Twisting is changed only from Twisting; one made before the
+ * Balance reset is kept as history (it no longer counts) and cannot be changed.
+ */
 async function assertNotFromTwisting(stockId: string) {
   const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
     `SELECT "id" FROM "floor_supplier_twisting" WHERE "stockId" = $1 AND "deletedAt" IS NULL`,
     stockId
   )
-  if (rows[0]) throw new YarnError('This entry came from Twisting — change it there (Undo, then move it again).', 409)
+  if (rows[0]) throw new YarnError('This entry came back from Twisting — change it on the Twisting page (Edit or Undo).', 409)
+  const old = await prisma.$queryRawUnsafe<Array<{ counts: boolean }>>(
+    `SELECT ${afterReset('a')} AS "counts" FROM "floor_supplier_stock" a WHERE a."id" = $1 AND a."deletedAt" IS NULL`,
+    stockId
+  )
+  if (old[0] && !old[0].counts) {
+    throw new YarnError('This entry is from before the Balance was reset to zero — it is kept as history and cannot be changed.', 409)
+  }
 }
 
 export async function updateSupplierStock(id: string, p: SupplierStockInput): Promise<SupplierStockEntry> {
   await ensureYarnDispatchTable()
   await assertNotFromTwisting(id)
   const c = cleanInventoryStock(p)
-  const cur = await prisma.$queryRawUnsafe<Array<{ yarnType: string; kg: number }>>(
-    `SELECT "yarnType", "kg" FROM "floor_supplier_stock" WHERE "id" = $1 AND "deletedAt" IS NULL`,
-    id
-  )
-  if (cur[0]) {
-    const oldKg = Number(cur[0].kg) || 0
-    const lost = storeKey(cur[0].yarnType) === storeKey(c.yarnType) ? oldKg - c.kg : oldKg
-    await assertInventoryCanLose(prisma, cur[0].yarnType, lost)
-  }
-  const n = await prisma.$executeRawUnsafe(
-    `UPDATE "floor_supplier_stock" SET "yarnType" = $2, "date" = $3, "bags" = $4, "kg" = $5, "note" = $6, "supplierName" = $7,
-       "updatedAt" = CURRENT_TIMESTAMP
-     WHERE "id" = $1 AND "deletedAt" IS NULL`,
-    id,
-    await storeSpelling(c.yarnType),
-    c.date,
-    c.bags,
-    c.kg,
-    c.note,
-    c.supplierName
-  )
+  const name = await storeSpelling(c.yarnType)
+  const n = await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    const cur = await tx.$queryRawUnsafe<Array<{ yarnType: string; kg: number }>>(
+      `SELECT "yarnType", "kg" FROM "floor_supplier_stock" WHERE "id" = $1 AND "deletedAt" IS NULL`,
+      id
+    )
+    if (cur[0]) {
+      const oldKg = Number(cur[0].kg) || 0
+      const lost = storeKey(cur[0].yarnType) === storeKey(c.yarnType) ? oldKg - c.kg : oldKg
+      await assertInventoryCanLose(tx, cur[0].yarnType, lost)
+    }
+    return tx.$executeRawUnsafe(
+      `UPDATE "floor_supplier_stock" SET "yarnType" = $2, "date" = $3, "bags" = $4, "kg" = $5, "note" = $6, "supplierName" = $7,
+         "updatedAt" = CURRENT_TIMESTAMP
+       WHERE "id" = $1 AND "deletedAt" IS NULL`,
+      id,
+      name,
+      c.date,
+      c.bags,
+      c.kg,
+      c.note,
+      c.supplierName
+    )
+  })
   if (!n) throw new YarnError('This stock entry was not found. Please refresh the page.', 404)
-  const rows = await prisma.$queryRawUnsafe<StockRow[]>(`SELECT * FROM "floor_supplier_stock" WHERE "id" = $1`, id)
-  return toStock(rows[0])
+  return stockById(id)
 }
 
 export async function deleteSupplierStock(id: string): Promise<void> {
   await ensureYarnDispatchTable()
   await assertNotFromTwisting(id)
-  const cur = await prisma.$queryRawUnsafe<Array<{ yarnType: string; kg: number }>>(
-    `SELECT "yarnType", "kg" FROM "floor_supplier_stock" WHERE "id" = $1 AND "deletedAt" IS NULL`,
-    id
-  )
-  if (cur[0]) await assertInventoryCanLose(prisma, cur[0].yarnType, Number(cur[0].kg) || 0)
-  const n = await prisma.$executeRawUnsafe(
-    `UPDATE "floor_supplier_stock" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NULL`,
-    id
-  )
+  const n = await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    const cur = await tx.$queryRawUnsafe<Array<{ yarnType: string; kg: number }>>(
+      `SELECT "yarnType", "kg" FROM "floor_supplier_stock" WHERE "id" = $1 AND "deletedAt" IS NULL`,
+      id
+    )
+    if (cur[0]) await assertInventoryCanLose(tx, cur[0].yarnType, Number(cur[0].kg) || 0)
+    return tx.$executeRawUnsafe(`UPDATE "floor_supplier_stock" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NULL`, id)
+  })
   if (!n) throw new YarnError('This stock entry was not found. Please refresh the page.', 404)
 }
 
-// ── Twisting: raw yarn in → twisted yarn moved into the Inventory ───────────────────────────
+// ── Twisting: yarn issued from the Balance → (done) twisted yarn moved back into the Balance ──────
 
 type TwistRow = {
   id: string
@@ -972,6 +1162,7 @@ type TwistRow = {
   outBagKg: unknown
   supplierName: string | null
   stockId: string | null
+  dispatchId: string | null
   createdBy: string
   movedBy: string
 }
@@ -990,6 +1181,7 @@ const toTwist = (r: TwistRow): SupplierTwisting => ({
   outBags: r.outBags == null ? null : Number(r.outBags),
   outKg: r.outKg == null ? null : r2(r.outKg),
   outBagKg: bagList(r.outBagKg),
+  dispatchId: r.dispatchId || null,
   createdBy: r.createdBy || '',
   movedBy: r.movedBy || '',
 })
@@ -1003,13 +1195,22 @@ export async function listSupplierTwisting(): Promise<SupplierTwisting[]> {
   return rows.map(toTwist)
 }
 
-async function mustGetTwist(id: string): Promise<TwistRow> {
+async function mustGetTwist(id: string, db: RawClient = prisma, lock = false): Promise<TwistRow> {
   await ensureYarnDispatchTable()
-  const rows = await prisma.$queryRawUnsafe<TwistRow[]>(`SELECT * FROM "floor_supplier_twisting" WHERE "id" = $1 AND "deletedAt" IS NULL`, id)
-  if (!rows[0]) throw new YarnError('This twisting entry was not found. Please refresh the page.', 404)
+  const rows = await db.$queryRawUnsafe<TwistRow[]>(
+    `SELECT * FROM "floor_supplier_twisting" WHERE "id" = $1 AND "deletedAt" IS NULL${lock ? ' FOR UPDATE' : ''}`,
+    id
+  )
+  if (!rows[0]) throw new YarnError('This twisting lot was not found. Please refresh the page.', 404)
   return rows[0]
 }
 
+/** A lot issued from the Balance is changed through its issue (Edit / Delete on the Twisting page). */
+function assertNotIssued(t: TwistRow) {
+  if (t.dispatchId) throw new YarnError('This lot was issued from the Balance — change or delete it with its Edit / Delete buttons.', 409)
+}
+
+/** Old lots only (added straight to Twisting before issuing from the Balance existed). */
 export async function addSupplierTwisting(p: SupplierTwistingInput, by: { id: string; name: string }): Promise<SupplierTwisting> {
   await ensureYarnDispatchTable()
   const c = cleanStock(p)
@@ -1032,12 +1233,13 @@ export async function addSupplierTwisting(p: SupplierTwistingInput, by: { id: st
 
 export async function updateSupplierTwisting(id: string, p: SupplierTwistingInput): Promise<SupplierTwisting> {
   const before = await mustGetTwist(id)
-  if (before.status === 'DONE') throw new YarnError('Already moved to the Inventory — undo that first.', 409)
+  assertNotIssued(before)
+  if (before.status === 'DONE') throw new YarnError('Already moved to the Balance — undo that first.', 409)
   const c = cleanStock(p)
   await prisma.$executeRawUnsafe(
     `UPDATE "floor_supplier_twisting" SET "inYarnType" = $2, "inDate" = $3, "inBags" = $4, "inKg" = $5, "note" = $6, "supplierName" = $7,
        "updatedAt" = CURRENT_TIMESTAMP
-     WHERE "id" = $1`,
+     WHERE "id" = $1 AND "status" = 'IN_TWISTING'`,
     id,
     c.yarnType,
     c.date,
@@ -1051,14 +1253,16 @@ export async function updateSupplierTwisting(id: string, p: SupplierTwistingInpu
 
 export async function deleteSupplierTwisting(id: string): Promise<void> {
   const before = await mustGetTwist(id)
-  if (before.status === 'DONE') throw new YarnError('Already moved to the Inventory — undo that first.', 409)
-  await prisma.$executeRawUnsafe(`UPDATE "floor_supplier_twisting" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, id)
+  assertNotIssued(before)
+  if (before.status === 'DONE') throw new YarnError('Already moved to the Balance — undo that first.', 409)
+  await prisma.$executeRawUnsafe(
+    `UPDATE "floor_supplier_twisting" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "status" = 'IN_TWISTING'`,
+    id
+  )
 }
 
-/** Twisting done: the twisted yarn goes into the Inventory (a stock entry linked to this batch). */
-export async function finishSupplierTwisting(id: string, out: SupplierTwistingOut, by: { id: string; name: string }): Promise<SupplierTwisting> {
-  const before = await mustGetTwist(id)
-  if (before.status === 'DONE') throw new YarnError('Already moved to the Inventory.', 409)
+/** The twisted yarn coming back: each bag's kg (kg = their total), on or after the day it went in. */
+function cleanTwistOut(before: TwistRow, out: SupplierTwistingOut) {
   const bagKg = Array.isArray(out?.bagKg) ? out.bagKg.map((w) => r2(Number(w))) : []
   if (bagKg.length < 1 || bagKg.length > 200) throw new YarnError('Enter the bags (1 to 200).')
   if (bagKg.some((w) => !Number.isFinite(w) || w <= 0 || w > 10000)) throw new YarnError('Enter the weight of every bag.')
@@ -1074,10 +1278,23 @@ export async function finishSupplierTwisting(id: string, out: SupplierTwistingOu
     false
   )
   if (c.date < before.inDate) throw new YarnError('The date cannot be before it went into Twisting.')
-  const stockId = `yss-${Date.now()}-${randomUUID().slice(0, 8)}`
+  return { ...c, bagKg }
+}
+
+const twistNote = (t: TwistRow) => `From Twisting (${t.inYarnType}, ${r2(t.inKg)} kg in)`
+
+/** Twisting done: the twisted yarn goes back into the Balance (a stock entry linked to this lot). */
+export async function finishSupplierTwisting(id: string, out: SupplierTwistingOut, by: { id: string; name: string }): Promise<SupplierTwisting> {
+  const first = await mustGetTwist(id)
+  if (first.status === 'DONE') throw new YarnError('Already moved to the Balance.', 409)
+  const c = cleanTwistOut(first, out)
   const name = await storeSpelling(c.yarnType)
-  await prisma.$transaction([
-    prisma.$executeRawUnsafe(
+  const stockId = `yss-${Date.now()}-${randomUUID().slice(0, 8)}`
+  await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    const before = await mustGetTwist(id, tx, true)
+    if (before.status === 'DONE') throw new YarnError('Already moved to the Balance.', 409)
+    await tx.$executeRawUnsafe(
       `INSERT INTO "floor_supplier_stock" ("id","yarnType","date","bags","kg","note","createdBy","createdById","supplierName","bagKg")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
       stockId,
@@ -1085,13 +1302,13 @@ export async function finishSupplierTwisting(id: string, out: SupplierTwistingOu
       c.date,
       c.bags,
       c.kg,
-      `From Twisting (${before.inYarnType}, ${r2(before.inKg)} kg in)`,
+      twistNote(before),
       by.name,
       by.id,
       c.supplierName,
-      JSON.stringify(bagKg)
-    ),
-    prisma.$executeRawUnsafe(
+      JSON.stringify(c.bagKg)
+    )
+    await tx.$executeRawUnsafe(
       `UPDATE "floor_supplier_twisting" SET "status" = 'DONE', "outYarnType" = $2, "outDate" = $3, "outBags" = $4, "outKg" = $5,
          "stockId" = $6, "movedBy" = $7, "outBagKg" = $8::jsonb, "updatedAt" = CURRENT_TIMESTAMP
        WHERE "id" = $1 AND "status" = 'IN_TWISTING'`,
@@ -1102,25 +1319,125 @@ export async function finishSupplierTwisting(id: string, out: SupplierTwistingOu
       c.kg,
       stockId,
       by.name,
-      JSON.stringify(bagKg)
-    ),
-  ])
+      JSON.stringify(c.bagKg)
+    )
+  })
   return toTwist(await mustGetTwist(id))
 }
 
-/** Undo "moved to Inventory": its Inventory entry is removed and the batch is back in Twisting. */
+/** Correct a lot already moved back to the Balance: its Balance entry changes with it (never below zero). */
+export async function updateFinishedTwisting(id: string, out: SupplierTwistingOut, by: { id: string; name: string }): Promise<SupplierTwisting> {
+  const first = await mustGetTwist(id)
+  if (first.status !== 'DONE') throw new YarnError('Not moved to the Balance yet — use Move to Balance.', 409)
+  const c = cleanTwistOut(first, out)
+  const name = await storeSpelling(c.yarnType)
+  await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    const before = await mustGetTwist(id, tx, true)
+    if (before.status !== 'DONE' || !before.stockId) throw new YarnError('Not moved to the Balance yet — use Move to Balance.', 409)
+    if (await countsInBalance(tx, 'floor_supplier_stock', before.stockId)) {
+      const oldKg = Number(before.outKg) || 0
+      const lost = storeKey(before.outYarnType) === storeKey(name) ? oldKg - c.kg : oldKg
+      await assertInventoryCanLose(tx, before.outYarnType, lost)
+    }
+    await tx.$executeRawUnsafe(
+      `UPDATE "floor_supplier_stock" SET "yarnType" = $2, "date" = $3, "bags" = $4, "kg" = $5, "bagKg" = $6::jsonb, "updatedAt" = CURRENT_TIMESTAMP
+       WHERE "id" = $1`,
+      before.stockId,
+      name,
+      c.date,
+      c.bags,
+      c.kg,
+      JSON.stringify(c.bagKg)
+    )
+    await tx.$executeRawUnsafe(
+      `UPDATE "floor_supplier_twisting" SET "outYarnType" = $2, "outDate" = $3, "outBags" = $4, "outKg" = $5, "outBagKg" = $6::jsonb,
+         "movedBy" = $7, "updatedAt" = CURRENT_TIMESTAMP
+       WHERE "id" = $1`,
+      id,
+      name,
+      c.date,
+      c.bags,
+      c.kg,
+      JSON.stringify(c.bagKg),
+      by.name
+    )
+  })
+  return toTwist(await mustGetTwist(id))
+}
+
+/** Undo "moved to the Balance": its Balance entry is removed and the lot is back in Twisting. */
 export async function undoSupplierTwisting(id: string): Promise<SupplierTwisting> {
-  const before = await mustGetTwist(id)
-  if (before.status !== 'DONE') return toTwist(before)
-  await assertInventoryCanLose(prisma, before.outYarnType, Number(before.outKg) || 0)
-  await prisma.$transaction([
-    prisma.$executeRawUnsafe(`UPDATE "floor_supplier_stock" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, before.stockId || ''),
-    prisma.$executeRawUnsafe(
+  const first = await mustGetTwist(id)
+  if (first.status !== 'DONE') return toTwist(first)
+  await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    const before = await mustGetTwist(id, tx, true)
+    if (before.status !== 'DONE') return
+    if (before.stockId && (await countsInBalance(tx, 'floor_supplier_stock', before.stockId))) {
+      await assertInventoryCanLose(tx, before.outYarnType, Number(before.outKg) || 0)
+    }
+    await tx.$executeRawUnsafe(`UPDATE "floor_supplier_stock" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, before.stockId || '')
+    await tx.$executeRawUnsafe(
       `UPDATE "floor_supplier_twisting" SET "status" = 'IN_TWISTING', "outYarnType" = '', "outDate" = NULL, "outBags" = NULL,
          "outKg" = NULL, "outBagKg" = NULL, "stockId" = NULL, "movedBy" = '', "updatedAt" = CURRENT_TIMESTAMP
        WHERE "id" = $1`,
       id
-    ),
-  ])
+    )
+  })
   return toTwist(await mustGetTwist(id))
+}
+
+// ── Reset the Balance to zero (admin): a fresh start; older entries stay as history ─────────────
+
+type ResetRow = { id: string; at: Date | string; by: string }
+
+/** The reset in force (latest not undone), and whether it can still be undone (nothing entered after it). */
+export async function supplierBalanceReset(): Promise<SupplierBalanceReset | null> {
+  await ensureYarnDispatchTable()
+  const rows = await prisma.$queryRawUnsafe<Array<ResetRow & { later: boolean }>>(
+    `SELECT r."id", r."at", r."by",
+       (EXISTS (SELECT 1 FROM "floor_supplier_stock" s WHERE s."createdAt" > r."at")
+         OR EXISTS (SELECT 1 FROM "floor_yarn_dispatches" d WHERE d."createdAt" > r."at")) AS "later"
+     FROM "floor_supplier_balance_resets" r WHERE r."undoneAt" IS NULL ORDER BY r."at" DESC LIMIT 1`
+  )
+  const r = rows[0]
+  return r ? { at: iso(r.at) || '', by: r.by || '', canUndo: !r.later } : null
+}
+
+export async function resetSupplierBalance(by: { id: string; name: string }): Promise<SupplierBalanceReset | null> {
+  await ensureYarnDispatchTable()
+  await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "floor_supplier_balance_resets" ("id","by","byId") VALUES ($1,$2,$3)`,
+      `ysz-${Date.now()}-${randomUUID().slice(0, 8)}`,
+      by.name,
+      by.id
+    )
+  })
+  return supplierBalanceReset()
+}
+
+/** Undo a reset pressed by mistake — only while nothing has been added or sent after it. */
+export async function undoSupplierBalanceReset(by: string): Promise<SupplierBalanceReset | null> {
+  await ensureYarnDispatchTable()
+  await prisma.$transaction(async (tx) => {
+    await lockStore(tx)
+    const rows = await tx.$queryRawUnsafe<Array<ResetRow & { later: boolean }>>(
+      `SELECT r."id", r."at", r."by",
+         (EXISTS (SELECT 1 FROM "floor_supplier_stock" s WHERE s."createdAt" > r."at")
+           OR EXISTS (SELECT 1 FROM "floor_yarn_dispatches" d WHERE d."createdAt" > r."at")) AS "later"
+       FROM "floor_supplier_balance_resets" r WHERE r."undoneAt" IS NULL ORDER BY r."at" DESC LIMIT 1 FOR UPDATE OF r`
+    )
+    const r = rows[0]
+    if (!r) throw new YarnError('The Balance has not been reset.', 409)
+    if (r.later) throw new YarnError('Stock has been added or yarn sent after the reset — the reset can no longer be undone.', 409)
+    await tx.$executeRawUnsafe(
+      `UPDATE "floor_supplier_balance_resets" SET "undoneAt" = CURRENT_TIMESTAMP, "undoneBy" = $2 WHERE "id" = $1`,
+      r.id,
+      by
+    )
+  })
+  return supplierBalanceReset()
 }

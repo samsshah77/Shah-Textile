@@ -122,13 +122,19 @@ const SUPPLIER_YARN_ITEMS: NavLeaf[] = [
     title: 'Send yarn',
     href: '/yarn-supply/send',
     icon: 'bi-send',
-    activeCheck: (p) => p.startsWith('/yarn-supply/send'),
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/send') && sp.get('to') !== 'TWISTING',
   },
   {
-    title: 'Fazal Umer Inventory',
+    title: 'Fazal Umer Balance',
     href: '/yarn-supply/store?tab=stock',
     icon: 'bi-shop',
     activeCheck: (p, sp) => p.startsWith('/yarn-supply/store') && sp.get('tab') !== 'out',
+  },
+  {
+    title: 'Twisting',
+    href: '/yarn-supply/twisting',
+    icon: 'bi-arrow-repeat',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/twisting') || (p.startsWith('/yarn-supply/send') && sp.get('to') === 'TWISTING'),
   },
   {
     title: 'Sizing / Sectional Warping',
@@ -339,7 +345,7 @@ function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: st
         <Link href={item.href} className={cn('nav-link', active && 'active')} onClick={closeOnMobile}>
           <i className={cn('nav-icon bi', item.icon)} />
           <p className="d-flex align-items-center justify-content-between w-100">
-            <span>{item.title}</span>
+            <span className="sara-nav-label">{item.title}</span>
             {item.badge ? (
               <span className={cn('badge rounded-pill ms-auto', item.badgeClass || 'bg-primary text-white')}>{item.badge}</span>
             ) : null}

@@ -6,12 +6,17 @@ import { setListFromServer, announceReload } from '@/services/production/floorSy
 import { KEY_YARN, KEY_YARN_ISSUANCE, KEY_YARN_MOVEMENTS } from '@/services/production/floorStore'
 import { longDateFromYmd } from '@/lib/longDate'
 
-/** PENDING / ISSUE / VERIFIED: lots to the mill. SENT: to Fazal Umer's own Sizing / Warping (record only). */
+/** PENDING / ISSUE / VERIFIED: lots to the mill. SENT: to Fazal Umer's own Sizing / Warping / Twisting (record only). */
 export type YarnDispatchStatus = 'PENDING' | 'ISSUE' | 'VERIFIED' | 'SENT'
 
-/** Where a lot goes: Sara Textile mill (checked by the mill) or Fazal Umer's own departments. */
-export type YarnDestination = 'MILL' | 'SIZING' | 'WARPING'
-export const DESTINATION_LABEL: Record<YarnDestination, string> = { MILL: 'Sara Textile', SIZING: 'Sizing', WARPING: 'Sectional Warping' }
+/** Where a lot goes: Sara Textile mill (checked by the mill), Fazal Umer's own departments, or Twisting. */
+export type YarnDestination = 'MILL' | 'SIZING' | 'WARPING' | 'TWISTING'
+export const DESTINATION_LABEL: Record<YarnDestination, string> = {
+  MILL: 'Sara Textile',
+  SIZING: 'Sizing',
+  WARPING: 'Sectional Warping',
+  TWISTING: 'Twisting',
+}
 
 export type YarnDispatchLog = {
   at: string
@@ -45,7 +50,7 @@ export interface YarnDispatch {
   verifiedAt: string | null
   /** The mill's request this lot was sent against (null = not linked). */
   requestId: string | null
-  /** MILL (default), SIZING or WARPING. */
+  /** MILL (default), SIZING, WARPING or TWISTING. */
   destination: YarnDestination
   log: YarnDispatchLog[]
 }
@@ -61,11 +66,11 @@ export type YarnDispatchInput = {
   remarks?: string
   /** Sent against this request of the mill. */
   requestId?: string | null
-  /** MILL (default), SIZING or WARPING. */
+  /** MILL (default), SIZING, WARPING or TWISTING. */
   destination?: YarnDestination
 }
 
-/** Fazal Umer's store: yarn added to his inventory (dispatches take it out). */
+/** Fazal Umer's Balance: yarn added to it (dispatches take it out). */
 export interface SupplierStockEntry {
   id: string
   yarnType: string
@@ -79,6 +84,10 @@ export interface SupplierStockEntry {
   bagKg: number[]
   createdBy: string
   createdAt: string
+  /** Made before the Balance was reset to zero: history only, not counted. */
+  beforeReset: boolean
+  /** Came back from Twisting (changed on the Twisting page). */
+  fromTwisting: boolean
 }
 
 export type SupplierStockInput = {
@@ -88,17 +97,17 @@ export type SupplierStockInput = {
   kg: number
   note?: string
   supplierName?: string
-  /** Adding to the Inventory: one weight for every bag (kg = bags × this). */
+  /** Adding to the Balance: one weight for every bag (kg = bags × this). */
   bagWeightKg?: number
 }
 
 /**
- * Twisting: raw yarn comes in to Twisting first; when it is done it moves to the Inventory
- * as the twisted yarn (its own name and kg — the difference is the twisting loss).
+ * Twisting: yarn is issued from the Balance to Twisting; when it is done it moves back to the
+ * Balance as the twisted yarn (its own name and kg — the difference is the twisting loss).
  */
 export interface SupplierTwisting {
   id: string
-  /** IN_TWISTING until moved to the Inventory (DONE). */
+  /** IN_TWISTING until moved back to the Balance (DONE). */
   status: 'IN_TWISTING' | 'DONE'
   inYarnType: string
   inDate: string
@@ -111,8 +120,10 @@ export interface SupplierTwisting {
   outDate: string | null
   outBags: number | null
   outKg: number | null
-  /** Each bag's kg when it moved to the Inventory. */
+  /** Each bag's kg when it moved back to the Balance. */
   outBagKg: number[]
+  /** The issue from the Balance (null = an old lot added straight to Twisting). */
+  dispatchId: string | null
   createdBy: string
   movedBy: string
 }
@@ -121,7 +132,7 @@ export type SupplierTwistingInput = { yarnType: string; date: string; bags: numb
 /** Twisting done: the twisted yarn with each bag's kg (kg = their total). */
 export type SupplierTwistingOut = { yarnType: string; date: string; bagKg: number[] }
 
-/** Per yarn: added − sent (to the mill, Sizing and Warping). */
+/** Per yarn: added − sent (to the mill, Sizing, Warping and Twisting), after the latest reset. */
 export interface SupplierStoreBalance {
   yarnType: string
   inKg: number
@@ -130,7 +141,22 @@ export interface SupplierStoreBalance {
   outBags: number
   balanceKg: number
   balanceBags: number
+  /** In: added by hand / back from Twisting. */
+  addedKg: number
+  addedBags: number
+  fromTwistKg: number
+  fromTwistBags: number
+  /** Out: to Sara Textile / Sizing + Sectional Warping / Twisting. */
+  toMillKg: number
+  toMillBags: number
+  toDeptKg: number
+  toDeptBags: number
+  toTwistKg: number
+  toTwistBags: number
 }
+
+/** "Reset Balance to zero" in force: when, by whom, and whether it can still be undone. */
+export type SupplierBalanceReset = { at: string; by: string; canUndo: boolean }
 
 /** What the mill received. */
 export type YarnReceiveInput = {
@@ -194,8 +220,12 @@ export type YarnSupplyList = {
   store: SupplierStoreBalance[]
   storeEntries: SupplierStockEntry[]
   twisting: SupplierTwisting[]
-  /** Lots sent to Sizing / Warping. */
+  /** Lots sent to Sizing / Warping and issued to Twisting. */
   deptDispatches: YarnDispatch[]
+  /** The Balance reset in force (null = never reset). */
+  balanceReset: SupplierBalanceReset | null
+  /** May reset the Balance to zero (admin). */
+  canReset: boolean
   stock: MillYarnStock[]
   /** May send / change entries (supplier). */
   canSend: boolean
@@ -214,6 +244,8 @@ export async function fetchYarnSupply(): Promise<YarnSupplyList> {
     storeEntries: d.storeEntries || [],
     twisting: d.twisting || [],
     deptDispatches: d.deptDispatches || [],
+    balanceReset: d.balanceReset || null,
+    canReset: Boolean(d.canReset),
     stock: d.stock || [],
     canSend: Boolean(d.canSend),
     canVerify: Boolean(d.canVerify),
@@ -235,6 +267,9 @@ type ActionBody =
   | { action: 'twistDelete'; id: string }
   | { action: 'twistDone'; id: string; out: SupplierTwistingOut }
   | { action: 'twistUndo'; id: string }
+  | { action: 'twistEdit'; id: string; out: SupplierTwistingOut }
+  | { action: 'balanceReset' }
+  | { action: 'balanceResetUndo' }
 
 type RequestActionBody =
   | { action: 'requestCreate'; request: YarnRequestInput }

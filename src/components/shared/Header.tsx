@@ -93,16 +93,18 @@ function resolveYarnSupplyPage(pathname: string, sp: URLSearchParams): string {
   if (pathname.startsWith('/yarn-supply/send')) {
     if (sp.get('id')) return 'Correct yarn sent'
     const to = sp.get('to')
+    if (to === 'TWISTING') return 'Issue to Twisting'
     if (to === 'SIZING') return 'Send to Sizing'
     if (to === 'WARPING') return 'Send to Sectional Warping'
     return 'Send yarn'
   }
   if (pathname.startsWith('/yarn-supply/challan')) return 'Challan'
+  if (pathname.startsWith('/yarn-supply/twisting')) return 'Twisting'
   if (pathname.startsWith('/yarn-supply/store')) {
     const tab = sp.get('tab')
     if (tab === 'out') return 'Sizing / Sectional Warping'
-    if (tab === 'twist') return 'Fazal Umer Inventory — Twisting'
-    return 'Fazal Umer Inventory'
+    if (tab === 'twist') return 'Twisting'
+    return 'Fazal Umer Balance'
   }
   const tab = sp.get('tab')
   if (tab === 'sent') return 'Sent — waiting'

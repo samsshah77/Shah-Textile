@@ -556,7 +556,7 @@ export function YarnRequestsPanel({
                     <td className="px-2 text-nowrap">
                       {q.kg > 0 ? (
                         <>
-                          <div className="font-monospace">{fmtKg(q.kg)}</div>
+                          <div className="sara-num">{fmtKg(q.kg)}</div>
                           {q.bags ? <div className="small text-secondary">{bagsText(q.bags)}</div> : null}
                         </>
                       ) : (
@@ -565,14 +565,14 @@ export function YarnRequestsPanel({
                     </td>
                     <td className={`px-2 text-nowrap ${late ? 'text-danger fw-semibold' : ''}`}>{q.neededBy ? shortDate(q.neededBy) : '—'}</td>
                     <td className="px-2 text-nowrap">
-                      <div className="font-monospace">{fmtKg(q.sentKg)}</div>
+                      <div className="sara-num">{fmtKg(q.sentKg)}</div>
                       <div className="small text-secondary">
                         {q.sentBags > 0 ? `${bagsText(q.sentBags)} · ` : ''}
                         {q.lots} lot{q.lots === 1 ? '' : 's'}
                         {q.receivedKg > 0 ? ` · received ${fmtKg(q.receivedKg)}` : ''}
                       </div>
                     </td>
-                    <td className="px-2 font-monospace text-nowrap">{isOpen && q.kg > 0 ? fmtKg(requestRemainingKg(q)) : '—'}</td>
+                    <td className="px-2 sara-num text-nowrap">{isOpen && q.kg > 0 ? fmtKg(requestRemainingKg(q)) : '—'}</td>
                     <td className="px-2">
                       <RequestBadge q={q} />
                       {q.closeNote && <div className="small text-secondary">{q.closeNote}</div>}

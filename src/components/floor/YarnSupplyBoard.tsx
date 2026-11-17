@@ -68,14 +68,14 @@ function BagWeights({ kg }: { kg: number[] }) {
   if (same) {
     return (
       <div className="mt-1">
-        <span className="badge text-bg-light border text-dark fw-normal font-monospace text-nowrap">
+        <span className="badge text-bg-light border text-dark fw-normal sara-num text-nowrap">
           {kg.length > 1 ? `each ${kg[0].toFixed(2)} kg` : `${kg[0].toFixed(2)} kg`}
         </span>
       </div>
     )
   }
   const list = kg.map((w, i) => (
-    <span key={i} className="badge text-bg-light border text-dark fw-normal font-monospace text-nowrap">
+    <span key={i} className="badge text-bg-light border text-dark fw-normal sara-num text-nowrap">
       Bag {i + 1}: <b>{w.toFixed(2)} kg</b>
     </span>
   ))
@@ -787,7 +787,7 @@ export function YarnSupplyBoard({
                   {data.stock.map((y) => (
                     <tr key={y.id}>
                       <td className="px-2">{y.yarnType}</td>
-                      <td className={`px-2 font-monospace ${y.balanceKg <= 0 ? 'text-danger' : ''}`}>{fmtKg(y.balanceKg)}</td>
+                      <td className={`px-2 sara-num ${y.balanceKg <= 0 ? 'text-danger' : ''}`}>{fmtKg(y.balanceKg)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -890,10 +890,10 @@ export function YarnSupplyBoard({
                           <LogLine d={d} />
                         </td>
                         <td className="px-2">
-                          <div className="font-monospace fw-semibold">{d.bags}</div>
+                          <div className="sara-num fw-semibold">{d.bags}</div>
                           {d.bagKg.length > 0 && <BagWeights kg={d.bagKg} />}
                         </td>
-                        <td className="px-2 font-monospace text-nowrap">{fmtKg(d.weightKg)}</td>
+                        <td className="px-2 sara-num text-nowrap">{fmtKg(d.weightKg)}</td>
                         <td className="px-2 small">
                           {d.lotNo ? <div>Lot {d.lotNo}</div> : <span className="text-secondary">—</span>}
                         </td>

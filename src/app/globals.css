@@ -3005,3 +3005,26 @@ tr.sara-old-run-row > td:first-child {
   border-color: #94a3b8 !important;
   border-left: 4px solid #64748b !important;
 }
+
+/* Outline buttons that sit on a forced white background (.bg-white): on hover / press show the
+   normal filled outline colour, so the text never turns white on white. Same layer as the
+   "body.layout-fixed .bg-white" rule above (layered !important wins), with a stronger selector. */
+@layer base {
+  body .btn[class*='btn-outline-'].bg-white:hover,
+  body .btn[class*='btn-outline-'].bg-white:focus-visible,
+  body .btn[class*='btn-outline-'].bg-white:active,
+  body .btn[class*='btn-outline-'].bg-white.active {
+    background-color: var(--bs-btn-hover-bg) !important;
+  }
+}
+
+/* Long sidebar names (e.g. "Requests from Sara Textile") wrap instead of being cut off. */
+.app-sidebar .sara-nav-label {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+/* Same-width digits so kg / bag columns line up (normal font, not code font). */
+.sara-num {
+  font-variant-numeric: tabular-nums;
+}

@@ -36,9 +36,16 @@ import {
   updateSupplierTwisting,
   type SupplierTwistingInput,
   type SupplierTwistingOut,
+  updateFinishedTwisting,
+  supplierBalanceReset,
+  resetSupplierBalance,
+  undoSupplierBalanceReset,
 } from '@/server/floor/yarnSupply'
 
 export const runtime = 'nodejs'
+
+/** Resetting Fazal Umer Balance to zero: the admin only (Javed Sir). */
+const isAdmin = (user: { roleKey?: string | null }) => (user.roleKey || '').toLowerCase() === 'admin'
 
 /**
  * Yarn Supply. The supplier (Permissions → Yarn Supply, Edit) sends / corrects / deletes
@@ -50,7 +57,7 @@ export async function GET(request: NextRequest) {
   try {
     // Fazal Umer's store and his Sizing / Warping lots: only for Yarn Supply users.
     const seesStore = allows(check.access, 'yarn_supply', 'view')
-    const [dispatches, requests, stock, store, storeEntries, deptDispatches, twisting] = await Promise.all([
+    const [dispatches, requests, stock, store, storeEntries, deptDispatches, twisting, balanceReset] = await Promise.all([
       listYarnDispatches(),
       listYarnRequests(),
       millYarnStock(),
@@ -58,6 +65,7 @@ export async function GET(request: NextRequest) {
       seesStore ? listSupplierStock() : Promise.resolve([]),
       seesStore ? listDeptDispatches() : Promise.resolve([]),
       seesStore ? listSupplierTwisting() : Promise.resolve([]),
+      seesStore ? supplierBalanceReset() : Promise.resolve(null),
     ])
     return NextResponse.json({
       ok: true,
@@ -67,6 +75,8 @@ export async function GET(request: NextRequest) {
       storeEntries,
       deptDispatches,
       twisting,
+      balanceReset,
+      canReset: seesStore && isAdmin(check.user),
       stock,
       canSend: allows(check.access, 'yarn_supply', 'edit'),
       canVerify: allows(check.access, 'prod_yarn', 'edit'),
@@ -89,13 +99,42 @@ type Body = {
   note?: string
 }
 
-const STOCK_ACTIONS = ['stockAdd', 'stockUpdate', 'stockDelete', 'twistAdd', 'twistUpdate', 'twistDelete', 'twistDone', 'twistUndo']
+const STOCK_ACTIONS = ['stockAdd', 'stockUpdate', 'stockDelete', 'twistAdd', 'twistUpdate', 'twistDelete', 'twistDone', 'twistUndo', 'twistEdit']
+
+const RESET_ACTIONS = ['balanceReset', 'balanceResetUndo']
 
 const REQUEST_ACTIONS = ['requestCreate', 'requestUpdate', 'requestClose', 'requestCancel', 'requestReopen']
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Body | null
   const action = String(body?.action || '')
+
+  if (RESET_ACTIONS.includes(action)) {
+    const check = await requireAccess(request, 'yarn_supply', 'view')
+    if (check.error) return check.error
+    if (!isAdmin(check.user)) return NextResponse.json({ ok: false, error: 'Only the admin can reset the Balance.' }, { status: 403 })
+    const name = check.user.name || check.user.email || 'Admin'
+    try {
+      const before = await supplierBalanceReset()
+      const after =
+        action === 'balanceReset' ? await resetSupplierBalance({ id: check.user.id, name }) : await undoSupplierBalanceReset(name)
+      await writeAudit({
+        req: request,
+        actor: check.user,
+        module: 'floor',
+        action: `yarnSupply.${action}`,
+        entityKey: 'floor_supplier_balance_resets',
+        entityId: null,
+        before,
+        after,
+      })
+      return NextResponse.json({ ok: true, balanceReset: after })
+    } catch (err) {
+      if (err instanceof YarnError) return NextResponse.json({ ok: false, error: err.message }, { status: err.status })
+      console.error('[yarn-supply POST]', action, err)
+      return NextResponse.json({ ok: false, error: 'Could not save. Please try again.' }, { status: 500 })
+    }
+  }
   const supplierAction = action === 'create' || action === 'update' || action === 'delete' || STOCK_ACTIONS.includes(action)
   const millAction = action === 'issue' || action === 'verify' || action === 'correct' || REQUEST_ACTIONS.includes(action)
   if (!supplierAction && !millAction) return NextResponse.json({ ok: false, error: 'Unknown action.' }, { status: 400 })
@@ -118,6 +157,7 @@ export async function POST(request: NextRequest) {
       else if (action === 'twistDelete') await deleteSupplierTwisting(id)
       else if (action === 'twistDone') saved = await finishSupplierTwisting(id, body?.out as SupplierTwistingOut, { id: check.user.id, name })
       else if (action === 'twistUndo') saved = await undoSupplierTwisting(id)
+      else if (action === 'twistEdit') saved = await updateFinishedTwisting(id, body?.out as SupplierTwistingOut, { id: check.user.id, name })
       await writeAudit({
         req: request,
         actor: check.user,

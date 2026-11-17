@@ -60,7 +60,7 @@ export function YarnSendForm({
 }: {
   editId?: string | null
   requestId?: string | null
-  /** SIZING / WARPING: Fazal Umer's own departments (record only). Default: the mill. */
+  /** SIZING / WARPING: Fazal Umer's own departments (record only); TWISTING: issue to Twisting. Default: the mill. */
   to?: string | null
 }) {
   const router = useRouter()
@@ -69,7 +69,9 @@ export function YarnSendForm({
   const [editing, setEditing] = useState<YarnDispatch | null>(null)
   const [requests, setRequests] = useState<YarnRequest[]>([])
   const [requestId, setRequestId] = useState<string>('')
-  const [destination, setDestination] = useState<YarnDestination>(to === 'SIZING' ? 'SIZING' : to === 'WARPING' ? 'WARPING' : 'MILL')
+  const [destination, setDestination] = useState<YarnDestination>(
+    to === 'SIZING' ? 'SIZING' : to === 'WARPING' ? 'WARPING' : to === 'TWISTING' ? 'TWISTING' : 'MILL'
+  )
   const [storeBal, setStoreBal] = useState<SupplierStoreBalance[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -101,7 +103,7 @@ export function YarnSendForm({
           if (q && q.status === 'OPEN') {
             const st = d.store.find((s) => yarnKey(s.yarnType) === yarnKey(q.yarnType))
             if (!st || st.balanceKg <= 0) {
-              setError(`${q.yarnType} is not in Fazal Umer Inventory — add it to the Inventory first, then send.`)
+              setError(`${q.yarnType} is not in Fazal Umer Balance — add it to the Balance first, then send.`)
             } else {
               setRequestId(q.id)
               setBatches([makeBatch(q.yarnType, q.bags || 5, q.id)])
@@ -112,6 +114,9 @@ export function YarnSendForm({
           const e = [...d.dispatches, ...d.deptDispatches].find((x) => x.id === editId)
           if (!e) return setLoadError('This entry was not found (it may have been deleted).')
           if (e.status === 'VERIFIED') return setLoadError('Sara Textile has already verified this entry — it can no longer be changed.')
+          if (e.destination === 'TWISTING' && d.twisting.some((t) => t.dispatchId === e.id && t.status === 'DONE')) {
+            return setLoadError('This lot has already come back from Twisting to the Balance — Undo that on the Twisting page first.')
+          }
           setEditing(e)
           setDestination(e.destination)
           setSentDate(e.sentDate)
@@ -135,7 +140,7 @@ export function YarnSendForm({
     }
   }, [editId, fromRequest])
 
-  /** Kg that can be sent for a yarn: Fazal Umer Inventory left (+ this entry's own kg when correcting it). */
+  /** Kg that can be sent for a yarn: Fazal Umer Balance left (+ this entry's own kg when correcting it). */
   const availableKg = (name: string) => {
     const st = storeBal.find((s) => yarnKey(s.yarnType) === yarnKey(name))
     const own = editing && yarnKey(editing.yarnType) === yarnKey(name) ? editing.weightKg : 0
@@ -147,7 +152,7 @@ export function YarnSendForm({
   const toggleQuality = (name: string) => {
     setError(null)
     if (!isSelected(name) && availableKg(name) <= 0) {
-      setError(`${name} is not in Fazal Umer Inventory — add it to the Inventory first.`)
+      setError(`${name} is not in Fazal Umer Balance — add it to the Balance first.`)
       return
     }
     if (editing) {
@@ -196,7 +201,7 @@ export function YarnSendForm({
   const toggleRequestCard = (q: YarnRequest) => {
     setError(null)
     if (!batches.some((b) => b.requestId === q.id) && availableKg(q.yarnType) <= 0) {
-      setError(`${q.yarnType} is not in Fazal Umer Inventory — add it to the Inventory first.`)
+      setError(`${q.yarnType} is not in Fazal Umer Balance — add it to the Balance first.`)
       return
     }
     setBatches((prev) => {
@@ -217,8 +222,11 @@ export function YarnSendForm({
   const linkable = requests.filter((q) => q.status === 'OPEN' || q.id === requestId)
   const linked = requests.find((q) => q.id === requestId) || null
   const toMill = destination === 'MILL'
-  const backHref = !toMill ? '/yarn-supply/store?tab=out' : fromRequest ? '/yarn-supply?tab=requests' : '/yarn-supply?tab=sent'
-  /** Qualities asking for more kg than the Inventory has (the Send button stays off). */
+  const toTwisting = destination === 'TWISTING'
+  /** Where this page came from / goes back to. */
+  const doneHref = toTwisting ? '/yarn-supply/twisting' : toMill ? '/yarn-supply?tab=sent' : '/yarn-supply/store?tab=out'
+  const backHref = toMill && fromRequest ? '/yarn-supply?tab=requests' : doneHref
+  /** Qualities asking for more kg than the Balance has (the Send button stays off). */
   const overBatches = batches.filter((b) => b.bagKg.reduce((s, v) => s + r2(parseFloat(v) || 0), 0) > availableKg(b.yarnType) + 0.001)
 
   const allBatchesReady =
@@ -249,8 +257,8 @@ export function YarnSendForm({
       if (r2(weights.reduce((x, w) => x + w, 0)) > left + 0.001) {
         return setError(
           left <= 0
-            ? `${b.yarnType} is not in Fazal Umer Inventory — add it to the Inventory first.`
-            : `Only ${fmtKg(left)} of ${b.yarnType} is in Fazal Umer Inventory — lower the bags or weights.`
+            ? `${b.yarnType} is not in Fazal Umer Balance — add it to the Balance first.`
+            : `Only ${fmtKg(left)} of ${b.yarnType} is in Fazal Umer Balance — lower the bags or weights.`
         )
       }
     }
@@ -299,14 +307,18 @@ export function YarnSendForm({
         }
       }
       showSuccessSoon({
-        title: editing ? 'Saved' : 'Sent',
-        message: !toMill
+        title: editing ? 'Saved' : toTwisting ? 'Issued' : 'Sent',
+        message: toTwisting
+          ? editing
+            ? 'The lot in Twisting is changed.'
+            : `${batches.length} ${batches.length === 1 ? 'lot' : 'lots'} issued to Twisting — taken out of the Balance.`
+          : !toMill
           ? `${batches.length} ${batches.length === 1 ? 'entry' : 'entries'} recorded as sent to ${DESTINATION_LABEL[destination]}.`
           : editing
             ? 'Sent to Sara Textile again to be checked.'
             : `${batches.length} ${batches.length === 1 ? 'entry' : 'entries'} sent — Sara Textile will check when the yarn arrives.`,
       })
-      router.push(toMill ? '/yarn-supply?tab=sent' : '/yarn-supply/store?tab=out')
+      router.push(doneHref)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save.')
       setBusy(false)
@@ -342,7 +354,15 @@ export function YarnSendForm({
             <i className="bi bi-arrow-left" /> Back
           </Link>
           <h3 className="h5 fw-bold mb-0">
-            {editing ? 'Correct yarn sent' : toMill ? 'Send yarn to Sara Textile' : `Send yarn to ${DESTINATION_LABEL[destination]}`}
+            {toTwisting
+              ? editing
+                ? 'Correct yarn issued to Twisting'
+                : 'Issue yarn to Twisting'
+              : editing
+                ? 'Correct yarn sent'
+                : toMill
+                  ? 'Send yarn to Sara Textile'
+                  : `Send yarn to ${DESTINATION_LABEL[destination]}`}
           </h3>
         </div>
         {batches.length > 0 && (
@@ -362,31 +382,41 @@ export function YarnSendForm({
         {error && <div className="alert alert-danger py-2 px-3 small">{error}</div>}
 
         <div className="row g-3">
-          <div className="col-12">
-            <label className="form-label small fw-semibold mb-1">Send to</label>
-            <div className="btn-group w-100" role="group" aria-label="Send to">
-              {(['MILL', 'SIZING', 'WARPING'] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={`btn ${destination === k ? 'btn-primary' : 'btn-outline-primary'}`}
-                  disabled={Boolean(editing && editing.destination === 'MILL' && editing.status !== 'PENDING' && k !== 'MILL')}
-                  onClick={() => {
-                    setDestination(k)
-                    if (k !== 'MILL') setRequestId('')
-                  }}
-                >
-                  <i className={`bi ${k === 'MILL' ? 'bi-building' : 'bi-diagram-3'} me-1`} />
-                  {DESTINATION_LABEL[k]}
-                </button>
-              ))}
+          {toTwisting ? (
+            <div className="col-12">
+              <div className="rounded border bg-light px-3 py-2 small text-dark">
+                <i className="bi bi-arrow-repeat me-1" />
+                The yarn is taken out of Fazal Umer Balance and shows on the Twisting page. When twisting is done, use
+                “Move to Balance” there to bring the twisted yarn back.
+              </div>
             </div>
-            <div className="form-text small">
-              {toMill
-                ? 'Sara Textile checks it when it arrives (Verify / Report issue).'
-                : `Fazal Umer's own ${DESTINATION_LABEL[destination]} — recorded only; it is taken out of the Inventory.`}
+          ) : (
+            <div className="col-12">
+              <label className="form-label small fw-semibold mb-1">Send to</label>
+              <div className="btn-group w-100" role="group" aria-label="Send to">
+                {(['MILL', 'SIZING', 'WARPING'] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={`btn ${destination === k ? 'btn-primary' : 'btn-outline-primary'}`}
+                    disabled={Boolean(editing && editing.destination === 'MILL' && editing.status !== 'PENDING' && k !== 'MILL')}
+                    onClick={() => {
+                      setDestination(k)
+                      if (k !== 'MILL') setRequestId('')
+                    }}
+                  >
+                    <i className={`bi ${k === 'MILL' ? 'bi-building' : 'bi-diagram-3'} me-1`} />
+                    {DESTINATION_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+              <div className="form-text small">
+                {toMill
+                  ? 'Sara Textile checks it when it arrives (Verify / Report issue).'
+                  : `Fazal Umer's own ${DESTINATION_LABEL[destination]} — recorded only; it is taken out of the Balance.`}
+              </div>
             </div>
-          </div>
+          )}
           {toMill && !editing && linkable.length > 0 && (
             <div className="col-12">
               <label className="form-label small fw-semibold mb-1">
@@ -401,13 +431,16 @@ export function YarnSendForm({
                       <button
                         type="button"
                         disabled={noStock}
-                        title={noStock ? 'Not in Fazal Umer Inventory' : undefined}
+                        title={noStock ? 'Not in Fazal Umer Balance' : undefined}
                         onClick={() => toggleRequestCard(q)}
                         className={`w-100 text-start p-2 rounded border transition-all ${
                           selected
                             ? 'bg-primary-subtle border-primary text-dark'
-                            : 'bg-white border-secondary-subtle text-dark'
-                        }${noStock ? ' opacity-50' : ''}`}
+                            : noStock
+                              ? 'bg-light border-danger-subtle text-dark'
+                              : 'bg-white border-secondary-subtle text-dark'
+                        }`}
+                        style={noStock ? { cursor: 'not-allowed' } : undefined}
                       >
                         <div className="d-flex justify-content-between align-items-start gap-2">
                           <div className="fw-bold small text-truncate">{q.yarnType}</div>
@@ -418,7 +451,7 @@ export function YarnSendForm({
                         <div className="small text-secondary mt-1 d-flex flex-wrap gap-2">
                           {q.neededBy && <span>By {longDayDateFromYmd(q.neededBy)}</span>}
                           {q.lots > 0 && <span className="text-warning-emphasis fw-semibold">Sent: {q.sentBags} bags</span>}
-                          {noStock && <span className="text-danger fw-semibold">Not in Inventory</span>}
+                          {noStock && <span className="text-danger fw-semibold">Not in Fazal Umer Balance — cannot be sent</span>}
                         </div>
                         {q.note && <div className="small text-secondary text-truncate mt-1">{q.note}</div>}
                       </button>
@@ -431,37 +464,34 @@ export function YarnSendForm({
 
           {/* Pre-rendered Yarn Qualities (multi-select in create mode) */}
           <div className="col-12">
-            {chipYarns.some((y) => availableKg(y.yarnType) <= 0 && !isSelected(y.yarnType)) && (
-              <div className="alert alert-warning py-2 px-3 small mb-2">
-                <i className="bi bi-exclamation-triangle me-1" />
-                Only yarn in Fazal Umer Inventory can be sent. Greyed qualities have 0 kg — add them to the Inventory first.
-              </div>
-            )}
             <div className="d-flex justify-content-between align-items-center mb-1">
               <label className="form-label small fw-semibold mb-0">
                 {editing ? 'Yarn Quality' : 'Select Yarn Qualities (tap to select one or multiple)'}
               </label>
             </div>
             <div className="d-flex flex-wrap gap-2 p-2 border rounded bg-light">
-              {chipYarns.map((y) => {
-                const active = isSelected(y.yarnType)
-                const left = availableKg(y.yarnType)
-                const empty = left <= 0 && !active
-                return (
-                  <button
-                    key={y.id}
-                    type="button"
-                    disabled={empty}
-                    title={empty ? 'Not in Fazal Umer Inventory' : undefined}
-                    onClick={() => toggleQuality(y.yarnType)}
-                    className={`btn btn-sm ${active ? 'btn-primary' : 'btn-outline-secondary bg-white'} d-inline-flex align-items-center gap-1`}
-                  >
-                    <i className={`bi ${active ? 'bi-check-circle-fill' : empty ? 'bi-slash-circle' : 'bi-plus-circle'}`} />
-                    <span>{y.yarnType}</span>
-                    <span className={`small ${active ? '' : empty ? 'text-danger' : 'text-secondary'}`}>({fmtKg(Math.max(0, left))})</span>
-                  </button>
-                )
-              })}
+              {/* Only qualities with stock in Fazal Umer Balance can be picked; the rest are listed below. */}
+              {chipYarns
+                .filter((y) => isSelected(y.yarnType) || availableKg(y.yarnType) > 0)
+                .map((y) => {
+                  const active = isSelected(y.yarnType)
+                  const left = availableKg(y.yarnType)
+                  return (
+                    <button
+                      key={y.id}
+                      type="button"
+                      onClick={() => toggleQuality(y.yarnType)}
+                      className={`btn ${active ? 'btn-primary' : 'btn-light border border-secondary-subtle text-dark'} d-inline-flex align-items-center gap-2 py-1 px-2`}
+                    >
+                      <i className={`bi ${active ? 'bi-check-circle-fill' : 'bi-plus-circle text-primary'}`} />
+                      <span className="fw-semibold">{y.yarnType}</span>
+                      <span className={`badge sara-num ${active ? 'bg-white text-primary' : 'text-bg-success'}`}>{fmtKg(Math.max(0, left))}</span>
+                    </button>
+                  )
+                })}
+              {chipYarns.every((y) => !isSelected(y.yarnType) && availableKg(y.yarnType) <= 0) && customNames.length === 0 && (
+                <div className="small text-dark p-1">Nothing in Fazal Umer Balance yet — add stock to the Balance first.</div>
+              )}
               {customNames.map((name) => (
                 <button
                   key={name}
@@ -474,17 +504,29 @@ export function YarnSendForm({
                 </button>
               ))}
             </div>
+            {chipYarns.some((y) => !isSelected(y.yarnType) && availableKg(y.yarnType) <= 0) && (
+              <div className="small mt-2 text-dark">
+                <span className="fw-semibold text-danger">
+                  <i className="bi bi-slash-circle me-1" />
+                  Not in Fazal Umer Balance (0 kg) — cannot be sent:
+                </span>{' '}
+                {chipYarns
+                  .filter((y) => !isSelected(y.yarnType) && availableKg(y.yarnType) <= 0)
+                  .map((y) => y.yarnType)
+                  .join(' · ')}
+              </div>
+            )}
           </div>
 
           <div className="col-12 col-md-6">
-            <label className="form-label small fw-semibold mb-1">Date sent</label>
+            <label className="form-label small fw-semibold mb-1">{toTwisting ? 'Date issued' : 'Date sent'}</label>
             <div>
               <NamedDateInput
                 size="sm"
                 className="w-100"
                 value={sentDate}
                 max={getCalendarToday()}
-                ariaLabel="Date sent"
+                ariaLabel={toTwisting ? 'Date issued' : 'Date sent'}
                 onChange={(v) => v && setSentDate(v)}
               />
             </div>
@@ -527,10 +569,10 @@ export function YarnSendForm({
                         </div>
                         {(() => {
                           const left = availableKg(b.yarnType)
-                          if (left <= 0) return <div className="small text-danger fw-semibold">Not in Fazal Umer Inventory — cannot be sent</div>
+                          if (left <= 0) return <div className="small text-danger fw-semibold">Not in Fazal Umer Balance — cannot be sent</div>
                           return (
                             <div className={`small ${left - totalKg < 0 ? 'text-danger fw-semibold' : 'text-secondary'}`}>
-                              In inventory: {fmtKg(left)}
+                              In Balance: {fmtKg(left)}
                               {left - totalKg < 0 ? ` — only ${fmtKg(left)} can be sent` : ''}
                             </div>
                           )
@@ -648,8 +690,16 @@ export function YarnSendForm({
           Cancel
         </Link>
         <button id="ys-send-btn" type="submit" className="btn btn-primary px-4" disabled={busy || !allBatchesReady || overBatches.length > 0}>
-          <i className={`bi ${editing ? 'bi-check-lg' : 'bi-send'} me-1`} />
-          {busy ? 'Saving…' : editing ? 'Save & send again' : `Send${batches.length > 1 ? ` (${batches.length})` : ''}`}
+          <i className={`bi ${editing ? 'bi-check-lg' : toTwisting ? 'bi-arrow-repeat' : 'bi-send'} me-1`} />
+          {busy
+            ? 'Saving…'
+            : toTwisting
+              ? editing
+                ? 'Save'
+                : `Issue to Twisting${batches.length > 1 ? ` (${batches.length})` : ''}`
+              : editing
+                ? 'Save & send again'
+                : `Send${batches.length > 1 ? ` (${batches.length})` : ''}`}
         </button>
       </div>
     </form>
