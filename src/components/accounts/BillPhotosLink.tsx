@@ -71,7 +71,7 @@ export function BillPhotosLink({ urls, title = 'Bill Photo' }: BillPhotosLinkPro
           setCurrentIndex(0)
           setIsOpen(true)
         }}
-        title={`Bill photo dekhein${count > 1 ? ` (${count} photos)` : ''}`}
+        title={`View bill photo${count > 1 ? ` (${count} photos)` : ''}`}
         aria-label="View bill photo"
         className="sara-allow-readonly ml-1.5 inline-flex items-center justify-center rounded p-1 text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:text-sky-400 dark:hover:bg-sky-900/80 border border-sky-200/80 dark:border-sky-800/70 transition-all shadow-2xs hover:shadow-xs active:scale-95 print:hidden cursor-pointer"
       >
@@ -107,7 +107,7 @@ export function BillPhotosLink({ urls, title = 'Bill Photo' }: BillPhotosLinkPro
                   target="_blank"
                   rel="noreferrer"
                   className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                  title="Asal tasveer nayi tab mein kholein"
+                  title="Open the original photo in a new tab"
                 >
                   <ExternalLink className="size-4" />
                 </a>
@@ -115,7 +115,7 @@ export function BillPhotosLink({ urls, title = 'Bill Photo' }: BillPhotosLinkPro
                   type="button"
                   onClick={() => setIsOpen(false)}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                  title="Band karein (Esc)"
+                  title="Close (Esc)"
                   aria-label="Close dialog"
                 >
                   <X className="size-4.5" />
@@ -139,7 +139,7 @@ export function BillPhotosLink({ urls, title = 'Bill Photo' }: BillPhotosLinkPro
                     type="button"
                     onClick={handlePrev}
                     className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-800/85 hover:bg-slate-700 text-white shadow-lg backdrop-blur-xs transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                    title="Pichli tasveer (Left Arrow)"
+                    title="Previous photo (Left Arrow)"
                     aria-label="Previous image"
                   >
                     <ChevronLeft className="size-5" />
@@ -148,7 +148,7 @@ export function BillPhotosLink({ urls, title = 'Bill Photo' }: BillPhotosLinkPro
                     type="button"
                     onClick={handleNext}
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-800/85 hover:bg-slate-700 text-white shadow-lg backdrop-blur-xs transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                    title="Agli tasveer (Right Arrow)"
+                    title="Next photo (Right Arrow)"
                     aria-label="Next image"
                   >
                     <ChevronRight className="size-5" />

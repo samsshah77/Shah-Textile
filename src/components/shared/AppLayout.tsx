@@ -117,8 +117,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <div className="sara-fullscreen-loader sara-fullscreen-loader--dark" role="alertdialog" aria-busy="true" aria-label="Signing out">
           <div className="sara-fullscreen-loader__card">
             <Spinner size="lg" />
-            <div className="sara-fullscreen-loader__title">Sign out ho raha hai…</div>
-            <div className="sara-fullscreen-loader__sub">Session band kiya ja raha hai</div>
+            <div className="sara-fullscreen-loader__title">Signing out…</div>
+            <div className="sara-fullscreen-loader__sub">Closing the session</div>
           </div>
         </div>
       )}
@@ -133,7 +133,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <div className="sara-fullscreen-loader__card">
             <Spinner size="lg" />
             <div className="sara-fullscreen-loader__title">Sara Textile ERP</div>
-            <div className="sara-fullscreen-loader__sub">Khul raha hai…</div>
+            <div className="sara-fullscreen-loader__sub">Opening…</div>
           </div>
         </div>
       ) : (

@@ -6,11 +6,11 @@ import { payrollService, STORAGE_KEYS, formatPayrollMonthLabel } from '@/service
 import { findDataProblems, type DataProblem } from '@/lib/payroll/dataCheck'
 
 const KIND_LABEL: Record<DataProblem['kind'], string> = {
-  'two-sheets': 'Ek mahine mein do sheets par',
-  duplicate: 'Ek period mein do dafa',
-  namesake: 'Ek naam ke do log — row shayad doosre ki',
-  'outside-dates': 'Joining / resign date se bahar',
-  'no-profile': 'Profile nahi mila',
+  'two-sheets': 'On two sheets in one month',
+  duplicate: 'Twice in one period',
+  namesake: 'Two people with the same name — row may belong to the other one',
+  'outside-dates': 'Outside joining / resign date',
+  'no-profile': 'Profile not found',
 }
 const ORDER: DataProblem['kind'][] = ['two-sheets', 'duplicate', 'namesake', 'outside-dates', 'no-profile']
 
@@ -30,9 +30,9 @@ export default function PayrollDataCheckPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Data Check" subtitle="Purane data mein shak wali rows — yahan sirf dikhaya jata hai, kuch badla nahi jata." />
+      <PageHeader title="Data Check" subtitle="Doubtful rows in old data — shown here only, nothing is changed." />
       {problems.length === 0 ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">Koi masla nahi mila.</div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">No problems found.</div>
       ) : (
         ORDER.filter((k) => problems.some((p) => p.kind === k)).map((kind) => {
           const list = problems.filter((p) => p.kind === kind)
@@ -44,10 +44,10 @@ export default function PayrollDataCheckPage() {
               <table className="w-full text-xs">
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
-                    <th className="px-3 py-1.5">Mahina</th>
+                    <th className="px-3 py-1.5">Month</th>
                     <th className="px-3 py-1.5">Sheet</th>
-                    <th className="px-3 py-1.5">Naam</th>
-                    <th className="px-3 py-1.5">Kya masla hai</th>
+                    <th className="px-3 py-1.5">Name</th>
+                    <th className="px-3 py-1.5">Problem</th>
                   </tr>
                 </thead>
                 <tbody>

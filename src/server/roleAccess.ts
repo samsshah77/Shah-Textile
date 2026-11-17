@@ -7,11 +7,11 @@ import type { PermissionAction } from '@prisma/client'
  */
 export const ROLE_ACCESS: Record<string, { label: string; grants: Record<string, PermissionAction[]> }> = {
   fault: {
-    label: 'Production dekhna + Kamran Fault bhejna',
+    label: 'View Production + send Kamran Fault',
     grants: { floor: ['VIEW', 'CREATE'], quality: ['VIEW', 'CREATE'] },
   },
   view: {
-    label: 'Production sirf dekhna',
+    label: 'View Production only',
     grants: { floor: ['VIEW'], quality: ['VIEW'] },
   },
 }

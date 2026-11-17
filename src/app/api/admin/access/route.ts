@@ -47,7 +47,7 @@ export async function PUT(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'Ghalat request' }, { status: 400 })
   const { userId, area, level } = parsed.data
   const target = await prisma.user.findUnique({ where: { id: userId }, select: publicUserSelect })
-  if (!target) return NextResponse.json({ error: 'User nahi mila' }, { status: 404 })
+  if (!target) return NextResponse.json({ error: 'User not found' }, { status: 404 })
   const [before] = await accessForUsers([target])
   await setAccess(userId, area, level, admin.name || admin.email || 'Admin')
   const [after] = await accessForUsers([target])

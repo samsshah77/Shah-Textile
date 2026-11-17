@@ -62,7 +62,7 @@ function ContractPayrollContent() {
                             askConfirm({
                               title: 'Unsaved Changes',
                               message:
-                                'Aap ke paas unsaved changes hain. Agar aap month change karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                                'You have unsaved changes. If you change the month, they will be lost. Continue?',
                               confirmText: 'Discard & Switch',
                               onConfirm: async () => {
                                 await payrollService.setActiveSalariedMonthAsync(m)
@@ -147,19 +147,19 @@ function ContractPayrollContent() {
       {staleRows.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 print:hidden">
           <span>
-            Is mahine ki save ki hui raqam purane hisab (har row round) se hai. Excel jaisa hisab (paise ke saath) se{' '}
-            <strong>{staleRows.length}</strong> logon ki raqam 1–2 rupay badalti hai — OT total{' '}
+            This month was saved with the old calculation (each row rounded). With the Excel-style calculation (with paise),{' '}
+            <strong>{staleRows.length}</strong> people’s amount changes by 1–2 rupees — OT total{' '}
             <strong>{Math.round(staleTotals.otBefore).toLocaleString('en-US')}</strong> →{' '}
             <strong>{Math.round(staleTotals.otAfter).toLocaleString('en-US')}</strong>, Net total{' '}
             <strong>{Math.round(staleTotals.netBefore).toLocaleString('en-US')}</strong> →{' '}
-            <strong>{Math.round(staleTotals.netAfter).toLocaleString('en-US')}</strong>. Table naya hisab dikha raha hai.
+            <strong>{Math.round(staleTotals.netAfter).toLocaleString('en-US')}</strong>. The table is showing the new calculation.
           </span>
           {isEditable ? (
             <button type="button" onClick={saveRecalc} className="rounded-md bg-sky-700 px-3 py-1.5 font-semibold text-white cursor-pointer">
-              Naya hisab save karein
+              Save new calculation
             </button>
           ) : canEditAccounts ? (
-            <span className="font-semibold">Mahina locked hai — pehle unlock karein, phir save.</span>
+            <span className="font-semibold">Month is locked — unlock it first, then save.</span>
           ) : null}
         </div>
       )}

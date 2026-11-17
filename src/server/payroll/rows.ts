@@ -199,7 +199,7 @@ export function ensurePayrollImported(seed: () => Record<string, unknown>): Prom
       console.error('[payroll] copying old salary data failed', err)
       throw new PayrollError(
         503,
-        'Salary ka data nayi tables mein copy nahi ho saka — kuch na likhein, admin ko batayein.'
+        'Salary data could not be copied to the new tables — do not enter anything, tell the admin.'
       )
     })
   }
@@ -258,7 +258,7 @@ export function validateChangeSet(input: unknown): ChangeSet {
   if (!input || typeof input !== 'object') throw bad('Change set missing.')
   const { ops, order } = input as { ops?: unknown; order?: unknown }
   if (!Array.isArray(ops)) throw bad('ops must be a list.')
-  if (ops.length > MAX_OPS) throw bad('Bohat zyada tabdeeliyan ek saath — chhote hisson mein save karein.')
+  if (ops.length > MAX_OPS) throw bad('Too many changes at once — save in smaller parts.')
   const out: ChangeSet = { ops: [] }
   const seen = new Set<string>()
   for (const raw of ops) {
@@ -335,8 +335,8 @@ export async function applyChangeSet(db: Db, cs: ChangeSet, actorName: string | 
   if (conflicts.length) {
     throw new PayrollError(
       409,
-      'Yeh data kisi aur tab ya computer se badal chuka hai — aap ki aakhri tabdeeli save nahi hui. ' +
-        'Naya data load kar diya gaya hai; zaroorat ho to dobara likhein.',
+      'This data was changed from another tab or computer — your last change was not saved. ' +
+        'The new data has been loaded; enter it again if needed.',
       { conflicts: conflicts.slice(0, 50) }
     )
   }

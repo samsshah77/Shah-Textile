@@ -205,7 +205,7 @@ const PAYROLL_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p === '/payroll/employees',
   },
   {
-    title: 'Advance (Peshgi)',
+    title: 'Advance',
     href: '/payroll/advances',
     icon: 'bi-cash-coin',
     activeCheck: (p) => p === '/payroll/advances',

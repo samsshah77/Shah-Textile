@@ -53,7 +53,7 @@ export function findDataProblems(store: Record<string, unknown>): DataProblem[] 
           : r.fortnight === '16-31' || r.fortnight === '1-31' ? r.fortnight : '1-15'
       const period = s.fortnightly ? `${month} ${fn}` : month
       if (r.employeeId && !emp) {
-        out.push({ kind: 'no-profile', month, sheet: s.label, person: rowName, detail: 'Is row ka profile maujood nahi (shayad delete ho chuka).' })
+        out.push({ kind: 'no-profile', month, sheet: s.label, person: rowName, detail: 'This row’s profile does not exist (maybe deleted).' })
         continue
       }
       if (!emp) continue
@@ -62,7 +62,7 @@ export function findDataProblems(store: Record<string, unknown>): DataProblem[] 
         const k = `${period}|${emp.id}`
         seen.set(k, (seen.get(k) || 0) + 1)
         if (seen.get(k) === 2)
-          out.push({ kind: 'duplicate', month, sheet: s.label, person: emp.name, detail: `${period} mein ye shakhs do dafa hai.` })
+          out.push({ kind: 'duplicate', month, sheet: s.label, person: emp.name, detail: `This person appears twice in ${period}.` })
       }
       if (rowName && normalizeName(rowName) !== normalizeName(emp.name)) {
         const namesake = (byName.get(normalizeName(rowName)) || []).find((p) => p.id !== emp.id)
@@ -72,11 +72,11 @@ export function findDataProblems(store: Record<string, unknown>): DataProblem[] 
             month,
             sheet: s.label,
             person: emp.name,
-            detail: `Row par naam "${rowName}" hai jo ek doosre profile (${namesake.designation || namesake.employeeCategory}) ka naam hai — ho sakta hai ye row us ki ho.`,
+            detail: `The row has the name "${rowName}", which is the name of another profile (${namesake.designation || namesake.employeeCategory}) — this row may belong to that person.`,
           })
       }
       if (s.key !== PAYROLL_KEYS.ADVANCES && /^\d{4}-\d{2}$/.test(month) && !employeeBelongsInMonth(emp, month, s.fortnightly && r.fortnight !== '1-31' ? r.fortnight : undefined))
-        out.push({ kind: 'outside-dates', month, sheet: s.label, person: emp.name, detail: `${period}: joining / resign date ke hisaab se is period mein nahi hona chahiye.` })
+        out.push({ kind: 'outside-dates', month, sheet: s.label, person: emp.name, detail: `${period}: should not be in this period as per the joining / resign date.` })
       if (PAY_SHEETS.has(s.key)) {
         const k = `${emp.id}|${month}`
         const set = paySheetsByPersonMonth.get(k) || new Set<string>()
@@ -88,7 +88,7 @@ export function findDataProblems(store: Record<string, unknown>): DataProblem[] 
   for (const [k, set] of paySheetsByPersonMonth) {
     if (set.size < 2) continue
     const [id, month] = k.split('|')
-    out.push({ kind: 'two-sheets', month, sheet: [...set].join(' + '), person: byId.get(id)?.name || id, detail: `Ek hi mahine mein do sheets par (${[...set].join(', ')}) — do dafa payment ho sakti hai.` })
+    out.push({ kind: 'two-sheets', month, sheet: [...set].join(' + '), person: byId.get(id)?.name || id, detail: `On two sheets in the same month (${[...set].join(', ')}) — may be paid twice.` })
   }
   return out.sort((a, b) => a.month.localeCompare(b.month) || a.person.localeCompare(b.person))
 }

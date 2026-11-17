@@ -175,7 +175,7 @@ export default function TechnicalEfficiencyPage() {
     if (!row) return
     const empName = row?.name || 'this entry'
     askConfirm({
-      ...removeRowConfirm(empName, 'is mahine ki Efficiency sheet', { staysOff: true }),
+      ...removeRowConfirm(empName, 'this month’s Efficiency sheet', { staysOff: true }),
       onConfirm: () => {
         const updated = incentiveList
           .filter((item) => item.id !== id)
@@ -204,7 +204,7 @@ export default function TechnicalEfficiencyPage() {
     if (!canEditAccounts) return
     askConfirm({
       title: 'Save efficiency sheet?',
-      message: 'Efficiency incentives save ho jayengi.',
+      message: 'Efficiency incentives will be saved.',
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.noteEfficiencyRemovals(selectedMonth, incentiveList)
@@ -218,7 +218,7 @@ export default function TechnicalEfficiencyPage() {
   const handleDiscard = () => {
     askConfirm({
       title: 'Discard unsaved changes?',
-      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      message: 'Your unsaved edits will be undone. Continue?',
       confirmText: 'Discard',
       onConfirm: () => {
         setIncentiveList(discardChanges())
@@ -261,7 +261,7 @@ export default function TechnicalEfficiencyPage() {
                             askConfirm({
                               title: 'Unsaved Changes',
                               message:
-                                'Aap ke paas unsaved changes hain. Agar aap month change karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                                'You have unsaved changes. If you change the month, they will be lost. Continue?',
                               confirmText: 'Discard & Switch',
                               onConfirm: async () => {
                                 await payrollService.setActiveSalariedMonthAsync(m)

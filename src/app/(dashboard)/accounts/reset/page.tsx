@@ -23,7 +23,7 @@ export default function AccountsResetPage() {
   const [failed, setFailed] = useState<string | null>(null)
 
   const run = async () => {
-    if (!window.confirm('Pakka? July se pehle ka sab hat jayega aur Jul–Sep files jaisa ho jayega. October waisa hi rahega.')) return
+    if (!window.confirm('Are you sure? Everything before July will be removed and Jul–Sep will match the files. October stays as it is.')) return
     setBusy(true)
     setFailed(null)
     try {
@@ -31,7 +31,7 @@ export default function AccountsResetPage() {
       setResult({ ...r.result, snapshot: r.snapshot })
       await reload()
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : 'Reset nahi hua.')
+      setFailed(e instanceof Error ? e.message : 'Reset failed.')
     } finally {
       setBusy(false)
     }
@@ -41,22 +41,22 @@ export default function AccountsResetPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Accounts — July se September files"
-        subtitle="Ek dafa ka kaam: July se pehle ka sab hatega; July–September bills aur petty cash Excel files jaise ho jayenge. October waisa hi rahega."
+        title="Accounts — July to September files"
+        subtitle="One-time job: everything before July is removed; July–September bills and petty cash will match the Excel files. October stays as it is."
       />
       <LoadState loading={loading} error={error} hasData={Boolean(data)}>
         {data && (
           <>
-            {data.done && <div className="erp-card p-3 text-sm font-bold text-emerald-700">Ye kaam {data.done.at} ko ho chuka hai.</div>}
+            {data.done && <div className="erp-card p-3 text-sm font-bold text-emerald-700">This was done on {data.done.at}.</div>}
             {data.lockedMonths.length > 0 && (
               <div className="erp-card border-rose-300 bg-rose-50 p-3 text-xs font-bold text-rose-800">
-                Pehle in mahinon ka lock kholein: {data.lockedMonths.map(monthLabel).join(', ')}.
+                First unlock these months: {data.lockedMonths.map(monthLabel).join(', ')}.
               </div>
             )}
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="erp-card overflow-x-auto">
-                <div className="px-3 py-2 text-xs font-black uppercase text-rose-700">Jo hatega</div>
+                <div className="px-3 py-2 text-xs font-black uppercase text-rose-700">Will be removed</div>
                 <table className="w-full border-collapse text-xs">
                   <tbody>
                     {data.remove.billsByMonth.map((m) => (
@@ -68,7 +68,7 @@ export default function AccountsResetPage() {
                     ))}
                     <tr>
                       <td className={cell}>
-                        Payments ({data.remove.payments.beforeJuly} July se pehle, {data.remove.payments.copiedFoi} purani &quot;FOI paid (copied)&quot;)
+                        Payments ({data.remove.payments.beforeJuly} before July, {data.remove.payments.copiedFoi} old &quot;FOI paid (copied)&quot;)
                       </td>
                       <td className={`${cell} text-right font-mono`}>{data.remove.payments.count}</td>
                       <td className={`${cell} text-right font-mono`}>{rs(data.remove.payments.amount)}</td>
@@ -87,11 +87,11 @@ export default function AccountsResetPage() {
                 </table>
               </div>
               <div className="erp-card overflow-x-auto">
-                <div className="px-3 py-2 text-xs font-black uppercase text-emerald-700">Jo aayega (files se)</div>
+                <div className="px-3 py-2 text-xs font-black uppercase text-emerald-700">Will come in (from files)</div>
                 <table className="w-full border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100 text-[10px] uppercase">
-                      <th className={cell}>Mahina</th>
+                      <th className={cell}>Month</th>
                       <th className={cell}>Bills / items</th>
                       <th className={cell}>Total</th>
                       <th className={cell}>Petty</th>
@@ -116,24 +116,24 @@ export default function AccountsResetPage() {
                 </table>
                 <div className="space-y-1 p-3 text-[11px] text-slate-600">
                   {data.renamed.length > 0 && (
-                    <div>Naam ERP wali party se jode: {data.renamed.map((r) => `${r.file} → ${r.erp}`).join(', ')}</div>
+                    <div>Names matched to ERP parties: {data.renamed.map((r) => `${r.file} → ${r.erp}`).join(', ')}</div>
                   )}
-                  {data.newParties.length > 0 && <div>Nayi parties (Trader ke taur par): {data.newParties.join(', ')}</div>}
-                  <div>Machine jahan file mein likhi nahi, khaali rahegi — Daily Inward mein khud chunein.</div>
+                  {data.newParties.length > 0 && <div>New parties (as Trader): {data.newParties.join(', ')}</div>}
+                  <div>Where the file has no machine, it stays empty — select it yourself in Daily Inward.</div>
                 </div>
               </div>
             </div>
 
             <div className="erp-card p-3 text-xs">
-              October aur baad: {data.keptLater.bills} bills ({rs(data.keptLater.amount)}) aur {data.keptLater.petty} petty entries —{' '}
-              <b>waise hi rahenge</b>. Haath se daali gayi July–September ki payments / opening balance bhi rahenge. Reset se pehle
-              database ka snapshot liya jayega.
+              October and later: {data.keptLater.bills} bills ({rs(data.keptLater.amount)}) and {data.keptLater.petty} petty entries —{' '}
+              <b>stay as they are</b>. July–September payments / opening balance entered by hand also stay. A database snapshot
+              is taken before the reset.
             </div>
 
             {result && (
               <div className="erp-card border-emerald-300 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
-                Ho gaya: {result.deleted.bills} purane bills, {result.deleted.payments} payments, {result.deleted.petty} petty entries hataye;{' '}
-                {result.added.bills} bills ({rs(result.added.amount)}) aur {result.added.petty} petty entries daali. Snapshot: {result.snapshot}.{' '}
+                Done: removed {result.deleted.bills} old bills, {result.deleted.payments} payments, {result.deleted.petty} petty entries;{' '}
+                added {result.added.bills} bills ({rs(result.added.amount)}) and {result.added.petty} petty entries. Snapshot: {result.snapshot}.{' '}
                 <Link className="underline" href="/accounts/inventory-inward?month=2026-07">
                   July Daily Inward
                 </Link>
@@ -146,7 +146,7 @@ export default function AccountsResetPage() {
                 <input
                   value={typed}
                   onChange={(e) => setTyped(e.target.value)}
-                  placeholder='Tasdeeq ke liye "RESET" likhein'
+                  placeholder='Type "RESET" to confirm'
                   className="h-9 w-64 rounded-md border border-slate-300 px-2 text-xs"
                 />
                 <button
@@ -155,7 +155,7 @@ export default function AccountsResetPage() {
                   onClick={run}
                   className="rounded-lg bg-rose-700 px-4 py-2 text-xs font-bold text-white cursor-pointer disabled:opacity-50"
                 >
-                  {busy ? 'Ho raha hai…' : 'Reset karein'}
+                  {busy ? 'Working…' : 'Reset'}
                 </button>
               </div>
             )}

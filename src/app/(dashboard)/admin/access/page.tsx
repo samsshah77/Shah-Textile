@@ -31,7 +31,7 @@ export default function AccessPage() {
   const load = useCallback(async () => {
     const res = await fetch('/api/admin/access', { credentials: 'same-origin', cache: 'no-store' })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) return setError(data.error || 'Load nahi hua')
+    if (!res.ok) return setError(data.error || 'Could not load')
     setPeople(data.users)
     setMe(data.me)
     setError('')
@@ -56,13 +56,13 @@ export default function AccessPage() {
         body: JSON.stringify({ userId: person.id, area, level }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Save nahi hua')
+      if (!res.ok) throw new Error(data.error || 'Could not save')
       setPeople((list) => list.map((p) => (p.id === person.id ? { ...p, ...data.user } : p)))
       const label = ACCESS_AREAS.find((a) => a.key === area)?.label
-      setNote(`${person.name}: ${label} → ${LEVEL_LABEL[level]}. Us bande ke page refresh karne par lagega.`)
+      setNote(`${person.name}: ${label} → ${LEVEL_LABEL[level]}. It applies when that person refreshes the page.`)
       if (person.id === me) void refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save nahi hua')
+      setError(e instanceof Error ? e.message : 'Could not save')
     } finally {
       setBusy('')
     }
@@ -121,7 +121,7 @@ export default function AccessPage() {
               </div>
             ))}
             <p className="small text-secondary mb-0">
-              Users, Roles, System aur Audit log hamesha sirf Admin ke liye hain.
+              Users, Roles, System and Audit log are always for Admin only.
             </p>
           </div>
         </div>

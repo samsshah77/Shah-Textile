@@ -18,7 +18,7 @@ type CheckResult = {
 }
 
 const KIND: Record<FloorProblem['kind'], string> = {
-  'false-loss': 'Jhoothi loss',
+  'false-loss': 'False loss',
   figures: 'Figures do not add up',
   'meters-no-quality': 'Meters without quality',
   'not-approved': 'Not approved',
@@ -91,7 +91,7 @@ export default function FloorDataCheckPage() {
                       <th>Date</th>
                       <th>Loom</th>
                       <th>Issue</th>
-                      <th>Tafseel</th>
+                      <th>Details</th>
                     </tr>
                   </thead>
                   <tbody>

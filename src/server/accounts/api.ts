@@ -41,7 +41,7 @@ export function ensureImported(): Promise<ImportResult | null> {
       // Fail closed: an empty book would invite people to re-enter bills that already exist.
       throw new AccountsError(
         503,
-        'Accounts ka purana data nayi tables mein copy nahi ho saka — kuch na likhein, admin ko batayein.',
+        'Old Accounts data could not be copied to the new tables — do not enter anything, tell the admin.',
         'CONFLICT'
       )
     })
@@ -71,9 +71,9 @@ export function accountsHandler(
       // Administration → Permissions decides who may see / change Accounts.
       const { access } = await accessFor(actor)
       if (!allows(access, 'accounts', 'view'))
-        return NextResponse.json({ ok: false, error: 'Accounts dekhne ki ijazat nahi.' }, { status: 403 })
+        return NextResponse.json({ ok: false, error: 'You do not have permission to view Accounts.' }, { status: 403 })
       if (opts.write && !allows(access, 'accounts', 'edit'))
-        return NextResponse.json({ ok: false, error: 'Accounts mein tabdeeli ki ijazat nahi (view only).' }, { status: 403 })
+        return NextResponse.json({ ok: false, error: 'You do not have permission to change Accounts (view only).' }, { status: 403 })
       await ensureImported()
       const params = (await route?.params) || {}
       const data = await fn({ req, actor, params })
@@ -87,7 +87,7 @@ export function accountsHandler(
           { status: 400 }
         )
       console.error('[accounts api]', err)
-      return NextResponse.json({ ok: false, error: 'Server error — dobara koshish karein.' }, { status: 500 })
+      return NextResponse.json({ ok: false, error: 'Server error — please try again.' }, { status: 500 })
     }
   }
 }

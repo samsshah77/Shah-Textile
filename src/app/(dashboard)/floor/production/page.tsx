@@ -486,7 +486,7 @@ function ProductionWorkspaceContent() {
                       type="button"
                       className={`btn ${sheetTextSize === 'large' ? 'btn-primary' : 'btn-outline-secondary'}`}
                       onClick={() => setSheetTextSize('large')}
-                      title="Large font size (+20% Bara)"
+                      title="Large font size (+20%)"
                     >
                       A+
                     </button>
@@ -494,7 +494,7 @@ function ProductionWorkspaceContent() {
                       type="button"
                       className={`btn ${sheetTextSize === 'xlarge' ? 'btn-primary' : 'btn-outline-secondary'}`}
                       onClick={() => setSheetTextSize('xlarge')}
-                      title="Extra Large font size (+40% Sab Se Bara)"
+                      title="Extra Large font size (+40%)"
                     >
                       A++
                     </button>

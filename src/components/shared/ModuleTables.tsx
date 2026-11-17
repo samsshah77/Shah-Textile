@@ -5,10 +5,10 @@ import { cn } from '@/lib/utils'
 
 export type ModuleTextSize = 'small' | 'normal' | 'large' | 'xlarge'
 const SIZES: Array<[ModuleTextSize, string, string]> = [
-  ['small', 'A−', 'Chhota (zyada columns ek page par print)'],
+  ['small', 'A−', 'Small (prints more columns on one page)'],
   ['normal', 'A', 'Normal'],
   ['large', 'A+', 'Bara (+15%)'],
-  ['xlarge', 'A++', 'Sab se bara (+30%)'],
+  ['xlarge', 'A++', 'Largest (+30%)'],
 ]
 
 /** "Rs 1,200", "-3,500.50", "12%", "1,250 m" — an amount / count, aligned right. */

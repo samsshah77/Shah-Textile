@@ -146,7 +146,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
     if (!typed.length) return
     const bad = typed.find((e) => !EMAIL_RE.test(e))
     if (bad) {
-      setNote({ ok: false, text: `Sahi email likhein: "${bad}"` })
+      setNote({ ok: false, text: `Enter a correct email: "${bad}"` })
       return
     }
     setNote(null)
@@ -179,7 +179,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
   const addWaContact = () => {
     const formatted = formatWhatsAppNumber(number)
     if (formatted.length < 10) {
-      setNote({ ok: false, text: 'Sahi WhatsApp number likhein (e.g. 0300 1234567)' })
+      setNote({ ok: false, text: 'Enter a correct WhatsApp number (e.g. 0300 1234567)' })
       return
     }
     setNote(null)
@@ -222,13 +222,13 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
     try {
       if (getPdfAttachment && canShareFile) {
         const att = await Promise.resolve(getPdfAttachment())
-        if (!att) throw new Error('PDF ban nahi saki')
+        if (!att) throw new Error('Could not make the PDF')
         await navigator.share({ files: [pdfFile(att)], text: message, title: documentTitle })
       } else {
         await navigator.share({ text: message, title: documentTitle })
       }
     } catch (e) {
-      if ((e as Error)?.name !== 'AbortError') setNote({ ok: false, text: e instanceof Error ? e.message : 'Share nahi ho saka' })
+      if ((e as Error)?.name !== 'AbortError') setNote({ ok: false, text: e instanceof Error ? e.message : 'Could not share' })
     } finally {
       setBusy(false)
     }
@@ -237,19 +237,19 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
   const sendEmail = async () => {
     const recipients = allRecipients
     if (recipients.length === 0) {
-      setNote({ ok: false, text: 'Kam az kam ek email likhein ya select karein' })
+      setNote({ ok: false, text: 'Enter or select at least one email' })
       return
     }
     const invalid = recipients.find((e) => !EMAIL_RE.test(e))
     if (invalid) {
-      setNote({ ok: false, text: `Sahi email likhein: "${invalid}"` })
+      setNote({ ok: false, text: `Enter a correct email: "${invalid}"` })
       return
     }
     setBusy(true)
     setNote(null)
     try {
       const att = getPdfAttachment ? await Promise.resolve(getPdfAttachment()) : null
-      if (getPdfAttachment && !att) throw new Error('PDF ban nahi saki — dobara koshish karein')
+      if (getPdfAttachment && !att) throw new Error('Could not make the PDF — please try again')
       const cleanBase64 = att?.base64 ? (att.base64.includes(',') ? att.base64.split(',')[1] : att.base64) : undefined
       const res = await fetch('/api/email/send', {
         method: 'POST',
@@ -258,15 +258,15 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
         body: JSON.stringify({ to: recipients, subject, text: message, fileBase64: cleanBase64, filename: att?.filename }),
       })
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.error || `Email nahi gayi (${res.status})`)
+      if (!res.ok) throw new Error(data?.error || `Email not sent (${res.status})`)
       remember('email', recipients)
       setRecentEmail(recent('email'))
       setSelectedEmails(recipients)
       setEmailInput('')
       const label = recipients.length === 1 ? recipients[0] : `${recipients.length} emails (${recipients.join(', ')})`
-      setNote({ ok: true, text: `Email ${label} ko chali gayi${att ? ' (PDF ke sath)' : ''}.` })
+      setNote({ ok: true, text: `Email sent to ${label}${att ? ' (with PDF)' : ''}.` })
     } catch (e) {
-      setNote({ ok: false, text: e instanceof Error ? e.message : 'Email nahi gayi' })
+      setNote({ ok: false, text: e instanceof Error ? e.message : 'Email not sent' })
     } finally {
       setBusy(false)
     }
@@ -287,11 +287,11 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
             <h5 id="share-title" className="modal-title fs-6 fw-semibold">
               {documentTitle}
             </h5>
-            <button type="button" className="btn-close" aria-label="Band karein" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
           </div>
 
           <div className="modal-body">
-            <div className="btn-group btn-group-sm w-100 mb-3" role="group" aria-label="Kahan bhejna hai">
+            <div className="btn-group btn-group-sm w-100 mb-3" role="group" aria-label="Where to send">
               <button type="button" className={`btn ${tab === 'whatsapp' ? 'btn-success' : 'btn-outline-success'}`} onClick={() => { setTab('whatsapp'); setNote(null) }}>
                 <i className="bi bi-whatsapp me-1" />
                 WhatsApp
@@ -307,7 +307,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
               <>
                 <div className="d-flex align-items-center justify-content-between mb-1">
                   <label className="form-label small mb-0" htmlFor="share-number">
-                    Contacts / Numbers <span className="text-secondary">(ek ya zyada select / add karein)</span>
+                    Contacts / Numbers <span className="text-secondary">(select / add one or more)</span>
                   </label>
                   {allWaNumbers.length > 0 && (
                     <span className="badge bg-success-subtle text-success-emphasis border border-success-subtle">
@@ -344,7 +344,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                     className="btn btn-outline-success"
                     onClick={addWaContact}
                     disabled={!number.trim()}
-                    title="List mein save karein"
+                    title="Save to list"
                   >
                     + Add
                   </button>
@@ -375,7 +375,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between mb-1">
                       <span className="text-secondary" style={{ fontSize: 11.5 }}>
-                        Saved contacts (click kar ke select karein):
+                        Saved contacts (click to select):
                       </span>
                       {savedWa.length > 1 && (
                         <button
@@ -411,7 +411,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                               type="button"
                               className={`btn btn-sm py-0 px-1 ${active ? 'btn-success' : 'btn-outline-secondary'}`}
                               style={{ fontSize: 10 }}
-                              title="Saved list se hatayein"
+                              title="Remove from saved list"
                               onClick={() => removeSavedWa(num)}
                             >
                               ×
@@ -428,7 +428,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
               <>
                 <div className="d-flex align-items-center justify-content-between mb-1">
                   <label className="form-label small mb-0" htmlFor="share-email">
-                    Emails <span className="text-secondary">(ek ya zyada select / add karein)</span>
+                    Emails <span className="text-secondary">(select / add one or more)</span>
                   </label>
                   {allRecipients.length > 0 && (
                     <span className="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
@@ -442,7 +442,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                     id="share-email"
                     type="text"
                     className="form-control"
-                    placeholder="name@gmail.com (comma ya Enter se add karein)"
+                    placeholder="name@gmail.com (add with comma or Enter)"
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -457,7 +457,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                     className="btn btn-outline-primary"
                     onClick={addTypedEmails}
                     disabled={!emailInput.trim()}
-                    title="List mein shamil karein"
+                    title="Add to list"
                   >
                     + Add
                   </button>
@@ -488,7 +488,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between mb-1">
                       <span className="text-secondary" style={{ fontSize: 11.5 }}>
-                        Saved emails (click kar ke select karein):
+                        Saved emails (click to select):
                       </span>
                       {recentEmail.length > 1 && (
                         <button
@@ -522,7 +522,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                               type="button"
                               className={`btn btn-sm py-0 px-1 ${active ? 'btn-primary' : 'btn-outline-secondary'}`}
                               style={{ fontSize: 10 }}
-                              title="Saved list se hatayein"
+                              title="Remove from saved list"
                               onClick={() => removeSavedEmail(addr)}
                             >
                               ×
@@ -542,10 +542,10 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
             <textarea id="share-message" className="form-control form-control-sm" rows={6} style={{ fontSize: 12.5 }} value={message} onChange={(e) => setMessage(e.target.value)} />
 
             {tab === 'whatsapp' && !canShareFile && getPdfAttachment && (
-              <p className="small text-secondary mt-2 mb-0">PDF ke liye: pehle &quot;PDF save&quot;, phir WhatsApp chat mein 📎 se lagayein.</p>
+              <p className="small text-secondary mt-2 mb-0">For a PDF: first &quot;PDF save&quot;, then attach it in the WhatsApp chat with 📎.</p>
             )}
             {tab === 'email' && emailReady === false && (
-              <p className="small text-secondary mt-2 mb-0">Server se email abhi set nahi — &quot;Email app kholein&quot; se bhejein{getPdfAttachment ? ' (PDF khud lagayein)' : ''}.</p>
+              <p className="small text-secondary mt-2 mb-0">Server email is not set up yet — send with &quot;Open email app&quot;{getPdfAttachment ? ' (attach the PDF yourself)' : ''}.</p>
             )}
             {note && <div className={`alert py-2 small mt-2 mb-0 ${note.ok ? 'alert-success' : 'alert-danger'}`}>{note.text}</div>}
           </div>
@@ -561,7 +561,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
               useNativeShare ? (
                 <button type="button" className="btn btn-sm btn-success" onClick={() => void shareNative()} disabled={busy}>
                   <i className="bi bi-share me-1" />
-                  {busy ? 'PDF ban rahi hai…' : canShareFile ? 'WhatsApp par PDF bhejein' : 'WhatsApp par bhejein'}
+                  {busy ? 'Making PDF…' : canShareFile ? 'Send PDF on WhatsApp' : 'Send on WhatsApp'}
                 </button>
               ) : allWaNumbers.length > 1 ? (
                 <button
@@ -579,15 +579,15 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
               ) : (
                 <a className="btn btn-sm btn-success" href={waLink} target="_blank" rel="noopener noreferrer">
                   <i className="bi bi-whatsapp me-1" />
-                  WhatsApp kholein
+                  Open WhatsApp
                 </a>
               )
             ) : emailReady ? (
               <button type="button" className="btn btn-sm btn-primary" onClick={() => void sendEmail()} disabled={busy || allRecipients.length === 0}>
                 <i className="bi bi-send me-1" />
                 {busy
-                  ? 'Bhej raha hai…'
-                  : `${getPdfAttachment ? 'Email bhejein (PDF ke sath)' : 'Email bhejein'}${allRecipients.length > 1 ? ` (${allRecipients.length})` : ''}`}
+                  ? 'Sending…'
+                  : `${getPdfAttachment ? 'Send email (with PDF)' : 'Send email'}${allRecipients.length > 1 ? ` (${allRecipients.length})` : ''}`}
               </button>
             ) : (
               <a
@@ -596,7 +596,7 @@ function ShareBody({ onClose, documentTitle, defaultMessage, onDownloadPdf, getP
                 onClick={() => remember('email', allRecipients)}
               >
                 <i className="bi bi-envelope-open me-1" />
-                Email app kholein{allRecipients.length > 1 ? ` (${allRecipients.length})` : ''}
+                Open email app{allRecipients.length > 1 ? ` (${allRecipients.length})` : ''}
               </a>
             )}
           </div>

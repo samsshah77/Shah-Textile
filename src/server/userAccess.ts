@@ -135,7 +135,7 @@ export async function requireAccess(
   const { access } = await accessFor(user)
   const list = Array.isArray(areas) ? areas : [areas]
   if (!allowsAny(access, list, need)) {
-    const text = message || (need === 'edit' ? 'Aap ke paas is mein tabdeeli ki ijazat nahi (view only).' : 'Aap ke paas is ki ijazat nahi.')
+    const text = message || (need === 'edit' ? 'You do not have permission to change this (view only).' : 'You do not have permission for this.')
     return { error: NextResponse.json({ ok: false, error: text }, { status: 403 }) }
   }
   return { user, access }

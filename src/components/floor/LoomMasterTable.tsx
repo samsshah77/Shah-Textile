@@ -312,7 +312,7 @@ export function LoomMasterTable({
         if (ok) {
           showSuccessSoon({
             title: `Part ${seg} deleted`,
-            message: `Loom #${loom.loomNumber}: "${label}" hata diya.`,
+            message: `Loom #${loom.loomNumber}: "${label}" removed.`,
           })
         } else {
           showError({
@@ -389,7 +389,7 @@ export function LoomMasterTable({
               picking ? 'btn-warning' : 'btn-outline-warning'
             }`}
             style={{ fontSize: '0.65rem', lineHeight: 1.2, opacity: picking ? 1 : undefined }}
-            title="Part 2 — same day dusri quality"
+            title="Part 2 — second quality on the same day"
             onClick={(e) => {
               e.stopPropagation()
               if (picking) {

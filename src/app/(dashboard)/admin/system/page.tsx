@@ -27,7 +27,7 @@ const FOLDER: Record<string, string> = {
   registers: 'Register photos (AI)',
   faults: 'Kamran Fault photos / video',
 }
-const REASON: Record<string, string> = { 'app-start': 'Deploy / restart par', 'before-qualityId-backfill': 'Data fix se pehle' }
+const REASON: Record<string, string> = { 'app-start': 'On deploy / restart', 'before-qualityId-backfill': 'Before data fix' }
 
 function Status({ ok, warn, children }: { ok: boolean; warn?: boolean; children: React.ReactNode }) {
   return <span className={`badge ${ok ? 'text-bg-success' : warn ? 'text-bg-warning' : 'text-bg-danger'}`}>{children}</span>
@@ -44,11 +44,11 @@ export default function AdminSystemPage() {
     try {
       const res = await fetch('/api/admin/system', { credentials: 'same-origin', cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Load nahi hua')
+      if (!res.ok) throw new Error(data.error || 'Could not load')
       setInfo(data)
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Load nahi hua')
+      setError(e instanceof Error ? e.message : 'Could not load')
     }
   }, [])
 
@@ -58,17 +58,17 @@ export default function AdminSystemPage() {
   }, [load])
 
   const snapshotNow = async () => {
-    if (!window.confirm('Abhi poore data ki copy (snapshot) le lein? 10–30 second lagte hain.')) return
+    if (!window.confirm('Take a copy (snapshot) of all data now? It takes 10–30 seconds.')) return
     setBusy(true)
     setNotice('')
     try {
       const res = await fetch('/api/admin/snapshots', { method: 'POST', credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.ok) throw new Error(data.error || 'Snapshot nahi hua')
-      setNotice('Snapshot le liya gaya.')
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Snapshot failed')
+      setNotice('Snapshot taken.')
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Snapshot nahi hua')
+      setError(e instanceof Error ? e.message : 'Snapshot failed')
     } finally {
       setBusy(false)
     }
@@ -89,7 +89,7 @@ export default function AdminSystemPage() {
             <i className="bi bi-arrow-clockwise me-1" /> Refresh
           </button>
           <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => void snapshotNow()}>
-            {busy ? 'Snapshot ho raha hai…' : 'Abhi snapshot lein'}
+            {busy ? 'Taking snapshot…' : 'Take snapshot now'}
           </button>
         </div>
       </div>
@@ -103,10 +103,10 @@ export default function AdminSystemPage() {
             <div className="col-6 col-lg-3">
               <div className="card h-100 shadow-sm">
                 <div className="card-body p-3">
-                  <div className="small text-secondary">Snapshot (database ke andar copy)</div>
+                  <div className="small text-secondary">Snapshot (copy inside the database)</div>
                   <div className="fw-bold">{lastSnap ? when(lastSnap.createdAt) : '—'}</div>
                   <Status ok={Boolean(lastSnap) && hoursAgo(lastSnap!.createdAt) < 72} warn={Boolean(lastSnap)}>
-                    {lastSnap ? `${info.snapshotCount} rakhe hain` : 'Koi nahi'}
+                    {lastSnap ? `${info.snapshotCount} kept` : 'None'}
                   </Status>
                 </div>
               </div>
@@ -114,12 +114,12 @@ export default function AdminSystemPage() {
             <div className="col-6 col-lg-3">
               <div className="card h-100 shadow-sm">
                 <div className="card-body p-3">
-                  <div className="small text-secondary">Raat ka backup (pg_dump)</div>
-                  <div className="fw-bold">{lastNightly ? when(lastNightly.at) : info.nightly.readable ? 'Koi file nahi' : 'App ko nazar nahi aata'}</div>
+                  <div className="small text-secondary">Nightly backup (pg_dump)</div>
+                  <div className="fw-bold">{lastNightly ? when(lastNightly.at) : info.nightly.readable ? 'No file' : 'The app cannot see it'}</div>
                   {info.nightly.readable ? (
-                    <Status ok={Boolean(lastNightly) && hoursAgo(lastNightly!.at) < 30}>{lastNightly ? `${info.nightly.count} files` : 'Check karein'}</Status>
+                    <Status ok={Boolean(lastNightly) && hoursAgo(lastNightly!.at) < 30}>{lastNightly ? `${info.nightly.count} files` : 'Check it'}</Status>
                   ) : (
-                    <span className="small text-secondary">Server par {info.nightly.dir} dekhein</span>
+                    <span className="small text-secondary">Check {info.nightly.dir} on the server</span>
                   )}
                 </div>
               </div>
@@ -153,12 +153,12 @@ export default function AdminSystemPage() {
           <div className="row g-3">
             <div className="col-lg-6">
               <div className="card shadow-sm h-100">
-                <div className="card-header py-2 small fw-bold">Photos / video (server par)</div>
+                <div className="card-header py-2 small fw-bold">Photos / video (on server)</div>
                 <table className="table table-sm small mb-0">
                   <tbody>
                     {info.uploads.length === 0 && (
                       <tr>
-                        <td className="text-secondary">Abhi koi file nahi</td>
+                        <td className="text-secondary">No files yet</td>
                       </tr>
                     )}
                     {info.uploads.map((u) => (
@@ -178,13 +178,13 @@ export default function AdminSystemPage() {
                 <table className="table table-sm small mb-0">
                   <tbody>
                     <tr>
-                      <td>Server ka waqt</td>
+                      <td>Server time</td>
                       <td className="text-end">
                         {when(info.server.time)} <span className="text-secondary">({info.server.timeZone})</span>
                       </td>
                     </tr>
                     <tr>
-                      <td>Aakhri deploy / restart</td>
+                      <td>Last deploy / restart</td>
                       <td className="text-end">{when(info.server.startedAt)}</td>
                     </tr>
                     <tr>
@@ -195,15 +195,15 @@ export default function AdminSystemPage() {
                       <td>AI — register photo</td>
                       <td className="text-end">
                         <Status ok={info.ai.claude || info.ai.gemini} warn>
-                          {info.ai.claude ? 'Claude on' : info.ai.gemini ? 'Gemini on' : 'Off (key nahi)'}
+                          {info.ai.claude ? 'Claude on' : info.ai.gemini ? 'Gemini on' : 'Off (no key)'}
                         </Status>
                       </td>
                     </tr>
                     <tr>
-                      <td>AI — awaz se fault</td>
+                      <td>AI — fault from voice</td>
                       <td className="text-end">
                         <Status ok={info.ai.gemini} warn>
-                          {info.ai.gemini ? 'Gemini on' : 'Off (key nahi)'}
+                          {info.ai.gemini ? 'Gemini on' : 'Off (no key)'}
                         </Status>
                       </td>
                     </tr>
@@ -216,7 +216,7 @@ export default function AdminSystemPage() {
                     <tr>
                       <td>Users</td>
                       <td className="text-end">
-                        {info.users.APPROVED || 0} chalu{info.users.PENDING ? ` · ${info.users.PENDING} intezar mein` : ''}
+                        {info.users.APPROVED || 0} active{info.users.PENDING ? ` · ${info.users.PENDING} waiting` : ''}
                       </td>
                     </tr>
                   </tbody>
@@ -225,13 +225,13 @@ export default function AdminSystemPage() {
             </div>
             <div className="col-lg-6">
               <div className="card shadow-sm">
-                <div className="card-header py-2 small fw-bold">Snapshots (aakhri 10)</div>
+                <div className="card-header py-2 small fw-bold">Snapshots (last 10)</div>
                 <table className="table table-sm small mb-0">
                   <tbody>
                     {info.snapshots.map((s) => (
                       <tr key={s.id}>
                         <td>{when(s.createdAt)}</td>
-                        <td>{REASON[s.reason] || s.reason.replace(/^manual:/, 'Hath se: ')}</td>
+                        <td>{REASON[s.reason] || s.reason.replace(/^manual:/, 'By hand: ')}</td>
                         <td className="text-end text-secondary">{s.rows.toLocaleString()} rows</td>
                       </tr>
                     ))}
@@ -241,7 +241,7 @@ export default function AdminSystemPage() {
             </div>
             <div className="col-lg-6">
               <div className="card shadow-sm">
-                <div className="card-header py-2 small fw-bold">Database ke bare tables</div>
+                <div className="card-header py-2 small fw-bold">Largest database tables</div>
                 <table className="table table-sm small mb-0">
                   <tbody>
                     {info.database.tables.map((t) => (
@@ -257,8 +257,8 @@ export default function AdminSystemPage() {
             </div>
           </div>
           <p className="form-text small mt-3">
-            Snapshot database ke andar copy hai (har deploy par khud banta hai, aakhri 20 rakhe jate hain). Raat ka backup server ki disk par file hai. Server
-            hi kharab ho jaye to dono jayenge — is liye hafte mein ek dafa backup file Google Drive par bhi rakhni chahiye.
+            A snapshot is a copy inside the database (made by itself on every deploy, the last 20 are kept). The nightly backup is a file on the server disk. If the
+            server itself breaks, both are lost — so once a week also keep a backup file on Google Drive.
           </p>
         </>
       )}

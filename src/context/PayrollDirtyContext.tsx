@@ -140,14 +140,14 @@ export function PayrollDirtyProvider({ children }: { children: React.ReactNode }
               <strong className="text-amber-700 font-bold">
                 {count} unsaved change{count > 1 ? 's' : ''}
               </strong>{' '}
-              {title ? `(${title})` : ''} hain.
+              {title ? `(${title})` : ''}.
             </p>
             <p>
-              Agar aap save kiye baghair page change ya switch karein ge toh unsaved changes zaya ho jayengi.
+              If you change or switch the page without saving, the unsaved changes will be lost.
             </p>
             <p className="text-[11px] text-slate-500 pt-1">
-              • <strong>Discard & Leave:</strong> Changes zaya karke aagay barhein.<br />
-              • <strong>Stay on Page:</strong> Rukain taake pehle Save button daba sakein.
+              • <strong>Discard & Leave:</strong> Drop the changes and go on.<br />
+              • <strong>Stay on Page:</strong> Stay so you can press Save first.
             </p>
           </div>
         )
@@ -165,7 +165,7 @@ export function PayrollDirtyProvider({ children }: { children: React.ReactNode }
         })
       } else {
         const ok = window.confirm(
-          `Aap ke paas ${count} unsaved changes hain. Agar aap page change karein ge toh unsaved edits zaya ho jayengi. Proceed karein?`
+          `You have ${count} unsaved changes. If you change the page, they will be lost. Continue?`
         )
         if (ok) {
           discardAll()

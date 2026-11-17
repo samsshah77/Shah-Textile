@@ -36,7 +36,7 @@ export const monthGenerationMethods = {
 
     const month = (targetMonth || '').trim()
     if (!/^\d{4}-\d{2}$/.test(month)) {
-      return { ok: false, message: 'Month format YYYY-MM chahiye.', staff: 0, contract: 0 }
+      return { ok: false, message: 'Month must be in YYYY-MM format.', staff: 0, contract: 0 }
     }
 
     // The server creates the month in one transaction (see /api/payroll/generate-month).
@@ -54,20 +54,20 @@ export const monthGenerationMethods = {
         this.notifyDataChanged(month)
         return {
           ok: true,
-          message: data.message || `${formatPayrollMonthLabel(month)} ban gaya.`,
+          message: data.message || `${formatPayrollMonthLabel(month)} created.`,
           staff: Number(data.staff) || 0,
           contract: Number(data.contract) || 0,
         }
       }
       return {
         ok: false,
-        message: String(data?.error || data?.message || `Generate nahi hua (${res.status}).`),
+        message: String(data?.error || data?.message || `Could not generate (${res.status}).`),
         staff: 0,
         contract: 0,
       }
     } catch (err) {
       console.error('[payroll] generate-month API error', err)
-      return { ok: false, message: 'Server se raabta nahi hua — internet check karke dobara karein.', staff: 0, contract: 0 }
+      return { ok: false, message: 'Could not reach the server — check the internet and try again.', staff: 0, contract: 0 }
     }
   },
 
@@ -85,10 +85,10 @@ export const monthGenerationMethods = {
     await hydratePayrollFromDb()
     const month = (targetMonth || '').trim()
     if (!/^\d{4}-\d{2}$/.test(month)) {
-      return { ok: false, message: 'Month format YYYY-MM chahiye.', weavers: 0, helpers: 0, contractors: 0 }
+      return { ok: false, message: 'Month must be in YYYY-MM format.', weavers: 0, helpers: 0, contractors: 0 }
     }
     if (fortnight !== '1-15' && fortnight !== '16-31') {
-      return { ok: false, message: 'Fortnight 1-15 ya 16-31 chahiye.', weavers: 0, helpers: 0, contractors: 0 }
+      return { ok: false, message: 'Fortnight must be 1-15 or 16-31.', weavers: 0, helpers: 0, contractors: 0 }
     }
 
     const allWeavers = this.readStore(STORAGE_KEYS.WEAVERS, INITIAL_WEAVERS_WAGES)
@@ -107,7 +107,7 @@ export const monthGenerationMethods = {
       await this.setActiveFortnightPeriodAsync(month, fortnight)
       return {
         ok: true,
-        message: `${formatPayrollMonthLabel(month)} (${fortnight}) pehle se maujood — active cycle set.`,
+        message: `${formatPayrollMonthLabel(month)} (${fortnight}) already exists — set as the active cycle.`,
         weavers: allWeavers.filter((r) => r.month === month && r.fortnight === fortnight).length,
         helpers: allHelpers.filter((r) => r.month === month && r.fortnight === fortnight).length,
         contractors: allContractors.filter((r) => r.month === month && r.fortnight === fortnight)
@@ -194,7 +194,7 @@ export const monthGenerationMethods = {
     if (newWeavers.length === 0 && newHelpers.length === 0 && newContractors.length === 0) {
       return {
         ok: false,
-        message: 'HR me koi active Weaver / Helper / Contractor nahi mila.',
+        message: 'No active Weaver / Helper / Contractor found in HR.',
         weavers: 0,
         helpers: 0,
         contractors: 0,
@@ -235,8 +235,8 @@ export const monthGenerationMethods = {
     return {
       ok: true,
       message: persisted
-        ? `${label}: ${newWeavers.length} Weavers + ${newHelpers.length} Helpers + ${newContractors.length} Contractors (zero attendance). Helper / Contractor / Net Payment / Synopsis isi cycle pe khulenge.`
-        : `${label} browser me save — DB write fail. Refresh se pehle dubara Generate mat dabao.`,
+        ? `${label}: ${newWeavers.length} Weavers + ${newHelpers.length} Helpers + ${newContractors.length} Contractors (zero attendance). Helper / Contractor / Net Payment / Synopsis will open on this cycle.`
+        : `${label} saved in the browser only — database save failed. Do not press Generate again before refreshing.`,
       weavers: newWeavers.length,
       helpers: newHelpers.length,
       contractors: newContractors.length,

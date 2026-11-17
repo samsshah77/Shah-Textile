@@ -30,7 +30,7 @@ function resolvePayrollPage(pathname: string, sp: URLSearchParams): string | nul
   if (pathname === '/payroll/profiles/new') return 'Register'
   if (pathname.startsWith('/payroll/profiles/')) return null // loaded async
   if (pathname === '/payroll/employees') return 'General Wages Register'
-  if (pathname === '/payroll/advances') return 'Advance (Peshgi)'
+  if (pathname === '/payroll/advances') return 'Advance'
   if (pathname === '/payroll/staff') return 'Staff Salary & OT'
   if (pathname === '/payroll/efficiency') return 'Efficiency'
   if (pathname === '/payroll/helpers') return 'Helpers'

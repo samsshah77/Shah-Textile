@@ -262,7 +262,7 @@ export function FloorEntryTable({
           setFeedbackMsg({ type: 'success', text: `Loom #${e.loomNumber} Part ${seg} deleted.` })
           showSuccessSoon({
             title: `Part ${seg} deleted`,
-            message: `Loom #${e.loomNumber}: "${label}" hata diya.`,
+            message: `Loom #${e.loomNumber}: "${label}" removed.`,
           })
         } else {
           showError({
@@ -591,7 +591,7 @@ export function FloorEntryTable({
                 type="button"
                 className="btn btn-sm btn-outline-secondary text-start w-100"
                 onClick={() => setFaultDialogEntry(e)}
-                title="Shift A / Shift B alag fault"
+                title="Separate fault for Shift A / Shift B"
               >
                 <span className="text-truncate d-inline-block w-100" style={{ maxWidth: '100%' }}>
                   {fabricFaultPreview(e) || (canEdit ? 'Shift A / B fault…' : '—')}

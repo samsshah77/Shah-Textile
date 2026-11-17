@@ -130,7 +130,7 @@ function DailyInwardContent() {
 
   const removeLine = async (row: Row) => {
     const last = row.bill.lines.length === 1
-    if (!window.confirm(last ? `Yeh bill (${row.bill.billNo || '-'}) ka aakhri item hai — poora bill delete ho jayega. Theek hai?` : `"${row.line.description || 'Item'}" delete karein?`)) return
+    if (!window.confirm(last ? `This is the last item of bill (${row.bill.billNo || '-'}) — the whole bill will be deleted. OK?` : `Delete "${row.line.description || 'Item'}"?`)) return
     const r = await save.run(() => accountsApi.deleteLine(row.bill.id, row.line.id, row.bill.version))
     if (!r) return void reload()
     if (r.bill) putBill(r.bill)
@@ -222,7 +222,7 @@ function DailyInwardContent() {
                 <span className="text-[11px] text-muted-foreground font-semibold">Machine:</span>
                 <select value={machine} onChange={(e) => setMachine(e.target.value)} className="bg-transparent text-xs font-bold cursor-pointer" aria-label="Machine filter">
                   <option value="*">All machines</option>
-                  <option value="">Machine nahi chuni</option>
+                  <option value="">No machine selected</option>
                   {MACHINE_OPTIONS.map((m) => (
                     <option key={m} value={m}>
                       {m === 'ALL' ? 'ALL (general)' : m}
@@ -406,7 +406,7 @@ function DailyInwardContent() {
                       <div className="flex flex-col items-center gap-2">
                         <Receipt className="size-8 text-slate-400" />
                         <p className="font-semibold text-sm">
-                          {book?.bills.length ? 'Is filter ke mutabiq koi item nahi.' : `${title} mein abhi koi bill nahi.`}
+                          {book?.bills.length ? 'No items match this filter.' : `No bills in ${title} yet.`}
                         </p>
                         {canEdit && !book?.bills.length && (
                           <button type="button" onClick={() => setEditor({})} className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0066cc] text-white cursor-pointer">
@@ -483,7 +483,7 @@ function DailyInwardContent() {
                             >
                               {!r.line.machine && (
                                 <option value="" className="bg-white text-slate-500">
-                                  chunein
+                                  select
                                 </option>
                               )}
                               {[...new Set([...MACHINE_OPTIONS, r.line.machine].filter(Boolean))].map((m) => (

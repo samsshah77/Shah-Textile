@@ -122,7 +122,7 @@ function CostStatementContent() {
   const L = (key: string, def: string, className?: string) =>
     editing ? (
       <input
-        aria-label={`Naam: ${def}`}
+        aria-label={`Name: ${def}`}
         value={draft?.labels?.[key] ?? def}
         onChange={(e) => setLabel(key, def, e.target.value)}
         className={cn('w-full max-w-md bg-amber-50 border border-amber-300 rounded px-2 py-0.5 font-sans text-slate-800', className)}
@@ -145,7 +145,7 @@ function CostStatementContent() {
   }
   const reset = async () => {
     if (!cs || !cs.inputsVersion) return
-    if (!window.confirm(`${monthLabel(month)} ki save ki hui manual values hata dein? Pichle saved mahine ki values wapas aa jayengi.`)) return
+    if (!window.confirm(`Remove the saved manual values of ${monthLabel(month)}? The values of the last saved month will come back.`)) return
     setBusy(true)
     try {
       setData(await accountsApi.resetCost(month, cs.inputsVersion))
@@ -194,8 +194,8 @@ function CostStatementContent() {
           disabled={i === 0}
           onClick={() => onMove(-1)}
           className="p-0.5 text-slate-500 hover:text-[#0066cc] disabled:opacity-25 cursor-pointer"
-          aria-label="Upar"
-          title="Upar"
+          aria-label="Move up"
+          title="Move up"
         >
           <ArrowUp className="size-3.5" />
         </button>
@@ -204,8 +204,8 @@ function CostStatementContent() {
           disabled={i === count - 1}
           onClick={() => onMove(1)}
           className="p-0.5 text-slate-500 hover:text-[#0066cc] disabled:opacity-25 cursor-pointer"
-          aria-label="Neeche"
-          title="Neeche"
+          aria-label="Move down"
+          title="Move down"
         >
           <ArrowDown className="size-3.5" />
         </button>
@@ -251,7 +251,7 @@ function CostStatementContent() {
     ? cs.sources.manualFrom === 'saved'
       ? 'Manual · saved'
       : cs.sources.manualFrom === 'previous-month'
-        ? `Manual · ${monthLabel(cs.sources.manualFromMonth || '')} se`
+        ? `Manual · from ${monthLabel(cs.sources.manualFromMonth || '')}`
         : 'Manual · not entered'
     : ''
 
@@ -280,7 +280,7 @@ function CostStatementContent() {
                   </button>
                 ))}
               {canEdit && cs?.inputsVersion ? (
-                <button type="button" disabled={busy} onClick={reset} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer" title="Is mahine ki saved manual values hata dein">
+                <button type="button" disabled={busy} onClick={reset} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer" title="Remove this month’s saved manual values">
                   <RotateCcw className="size-3.5" /> Reset
                 </button>
               ) : null}
@@ -300,8 +300,8 @@ function CostStatementContent() {
           <div className="erp-card p-6 sm:p-8 bg-white print:p-0 print:border-none print:shadow-none">
             {editing && (
               <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 print:hidden">
-                Peelay khaane badal sakte hain — har heading aur line ka naam bhi, aur ▲ ▼ se lines ki tarteeb. Salaries, contractors, purchases aur petty cash ki raqam
-                apni sheets se khud aati hai (contractor / party ke naam bhi wahin se). Badle hue naam aur tarteeb agle mahinon mein bhi rehte hain.
+                You can change the yellow boxes — every heading and line name too, and the order of lines with ▲ ▼. Salaries, contractors, purchases and petty cash amounts
+                come by themselves from their own sheets (contractor / party names too). Changed names and order also stay for the next months.
               </div>
             )}
             <div className="mb-5">
@@ -513,7 +513,7 @@ function CostStatementContent() {
                     ? num(draft?.monthlyProductionMeters ?? undefined, (v) => setField('monthlyProductionMeters', v), 'Monthly production meters')
                     : rs(cs.monthlyProductionMeters)}
                 </div>
-                {editing && <div className="text-[10px] text-slate-500">Khaali chhorein to production module ke meters lagenge.</div>}
+                {editing && <div className="text-[10px] text-slate-500">Leave empty to use the meters from the production module.</div>}
               </div>
               <div className="rounded-lg border border-slate-200 px-4 py-3">
                 <div className="text-[10px] uppercase font-bold text-slate-500">{L('t_perMeter', 'Per Meter Cost', 'normal-case')}</div>

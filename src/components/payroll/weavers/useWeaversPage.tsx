@@ -189,7 +189,7 @@ export function useWeaversPage() {
           <strong>
             {formatPayrollMonthLabel(monthToGenerate)} ({fnToGenerate})
           </strong>{' '}
-          generate hoga — Weavers, Helpers, Contractors isi cycle pe shift ho jayenge.
+          will be generated — Weavers, Helpers, Contractors will move to this cycle.
         </>
       ),
       confirmText: 'Generate',
@@ -338,7 +338,7 @@ export function useWeaversPage() {
   const handleDiscard = () => {
     askConfirm({
       title: 'Discard unsaved changes?',
-      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      message: 'Your unsaved edits will be undone. Continue?',
       confirmText: 'Discard',
       onConfirm: () => {
         setWeaversList(discardChanges())

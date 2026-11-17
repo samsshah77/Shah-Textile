@@ -41,7 +41,7 @@ export default function PayrollHydrate({ children }: { children?: ReactNode }) {
   if (state.status === 'error') {
     return (
       <div className="m-6 rounded-lg border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800" role="alert">
-        <p className="font-bold">Salary data load nahi hua.</p>
+        <p className="font-bold">Salary data could not load.</p>
         <p className="mt-1">{state.message}</p>
         <button
           type="button"
@@ -51,13 +51,13 @@ export default function PayrollHydrate({ children }: { children?: ReactNode }) {
             void hydratePayrollFromDb()
           }}
         >
-          Dobara koshish karein
+          Try again
         </button>
       </div>
     )
   }
 
   return (
-    <SectionLoader label="Salary data load ho raha hai…" minHeight={320} />
+    <SectionLoader label="Loading salary data…" minHeight={320} />
   )
 }

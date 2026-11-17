@@ -227,11 +227,11 @@ export default function DashboardPage() {
 
       {!loading && !hasSheet && (
         <div className="alert alert-light border py-2 mb-3 small" role="status">
-          Is date ki production sheet abhi enter nahi hui — zeros dikh rahe hain.
+          The production sheet for this date is not entered yet — showing zeros.
           {entryOk && (
             <>
               {' '}
-              Pehle <Link href="/floor/production">Production</Link> se data bharo.
+              First enter data from <Link href="/floor/production">Production</Link>.
             </>
           )}
         </div>
@@ -296,7 +296,7 @@ export default function DashboardPage() {
         <div className="col-lg-7">
           <div className="card h-100">
             <div className="card-header d-flex justify-content-between align-items-center">
-              <h3 className="card-title mb-0">Production — aakhri {CHART_DAYS} din</h3>
+              <h3 className="card-title mb-0">Production — last {CHART_DAYS} days</h3>
               {sheetOk && (
                 <Link href={sheetHref} className="small">
                   Production Sheet
@@ -313,7 +313,7 @@ export default function DashboardPage() {
                 </>
               ) : (
                 <p className="text-dark small mb-0">
-                  Abhi koi entered production day chart ke liye available nahi.
+                  No entered production day is available for the chart yet.
                 </p>
               )}
             </div>
@@ -354,8 +354,8 @@ export default function DashboardPage() {
             <strong>Sara Textile</strong> — 34 Rapier &amp; PU looms
           </p>
           <p className="text-dark mb-0 small">
-            Dashboard sirf floor production sheets se data leta hai (dummy history nahi). Date
-            calendar se koi bhi entered din dekho — default{' '}
+            The dashboard takes data only from the floor production sheets (no dummy history). Use the date
+            calendar to see any entered day — default{' '}
             <strong>{shortDay(productionYesterday)}</strong> (Yesterday).
           </p>
         </div>

@@ -666,7 +666,7 @@ export function YarnSupplyBoard({
                       type="button"
                       className="btn btn-sm btn-outline-success text-nowrap d-inline-flex align-items-center gap-1"
                       onClick={() => setShare({ title: `Yarn received — ${longDateFromYmd(shareDate)}`, text: receivedDayText(shareDate, list, longDateFromYmd) })}
-                      title="WhatsApp ya Email par bhejein"
+                      title="Send by WhatsApp or Email"
                     >
                       <i className="bi bi-whatsapp" />
                       <span>WhatsApp / Email ({verifiedOnShareDate})</span>
@@ -705,7 +705,7 @@ export function YarnSupplyBoard({
                       type="button"
                       className="btn btn-sm btn-outline-success text-nowrap d-inline-flex align-items-center gap-1"
                       onClick={() => setShare({ title: `Yarn received — ${longDateFromYmd(shareDate)}`, text: receivedDayText(shareDate, list, longDateFromYmd) })}
-                      title="WhatsApp ya Email par bhejein"
+                      title="Send by WhatsApp or Email"
                     >
                       <i className="bi bi-whatsapp" />
                       <span>WhatsApp / Email ({verifiedOnShareDate})</span>
@@ -962,7 +962,7 @@ export function YarnSupplyBoard({
                               <button
                                 type="button"
                                 className="btn btn-sm btn-outline-success py-0 px-2"
-                                title="WhatsApp ya Email par bhejein"
+                                title="Send by WhatsApp or Email"
                                 onClick={() => setShare({ title: `Yarn received — ${d.yarnType}`, text: yarnSupplyShareText(d) })}
                               >
                                 <i className="bi bi-whatsapp" />

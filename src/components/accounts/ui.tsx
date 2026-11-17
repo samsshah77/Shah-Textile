@@ -40,7 +40,7 @@ export function MonthPicker({
       <input
         type="month"
         aria-label="Pick another month"
-        title="Koi aur mahina"
+        title="Another month"
         value=""
         onChange={(e) => e.target.value && onChange(e.target.value)}
         className="w-5 bg-transparent text-transparent cursor-pointer"
@@ -63,8 +63,8 @@ export function LockControl({
   const toggle = async () => {
     const next = !lock.locked
     const msg = next
-      ? `${monthLabel(lock.month)} lock karein? Lock ke baad is mahine ka koi bill, petty cash ya cost statement nahi badlega.`
-      : `${monthLabel(lock.month)} unlock karein?`
+      ? `Lock ${monthLabel(lock.month)}? After locking, no bill, petty cash or cost statement of this month can change.`
+      : `Unlock ${monthLabel(lock.month)}?`
     if (!window.confirm(msg)) return
     setBusy(true)
     try {
@@ -183,6 +183,6 @@ export function LoadState({
 }) {
   if (error && !hasData) return <div className="alert alert-danger py-2 px-3 small">{error}</div>
   // No data yet (still loading, or waiting for the month list first): spinner in the page.
-  if (!hasData) return <SectionLoader label={loading ? 'Load ho raha hai…' : 'Khul raha hai…'} />
+  if (!hasData) return <SectionLoader label={loading ? 'Loading…' : 'Opening…'} />
   return <>{children}</>
 }

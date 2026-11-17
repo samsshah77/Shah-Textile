@@ -41,9 +41,9 @@ export function payrollHandler(fn: (ctx: Ctx) => Promise<unknown>, opts: { write
       // Administration → Permissions decides who may see / change Salary.
       const { access } = await accessFor(actor)
       if (!allows(access, 'payroll', 'view'))
-        return NextResponse.json({ ok: false, error: 'Salary dekhne ki ijazat nahi.' }, { status: 403 })
+        return NextResponse.json({ ok: false, error: 'You do not have permission to view Salary.' }, { status: 403 })
       if (opts.write && !allows(access, 'payroll', 'edit'))
-        return NextResponse.json({ ok: false, error: 'Salary mein tabdeeli ki ijazat nahi (view only).' }, { status: 403 })
+        return NextResponse.json({ ok: false, error: 'You do not have permission to change Salary (view only).' }, { status: 403 })
       await ensureSalaryDataReady()
       const data = await fn({ req, actor })
       return NextResponse.json({ ok: true, ...(data as object) })
@@ -51,7 +51,7 @@ export function payrollHandler(fn: (ctx: Ctx) => Promise<unknown>, opts: { write
       if (err instanceof PayrollError)
         return NextResponse.json({ ok: false, blocked: true, error: err.message, ...(err.extra || {}) }, { status: err.status })
       console.error('[payroll api]', err)
-      return NextResponse.json({ ok: false, error: 'Server error — dobara koshish karein.' }, { status: 500 })
+      return NextResponse.json({ ok: false, error: 'Server error — please try again.' }, { status: 500 })
     }
   }
 }
@@ -95,7 +95,7 @@ export async function applyFromBrowser(ctx: Ctx, requestId: string | null, cs: C
     kept: applied.kept,
     keptMonths: applied.keptMonths,
     lockedNote: applied.keptMonths.length
-      ? `Locked month (${applied.keptMonths.join(', ')}) ki rows nahi badli gayin — baqi save ho gaya.`
+      ? `Rows of the locked month (${applied.keptMonths.join(', ')}) were not changed — the rest was saved.`
       : undefined,
   }
   if (requestId) remember(requestId, body)

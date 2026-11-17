@@ -59,12 +59,12 @@ function PettyInflowCell({ month, fortnight, amount }: { month: string; fortnigh
       />
       <span className="text-[10px] font-normal text-slate-500 print:hidden">
         {typed == null ? (
-          <>Accounts › Petty Cash (Cash in) se</>
+          <>From Accounts › Petty Cash (Cash in)</>
         ) : (
           <>
-            Likha hua · Accounts mein {formatNumber(fromAccounts, 0)}{' '}
+            Typed by hand · Accounts has {formatNumber(fromAccounts, 0)}{' '}
             <button type="button" className="text-[#0066cc] underline cursor-pointer" onClick={() => payrollService.setPettyCashInflow(month, fortnight, null)}>
-              Accounts wala lo
+              Use the Accounts amount
             </button>
           </>
         )}
@@ -365,7 +365,7 @@ function DisbursementSynopsisContent() {
             <div className="p-3 border border-slate-200 rounded-md bg-white">
               <div className="text-[11px] text-slate-500 font-semibold uppercase">Staff Salary Cheque (bank):</div>
               <div className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(grand.staffChequeAmount)}</div>
-              <div className="text-[10px] text-slate-500 font-medium mt-0.5">Staff ko seedha cheque — 2nd half cheque se alag</div>
+              <div className="text-[10px] text-slate-500 font-medium mt-0.5">Direct cheque to staff — separate from the 2nd half cheque</div>
             </div>
             <div className="bg-blue-50/60 p-3 rounded-md border border-blue-200">
               <div className="text-[11px] text-[#0066cc] font-semibold uppercase">Monthly Total Salary:</div>

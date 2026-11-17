@@ -9,7 +9,7 @@ import { ROLE_ACCESS } from '@/server/roleAccess'
 export const runtime = 'nodejs'
 
 const schema = z.object({
-  label: z.string().trim().min(2, 'Naam kam se kam 2 harf').max(60),
+  label: z.string().trim().min(2, 'Name must be at least 2 letters').max(60),
   department: z.string().trim().max(60).optional().default(''),
   access: z.enum(['fault', 'view']),
 })
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : ''
     console.error('[roles/simple] failed', err)
     const reason = err instanceof Error ? err.message.split('\n').filter(Boolean).pop()?.slice(0, 160) : ''
-    return NextResponse.json({ error: `Role nahi bana${code ? ` (${code})` : ''}${reason ? `: ${reason}` : ''}` }, { status: 500 })
+    return NextResponse.json({ error: `Role not created${code ? ` (${code})` : ''}${reason ? `: ${reason}` : ''}` }, { status: 500 })
   }
 }
 
@@ -44,10 +44,10 @@ async function createRole(req: NextRequest) {
   const admin = await requireAdminUser(req)
   if (!admin) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   const parsed = schema.safeParse(await req.json().catch(() => null))
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Naam aur ijazat chunein' }, { status: 400 })
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Select a name and permissions' }, { status: 400 })
   const { label, department, access } = parsed.data
   if (await prisma.role.findFirst({ where: { label: { equals: label, mode: 'insensitive' } }, select: { id: true } }))
-    return NextResponse.json({ error: 'Is naam ka role pehle se hai' }, { status: 409 })
+    return NextResponse.json({ error: 'A role with this name already exists' }, { status: 409 })
 
   const preset = ROLE_ACCESS[access]
   // Ready-made module grants, where the database has the permission catalog tables. The live
@@ -67,7 +67,7 @@ async function createRole(req: NextRequest) {
   try {
     role = await prisma.$transaction(async (tx) => {
       const created = await tx.role.create({
-        data: { key, label, department: department || null, description: 'Permissions page se set', canSignup: false },
+        data: { key, label, department: department || null, description: 'Set from the Permissions page', canSignup: false },
         select: { id: true, key: true, label: true, department: true, description: true },
       })
       for (const m of modules)
@@ -77,11 +77,11 @@ async function createRole(req: NextRequest) {
     })
   } catch (err) {
     const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : ''
-    if (code === 'P2002') return NextResponse.json({ error: 'Is naam ka role pehle se hai — doosra naam rakhein' }, { status: 409 })
+    if (code === 'P2002') return NextResponse.json({ error: 'A role with this name already exists — use another name' }, { status: 409 })
     console.error('[roles/simple] create failed', err)
     // Admin-only screen: show the database's reason (first line, no data values) so it can be fixed.
     const reason = err instanceof Error ? err.message.split('\n').filter(Boolean).pop()?.slice(0, 160) : ''
-    return NextResponse.json({ error: `Role nahi bana${code ? ` (${code})` : ''}${reason ? `: ${reason}` : ''}` }, { status: 500 })
+    return NextResponse.json({ error: `Role not created${code ? ` (${code})` : ''}${reason ? `: ${reason}` : ''}` }, { status: 500 })
   }
   // The role is made; a failed log line must not turn that into an error.
   await writeAudit({ req, actor: admin, module: 'auth', action: 'role.create', entityKey: 'roles', entityId: role.id, changes: { label, access: preset.label } })

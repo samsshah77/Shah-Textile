@@ -30,7 +30,7 @@ export function PayrollUnsavedBanner({
           <strong>
             {dirtyCount} unsaved change{dirtyCount > 1 ? 's' : ''}
           </strong>{' '}
-          in this sheet (amber highlighted cells). Save dabayein taake database me update ho.
+          in this sheet (amber highlighted cells). Press Save to update the database.
         </span>
       </div>
 

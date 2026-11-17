@@ -73,7 +73,7 @@ export function SignatureBox({
       ref={ref}
       onPointerUp={commit}
       onMouseUp={commit}
-      title="Box ka kona kheench kar oonchai badlein (sab boxes saath badlenge)"
+      title="Drag the box corner to change its height (all boxes change together)"
       style={{ height, ...(width ? ({ '--sig-w': `${width - 10}px` } as CSSProperties) : {}) }}
       className={cn(
         'group/sig relative w-full resize-y overflow-hidden rounded border border-slate-300 print:resize-none print:border-slate-500',

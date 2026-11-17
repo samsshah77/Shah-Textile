@@ -172,7 +172,7 @@ export function BeamHistoryDialog({
       `Remove this run of beam ${beamNo}?`,
       `Loom ${r.loom} · Mounted ${longDateFromYmd(r.from)} · Removed ${longDateFromYmd(r.to!)}. Only remove a run created by mistake. Production (Daily Entry) does not change.`,
       'Yes, remove',
-      () => void save({ action: 'remove', beamNo, firstId: r.firstId!, oldTo: r.to! }, 'Run hata diya.')
+      () => void save({ action: 'remove', beamNo, firstId: r.firstId!, oldTo: r.to! }, 'Run removed.')
     )
 
   const shortDays = (days: string[]) =>

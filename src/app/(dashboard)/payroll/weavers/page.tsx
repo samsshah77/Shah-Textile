@@ -31,10 +31,10 @@ function WeaversPayrollContent() {
         <PageHeader
           title={
             activeTab === 'overtime'
-              ? `Weawers OT ${activeFortnight}`
+              ? `Weavers OT ${activeFortnight}`
               : activeTab === 'net-payment'
-                ? `Net Payment Weawers ${activeFortnight}`
-                : `Weawers Wages ${activeFortnight}`
+                ? `Net Payment Weavers ${activeFortnight}`
+                : `Weavers Wages ${activeFortnight}`
           }
           showTitle={false}
           breadcrumbs={[
@@ -43,10 +43,10 @@ function WeaversPayrollContent() {
             {
               label:
                 activeTab === 'overtime'
-                  ? `Weawers OT ${activeFortnight}`
+                  ? `Weavers OT ${activeFortnight}`
                   : activeTab === 'net-payment'
-                    ? `Net Payment Weawers ${activeFortnight}`
-                    : `Weawers Wages ${activeFortnight}`,
+                    ? `Net Payment Weavers ${activeFortnight}`
+                    : `Weavers Wages ${activeFortnight}`,
             },
           ]}
           actions={
@@ -167,7 +167,7 @@ function WeaversPayrollContent() {
               </button>
               <h3 className="text-[15px] font-semibold text-slate-900 pr-8">Generate fortnight</h3>
               <p className="mt-1.5 text-[13px] text-slate-600">
-                Month aur half select karo, phir confirm karo.
+                Select the month and half, then confirm.
               </p>
               <div className="mt-4 space-y-3">
                 <label className="block space-y-1.5">

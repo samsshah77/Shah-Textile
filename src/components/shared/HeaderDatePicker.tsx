@@ -53,7 +53,7 @@ export function HeaderDatePicker({ picker, time }: { picker: FloorDatePicker; ti
           type="button"
           className="sara-back-today me-2"
           onClick={() => onChange(today)}
-          title={`Aaj (${shortDate(today)}) pe wapis`}
+          title={`Back to today (${shortDate(today)})`}
         >
           <span aria-hidden="true">←</span>
           <span className="d-none d-sm-inline">Back to {shortDate(today)}</span>
@@ -66,12 +66,12 @@ export function HeaderDatePicker({ picker, time }: { picker: FloorDatePicker; ti
           className="sara-clock__nav"
           onClick={() => shift(-1)}
           disabled={date <= PRODUCTION_START}
-          aria-label="Pichhla din"
+          aria-label="Previous day"
         >
           <span aria-hidden="true">‹</span>
         </button>
         <span className="sara-clock__day">
-          <button type="button" className="sara-clock__label" onClick={openCalendar} title="Calendar kholein">
+          <button type="button" className="sara-clock__label" onClick={openCalendar} title="Open calendar">
             <i className="bi bi-calendar3" aria-hidden="true" />
             {isToday ? (
               <>
@@ -91,7 +91,7 @@ export function HeaderDatePicker({ picker, time }: { picker: FloorDatePicker; ti
             max={today}
             onChange={(e) => e.target.value && onChange(e.target.value)}
             tabIndex={-1}
-            aria-label="Tareekh"
+            aria-label="Date"
           />
         </span>
         <button
@@ -99,7 +99,7 @@ export function HeaderDatePicker({ picker, time }: { picker: FloorDatePicker; ti
           className="sara-clock__nav"
           onClick={() => shift(1)}
           disabled={date >= today}
-          aria-label="Agla din"
+          aria-label="Next day"
         >
           <span aria-hidden="true">›</span>
         </button>

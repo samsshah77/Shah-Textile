@@ -63,7 +63,7 @@ function PettyCashContent() {
     void reload()
   }
   const remove = async (e: PettyCashEntry) => {
-    if (!window.confirm(`"${e.description}" delete karein?`)) return
+    if (!window.confirm(`Delete "${e.description}"?`)) return
     await save.run(() => accountsApi.deletePetty(e.id, e.version))
     void reload()
   }

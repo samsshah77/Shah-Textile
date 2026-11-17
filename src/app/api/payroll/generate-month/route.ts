@@ -24,7 +24,7 @@ export const POST = payrollHandler(
   async (ctx) => {
     const body = (await ctx.req.json().catch(() => ({}))) as { month?: unknown }
     const month = String(body?.month || '').trim()
-    if (!/^\d{4}-\d{2}$/.test(month)) throw new PayrollError(400, 'Month format YYYY-MM chahiye.')
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new PayrollError(400, 'Month must be in YYYY-MM format.')
 
     // Safety copy of all salary tables before a month is generated (never blocks).
     try {
@@ -39,7 +39,7 @@ export const POST = payrollHandler(
       const state = await loadPayrollState(db)
       const meta = state.store[META_SHEET] as { monthLocks?: unknown }
       if (lockedMonths(meta?.monthLocks).has(month))
-        throw new PayrollError(423, `${month} locked hai — generate se pehle unlock karein.`)
+        throw new PayrollError(423, `${month} is locked — unlock it before generating.`)
       const result = applySalariedMonthGenerateToStore(structuredClone(state.store), month)
       if (!result.ok) throw new PayrollError(400, result.message, { staff: 0, contract: 0 })
       const cs = mergeChangeSets(

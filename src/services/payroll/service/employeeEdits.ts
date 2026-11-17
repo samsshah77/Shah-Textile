@@ -208,7 +208,7 @@ export const employeeEditMethods = {
     try {
       window.dispatchEvent(
         new CustomEvent('payroll:save-problem', {
-          detail: { status: 200, message: unique.slice(0, 4).join(' ') + (unique.length > 4 ? ` (+${unique.length - 4} aur)` : '') },
+          detail: { status: 200, message: unique.slice(0, 4).join(' ') + (unique.length > 4 ? ` (+${unique.length - 4} more)` : '') },
         })
       )
     } catch {
@@ -294,7 +294,7 @@ export const employeeEditMethods = {
     const target = list.find((e) => e.id === id)
     if (!target) return
     if ((target.status || 'Active') !== 'Resigned') {
-      throw new Error('Sirf Resigned profile delete ho sakti hai. Pehle Resign karein.')
+      throw new Error('Only a Resigned profile can be deleted. Mark it Resign first.')
     }
     rememberDeletedEmployee(target)
     const remaining = list.filter((e) => e.id !== id)
@@ -310,7 +310,7 @@ export const employeeEditMethods = {
     const target = list.find((e) => e.id === id)
     if (!target) return
     if ((target.status || 'Active') !== 'Resigned') {
-      throw new Error('Sirf Resigned profile delete ho sakti hai. Pehle Resign karein.')
+      throw new Error('Only a Resigned profile can be deleted. Mark it Resign first.')
     }
     rememberDeletedEmployee(target)
     const remaining = list.filter((e) => e.id !== id)

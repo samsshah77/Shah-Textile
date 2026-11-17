@@ -243,7 +243,7 @@ export function QualityBeamsCard({
                         '—'
                       ) : r.ended ? (
                         <span className={rest > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold'}>
-                          {rest > 0 ? `${formatNumber(rest, 0)} zaya` : `${formatNumber(-rest, 0)} zyada bana`}
+                          {rest > 0 ? `${formatNumber(rest, 0)} wasted` : `${formatNumber(-rest, 0)} extra made`}
                         </span>
                       ) : (
                         <span className="text-secondary">{formatNumber(rest, 0)} left</span>

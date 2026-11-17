@@ -315,7 +315,7 @@ describe('One name, two people', () => {
         { id: 'c', month: '2026-09', fortnight: '1-15', employeeId: 'emp-9', name: 'Basit (Electronics)' },
       ],
     })
-    expect(problems.filter((p) => p.kind === 'duplicate').map((p) => p.detail)).toEqual(['2026-09 month end mein ye shakhs do dafa hai.'])
+    expect(problems.filter((p) => p.kind === 'duplicate').map((p) => p.detail)).toEqual(['This person appears twice in 2026-09 month end.'])
   })
 })
 

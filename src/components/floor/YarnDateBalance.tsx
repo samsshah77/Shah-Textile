@@ -73,9 +73,9 @@ export function YarnDateBalance({
             <tr>
               <th>Yarn</th>
               <th className="text-end">Opening stock ({u})</th>
-              <th className="text-end text-success">Aya ({u})</th>
+              <th className="text-end text-success">In ({u})</th>
               <th className="text-end">Bags</th>
-              <th className="text-end text-danger">Gaya ({u})</th>
+              <th className="text-end text-danger">Out ({u})</th>
               <th className="text-end">Closing stock ({u})</th>
             </tr>
           </thead>

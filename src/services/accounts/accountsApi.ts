@@ -55,7 +55,7 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   } catch {
-    const msg = 'Server se raabta nahi hua — internet check karein, phir dobara karein.'
+    const msg = 'Could not reach the server — check the internet, then try again.'
     if (method !== 'GET') announce(0, msg)
     throw new AccountsApiError(0, msg)
   }

@@ -265,7 +265,7 @@ export function BeamEndedHistory({
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') e.currentTarget.blur()
                           }}
-                          aria-label={`Beam ${r.beamNo} utra date`}
+                          aria-label={`Beam ${r.beamNo} end date`}
                           title="Change the Removed date"
                         />
                       ) : (
@@ -281,7 +281,7 @@ export function BeamEndedHistory({
                         '—'
                       ) : (
                         <span className={rest > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold'}>
-                          {rest > 0 ? formatNumber(rest, 0) : `${formatNumber(-rest, 0)} zyada bana`}
+                          {rest > 0 ? formatNumber(rest, 0) : `${formatNumber(-rest, 0)} extra made`}
                         </span>
                       )}
                     </td>

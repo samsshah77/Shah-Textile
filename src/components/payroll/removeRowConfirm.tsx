@@ -9,33 +9,33 @@ export function removeRowConfirm(name: string, table: string, opts: { comesBack?
   const message: ReactNode = (
     <div className="space-y-2 text-xs text-slate-600 text-left">
       <p>
-        <strong>{name}</strong> ki ye row sirf <strong>{table}</strong> se hat jayegi.
+        This row of <strong>{name}</strong> will be removed only from <strong>{table}</strong>.
       </p>
       <div className="rounded-md bg-sky-50 p-2.5 border border-sky-200 text-sky-900 text-[11px] leading-relaxed">
-        Profile aur doosre mahinon / fortnights ka data waisa hi rahega. Agar is shakhs ka kaam khatam ho
-        gaya hai to profile mein <strong>Resign / Left date</strong> daalein, taake agle mahine ki sheet mein na aaye.
+        The profile and the data of other months / fortnights stay the same. If this person has left, enter a{' '}
+        <strong>Resign / Left date</strong> in the profile, so they do not come on next month’s sheet.
       </div>
       {opts.staysOff && (
         <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-          Save ke baad ye row is mahine ki sheet par wapas nahi aayegi. Agle mahine profile ke hisab se phir aayegi.
-          Wapas chahiye ho to nayi row add karke wohi naam likh dein.
+          After saving, this row will not come back on this month’s sheet. Next month it comes again from the profile.
+          If you need it back, add a new row and type the same name.
         </div>
       )}
       {opts.comesBack && (
         <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-          Agar is mahine is shakhs ki koi aur row nahi bachti aur profile active hai, to page dobara kholne par
-          row profile se wapas aa jayegi.
+          If this person has no other row this month and the profile is active, the row will come back from the
+          profile when the page is opened again.
         </div>
       )}
     </div>
   )
   return {
-    title: 'Table se row hatayen?',
+    title: 'Remove row from table?',
     danger: true,
-    confirmText: 'Haan, row hatao',
+    confirmText: 'Yes, remove row',
     cancelText: 'Cancel',
     message,
   }
 }
 
-export const REMOVE_ROW_TITLE = 'Is table se row hatayen (profile nahi hatega)'
+export const REMOVE_ROW_TITLE = 'Remove row from this table (the profile is not removed)'

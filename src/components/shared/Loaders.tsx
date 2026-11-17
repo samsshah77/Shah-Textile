@@ -13,7 +13,7 @@ export function Spinner({ size = 'md', className = '' }: { size?: 'sm' | 'md' | 
  * the middle of the space the content will take — not a bare line of text in a corner.
  */
 export function SectionLoader({
-  label = 'Load ho raha hai…',
+  label = 'Loading…',
   minHeight = 220,
   compact = false,
 }: {
@@ -34,7 +34,7 @@ export function SectionLoader({
 }
 
 /** Small "still updating" chip next to a heading, while data that is already shown reloads. */
-export function LoadingChip({ label = 'Load ho raha hai…' }: { label?: string }) {
+export function LoadingChip({ label = 'Loading…' }: { label?: string }) {
   return (
     <span className="sara-loading-chip" aria-busy="true">
       <Spinner size="sm" />
@@ -45,8 +45,8 @@ export function LoadingChip({ label = 'Load ho raha hai…' }: { label?: string 
 
 /**
  * In the page area (between header and footer), while the address changes:
- * - another page opening → the page area dims and a big spinner card "Page khul raha hai…";
- * - same page, other tab / filter → a small "Tab load ho raha hai…" pill at the top, page stays usable to read.
+ * - another page opening → the page area dims and a big spinner card "Opening page…";
+ * - same page, other tab / filter → a small "Loading tab…" pill at the top, page stays usable to read.
  * The thin blue bar at the very top shows for both.
  */
 export function RouteLoader() {
@@ -57,7 +57,7 @@ export function RouteLoader() {
       <div className="sara-route-loader sara-route-loader--tab" aria-live="polite">
         <div className="sara-route-loader__pill">
           <Spinner size="sm" />
-          Tab load ho raha hai…
+          Loading tab…
         </div>
       </div>
     )
@@ -66,7 +66,7 @@ export function RouteLoader() {
     <div className="sara-route-loader sara-route-loader--page" aria-live="polite">
       <div className="sara-route-loader__card">
         <Spinner size="lg" />
-        <div className="sara-route-loader__title">Page khul raha hai…</div>
+        <div className="sara-route-loader__title">Opening page…</div>
       </div>
     </div>
   )

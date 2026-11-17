@@ -20,7 +20,7 @@ type Row = {
 type Data = { rows: Row[]; total: number; page: number; pageSize: number; actors: string[] }
 
 const MODULES: Array<[string, string]> = [
-  ['', 'Sab'],
+  ['', 'All'],
   ['payroll', 'Salary'],
   ['accounts', 'Accounts'],
   ['floor', 'Production'],
@@ -43,9 +43,9 @@ function summary(changes: unknown): string {
   const c = changes as Record<string, unknown>
   if (c.kind === 'rows') {
     const parts = []
-    if (Array.isArray(c.added) && c.added.length) parts.push(`${c.added.length} naye`)
-    if (Array.isArray(c.changed) && c.changed.length) parts.push(`${c.changed.length} badle`)
-    if (Array.isArray(c.removed) && c.removed.length) parts.push(`${c.removed.length} hataye`)
+    if (Array.isArray(c.added) && c.added.length) parts.push(`${c.added.length} added`)
+    if (Array.isArray(c.changed) && c.changed.length) parts.push(`${c.changed.length} changed`)
+    if (Array.isArray(c.removed) && c.removed.length) parts.push(`${c.removed.length} removed`)
     return parts.join(' · ')
   }
   if (c.kind === 'object' && c.fields && typeof c.fields === 'object') return `Badla: ${Object.keys(c.fields).slice(0, 6).join(', ')}`
@@ -68,11 +68,11 @@ export default function AdminAuditPage() {
     try {
       const res = await fetch(`/api/admin/audit?${sp}`, { credentials: 'same-origin', cache: 'no-store' })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Load nahi hua')
+      if (!res.ok) throw new Error(json.error || 'Could not load')
       setData(json)
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Load nahi hua')
+      setError(e instanceof Error ? e.message : 'Could not load')
     }
   }, [filters, page])
 
@@ -95,7 +95,7 @@ export default function AdminAuditPage() {
       <div className="card shadow-sm mb-3">
         <div className="card-body p-2 row g-2 align-items-end">
           <div className="col-6 col-md-2">
-            <label className="form-label small mb-1" htmlFor="au-mod">Hissa</label>
+            <label className="form-label small mb-1" htmlFor="au-mod">Module</label>
             <select id="au-mod" className="form-select form-select-sm" value={filters.module} onChange={(e) => set('module', e.target.value)}>
               {MODULES.map(([v, l]) => (
                 <option key={v} value={v}>
@@ -105,9 +105,9 @@ export default function AdminAuditPage() {
             </select>
           </div>
           <div className="col-6 col-md-2">
-            <label className="form-label small mb-1" htmlFor="au-actor">Kis ne</label>
+            <label className="form-label small mb-1" htmlFor="au-actor">By whom</label>
             <select id="au-actor" className="form-select form-select-sm" value={filters.actor} onChange={(e) => set('actor', e.target.value)}>
-              <option value="">Sab</option>
+              <option value="">All</option>
               {(data?.actors || []).map((a) => (
                 <option key={a} value={a}>
                   {a}
@@ -116,16 +116,16 @@ export default function AdminAuditPage() {
             </select>
           </div>
           <div className="col-6 col-md-2">
-            <label className="form-label small mb-1" htmlFor="au-from">Se</label>
+            <label className="form-label small mb-1" htmlFor="au-from">From</label>
             <input id="au-from" type="date" className="form-control form-control-sm" value={filters.from} onChange={(e) => set('from', e.target.value)} />
           </div>
           <div className="col-6 col-md-2">
-            <label className="form-label small mb-1" htmlFor="au-to">Tak</label>
+            <label className="form-label small mb-1" htmlFor="au-to">To</label>
             <input id="au-to" type="date" className="form-control form-control-sm" value={filters.to} onChange={(e) => set('to', e.target.value)} />
           </div>
           <div className="col-12 col-md-4">
-            <label className="form-label small mb-1" htmlFor="au-q">Dhoondein</label>
-            <input id="au-q" className="form-control form-control-sm" placeholder="bill, salary, loom, naam…" value={filters.q} onChange={(e) => set('q', e.target.value)} />
+            <label className="form-label small mb-1" htmlFor="au-q">Search</label>
+            <input id="au-q" className="form-control form-control-sm" placeholder="bill, salary, loom, name…" value={filters.q} onChange={(e) => set('q', e.target.value)} />
           </div>
         </div>
       </div>
@@ -140,18 +140,18 @@ export default function AdminAuditPage() {
             <table className="table table-sm small align-middle mb-0">
               <thead className="table-light">
                 <tr>
-                  <th style={{ width: 130 }}>Kab</th>
-                  <th style={{ width: 130 }}>Kis ne</th>
-                  <th style={{ width: 110 }}>Hissa</th>
-                  <th>Kya</th>
-                  <th>Tafseel</th>
+                  <th style={{ width: 130 }}>When</th>
+                  <th style={{ width: 130 }}>By whom</th>
+                  <th style={{ width: 110 }}>Module</th>
+                  <th>What</th>
+                  <th>Details</th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="text-center text-secondary py-4">
-                      Koi entry nahi.
+                      No entries.
                     </td>
                   </tr>
                 )}

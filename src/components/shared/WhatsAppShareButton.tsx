@@ -28,7 +28,7 @@ export function WhatsAppShareButton({
         type="button"
         className={`btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1.5 d-print-none ${className}`}
         onClick={() => setText(typeof message === 'function' ? message() : message)}
-        title="WhatsApp ya Email par bhejein"
+        title="Send by WhatsApp or Email"
       >
         <i className="bi bi-whatsapp" />
         <span>WhatsApp / Email</span>

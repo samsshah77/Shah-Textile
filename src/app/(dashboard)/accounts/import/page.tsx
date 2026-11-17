@@ -17,7 +17,7 @@ const BADGE: Record<string, string> = {
   exists: 'bg-slate-200 text-slate-700',
   differs: 'bg-amber-100 text-amber-800',
 }
-const LABEL: Record<string, string> = { new: 'Add hoga', exists: 'Pehle se hai', differs: 'Mukhtalif — add nahi hoga' }
+const LABEL: Record<string, string> = { new: 'Will be added', exists: 'Already there', differs: 'Different — will not be added' }
 
 /**
  * One-time import of a month kept in Excel (Daily Expense: bills + petty cash).
@@ -36,8 +36,8 @@ function MonthImport() {
     const t = data.totals
     if (
       !window.confirm(
-        `${monthLabel(month)}: ${t.billsToAdd} bills (${rs(t.amountToAdd)}) aur ${t.pettyToAdd} petty cash entries add hongi. ` +
-          'ERP mein jo pehle se hai wo waisa hi rahega. Import karein?'
+        `${monthLabel(month)}: ${t.billsToAdd} bills (${rs(t.amountToAdd)}) and ${t.pettyToAdd} petty cash entries will be added. ` +
+          'What is already in the ERP stays as it is. Import?'
       )
     )
       return
@@ -47,7 +47,7 @@ function MonthImport() {
       setResult(await accountsApi.monthImport(month))
       await reload()
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : 'Import nahi hua.')
+      setFailed(e instanceof Error ? e.message : 'Import failed.')
     } finally {
       setBusy(false)
     }
@@ -58,7 +58,7 @@ function MonthImport() {
     <div className="space-y-4">
       <PageHeader
         title={`Import — ${monthLabel(month)}`}
-        subtitle="Excel ka mahina ERP mein: pehle dekhein kya add hoga. Sirf jo ERP mein nahi wo add hota hai — kuch badla ya delete nahi hota."
+        subtitle="Excel month into the ERP: first see what will be added. Only what is not in the ERP is added — nothing is changed or deleted."
       />
       <LoadState loading={loading} error={error} hasData={Boolean(data)}>
         {data && (
@@ -68,9 +68,9 @@ function MonthImport() {
                 File: <b>{data.source}</b>
               </div>
               {data.imported && (
-                <div className="font-bold text-emerald-700">Ye import {data.imported.at} ko ho chuka hai — dobara nahi hoga.</div>
+                <div className="font-bold text-emerald-700">This import was done on {data.imported.at} — it will not run again.</div>
               )}
-              {data.locked && <div className="font-bold text-rose-700">{monthLabel(month)} locked hai — import se pehle unlock karna hoga.</div>}
+              {data.locked && <div className="font-bold text-rose-700">{monthLabel(month)} is locked — unlock it before importing.</div>}
               {data.warnings.map((w) => (
                 <div key={w} className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">
                   {w}
@@ -81,13 +81,13 @@ function MonthImport() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {(
                 [
-                  ['File ke bills', rs(data.totals.fileBills)],
-                  ['ERP mein abhi (is mahine)', rs(data.totals.erpBillsBefore)],
-                  [`Add honge: ${data.totals.billsToAdd} bills / ${data.totals.linesToAdd} lines`, rs(data.totals.amountToAdd)],
-                  ['ERP mein import ke baad', rs(data.totals.erpBillsAfter)],
-                  ['Petty: file ka b/f', data.totals.pettyOpeningFile == null ? '-' : rs(data.totals.pettyOpeningFile)],
-                  ['Petty: ERP ka b/f', rs(data.totals.pettyOpeningErp)],
-                  [`Petty entries add hongi`, String(data.totals.pettyToAdd)],
+                  ['Bills in file', rs(data.totals.fileBills)],
+                  ['In ERP now (this month)', rs(data.totals.erpBillsBefore)],
+                  [`Will be added: ${data.totals.billsToAdd} bills / ${data.totals.linesToAdd} lines`, rs(data.totals.amountToAdd)],
+                  ['In ERP after import', rs(data.totals.erpBillsAfter)],
+                  ['Petty: file b/f', data.totals.pettyOpeningFile == null ? '-' : rs(data.totals.pettyOpeningFile)],
+                  ['Petty: ERP b/f', rs(data.totals.pettyOpeningErp)],
+                  [`Petty entries to add`, String(data.totals.pettyToAdd)],
                   [
                     `Petty closing: file ${data.totals.pettyClosingFile == null ? '-' : rs(data.totals.pettyClosingFile)}`,
                     `ERP ${rs(data.totals.pettyClosingErpAfter)}`,
@@ -103,13 +103,13 @@ function MonthImport() {
 
             {data.newParties.length > 0 && (
               <div className="erp-card p-3 text-xs">
-                Nayi parties banengi (Trader ke taur par; baad mein Traders page se badal sakte hain): <b>{data.newParties.join(', ')}</b>
+                New parties will be created (as Trader; you can change this later on the Traders page): <b>{data.newParties.join(', ')}</b>
               </div>
             )}
 
             {result && (
               <div className="erp-card border-emerald-300 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
-                Import ho gaya: {result.bills} bills ({result.lines} lines, {rs(result.amount)}) aur {result.petty} petty cash entries.{' '}
+                Imported: {result.bills} bills ({result.lines} lines, {rs(result.amount)}) and {result.petty} petty cash entries.{' '}
                 <Link className="underline" href={`/accounts/inventory-inward?month=${month}`}>
                   Daily Inward
                 </Link>{' '}
@@ -128,7 +128,7 @@ function MonthImport() {
                 onClick={run}
                 className="erp-btn-primary cursor-pointer disabled:opacity-50"
               >
-                {busy ? 'Import ho raha hai…' : `Import karein (${data.totals.billsToAdd} bills, ${data.totals.pettyToAdd} petty)`}
+                {busy ? 'Importing…' : `Import (${data.totals.billsToAdd} bills, ${data.totals.pettyToAdd} petty)`}
               </button>
             )}
 
@@ -153,7 +153,7 @@ function MonthImport() {
                       <td className={cell}>
                         {b.party.name}
                         {b.party.name !== b.partyName && <span className="text-slate-500"> (file: {b.partyName})</span>}
-                        {b.party.isNew && <span className="ml-1 rounded bg-sky-100 px-1 text-[10px] font-bold text-sky-800">nayi</span>}
+                        {b.party.isNew && <span className="ml-1 rounded bg-sky-100 px-1 text-[10px] font-bold text-sky-800">new</span>}
                       </td>
                       <td className={cell}>
                         {b.lines.map((l) => `${l.description} ${l.quantity}×${l.rate}`).join(', ')}
@@ -171,7 +171,7 @@ function MonthImport() {
 
             {data.extraInErp.length > 0 && (
               <div className="erp-card overflow-x-auto">
-                <div className="px-3 py-2 text-xs font-black uppercase">ERP mein hain, file mein nahi (koi tabdeeli nahi hogi)</div>
+                <div className="px-3 py-2 text-xs font-black uppercase">In ERP, not in file (nothing will change)</div>
                 <table className="w-full border-collapse text-xs">
                   <tbody>
                     {data.extraInErp.map((b, i) => (
@@ -188,11 +188,11 @@ function MonthImport() {
             )}
 
             <div className="erp-card overflow-x-auto">
-              <div className="px-3 py-2 text-xs font-black uppercase">Petty cash (file; Balance b/f ERP khud laata hai)</div>
+              <div className="px-3 py-2 text-xs font-black uppercase">Petty cash (file; the ERP brings Balance b/f by itself)</div>
               <table className="w-full min-w-[800px] border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-[10px] uppercase">
-                    {['Date', 'Description', 'Dr (aaya)', 'Cr (gaya)', 'Status'].map((h) => (
+                    {['Date', 'Description', 'Dr (in)', 'Cr (out)', 'Status'].map((h) => (
                       <th key={h} className={cn(cell, 'text-left')}>
                         {h}
                       </th>

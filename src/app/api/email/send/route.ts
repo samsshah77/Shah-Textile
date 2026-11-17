@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   if (!underLimit(user.id)) {
-    return NextResponse.json({ error: 'Ek ghante me bohat zyada emails — thori der baad bhejein.' }, { status: 429 })
+    return NextResponse.json({ error: 'Too many emails in one hour — send a little later.' }, { status: 429 })
   }
 
   const body = (await request.json().catch(() => null)) as {
@@ -52,26 +52,26 @@ export async function POST(request: NextRequest) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (recipients.length === 0) {
     return NextResponse.json(
-      { error: 'Kam az kam ek email address darj karein (e.g. name@domain.com)' },
+      { error: 'Enter at least one email address (e.g. name@domain.com)' },
       { status: 400 }
     )
   }
   const invalid = recipients.find((e) => !emailRegex.test(e))
   if (invalid) {
     return NextResponse.json(
-      { error: `Ye email sahi nahi hai: "${invalid}"` },
+      { error: `This email is not correct: "${invalid}"` },
       { status: 400 }
     )
   }
   if (recipients.length > 20) {
     return NextResponse.json(
-      { error: 'Ek waqt me zyada se zyada 20 emails par bhej sakte hain.' },
+      { error: 'You can send to at most 20 emails at once.' },
       { status: 400 }
     )
   }
 
   if (body?.fileBase64 && body.fileBase64.length > MAX_FILE_BASE64) {
-    return NextResponse.json({ error: 'File size 15 MB se bari hai.' }, { status: 413 })
+    return NextResponse.json({ error: 'File size is larger than 15 MB.' }, { status: 413 })
   }
 
   const subject = (body?.subject || '').trim().slice(0, 200) || 'Sara Textile Report'
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
   })
 
   if (!result.success) {
-    return NextResponse.json({ error: result.error || 'Email send nahi ho saki.' }, { status: 500 })
+    return NextResponse.json({ error: result.error || 'Email could not be sent.' }, { status: 500 })
   }
 
   return NextResponse.json({ success: true, messageId: result.messageId })

@@ -119,10 +119,10 @@ export function daysSince(date: string, today = todayStr()): number {
   return Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86400000))
 }
 
-/** "3 mahine 5 din" style age of an unpaid bill. */
+/** "3 months 5 days" style age of an unpaid bill. */
 export function ageLabel(date: string): string {
   const d = daysSince(date)
-  if (d < 31) return `${d} din`
+  if (d < 31) return `${d} ${d === 1 ? 'day' : 'days'}`
   const m = Math.floor(d / 30)
-  return `${m} mahine${d % 30 ? ` ${d % 30} din` : ''}`
+  return `${m} ${m === 1 ? 'month' : 'months'}${d % 30 ? ` ${d % 30} ${d % 30 === 1 ? 'day' : 'days'}` : ''}`
 }

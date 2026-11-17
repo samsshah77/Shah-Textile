@@ -268,10 +268,10 @@ export default function FaultReportsPage() {
     try {
       const res = await fetch(`/api/floor/fault-reports/${r.id}`, { method: 'DELETE', credentials: 'same-origin' })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Nahi hata')
+      if (!res.ok) throw new Error(json.error || 'Could not remove')
       await load()
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : 'Nahi hata')
+      window.alert(e instanceof Error ? e.message : 'Could not remove')
     }
   }
 
@@ -345,8 +345,8 @@ export default function FaultReportsPage() {
             </div>
 
             <div className="d-flex flex-wrap gap-2 mb-2">
-              <input ref={photoRef} type="file" accept="image/*" capture="environment" className="d-none" aria-label="Photo lein" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
-              <input ref={videoRef} type="file" accept="video/*" capture="environment" className="d-none" aria-label="Video lein" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
+              <input ref={photoRef} type="file" accept="image/*" capture="environment" className="d-none" aria-label="Take photo" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
+              <input ref={videoRef} type="file" accept="video/*" capture="environment" className="d-none" aria-label="Take video" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
               <input ref={galleryRef} type="file" accept="image/*,video/*" multiple className="d-none" aria-label="Choose from gallery" onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
               <button type="button" className="btn btn-outline-primary" onClick={() => photoRef.current?.click()}>
                 <i className="bi bi-camera me-1" /> Photo
@@ -378,7 +378,7 @@ export default function FaultReportsPage() {
                     <button
                       type="button"
                       className="btn btn-sm btn-light position-absolute top-0 end-0 py-0 px-1"
-                      aria-label="Hatayein"
+                      aria-label="Remove"
                       onClick={() => removePending(p.key)}
                     >
                       ×
@@ -437,7 +437,7 @@ export default function FaultReportsPage() {
         </h2>
         {data && data.reports.length > 0 && (
           <select className="form-select form-select-sm" style={{ width: 150 }} value={filterLoom} onChange={(e) => setFilterLoom(e.target.value)} aria-label="Loom filter">
-            <option value="">Sab looms</option>
+            <option value="">All looms</option>
             {[...new Set(data.reports.map((r) => r.loomNumber))]
               .sort((a, b) => a - b)
               .map((n) => (

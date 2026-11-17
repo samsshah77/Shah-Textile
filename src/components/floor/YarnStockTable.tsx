@@ -483,7 +483,7 @@ export function YarnStockTable({
                 title="Balance for a day / week / month: opening stock, received, issued, closing stock"
               >
                 <i className="bi bi-calendar-check me-1" />
-                Date-wise Hisab
+                Date-wise Balance
               </button>
             </div>
           </div>

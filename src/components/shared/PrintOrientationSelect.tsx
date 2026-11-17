@@ -14,7 +14,7 @@ export function PrintOrientationSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as PrintOrientation)}
-      aria-label="Kaghaz ka rukh"
+      aria-label="Paper orientation"
       title="Print / PDF orientation"
       className="sara-allow-readonly h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 outline-none focus:border-[#0066cc] print:hidden"
     >

@@ -222,7 +222,7 @@ function ContractorsPayrollContent() {
     if (!row) return
     const empName = row?.name || 'Contractor'
     askConfirm({
-      ...removeRowConfirm(empName, 'is mahine ki Contractors sheet', { staysOff: true }),
+      ...removeRowConfirm(empName, 'this month’s Contractors sheet', { staysOff: true }),
       onConfirm: () => {
         const filtered = contractorsList
           .filter((c) => c.id !== id)
@@ -255,7 +255,7 @@ function ContractorsPayrollContent() {
   const handleDiscard = () => {
     askConfirm({
       title: 'Discard unsaved changes?',
-      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      message: 'Your unsaved edits will be undone. Continue?',
       confirmText: 'Discard',
       onConfirm: () => {
         setContractorsList(discardChanges())
@@ -309,7 +309,7 @@ function ContractorsPayrollContent() {
                       askConfirm({
                         title: 'Unsaved Changes',
                         message:
-                          'Aap ke paas unsaved changes hain. Agar aap month switch karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                          'You have unsaved changes. If you change the month, they will be lost. Continue?',
                         confirmText: 'Discard & Switch',
                         onConfirm: () => {
                           setSelectedMonth(m)
@@ -333,7 +333,7 @@ function ContractorsPayrollContent() {
                       askConfirm({
                         title: 'Unsaved Changes',
                         message:
-                          'Aap ke paas unsaved changes hain. Agar aap cycle switch karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                          'You have unsaved changes. If you change the cycle, they will be lost. Continue?',
                         confirmText: 'Discard & Switch',
                         onConfirm: () => {
                           setActiveFortnight(fn)

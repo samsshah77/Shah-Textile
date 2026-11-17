@@ -208,7 +208,7 @@ export function AddBeamModal({
     e.preventDefault()
     const trimmedNo = beamNo.trim()
     if (!trimmedNo) {
-      setError('Beam ID likho.')
+      setError('Enter the Beam ID.')
       focusField('beamNo')
       return
     }

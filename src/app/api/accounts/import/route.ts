@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 function fileFor(month: string | null) {
   const file = month ? MONTH_FILES[month] : undefined
-  if (!file) throw new AccountsError(404, `Is mahine (${month || '-'}) ki koi import file nahi.`, 'NOT_FOUND')
+  if (!file) throw new AccountsError(404, `No import file for this month (${month || '-'}).`, 'NOT_FOUND')
   return file
 }
 

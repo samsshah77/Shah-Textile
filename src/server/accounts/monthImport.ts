@@ -150,18 +150,18 @@ export async function previewMonthImport(dbc: Db, file: MonthFile): Promise<Mont
     const party = resolve(fb.partyName)
     const total = fb.lines.reduce((t, l) => t + lineAmount(l.quantity, l.rate), 0)
     const base = { ...fb, total, party }
-    if (!party.id) return { ...base, status: 'new' as const, note: 'Nayi party banegi' }
+    if (!party.id) return { ...base, status: 'new' as const, note: 'New party will be created' }
     const pid = party.id
     const sameNo = erpBills.find((b) => !used.has(b.id) && b.partyId === pid && fb.billNo && norm(b.billNo) === norm(fb.billNo))
     if (sameNo) {
       used.add(sameNo.id)
       const same = Math.round(sameNo.total) === Math.round(total) && sameNo.lines.length === fb.lines.length
       return same
-        ? { ...base, status: 'exists' as const, note: `ERP mein pehle se (bill ${sameNo.billNo})` }
+        ? { ...base, status: 'exists' as const, note: `Already in ERP (bill ${sameNo.billNo})` }
         : {
             ...base,
             status: 'differs' as const,
-            note: `Bill ${sameNo.billNo} ERP mein mukhtalif hai (ERP ${Math.round(sameNo.total)} / file ${total}) — add nahi hoga, ERP mein khud dekh lein`,
+            note: `Bill ${sameNo.billNo} is different in the ERP (ERP ${Math.round(sameNo.total)} / file ${total}) — will not be added, check it in the ERP yourself`,
           }
     }
     const sameDayTotal = erpBills.find(
@@ -169,12 +169,12 @@ export async function previewMonthImport(dbc: Db, file: MonthFile): Promise<Mont
     )
     if (sameDayTotal) {
       used.add(sameDayTotal.id)
-      return { ...base, status: 'exists' as const, note: `ERP mein pehle se (isi tareekh, isi raqam ka bill ${sameDayTotal.billNo || '-'})` }
+      return { ...base, status: 'exists' as const, note: `Already in ERP (bill ${sameDayTotal.billNo || '-'} with the same date and amount)` }
     }
     const present = fb.lines.filter((l) => printsAnywhere.has(linePrint(pid, fb.billNo, l))).length
-    if (present === fb.lines.length) return { ...base, status: 'exists' as const, note: 'Saari lines ERP mein pehle se' }
+    if (present === fb.lines.length) return { ...base, status: 'exists' as const, note: 'All lines already in ERP' }
     if (present > 0)
-      return { ...base, status: 'differs' as const, note: `${present} line(s) ERP mein pehle se — add nahi hoga, ERP mein khud dekh lein` }
+      return { ...base, status: 'differs' as const, note: `${present} line(s) already in ERP — will not be added, check it in the ERP yourself` }
     return { ...base, status: 'new' as const, note: '' }
   })
   const extraInErp = erpBills
@@ -196,7 +196,7 @@ export async function previewMonthImport(dbc: Db, file: MonthFile): Promise<Mont
     )
     if (hit) {
       taken.add(hit.id)
-      return { ...fp, status: 'exists' as const, note: `ERP mein pehle se: ${hit.date} "${hit.description}"` }
+      return { ...fp, status: 'exists' as const, note: `Already in ERP: ${hit.date} "${hit.description}"` }
     }
     return { ...fp, status: 'new' as const, note: '' }
   })
@@ -209,15 +209,15 @@ export async function previewMonthImport(dbc: Db, file: MonthFile): Promise<Mont
   const amountToAdd = toAdd.reduce((t, b) => t + b.total, 0)
   const fileTotal = bills.reduce((t, b) => t + b.total, 0)
   if (Math.round(fileTotal) !== Math.round(file.expected.billsTotal))
-    warnings.push(`File ka total ${file.expected.billsTotal} hai lekin lines ka jor ${fileTotal} — import se pehle file check karein.`)
+    warnings.push(`The file total is ${file.expected.billsTotal} but the lines add up to ${fileTotal} — check the file before importing.`)
   if (file.expected.pettyOpening != null && Math.round(opening) !== Math.round(file.expected.pettyOpening))
     warnings.push(
-      `Petty cash: file mein Balance b/f ${file.expected.pettyOpening} hai, ERP mein pichle mahinon se ${Math.round(opening)} aata hai. Import ke baad closing bhi itna hi mukhtalif hoga.`
+      `Petty cash: the file has Balance b/f ${file.expected.pettyOpening}, the ERP brings ${Math.round(opening)} from previous months. After import the closing will differ by the same amount.`
     )
   if (bills.some((b) => b.status === 'differs'))
-    warnings.push('Kuch bills ERP mein mukhtalif hain — wo add nahi honge; neeche list dekh kar ERP mein khud theek karein.')
+    warnings.push('Some bills are different in the ERP — they will not be added; see the list below and fix them in the ERP yourself.')
   if (extraInErp.length)
-    warnings.push(`ERP mein ${extraInErp.length} bill aise hain jo file mein nahi — wo waise hi rahenge (koi cheez delete nahi hoti).`)
+    warnings.push(`${extraInErp.length} bill(s) in the ERP are not in the file — they stay as they are (nothing is deleted).`)
 
   return {
     month,
@@ -258,8 +258,8 @@ export interface MonthImportResult {
 export async function applyMonthImport(dbc: Db, file: MonthFile, by: string): Promise<MonthImportResult> {
   await dbc.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7712002)`)
   const preview = await previewMonthImport(dbc, file)
-  if (preview.imported) throw new AccountsError(409, `${file.month} ka import ${preview.imported.at} ko ho chuka hai — dobara nahi hoga.`, 'CONFLICT')
-  if (preview.locked) throw new AccountsError(423, `${file.month} locked hai — pehle unlock karein, phir import.`, 'LOCKED')
+  if (preview.imported) throw new AccountsError(409, `The ${file.month} import was done on ${preview.imported.at} — it will not run again.`, 'CONFLICT')
+  if (preview.locked) throw new AccountsError(423, `${file.month} is locked — unlock it first, then import.`, 'LOCKED')
 
   const createdParties = new Map<string, string>()
   const res: MonthImportResult = { bills: 0, lines: 0, amount: 0, petty: 0, parties: [], skipped: 0 }

@@ -603,7 +603,7 @@ export function YarnRequestsPanel({
                         </button>
                       )}
                       {mode === 'mill' && isOpen && (
-                        <button type="button" className="btn btn-sm btn-outline-success py-0 px-2" title="WhatsApp ya Email par bhejein" onClick={() => share(q)}>
+                        <button type="button" className="btn btn-sm btn-outline-success py-0 px-2" title="Send by WhatsApp or Email" onClick={() => share(q)}>
                           <i className="bi bi-whatsapp" />
                         </button>
                       )}

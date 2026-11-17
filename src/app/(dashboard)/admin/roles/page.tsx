@@ -8,9 +8,9 @@ type User = { roleKey: string; status: string; isActive: boolean }
 
 /** What the three built-in roles can do, in plain words. */
 const BUILT_IN: Record<string, string> = {
-  admin: 'Sab kuch — Production, Users, System; Salary aur Accounts dekhna',
+  admin: 'Everything — Production, Users, System; view Salary and Accounts',
   quality_controller: 'Production: Daily Entry, Looms, Beams, Quality, Kamran Fault',
-  accountant: 'Accounts aur Salary (Tufail); Production Sheet dekhna',
+  accountant: 'Accounts and Salary (Tufail); view Production Sheet',
 }
 
 
@@ -33,7 +33,7 @@ export default function AdminRolesPage() {
       setRoles(r.roles || [])
       setUsers(u.users || [])
     } catch {
-      setError('Roles load nahi hue')
+      setError('Roles did not load')
     }
   }, [])
 
@@ -55,12 +55,12 @@ export default function AdminRolesPage() {
         body: JSON.stringify(form),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || `Role nahi bana (server ${res.status})`)
-      setNotice(`"${form.label}" role ban gaya. Ab Users tab mein kisi ko yeh role de sakte hain.`)
+      if (!res.ok) throw new Error(data.error || `Role not created (server ${res.status})`)
+      setNotice(`Role "${form.label}" created. You can now give this role to someone in the Users tab.`)
       setForm({ label: '', department: '', access: form.access })
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Role nahi bana')
+      setError(err instanceof Error ? err.message : 'Role not created')
     } finally {
       setSaving(false)
     }
@@ -76,25 +76,25 @@ export default function AdminRolesPage() {
       {notice && <div className="alert alert-success py-2 small">{notice}</div>}
 
       <div className="card shadow-sm mb-4">
-        <div className="card-header py-2 small fw-bold">Naya role banayein</div>
+        <div className="card-header py-2 small fw-bold">Create new role</div>
         <form className="card-body row g-2 align-items-end" onSubmit={create}>
           <div className="col-12 col-md-5">
-            <label className="form-label small mb-1" htmlFor="nr-name">Role ka naam</label>
+            <label className="form-label small mb-1" htmlFor="nr-name">Role name</label>
             <input id="nr-name" className="form-control form-control-sm" required minLength={2} maxLength={60} placeholder="Fault Inspector" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
           </div>
           <div className="col-12 col-md-4">
-            <label className="form-label small mb-1" htmlFor="nr-dept">Department (chahein to)</label>
+            <label className="form-label small mb-1" htmlFor="nr-dept">Department (optional)</label>
             <input id="nr-dept" className="form-control form-control-sm" maxLength={60} placeholder="Floor" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
           </div>
           <div className="col-12 col-md-3 d-flex justify-content-md-end">
             <button type="submit" className="btn btn-sm btn-primary" disabled={saving}>
-              {saving ? 'Bana rahe hain…' : 'Role banayein'}
+              {saving ? 'Creating…' : 'Create role'}
             </button>
           </div>
           <div className="col-12 form-text small">
-            Naya role shuru mein sirf dekhne wala hota hai. Role bana kar <strong>Users</strong> mein kisi ko dein, phir{' '}
-            <strong>Permissions</strong> mein us aadmi ke liye har cheez Hide / View / Edit set karein. Daily Entry badalne ke liye
-            Quality Controller role dein; Salary / Accounts ka role abhi sirf Tufail ke liye hai.
+            A new role can only view at first. After creating it, give it to someone in <strong>Users</strong>, then in{' '}
+            <strong>Permissions</strong> set Hide / View / Edit for each thing for that person. To change Daily Entry, give the
+            Quality Controller role; the Salary / Accounts role is only for Tufail for now.
           </div>
         </form>
       </div>
@@ -104,7 +104,7 @@ export default function AdminRolesPage() {
           <thead className="table-light">
             <tr>
               <th>Role</th>
-              <th>Kya kar sakta hai</th>
+              <th>What it can do</th>
               <th className="text-end">Log</th>
             </tr>
           </thead>
