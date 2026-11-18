@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable, type SheetTextSize } from '@/components/floor/ProductionSheetTable'
@@ -443,31 +444,21 @@ function ProductionWorkspaceContent() {
 
               {isYarnTab && tabEdit && (
                 yarnSection === 'supply' ? (
-                  <button
-                    type="button"
+                  <Link
+                    href="/floor/yarn-request?back=%2Ffloor%2Fproduction%3Ftab%3Dyarn"
                     className="btn btn-sm btn-primary"
-                    onClick={() => setYarnRequestOpen(true)}
                   >
                     <i className="bi bi-plus-lg me-1" /> Request yarn
-                  </button>
+                  </Link>
                 ) : (
-                  <>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${yarnEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
-                      onClick={() => setYarnEdit(!yarnEdit)}
-                    >
-                      <i className={`bi ${yarnEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
-                      {yarnEdit ? 'Done' : 'Edit'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-success"
-                      onClick={() => setYarnAddOpen(true)}
-                    >
-                      <i className="bi bi-plus-lg me-1" /> Add Inward Yarn
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${yarnEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
+                    onClick={() => setYarnEdit(!yarnEdit)}
+                  >
+                    <i className={`bi ${yarnEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
+                    {yarnEdit ? 'Done' : 'Edit'}
+                  </button>
                 )
               )}
 

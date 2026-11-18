@@ -12,7 +12,7 @@ import {
   requestRemainingKg,
   yarnRequestAction,
   yarnRequestShareText,
-  type MillYarnStock,
+  type SupplierStoreBalance,
   type TrackingPeriod,
   type YarnRequest,
 } from '@/lib/floor/yarnSupply'
@@ -82,27 +82,27 @@ function CountStepper({
   )
 }
 
-/** Mill: ask the supplier for yarn (new or change). */
-function RequestDialog({
+/** Mill: ask the supplier for yarn (new or change) on a full page. */
+export function YarnRequestForm({
   q,
-  stock,
-  onClose,
+  store,
+  onBack,
   onSaved,
 }: {
   q: YarnRequest | null
-  stock: MillYarnStock[]
-  onClose: () => void
-  onSaved: (q: YarnRequest | null, created: boolean) => void
+  store: SupplierStoreBalance[]
+  onBack: () => void
+  onSaved: (items: YarnRequest[], created: boolean) => void
 }) {
   // Edit mode state
   const [yarnType, setYarnType] = useState(q?.yarnType || '')
   const [editCount, setEditCount] = useState(q?.bags ?? 1)
 
-  // Create mode state: pre-rendered stock qualities + custom added qualities
+  // Create mode state: Fazal Umer stock suggestions + custom added qualities
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [customItems, setCustomItems] = useState<{ yarnType: string; count: number }[]>([])
-  const [newQualityName, setNewQualityName] = useState('')
-  const [newQualityCount, setNewQualityCount] = useState(0)
+  const [query, setQuery] = useState('')
+  const [draftCount, setDraftCount] = useState(0)
 
   const [neededBy, setNeededBy] = useState(q?.neededBy || '')
   const [note, setNote] = useState(q?.note || '')
@@ -111,28 +111,42 @@ function RequestDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const setStockCount = (name: string, next: number) =>
+  const norm = (s: string) => s.toLowerCase().replace(/[\s\-_.]+/g, '')
+
+  const sortedStore = [...store].sort((a, b) => {
+    const aPos = a.balanceKg > 0 ? 0 : 1
+    const bPos = b.balanceKg > 0 ? 0 : 1
+    if (aPos !== bPos) return aPos - bPos
+    return a.yarnType.localeCompare(b.yarnType)
+  })
+
+  const qLower = query.trim().toLowerCase()
+  const filteredStore = qLower
+    ? sortedStore.filter((s) => s.yarnType.toLowerCase().includes(qLower) || norm(s.yarnType).includes(norm(query)))
+    : sortedStore
+
+  const setStoreCount = (name: string, next: number) =>
     setCounts((prev) => ({ ...prev, [name]: next }))
 
-  const addCustomQuality = () => {
-    const name = newQualityName.trim()
+  const addTypedQuality = () => {
+    const name = query.trim()
     if (!name) return
-    const norm = (s: string) => s.toLowerCase().replace(/[\s\-_.]+/g, '')
-    const existingStock = stock.find((y) => norm(y.yarnType) === norm(name))
-    if (existingStock) {
-      setStockCount(existingStock.yarnType, (counts[existingStock.yarnType] || 0) + (newQualityCount || 1))
+    const qty = draftCount > 0 ? draftCount : 1
+    const existingStore = store.find((y) => norm(y.yarnType) === norm(name))
+    if (existingStore) {
+      setStoreCount(existingStore.yarnType, (counts[existingStore.yarnType] || 0) + qty)
     } else {
       const existingCustom = customItems.findIndex((c) => norm(c.yarnType) === norm(name))
       if (existingCustom >= 0) {
         setCustomItems((prev) =>
-          prev.map((c, idx) => (idx === existingCustom ? { ...c, count: c.count + (newQualityCount || 1) } : c))
+          prev.map((c, idx) => (idx === existingCustom ? { ...c, count: c.count + qty } : c))
         )
       } else {
-        setCustomItems((prev) => [...prev, { yarnType: name, count: newQualityCount || 1 }])
+        setCustomItems((prev) => [...prev, { yarnType: name, count: qty }])
       }
     }
-    setNewQualityName('')
-    setNewQualityCount(0)
+    setQuery('')
+    setDraftCount(0)
   }
 
   const handleImagePick = async (file: File | undefined) => {
@@ -155,16 +169,17 @@ function RequestDialog({
 
   // Gather all items to send in create mode
   const selectedItems = (() => {
-    const items: { yarnType: string; count: number }[] = []
-    for (const y of stock) {
+    const items: { yarnType: string; count: number; source: 'store' | 'custom' | 'draft' }[] = []
+    for (const y of sortedStore) {
       const c = counts[y.yarnType] || 0
-      if (c > 0) items.push({ yarnType: y.yarnType, count: c })
+      if (c > 0) items.push({ yarnType: y.yarnType, count: c, source: 'store' })
     }
     for (const c of customItems) {
-      if (c.yarnType.trim() && c.count > 0) items.push({ yarnType: c.yarnType.trim(), count: c.count })
+      if (c.yarnType.trim() && c.count > 0) items.push({ yarnType: c.yarnType.trim(), count: c.count, source: 'custom' })
     }
-    if (newQualityName.trim() && newQualityCount > 0) {
-      items.push({ yarnType: newQualityName.trim(), count: newQualityCount })
+    if (query.trim() && draftCount > 0) {
+      const existing = items.find((i) => norm(i.yarnType) === norm(query.trim()))
+      if (!existing) items.push({ yarnType: query.trim(), count: draftCount, source: 'draft' })
     }
     return items
   })()
@@ -188,11 +203,11 @@ function RequestDialog({
             imageUrl,
           },
         })
-        onSaved(saved, false)
+        onSaved(saved ? [saved] : [], false)
       } else {
-        let last: YarnRequest | null = null
+        const createdList: YarnRequest[] = []
         for (const item of selectedItems) {
-          last = await yarnRequestAction({
+          const saved = await yarnRequestAction({
             action: 'requestCreate',
             request: {
               yarnType: item.yarnType,
@@ -203,8 +218,9 @@ function RequestDialog({
               imageUrl,
             },
           })
+          if (saved) createdList.push(saved)
         }
-        onSaved(last, true)
+        onSaved(createdList, true)
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not save.')
@@ -214,14 +230,16 @@ function RequestDialog({
   }
 
   return (
-    <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true" style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)' }}>
-      <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
-        <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 14, overflow: 'hidden' }}>
-          <div className="modal-header bg-light py-3 px-4">
-            <h5 className="modal-title fs-6 fw-bold mb-0">{q ? 'Change yarn request' : 'Request yarn from the supplier'}</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
-          </div>
-          <div className="modal-body p-4">
+    <div className="card shadow-sm border-0" style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div className="card-header bg-light py-3 px-4 d-flex align-items-center justify-content-between gap-2">
+        <div className="d-flex align-items-center gap-2">
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onBack}>
+            <i className="bi bi-arrow-left me-1" /> Back
+          </button>
+          <h5 className="card-title fs-6 fw-bold mb-0">{q ? 'Change yarn request' : 'Request yarn from the supplier'}</h5>
+        </div>
+      </div>
+      <div className="card-body p-4">
             {error && <div className="alert alert-danger py-2 px-3 small">{error}</div>}
             <div className="row g-3">
               {q ? (
@@ -232,11 +250,18 @@ function RequestDialog({
                     </label>
                     <input
                       id="yr-yarn"
+                      list="yr-store-suggestions"
+                      autoComplete="off"
                       className="form-control"
                       maxLength={120}
                       value={yarnType}
                       onChange={(e) => setYarnType(e.target.value)}
                     />
+                    <datalist id="yr-store-suggestions">
+                      {sortedStore.map((s) => (
+                        <option key={s.yarnType} value={s.yarnType} />
+                      ))}
+                    </datalist>
                   </div>
                   <div className="col-12 d-flex align-items-center justify-content-between">
                     <span className="small fw-semibold">Count (Bags)</span>
@@ -245,91 +270,150 @@ function RequestDialog({
                 </>
               ) : (
                 <div className="col-12">
-                  <div className="d-flex justify-content-between align-items-center mb-2">
-                    <span className="form-label small fw-semibold mb-0">Select Yarn Quality & Count</span>
-                    {selectedItems.length > 0 && (
-                      <span className="badge text-bg-primary">{selectedItems.length} selected</span>
-                    )}
-                  </div>
-                  <div className="border rounded divide-y" style={{ maxHeight: 240, overflowY: 'auto' }}>
-                    {stock.length === 0 && customItems.length === 0 ? (
-                      <div className="p-3 small text-secondary text-center">No existing yarn qualities in stock yet — add one below.</div>
-                    ) : (
-                      <>
-                        {stock.map((y) => {
-                          const c = counts[y.yarnType] || 0
-                          return (
-                            <div
-                              key={y.id}
-                              className={`d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom ${c > 0 ? 'bg-primary-subtle bg-opacity-25' : ''}`}
-                            >
-                              <div className="min-w-0">
-                                <div className="fw-semibold small text-truncate">{y.yarnType}</div>
-                                <div className="text-secondary" style={{ fontSize: 11 }}>
-                                  In stock: {fmtKg(y.balanceKg)}
-                                </div>
-                              </div>
-                              <CountStepper
-                                value={c}
-                                onChange={(next) => setStockCount(y.yarnType, next)}
-                                ariaLabel={y.yarnType}
-                              />
-                            </div>
-                          )
-                        })}
-                        {customItems.map((c, idx) => (
-                          <div
-                            key={`${c.yarnType}-${idx}`}
-                            className="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom bg-primary-subtle bg-opacity-25"
-                          >
-                            <div className="min-w-0">
-                              <div className="fw-semibold small text-truncate">{c.yarnType}</div>
-                              <div className="text-primary" style={{ fontSize: 11 }}>New quality</div>
-                            </div>
-                            <CountStepper
-                              value={c.count}
-                              onChange={(next) =>
-                                setCustomItems((prev) =>
-                                  next === 0
-                                    ? prev.filter((_, i) => i !== idx)
-                                    : prev.map((item, i) => (i === idx ? { ...item, count: next } : item))
-                                )
-                              }
-                              ariaLabel={c.yarnType}
-                            />
-                          </div>
-                        ))}
-                      </>
-                    )}
+                  {/* Type to search Fazal Umer stock or add a new quality */}
+                  <label className="form-label small fw-semibold mb-1" htmlFor="yr-search">
+                    Type Yarn Quality &amp; Bags
+                  </label>
+                  <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <input
+                      id="yr-search"
+                      type="text"
+                      className="form-control form-control-sm flex-fill"
+                      style={{ minWidth: 160 }}
+                      maxLength={120}
+                      autoComplete="off"
+                      placeholder="Type to search Fazal Umer stock or enter quality…"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && query.trim()) {
+                          e.preventDefault()
+                          addTypedQuality()
+                        }
+                      }}
+                    />
+                    <CountStepper
+                      value={draftCount}
+                      onChange={setDraftCount}
+                      ariaLabel="Bags"
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      disabled={!query.trim()}
+                      onClick={addTypedQuality}
+                    >
+                      <i className="bi bi-plus-lg" /> Add
+                    </button>
                   </div>
 
-                  {/* Add new yarn quality */}
-                  <div className="mt-2 p-2 border rounded bg-light">
-                    <div className="small fw-semibold text-secondary mb-1">Need a new yarn quality?</div>
-                    <div className="d-flex flex-wrap align-items-center gap-2">
-                      <input
-                        type="text"
-                        className="form-control form-control-sm flex-fill"
-                        style={{ minWidth: 140 }}
-                        maxLength={120}
-                        placeholder="e.g. 30/1 Cotton"
-                        value={newQualityName}
-                        onChange={(e) => setNewQualityName(e.target.value)}
-                      />
-                      <CountStepper
-                        value={newQualityCount}
-                        onChange={setNewQualityCount}
-                        ariaLabel="New quality count"
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-primary"
-                        disabled={!newQualityName.trim()}
-                        onClick={addCustomQuality}
-                      >
-                        <i className="bi bi-plus-lg" /> Add
-                      </button>
+                  {/* Suggestions from Fazal Umer's stock (shown only while typing) */}
+                  {qLower && (
+                    <>
+                      <div className="small fw-semibold text-secondary mb-1">
+                        Fazal Umer Stock Suggestions ({filteredStore.length} matching)
+                      </div>
+                      <div className="border rounded mb-3" style={{ maxHeight: 170, overflowY: 'auto' }}>
+                        {filteredStore.length === 0 ? (
+                          <div className="p-2 small text-secondary text-center">
+                            {store.length === 0
+                              ? 'No yarn in Fazal Umer stock yet — click Add above to request it.'
+                              : `No matching yarn in Fazal Umer stock for “${query.trim()}” — click Add above to request it anyway.`}
+                          </div>
+                        ) : (
+                          filteredStore.map((y) => {
+                            const c = counts[y.yarnType] || 0
+                            return (
+                              <div
+                                key={y.yarnType}
+                                className={`d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom ${c > 0 ? 'bg-primary-subtle bg-opacity-25' : ''}`}
+                              >
+                                <div
+                                  className="min-w-0 flex-fill"
+                                  style={{ cursor: 'pointer' }}
+                                  onClick={() => setQuery(y.yarnType)}
+                                  title="Click to fill in box"
+                                >
+                                  <div className="fw-semibold small text-truncate">{y.yarnType}</div>
+                                  <div className={y.balanceKg > 0 ? 'text-secondary' : 'text-danger'} style={{ fontSize: 11 }}>
+                                    Fazal Umer stock: {fmtKg(y.balanceKg)} · {bagsText(y.balanceBags)}
+                                  </div>
+                                </div>
+                                <CountStepper
+                                  value={c}
+                                  onChange={(next) => setStoreCount(y.yarnType, next)}
+                                  ariaLabel={y.yarnType}
+                                />
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Clear summary of what is being requested */}
+                  <div className="border rounded bg-light p-2">
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <span className="small fw-semibold">Requested Items</span>
+                      <span className={`badge ${selectedItems.length > 0 ? 'text-bg-primary' : 'text-bg-secondary'}`}>
+                        {selectedItems.length} {selectedItems.length === 1 ? 'item' : 'items'}
+                      </span>
                     </div>
+                    {selectedItems.length === 0 ? (
+                      <div className="small text-secondary py-1">
+                        No items added yet — type a yarn quality above and click Add, or pick from the suggestions.
+                      </div>
+                    ) : (
+                      <div className="bg-white border rounded divide-y">
+                        {selectedItems.map((item) => (
+                          <div
+                            key={`${item.source}-${item.yarnType}`}
+                            className="d-flex align-items-center justify-content-between gap-2 px-2 py-1 border-bottom"
+                          >
+                            <div className="min-w-0 flex-fill">
+                              <div className="fw-semibold small text-truncate">{item.yarnType}</div>
+                              <div className="text-secondary" style={{ fontSize: 11 }}>
+                                {bagsText(item.count)}
+                              </div>
+                            </div>
+                            <div className="d-flex align-items-center gap-1">
+                              <CountStepper
+                                value={item.count}
+                                onChange={(next) => {
+                                  if (item.source === 'store') setStoreCount(item.yarnType, next)
+                                  else if (item.source === 'draft') setDraftCount(next)
+                                  else
+                                    setCustomItems((prev) =>
+                                      next === 0
+                                        ? prev.filter((c) => norm(c.yarnType) !== norm(item.yarnType))
+                                        : prev.map((c) => (norm(c.yarnType) === norm(item.yarnType) ? { ...c, count: next } : c))
+                                    )
+                                }}
+                                ariaLabel={item.yarnType}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger py-0 px-2"
+                                title="Remove"
+                                aria-label={`Remove ${item.yarnType}`}
+                                onClick={() => {
+                                  if (item.source === 'store') setStoreCount(item.yarnType, 0)
+                                  else if (item.source === 'draft') {
+                                    setQuery('')
+                                    setDraftCount(0)
+                                  } else {
+                                    setCustomItems((prev) => prev.filter((c) => norm(c.yarnType) !== norm(item.yarnType)))
+                                  }
+                                }}
+                              >
+                                <i className="bi bi-x-lg" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -376,17 +460,15 @@ function RequestDialog({
               </div>
             </div>
           </div>
-          <div className="modal-footer bg-light px-4 py-3">
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
-              Cancel
+          <div className="card-footer bg-light px-4 py-3 d-flex justify-content-end gap-2">
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onBack}>
+              Back
             </button>
             <button type="button" className="btn btn-sm btn-primary px-3" disabled={busy || uploading || !canSave} onClick={() => void save()}>
               <i className="bi bi-send me-1" />
               {busy ? 'Saving…' : q ? 'Save' : `Send request${selectedItems.length > 1 ? ` (${selectedItems.length})` : ''}`}
             </button>
           </div>
-        </div>
-      </div>
     </div>
   )
 }
@@ -419,20 +501,16 @@ function RequestLog({ q }: { q: YarnRequest }) {
 export function YarnRequestsPanel({
   mode,
   requests,
-  stock,
   canManage,
   canSend,
   embedded = false,
   period = 'all',
   anchorDate,
-  newOpen,
-  onNewClose,
   onChanged,
   onShare,
 }: {
   mode: 'supplier' | 'mill'
   requests: YarnRequest[]
-  stock: MillYarnStock[]
   /** Mill with Yarn Stock (Edit). */
   canManage: boolean
   /** Supplier with Yarn Supply (Edit). */
@@ -440,14 +518,10 @@ export function YarnRequestsPanel({
   embedded?: boolean
   period?: TrackingPeriod
   anchorDate?: string
-  /** The header's "Request yarn" button was pressed. */
-  newOpen: boolean
-  onNewClose: () => void
   onChanged: () => void
   onShare: (s: { title: string; text: string }) => void
 }) {
-  const { showConfirm, showError, showSuccessSoon } = useAlertDialog()
-  const [editing, setEditing] = useState<YarnRequest | null>(null)
+  const { showConfirm, showError } = useAlertDialog()
   const [showClosed, setShowClosed] = useState(false)
   const todayYmd = anchorDate || getCalendarToday()
   // The supplier sees only requests still to send; once sent they move to Sent → Verified.
@@ -481,8 +555,6 @@ export function YarnRequestsPanel({
     })
   }
 
-  const dialogOpen = newOpen || editing != null
-
   return (
     <>
       {shown.length === 0 ? (
@@ -508,6 +580,7 @@ export function YarnRequestsPanel({
                 <th className="px-2">Remaining</th>
                 <th className="px-2">Status</th>
                 <th className="px-2" style={{ width: 1 }} />
+                {mode === 'mill' && <th className="px-2" style={{ width: 1 }} />}
               </tr>
             </thead>
             <tbody>
@@ -572,7 +645,15 @@ export function YarnRequestsPanel({
                         {q.receivedKg > 0 ? ` · received ${fmtKg(q.receivedKg)}` : ''}
                       </div>
                     </td>
-                    <td className="px-2 sara-num text-nowrap">{isOpen && q.kg > 0 ? fmtKg(requestRemainingKg(q)) : '—'}</td>
+                    <td className="px-2 sara-num text-nowrap">
+                      {isOpen
+                        ? q.kg > 0
+                          ? fmtKg(requestRemainingKg(q))
+                          : q.bags != null && q.bags > 0
+                            ? bagsText(Math.max(0, q.bags - q.sentBags))
+                            : '—'
+                        : '—'}
+                    </td>
                     <td className="px-2">
                       <RequestBadge q={q} />
                       {q.closeNote && <div className="small text-secondary">{q.closeNote}</div>}
@@ -586,12 +667,9 @@ export function YarnRequestsPanel({
                       )}
                       {mode === 'mill' && canManage && isOpen && (
                         <>
-                          <button type="button" className="btn btn-sm btn-outline-primary py-0 px-2 me-1" onClick={() => setEditing(q)}>
+                          <Link href={`/floor/yarn-request?id=${encodeURIComponent(q.id)}`} className="btn btn-sm btn-outline-primary py-0 px-2 me-1">
                             Edit
-                          </button>
-                          <button type="button" className="btn btn-sm btn-outline-secondary py-0 px-2 me-1" onClick={() => setStatus(q, 'requestClose')}>
-                            Close
-                          </button>
+                          </Link>
                           <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2 me-1" onClick={() => setStatus(q, 'requestCancel')}>
                             Cancel
                           </button>
@@ -602,12 +680,34 @@ export function YarnRequestsPanel({
                           Reopen
                         </button>
                       )}
-                      {mode === 'mill' && isOpen && (
-                        <button type="button" className="btn btn-sm btn-outline-success py-0 px-2" title="Send by WhatsApp or Email" onClick={() => share(q)}>
-                          <i className="bi bi-whatsapp" />
-                        </button>
-                      )}
                     </td>
+                    {mode === 'mill' && isFirstOfDate && (() => {
+                      const groupOpen = shown
+                        .slice(idx, idx + dateSpan)
+                        .filter((item) => item.status === 'OPEN' || item.status === 'COMPLETE')
+                      return (
+                        <td rowSpan={dateSpan} className="px-2 text-center align-middle bg-white border-start text-nowrap">
+                          {groupOpen.length > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-success py-1 px-2"
+                              title="Send all requests of this date by WhatsApp or Email"
+                              onClick={() =>
+                                onShare({
+                                  title:
+                                    groupOpen.length > 1
+                                      ? `Yarn requests — ${shortDate(dateKey)}`
+                                      : `Yarn request — ${groupOpen[0].yarnType}`,
+                                  text: groupOpen.map((item) => yarnRequestShareText(item)).join('\n\n'),
+                                })
+                              }
+                            >
+                              <i className="bi bi-whatsapp" />
+                            </button>
+                          )}
+                        </td>
+                      )
+                    })()}
                   </tr>
                 )
               })}
@@ -618,38 +718,9 @@ export function YarnRequestsPanel({
       {closed.length > 0 && (
         <div className="px-3 py-2 border-top small">
           <button type="button" className="btn btn-link btn-sm p-0" onClick={() => setShowClosed((v) => !v)}>
-            {showClosed ? 'Hide closed / cancelled' : `Show closed / cancelled (${closed.length})`}
+            {showClosed ? 'Hide cancelled' : `Show cancelled (${closed.length})`}
           </button>
         </div>
-      )}
-
-      {dialogOpen && (
-        <RequestDialog
-          key={editing?.id || 'new'}
-          q={editing}
-          stock={stock}
-          onClose={() => {
-            setEditing(null)
-            onNewClose()
-          }}
-          onSaved={(q, created) => {
-            setEditing(null)
-            onNewClose()
-            onChanged()
-            if (q && created) {
-              showConfirm({
-                title: 'Request saved',
-                message: `${q.yarnType}: ${fmtKg(q.kg)}. The supplier sees it on Yarn Supply. Send it on WhatsApp too?`,
-                type: 'confirm',
-                confirmText: 'WhatsApp',
-                cancelText: 'Not now',
-                onConfirm: () => share(q),
-              })
-            } else {
-              showSuccessSoon({ title: 'Saved', message: 'Request changed.' })
-            }
-          }}
-        />
       )}
     </>
   )

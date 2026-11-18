@@ -385,7 +385,7 @@ export function SupplierStorePanel({
   const [data, setData] = useState<YarnSupplyList | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<{ entry: SupplierStockEntry | null } | null>(null)
-  const [showEntries, setShowEntries] = useState(false)
+  const [showEntries, setShowEntries] = useState(true)
   const [showOld, setShowOld] = useState(false)
 
   const load = useCallback(() => {
@@ -407,6 +407,7 @@ export function SupplierStorePanel({
   const rows = useMemo(() => (data ? balanceRows(data, from, to) : []), [data, from, to])
   const inPeriod = (ymd: string) => ymd >= from && ymd <= to
   const allEntries = (data?.storeEntries ?? []).filter((e) => inPeriod(e.date))
+  const totalActiveEntries = (data?.storeEntries ?? []).filter((e) => !e.beforeReset).length
   const entries = allEntries.filter((e) => !e.beforeReset)
   const oldEntries = allEntries.filter((e) => e.beforeReset)
   const shownEntries = showOld ? allEntries : entries
@@ -708,7 +709,14 @@ export function SupplierStorePanel({
                 <Pager page={entryPages.page} pages={entryPages.pages} total={shownEntries.length} noun="entries" onPage={entryPages.setPage} />
               )}
               {showEntries && shownEntries.length === 0 && (
-                <div className="px-3 pb-3 small text-dark">{isAll ? 'No stock entries yet.' : `No stock entries in ${periodText}.`}</div>
+                <div className="px-3 pb-3 small text-dark">
+                  {isAll ? 'No stock entries yet.' : `No stock entries in ${periodText}.`}
+                  {!isAll && totalActiveEntries > 0 && (
+                    <button type="button" className="btn btn-link btn-sm p-0 ms-2" onClick={() => onPeriodChange('all', today)}>
+                      View all stock entries ({totalActiveEntries})
+                    </button>
+                  )}
+                </div>
               )}
             </>
           )}

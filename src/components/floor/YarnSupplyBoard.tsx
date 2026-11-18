@@ -553,6 +553,7 @@ export function YarnSupplyBoard({
     load()
     const verifiedItems = saved.filter((d) => d.status === 'VERIFIED')
     if (mode === 'mill' && verifiedItems.length > 0) {
+      setView('verified')
       const first = verifiedItems[0]
       const summary =
         verifiedItems.length === 1
@@ -674,9 +675,9 @@ export function YarnSupplyBoard({
                   </div>
                 )}
                 {mode === 'mill' && view === 'requests' && data?.canVerify && !onNewRequestOpenChange && (
-                  <button type="button" className="btn btn-sm btn-primary" onClick={() => setNewRequest(true)}>
+                  <Link href="/floor/yarn-request" className="btn btn-sm btn-primary">
                     <i className="bi bi-plus-lg me-1" /> Request yarn
-                  </button>
+                  </Link>
                 )}
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={load} title="Refresh">
                   <i className="bi bi-arrow-clockwise" />
@@ -713,9 +714,9 @@ export function YarnSupplyBoard({
                   </div>
                 )}
                 {mode === 'mill' && view === 'requests' && data?.canVerify && !onNewRequestOpenChange && (
-                  <button type="button" className="btn btn-sm btn-primary" onClick={() => setNewRequest(true)}>
+                  <Link href="/floor/yarn-request" className="btn btn-sm btn-primary">
                     <i className="bi bi-plus-lg me-1" /> Request yarn
-                  </button>
+                  </Link>
                 )}
                 {canSend && (view === 'sent' || view === 'verified') && (
                   <Link href="/yarn-supply/send" className="btn btn-sm btn-primary">
@@ -757,14 +758,11 @@ export function YarnSupplyBoard({
             <YarnRequestsPanel
               mode={mode}
               requests={requests}
-              stock={data.stock}
               canManage={mode === 'mill' && data.canVerify}
               canSend={canSend}
               embedded={embedded}
               period={embedded ? 'all' : verifiedPeriod}
               anchorDate={verifiedDate}
-              newOpen={newRequest}
-              onNewClose={() => setNewRequest(false)}
               onChanged={load}
               onShare={setShare}
             />

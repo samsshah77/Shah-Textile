@@ -517,16 +517,6 @@ export function YarnStockTable({
             )}
             {!toolbarInChrome && stockEditToggle}
             {activeView === 'STOCK' && <ViewModeToggle mode={mode} onChange={setMode} />}
-
-            {!toolbarInChrome && !readOnly && canEditProduction && (
-              <button
-                type="button"
-                className="btn btn-sm btn-success"
-                onClick={() => setIsAddModalOpen(true)}
-              >
-                <i className="bi bi-plus-lg me-1" /> Add Inward Yarn
-              </button>
-            )}
           </div>
         </div>
 

@@ -56,13 +56,14 @@ export async function GET(request: NextRequest) {
   const check = await requireAccess(request, ['yarn_supply', 'prod_yarn'], 'view')
   if (check.error) return check.error
   try {
-    // Fazal Umer's store and his Sizing / Warping lots: only for Yarn Supply users.
+    // Fazal Umer's store and his Sizing / Warping lots: for Yarn Supply users; mill requestors also see store balances for suggestions.
     const seesStore = allows(check.access, 'yarn_supply', 'view')
+    const seesStoreBalances = seesStore || allows(check.access, 'prod_yarn', 'edit')
     const [dispatches, requests, stock, store, storeEntries, deptDispatches, twisting, balanceReset, storeMoves] = await Promise.all([
       listYarnDispatches(),
       listYarnRequests(),
       millYarnStock(),
-      seesStore ? supplierStoreBalances() : Promise.resolve([]),
+      seesStoreBalances ? supplierStoreBalances() : Promise.resolve([]),
       seesStore ? listSupplierStock() : Promise.resolve([]),
       seesStore ? listDeptDispatches() : Promise.resolve([]),
       seesStore ? listSupplierTwisting() : Promise.resolve([]),
