@@ -22,6 +22,7 @@ import { AddYarnModal } from '@/components/floor/AddYarnModal'
 import { IssueYarnModal } from '@/components/floor/IssueYarnModal'
 import { useAuth } from '@/context/AuthContext'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { yarnSupplyAction } from '@/lib/floor/yarnSupply'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { TablePanScroll } from '@/components/shared/TablePanScroll'
 import { productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
@@ -130,8 +131,8 @@ export function YarnStockTable({
   requestModalOpen,
   onRequestModalOpenChange,
 }: YarnStockTableProps) {
-  const { canEditProduction } = useAuth()
-  const { showConfirm, showSuccessSoon } = useAlertDialog()
+  const { canEditProduction, isAdmin } = useAuth()
+  const { showConfirm, showError, showSuccessSoon } = useAlertDialog()
   const [mode, setMode] = useState<TableGridMode>('table')
   const [activeView, setActiveView] = useState<YarnViewMode>('STOCK')
   /** Yarn Stock | Yarn from Supplier (its own tab on this page). */
@@ -517,6 +518,38 @@ export function YarnStockTable({
             )}
             {!toolbarInChrome && stockEditToggle}
             {activeView === 'STOCK' && <ViewModeToggle mode={mode} onChange={setMode} />}
+            {activeView === 'STOCK' && isAdmin && !readOnly && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger"
+                onClick={() =>
+                  showConfirm({
+                    title: 'Reset Yarn Stock?',
+                    message:
+                      "This will clear all previous yarn stock, movements, and issuances, keeping only today's verified deliveries from Fazal Umer. Future verified deliveries will continue adding to stock from here.",
+                    type: 'confirm',
+                    confirmText: 'Yes, reset stock',
+                    cancelText: 'Cancel',
+                    onConfirm: () =>
+                      yarnSupplyAction({ action: 'millStockReset' })
+                        .then(() =>
+                          showSuccessSoon({
+                            title: 'Yarn Stock Reset',
+                            message: "Previous yarn stock cleared. Only today's verified deliveries remain.",
+                          })
+                        )
+                        .catch((err: unknown) =>
+                          showError({
+                            title: 'Not reset',
+                            message: err instanceof Error ? err.message : 'Could not reset Yarn Stock.',
+                          })
+                        ),
+                  })
+                }
+              >
+                <i className="bi bi-arrow-counterclockwise me-1" /> Reset Yarn Stock
+              </button>
+            )}
           </div>
         </div>
 

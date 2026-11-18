@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { allows, requireAccess } from '@/server/userAccess'
 import { writeAudit } from '@/server/auditLog'
 import { FloorLockedError } from '@/server/floor/locks'
-import { YarnError, yarnSnapshot } from '@/server/floor/yarn'
+import { karachiToday, resetMillYarnStock, YarnError, yarnSnapshot } from '@/server/floor/yarn'
 import {
   correctVerifiedYarnDispatch,
   createYarnDispatch,
@@ -137,6 +137,28 @@ export async function POST(request: NextRequest) {
       if (err instanceof YarnError) return NextResponse.json({ ok: false, error: err.message }, { status: err.status })
       console.error('[yarn-supply POST]', action, err)
       return NextResponse.json({ ok: false, error: 'Could not save. Please try again.' }, { status: 500 })
+    }
+  }
+  if (action === 'millStockReset') {
+    const check = await requireAccess(request, 'prod_yarn', 'edit')
+    if (check.error) return check.error
+    if (!isAdmin(check.user)) return NextResponse.json({ ok: false, error: 'Only the admin can reset Yarn Stock.' }, { status: 403 })
+    try {
+      const reset = await resetMillYarnStock(karachiToday())
+      await writeAudit({
+        req: request,
+        actor: check.user,
+        module: 'floor',
+        action: 'yarnSupply.millStockReset',
+        entityKey: 'floor_yarns',
+        entityId: null,
+        after: reset,
+      })
+      return NextResponse.json({ ok: true, reset, yarnState: await yarnSnapshot() })
+    } catch (err) {
+      if (err instanceof YarnError) return NextResponse.json({ ok: false, error: err.message }, { status: err.status })
+      console.error('[yarn-supply POST]', action, err)
+      return NextResponse.json({ ok: false, error: 'Could not reset Yarn Stock.' }, { status: 500 })
     }
   }
   const supplierAction = action === 'create' || action === 'update' || action === 'delete' || STOCK_ACTIONS.includes(action)

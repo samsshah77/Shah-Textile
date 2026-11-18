@@ -307,3 +307,38 @@ export async function reconcileYarnOnce(): Promise<{ ran: boolean; fixed: string
   if (fixed.length) console.log('[floor] yarn totals now come from movements; differences carried over:', JSON.stringify(fixed))
   return { ran: true, fixed }
 }
+
+/**
+ * Reset Sara Textile's Yarn Stock, keeping only verified deliveries from Fazal Umer
+ * received on or after `keepDate` (defaults to today in Asia/Karachi).
+ */
+export async function resetMillYarnStock(keepDate = karachiToday()): Promise<{ keepDate: string; keptMovements: number }> {
+  return inYarnTx(async (tx) => {
+    const kept = await tx.$queryRawUnsafe<Array<{ movementId: string }>>(
+      `SELECT "movementId" FROM "floor_yarn_dispatches"
+       WHERE "destination" = 'MILL'
+         AND "status" = 'VERIFIED'
+         AND "deletedAt" IS NULL
+         AND "receivedDate" >= $1
+         AND "movementId" IS NOT NULL`,
+      keepDate
+    )
+    const keepIds = kept.map((r) => r.movementId).filter(Boolean)
+
+    if (keepIds.length > 0) {
+      await tx.$executeRawUnsafe(
+        `DELETE FROM "floor_yarn_movements" WHERE NOT ("id" = ANY($1::text[]))`,
+        keepIds
+      )
+    } else {
+      await tx.$executeRawUnsafe(`DELETE FROM "floor_yarn_movements"`)
+    }
+    await tx.$executeRawUnsafe(`DELETE FROM "floor_yarn_issuances"`)
+    await recomputeYarnTotals(tx)
+    await tx.$executeRawUnsafe(
+      `DELETE FROM "floor_yarns" y
+       WHERE NOT EXISTS (SELECT 1 FROM "floor_yarn_movements" m WHERE m."yarnId" = y."id")`
+    )
+    return { keepDate, keptMovements: keepIds.length }
+  })
+}

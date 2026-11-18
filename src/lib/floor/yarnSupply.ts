@@ -273,6 +273,7 @@ type ActionBody =
   | { action: 'issue'; id: string; note: string }
   | { action: 'verify'; id: string; receive: YarnReceiveInput }
   | { action: 'correct'; id: string; receive: YarnReceiveInput }
+  | { action: 'millStockReset' }
   | { action: 'stockAdd'; stock: SupplierStockInput }
   | { action: 'stockUpdate'; id: string; stock: SupplierStockInput }
   | { action: 'stockDelete'; id: string }
