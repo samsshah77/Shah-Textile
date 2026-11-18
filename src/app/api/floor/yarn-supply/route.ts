@@ -26,6 +26,7 @@ import {
   listDeptDispatches,
   listSupplierStock,
   supplierStoreBalances,
+  supplierStoreMoves,
   updateSupplierStock,
   type SupplierStockInput,
   addSupplierTwisting,
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
   try {
     // Fazal Umer's store and his Sizing / Warping lots: only for Yarn Supply users.
     const seesStore = allows(check.access, 'yarn_supply', 'view')
-    const [dispatches, requests, stock, store, storeEntries, deptDispatches, twisting, balanceReset] = await Promise.all([
+    const [dispatches, requests, stock, store, storeEntries, deptDispatches, twisting, balanceReset, storeMoves] = await Promise.all([
       listYarnDispatches(),
       listYarnRequests(),
       millYarnStock(),
@@ -66,12 +67,14 @@ export async function GET(request: NextRequest) {
       seesStore ? listDeptDispatches() : Promise.resolve([]),
       seesStore ? listSupplierTwisting() : Promise.resolve([]),
       seesStore ? supplierBalanceReset() : Promise.resolve(null),
+      seesStore ? supplierStoreMoves() : Promise.resolve([]),
     ])
     return NextResponse.json({
       ok: true,
       dispatches,
       requests,
       store,
+      storeMoves,
       storeEntries,
       deptDispatches,
       twisting,

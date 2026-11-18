@@ -100,11 +100,13 @@ function resolveYarnSupplyPage(pathname: string, sp: URLSearchParams): string {
   }
   if (pathname.startsWith('/yarn-supply/challan')) return 'Challan'
   if (pathname.startsWith('/yarn-supply/twisting')) return 'Twisting'
+  if (pathname.startsWith('/yarn-supply/sizing')) return 'Sizing'
+  if (pathname.startsWith('/yarn-supply/warping')) return 'Sectional Warping'
   if (pathname.startsWith('/yarn-supply/store')) {
     const tab = sp.get('tab')
-    if (tab === 'out') return 'Sizing / Sectional Warping'
+    if (tab === 'out') return 'Sizing'
     if (tab === 'twist') return 'Twisting'
-    return 'Fazal Umer Balance'
+    return 'Fazal Umer Stock'
   }
   const tab = sp.get('tab')
   if (tab === 'sent') return 'Sent — waiting'

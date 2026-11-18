@@ -26,6 +26,7 @@ import type {
   SupplierStockEntry,
   SupplierStockInput,
   SupplierStoreBalance,
+  SupplierStoreMove,
   SupplierTwisting,
   SupplierTwistingInput,
   SupplierTwistingOut,
@@ -302,7 +303,7 @@ export async function listDeptDispatches(): Promise<YarnDispatch[]> {
   await ensureYarnDispatchTable()
   const rows = await prisma.$queryRawUnsafe<Row[]>(
     `SELECT * FROM "floor_yarn_dispatches" WHERE "deletedAt" IS NULL AND "destination" IN ('SIZING','WARPING','TWISTING')
-     ORDER BY "sentDate" DESC, "createdAt" DESC LIMIT 500`
+     ORDER BY "sentDate" DESC, "createdAt" DESC LIMIT 5000`
   )
   return rows.map(toDispatch)
 }
@@ -924,7 +925,7 @@ const STOCK_SELECT = `SELECT a.*, ${afterReset('a')} AS "counts",
 export async function listSupplierStock(): Promise<SupplierStockEntry[]> {
   await ensureYarnDispatchTable()
   const rows = await prisma.$queryRawUnsafe<StockRow[]>(
-    `${STOCK_SELECT} WHERE a."deletedAt" IS NULL ORDER BY a."date" DESC, a."createdAt" DESC LIMIT 1000`
+    `${STOCK_SELECT} WHERE a."deletedAt" IS NULL ORDER BY a."date" DESC, a."createdAt" DESC LIMIT 5000`
   )
   return rows.map(toStock)
 }
@@ -1025,6 +1026,35 @@ export async function supplierStoreBalances(): Promise<SupplierStoreBalance[]> {
       toTwistKg: r2(b.toTwistKg),
     }))
     .sort((a, b) => a.yarnType.localeCompare(b.yarnType))
+}
+
+/** Read only: every movement counted in the Balance (same rows as supplierStoreBalances), with its date. */
+export async function supplierStoreMoves(): Promise<SupplierStoreMove[]> {
+  await ensureYarnDispatchTable()
+  const ins = await prisma.$queryRawUnsafe<Array<{ yarnType: string; date: string; kg: number; bags: number; fromTwist: boolean }>>(
+    `SELECT a."yarnType", a."date", a."kg", a."bags",
+       EXISTS (SELECT 1 FROM "floor_supplier_twisting" t WHERE t."stockId" = a."id" AND t."deletedAt" IS NULL) AS "fromTwist"
+     FROM "floor_supplier_stock" a WHERE a."deletedAt" IS NULL AND ${afterReset('a')}`
+  )
+  const outs = await prisma.$queryRawUnsafe<Array<{ yarnType: string; sentDate: string; weightKg: number; bags: number; destination: string | null }>>(
+    `SELECT a."yarnType", a."sentDate", a."weightKg", a."bags", a."destination" FROM "floor_yarn_dispatches" a
+     WHERE a."deletedAt" IS NULL AND ${afterReset('a')}`
+  )
+  const moves: SupplierStoreMove[] = []
+  for (const r of ins) {
+    moves.push({ yarnType: r.yarnType.trim(), date: r.date, kg: r2(Number(r.kg) || 0), bags: Number(r.bags) || 0, kind: r.fromTwist ? 'fromTwist' : 'added' })
+  }
+  for (const r of outs) {
+    const dest = toDestination(r.destination)
+    moves.push({
+      yarnType: r.yarnType.trim(),
+      date: r.sentDate,
+      kg: r2(Number(r.weightKg) || 0),
+      bags: Number(r.bags) || 0,
+      kind: dest === 'MILL' ? 'toMill' : dest === 'TWISTING' ? 'toTwist' : 'toDept',
+    })
+  }
+  return moves
 }
 
 function cleanStock(p: SupplierStockInput, needSupplier = true) {

@@ -7,7 +7,18 @@ import { longDateFromYmd } from '@/lib/longDate'
 import { useAlertDialog } from '@/context/AlertDialogContext'
 import { SectionLoader } from '@/components/shared/Loaders'
 import { BagWeights, StockDialog, storeSupplierNames, storeYarnNames } from '@/components/floor/SupplierStorePanel'
-import { bagsText, fetchYarnSupply, fmtKg, yarnSupplyAction, type SupplierTwisting, type YarnSupplyList } from '@/lib/floor/yarnSupply'
+import { TrackingPeriodBar } from '@/components/floor/TrackingPeriodBar'
+import { Pager, periodRange, usePaged } from '@/components/floor/YarnPeriodTools'
+import {
+  bagsText,
+  fetchYarnSupply,
+  fmtKg,
+  formatTrackingPeriod,
+  yarnSupplyAction,
+  type SupplierTwisting,
+  type TrackingPeriod,
+  type YarnSupplyList,
+} from '@/lib/floor/yarnSupply'
 
 const MAX_BAGS = 200
 const shortDate = (ymd: string | null) => (ymd ? longDateFromYmd(ymd) : '—')
@@ -221,7 +232,22 @@ function TwistDoneDialog({
  * Yarn Supply → Twisting (its own page). Flow: Fazal Umer Balance → "Issue to Twisting" (taken out
  * of the Balance) → shows here → "Move to Balance" with each bag's kg (back into the Balance).
  */
-export function SupplierTwistingPanel({ filter, onFilterChange }: { filter: TwistFilter; onFilterChange: (f: TwistFilter) => void }) {
+export function SupplierTwistingPanel({
+  filter,
+  onFilterChange,
+  period,
+  date,
+  today,
+  onPeriodChange,
+}: {
+  filter: TwistFilter
+  onFilterChange: (f: TwistFilter) => void
+  /** Daily / Monthly …: lots issued or moved back to the Balance in that period. */
+  period: TrackingPeriod
+  date: string
+  today: string
+  onPeriodChange: (period: TrackingPeriod, date: string) => void
+}) {
   const { showConfirm, showError, showSuccessSoon } = useAlertDialog()
   const [data, setData] = useState<YarnSupplyList | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -243,13 +269,23 @@ export function SupplierTwistingPanel({ filter, onFilterChange }: { filter: Twis
   const canEdit = Boolean(data?.canSend)
   const yarnNames = useMemo(() => storeYarnNames(data), [data])
   const supplierNames = useMemo(() => storeSupplierNames(data), [data])
-  const twists = data?.twisting ?? []
+  const allTwists = data?.twisting ?? []
+  // "In Twisting now" is today's state, whatever period is picked.
+  const nowInTwisting = allTwists.filter((t) => t.status === 'IN_TWISTING')
+  const twistKg = nowInTwisting.reduce((a, t) => a + t.inKg, 0)
+  const twistBags = nowInTwisting.reduce((a, t) => a + t.inBags, 0)
+  const { from, to } = periodRange(period, date)
+  const isAll = period === 'all'
+  const periodText = isAll ? 'All dates' : formatTrackingPeriod(date, period)
+  const within = (ymd: string | null) => Boolean(ymd && ymd >= from && ymd <= to)
+  // A lot belongs to the period when it was issued or moved back to the Balance in it.
+  const twists = allTwists.filter((t) => within(t.inDate) || (t.status === 'DONE' && within(t.outDate)))
   const inTwisting = twists.filter((t) => t.status === 'IN_TWISTING')
   const done = twists.filter((t) => t.status === 'DONE')
+  const backInPeriod = done.filter((t) => within(t.outDate))
   const shown = filter === 'in' ? inTwisting : filter === 'done' ? done : twists
-  const twistKg = inTwisting.reduce((a, t) => a + t.inKg, 0)
-  const twistBags = inTwisting.reduce((a, t) => a + t.inBags, 0)
-  const backKg = done.reduce((a, t) => a + (t.outKg || 0), 0)
+  const paged = usePaged(shown, `${filter}|${period}|${date}`)
+  const backKg = backInPeriod.reduce((a, t) => a + (t.outKg || 0), 0)
   const dispatchOf = (t: SupplierTwisting) => (data?.deptDispatches ?? []).find((d) => d.id === t.dispatchId) || null
 
   const remove = (t: SupplierTwisting) =>
@@ -322,7 +358,7 @@ export function SupplierTwistingPanel({ filter, onFilterChange }: { filter: Twis
                     <div className="small fw-semibold text-dark">In Twisting now</div>
                     <div className="fs-4 fw-bold text-warning-emphasis sara-num">{fmtKg(twistKg)}</div>
                     <div className="small text-body-secondary">
-                      {inTwisting.length} {inTwisting.length === 1 ? 'lot' : 'lots'} · {bagsText(twistBags)}
+                      {nowInTwisting.length} {nowInTwisting.length === 1 ? 'lot' : 'lots'} · {bagsText(twistBags)}
                     </div>
                   </div>
                 </div>
@@ -331,20 +367,27 @@ export function SupplierTwistingPanel({ filter, onFilterChange }: { filter: Twis
                     <div className="small fw-semibold text-dark">Back in Balance</div>
                     <div className="fs-5 fw-bold text-success sara-num">{fmtKg(backKg)}</div>
                     <div className="small text-body-secondary">
-                      {done.length} {done.length === 1 ? 'lot' : 'lots'} finished
+                      {backInPeriod.length} {backInPeriod.length === 1 ? 'lot' : 'lots'} finished{isAll ? '' : ` · ${periodText}`}
                     </div>
                   </div>
                 </div>
                 <div className="col-6 col-md-4">
                   <div className="border rounded bg-white p-3 h-100">
                     <div className="small fw-semibold text-dark">Twisting loss</div>
-                    <div className="fs-5 fw-bold text-danger sara-num">{fmtKg(done.reduce((a, t) => a + t.inKg - (t.outKg || 0), 0))}</div>
-                    <div className="small text-body-secondary">Issued − came back (finished lots)</div>
+                    <div className="fs-5 fw-bold text-danger sara-num">{fmtKg(backInPeriod.reduce((a, t) => a + t.inKg - (t.outKg || 0), 0))}</div>
+                    <div className="small text-body-secondary">Issued − came back (finished lots){isAll ? '' : ` · ${periodText}`}</div>
                   </div>
                 </div>
               </div>
-              <div className="px-3 py-2 border-bottom">
-                <div className="btn-group btn-group-sm" role="group" aria-label="Show">
+              <div className="d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom">
+                <TrackingPeriodBar
+                  period={period}
+                  onPeriodChange={(p) => onPeriodChange(p, date)}
+                  anchorDate={date}
+                  onAnchorDateChange={(d) => onPeriodChange(period, d)}
+                  maxDate={today}
+                />
+                <div className="btn-group btn-group-sm ms-md-auto" role="group" aria-label="Show">
                   {filters.map(([k, label, n]) => (
                     <button key={k} type="button" className={`btn ${filter === k ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => onFilterChange(k)}>
                       {label} <span className={`badge ms-1 ${filter === k ? 'bg-white text-primary' : 'text-bg-light border text-dark'}`}>{n}</span>
@@ -354,101 +397,108 @@ export function SupplierTwistingPanel({ filter, onFilterChange }: { filter: Twis
               </div>
               {shown.length === 0 ? (
                 <div className="p-3 small text-dark">
-                  {filter === 'done' ? 'No lot has come back from Twisting yet.' : 'Nothing in Twisting. Use “Issue to Twisting” to send yarn from the Balance.'}
+                  {!isAll
+                    ? `No Twisting lot in ${periodText}.`
+                    : filter === 'done'
+                      ? 'No lot has come back from Twisting yet.'
+                      : 'Nothing in Twisting. Use “Issue to Twisting” to send yarn from the Balance.'}
                 </div>
               ) : (
-                <div className="table-responsive">
-                  <table className="table table-sm table-hover align-middle mb-0" style={{ fontSize: 13 }}>
-                    <thead className="table-light">
-                      <tr>
-                        <th className="px-2 text-center">Date issued</th>
-                        <th className="px-2">Yarn issued</th>
-                        <th className="px-2 text-center">Issued</th>
-                        <th className="px-2 text-center">Status</th>
-                        <th className="px-2 text-center">Came back to Balance</th>
-                        <th className="px-2 text-center">Loss</th>
-                        <th className="px-2 text-end" style={{ width: 1 }} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shown.map((t) => {
-                        const isDone = t.status === 'DONE'
-                        const loss = isDone ? Math.round((t.inKg - (t.outKg || 0)) * 100) / 100 : 0
-                        const d = dispatchOf(t)
-                        return (
-                          <tr key={t.id}>
-                            <td className="px-2 text-center text-nowrap">{shortDate(t.inDate)}</td>
-                            <td className="px-2">
-                              <div className="fw-semibold">{t.inYarnType}</div>
-                              {t.supplierName && <div className="small text-secondary">Supplier: {t.supplierName}</div>}
-                              {d?.lotNo && <div className="small text-secondary">Lot {d.lotNo}</div>}
-                              {t.note && <div className="small text-secondary">{t.note}</div>}
-                            </td>
-                            <td className="px-2 text-center sara-num">
-                              {fmtKg(t.inKg)}
-                              <div className="small text-secondary">{bagsText(t.inBags)}</div>
-                              {d && d.bagKg.length > 0 && <BagWeights list={d.bagKg} />}
-                            </td>
-                            <td className="px-2 text-center">
-                              {isDone ? <span className="badge text-bg-success">Back in Balance</span> : <span className="badge text-bg-warning">In Twisting</span>}
-                            </td>
-                            <td className="px-2 text-center small">
-                              {isDone ? (
-                                <>
-                                  <div className="fw-semibold">{t.outYarnType}</div>
-                                  <div className="sara-num">
-                                    {fmtKg(t.outKg)} · {bagsText(t.outBags)}
-                                  </div>
-                                  <div className="text-secondary">{shortDate(t.outDate)}</div>
-                                  {t.outBagKg.length > 0 && <BagWeights list={t.outBagKg} />}
-                                </>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td className={`px-2 text-center sara-num small ${loss > 0 ? 'text-danger' : ''}`}>{isDone ? fmtKg(loss) : '—'}</td>
-                            <td className="px-2 text-end text-nowrap">
-                              {canEdit && !isDone && (
-                                <>
-                                  <button type="button" className="btn btn-sm btn-success py-0 px-2 me-1" onClick={() => setMoving(t)}>
-                                    Move to Balance
-                                  </button>
-                                  {t.dispatchId ? (
-                                    <Link href={`/yarn-supply/send?id=${encodeURIComponent(t.dispatchId)}`} className="btn btn-sm btn-outline-primary py-0 px-2 me-1">
-                                      Edit
-                                    </Link>
-                                  ) : (
-                                    <button type="button" className="btn btn-sm btn-outline-primary py-0 px-2 me-1" onClick={() => setOldEdit(t)}>
+                <>
+                  <div className="table-responsive">
+                    <table className="table table-sm table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                      <thead className="table-light">
+                        <tr>
+                          <th className="px-2 text-center">Date issued</th>
+                          <th className="px-2">Yarn issued</th>
+                          <th className="px-2 text-center">Issued</th>
+                          <th className="px-2 text-center">Status</th>
+                          <th className="px-2 text-center">Came back to Balance</th>
+                          <th className="px-2 text-center">Loss</th>
+                          <th className="px-2 text-end" style={{ width: 1 }} />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paged.shown.map((t) => {
+                          const isDone = t.status === 'DONE'
+                          const loss = isDone ? Math.round((t.inKg - (t.outKg || 0)) * 100) / 100 : 0
+                          const d = dispatchOf(t)
+                          return (
+                            <tr key={t.id}>
+                              <td className="px-2 text-center text-nowrap">{shortDate(t.inDate)}</td>
+                              <td className="px-2">
+                                <div className="fw-semibold">{t.inYarnType}</div>
+                                {t.supplierName && <div className="small text-secondary">Supplier: {t.supplierName}</div>}
+                                {d?.lotNo && <div className="small text-secondary">Lot {d.lotNo}</div>}
+                                {t.note && <div className="small text-secondary">{t.note}</div>}
+                              </td>
+                              <td className="px-2 text-center sara-num">
+                                {fmtKg(t.inKg)}
+                                <div className="small text-secondary">{bagsText(t.inBags)}</div>
+                                {d && d.bagKg.length > 0 && <BagWeights list={d.bagKg} />}
+                              </td>
+                              <td className="px-2 text-center">
+                                {isDone ? <span className="badge text-bg-success">Back in Balance</span> : <span className="badge text-bg-warning">In Twisting</span>}
+                              </td>
+                              <td className="px-2 text-center small">
+                                {isDone ? (
+                                  <>
+                                    <div className="fw-semibold">{t.outYarnType}</div>
+                                    <div className="sara-num">
+                                      {fmtKg(t.outKg)} · {bagsText(t.outBags)}
+                                    </div>
+                                    <div className="text-secondary">{shortDate(t.outDate)}</div>
+                                    {t.outBagKg.length > 0 && <BagWeights list={t.outBagKg} />}
+                                  </>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td className={`px-2 text-center sara-num small ${loss > 0 ? 'text-danger' : ''}`}>{isDone ? fmtKg(loss) : '—'}</td>
+                              <td className="px-2 text-end text-nowrap">
+                                {canEdit && !isDone && (
+                                  <>
+                                    <button type="button" className="btn btn-sm btn-success py-0 px-2 me-1" onClick={() => setMoving(t)}>
+                                      Move to Balance
+                                    </button>
+                                    {t.dispatchId ? (
+                                      <Link href={`/yarn-supply/send?id=${encodeURIComponent(t.dispatchId)}`} className="btn btn-sm btn-outline-primary py-0 px-2 me-1">
+                                        Edit
+                                      </Link>
+                                    ) : (
+                                      <button type="button" className="btn btn-sm btn-outline-primary py-0 px-2 me-1" onClick={() => setOldEdit(t)}>
+                                        Edit
+                                      </button>
+                                    )}
+                                    <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2 me-1" title="Delete" onClick={() => remove(t)}>
+                                      <i className="bi bi-trash" />
+                                    </button>
+                                  </>
+                                )}
+                                {canEdit && isDone && (
+                                  <>
+                                    <button type="button" className="btn btn-sm btn-outline-primary py-0 px-2 me-1" onClick={() => setMoving(t)}>
                                       Edit
                                     </button>
-                                  )}
-                                  <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2 me-1" title="Delete" onClick={() => remove(t)}>
-                                    <i className="bi bi-trash" />
-                                  </button>
-                                </>
-                              )}
-                              {canEdit && isDone && (
-                                <>
-                                  <button type="button" className="btn btn-sm btn-outline-primary py-0 px-2 me-1" onClick={() => setMoving(t)}>
-                                    Edit
-                                  </button>
-                                  <button type="button" className="btn btn-sm btn-outline-secondary py-0 px-2 me-1" onClick={() => undo(t)}>
-                                    Undo
-                                  </button>
-                                </>
-                              )}
-                              {t.dispatchId && (
-                                <Link href={`/yarn-supply/challan?id=${encodeURIComponent(t.dispatchId)}`} className="btn btn-sm btn-outline-secondary py-0 px-2" title="Print challan">
-                                  <i className="bi bi-printer" />
-                                </Link>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                    <button type="button" className="btn btn-sm btn-outline-secondary py-0 px-2 me-1" onClick={() => undo(t)}>
+                                      Undo
+                                    </button>
+                                  </>
+                                )}
+                                {t.dispatchId && (
+                                  <Link href={`/yarn-supply/challan?id=${encodeURIComponent(t.dispatchId)}`} className="btn btn-sm btn-outline-secondary py-0 px-2" title="Print challan">
+                                    <i className="bi bi-printer" />
+                                  </Link>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Pager page={paged.page} pages={paged.pages} total={shown.length} noun="lots" onPage={paged.setPage} />
+                </>
               )}
             </>
           )}

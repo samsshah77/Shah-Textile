@@ -133,6 +133,17 @@ export type SupplierTwistingInput = { yarnType: string; date: string; bags: numb
 export type SupplierTwistingOut = { yarnType: string; date: string; bagKg: number[] }
 
 /** Per yarn: added − sent (to the mill, Sizing, Warping and Twisting), after the latest reset. */
+/** One movement in or out of Fazal Umer Balance (only rows counted since the last reset), for day / month totals. */
+export type SupplierStoreMoveKind = 'added' | 'fromTwist' | 'toMill' | 'toDept' | 'toTwist'
+export interface SupplierStoreMove {
+  yarnType: string
+  /** YYYY-MM-DD: the stock entry's date or the lot's date sent. */
+  date: string
+  kg: number
+  bags: number
+  kind: SupplierStoreMoveKind
+}
+
 export interface SupplierStoreBalance {
   yarnType: string
   inKg: number
@@ -218,6 +229,8 @@ export type YarnSupplyList = {
   requests: YarnRequest[]
   /** Fazal Umer's store (only for Yarn Supply users). */
   store: SupplierStoreBalance[]
+  /** Every Balance movement since the last reset (Inward / Outward by day or month). */
+  storeMoves: SupplierStoreMove[]
   storeEntries: SupplierStockEntry[]
   twisting: SupplierTwisting[]
   /** Lots sent to Sizing / Warping and issued to Twisting. */
@@ -241,6 +254,7 @@ export async function fetchYarnSupply(): Promise<YarnSupplyList> {
     dispatches: d.dispatches || [],
     requests: d.requests || [],
     store: d.store || [],
+    storeMoves: d.storeMoves || [],
     storeEntries: d.storeEntries || [],
     twisting: d.twisting || [],
     deptDispatches: d.deptDispatches || [],

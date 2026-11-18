@@ -224,7 +224,13 @@ export function YarnSendForm({
   const toMill = destination === 'MILL'
   const toTwisting = destination === 'TWISTING'
   /** Where this page came from / goes back to. */
-  const doneHref = toTwisting ? '/yarn-supply/twisting' : toMill ? '/yarn-supply?tab=sent' : '/yarn-supply/store?tab=out'
+  const doneHref = toTwisting
+    ? '/yarn-supply/twisting'
+    : toMill
+      ? '/yarn-supply?tab=sent'
+      : destination === 'SIZING'
+        ? '/yarn-supply/sizing'
+        : '/yarn-supply/warping'
   const backHref = toMill && fromRequest ? '/yarn-supply?tab=requests' : doneHref
   /** Qualities asking for more kg than the Balance has (the Send button stays off). */
   const overBatches = batches.filter((b) => b.bagKg.reduce((s, v) => s + r2(parseFloat(v) || 0), 0) > availableKg(b.yarnType) + 0.001)
@@ -382,41 +388,39 @@ export function YarnSendForm({
         {error && <div className="alert alert-danger py-2 px-3 small">{error}</div>}
 
         <div className="row g-3">
-          {toTwisting ? (
-            <div className="col-12">
-              <div className="rounded border bg-light px-3 py-2 small text-dark">
-                <i className="bi bi-arrow-repeat me-1" />
-                The yarn is taken out of Fazal Umer Balance and shows on the Twisting page. When twisting is done, use
-                “Move to Balance” there to bring the twisted yarn back.
-              </div>
-            </div>
-          ) : (
-            <div className="col-12">
-              <label className="form-label small fw-semibold mb-1">Send to</label>
-              <div className="btn-group w-100" role="group" aria-label="Send to">
-                {(['MILL', 'SIZING', 'WARPING'] as const).map((k) => (
+          <div className="col-12">
+            <label className="form-label small fw-semibold mb-1">Send to</label>
+            <div className="row g-2" role="group" aria-label="Send to">
+              {(['MILL', 'SIZING', 'WARPING', 'TWISTING'] as const).map((k) => (
+                <div key={k} className="col-6 col-md-3">
                   <button
-                    key={k}
                     type="button"
-                    className={`btn ${destination === k ? 'btn-primary' : 'btn-outline-primary'}`}
-                    disabled={Boolean(editing && editing.destination === 'MILL' && editing.status !== 'PENDING' && k !== 'MILL')}
+                    className={`btn w-100 h-100 ${destination === k ? 'btn-primary' : 'btn-outline-primary'}`}
+                    disabled={Boolean(
+                      editing &&
+                        // A Twisting lot stays a Twisting lot; another lot cannot become one by editing.
+                        ((editing.destination === 'TWISTING') !== (k === 'TWISTING') ||
+                          (editing.destination === 'MILL' && editing.status !== 'PENDING' && k !== 'MILL'))
+                    )}
                     onClick={() => {
                       setDestination(k)
                       if (k !== 'MILL') setRequestId('')
                     }}
                   >
-                    <i className={`bi ${k === 'MILL' ? 'bi-building' : 'bi-diagram-3'} me-1`} />
+                    <i className={`bi ${k === 'MILL' ? 'bi-building' : k === 'TWISTING' ? 'bi-arrow-repeat' : 'bi-diagram-3'} me-1`} />
                     {DESTINATION_LABEL[k]}
                   </button>
-                ))}
-              </div>
-              <div className="form-text small">
-                {toMill
-                  ? 'Sara Textile checks it when it arrives (Verify / Report issue).'
-                  : `Fazal Umer's own ${DESTINATION_LABEL[destination]} — recorded only; it is taken out of the Balance.`}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
+            <div className="form-text small">
+              {toMill
+                ? 'Sara Textile checks it when it arrives (Verify / Report issue).'
+                : toTwisting
+                  ? 'Taken out of Fazal Umer Balance and shown on the Twisting page. When twisting is done, use “Move to Balance” there to bring the twisted yarn back.'
+                  : `Fazal Umer's own ${DESTINATION_LABEL[destination]} — recorded only; it is taken out of the Balance.`}
+            </div>
+          </div>
           {toMill && !editing && linkable.length > 0 && (
             <div className="col-12">
               <label className="form-label small fw-semibold mb-1">

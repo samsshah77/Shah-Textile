@@ -122,10 +122,10 @@ const SUPPLIER_YARN_ITEMS: NavLeaf[] = [
     title: 'Send yarn',
     href: '/yarn-supply/send',
     icon: 'bi-send',
-    activeCheck: (p, sp) => p.startsWith('/yarn-supply/send') && sp.get('to') !== 'TWISTING',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/send') && !['TWISTING', 'SIZING', 'WARPING'].includes(sp.get('to') || ''),
   },
   {
-    title: 'Fazal Umer Balance',
+    title: 'Fazal Umer Stock',
     href: '/yarn-supply/store?tab=stock',
     icon: 'bi-shop',
     activeCheck: (p, sp) => p.startsWith('/yarn-supply/store') && sp.get('tab') !== 'out',
@@ -137,10 +137,16 @@ const SUPPLIER_YARN_ITEMS: NavLeaf[] = [
     activeCheck: (p, sp) => p.startsWith('/yarn-supply/twisting') || (p.startsWith('/yarn-supply/send') && sp.get('to') === 'TWISTING'),
   },
   {
-    title: 'Sizing / Sectional Warping',
-    href: '/yarn-supply/store?tab=out',
+    title: 'Sizing',
+    href: '/yarn-supply/sizing',
     icon: 'bi-diagram-3',
-    activeCheck: (p, sp) => p.startsWith('/yarn-supply/store') && sp.get('tab') === 'out',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/sizing') || (p.startsWith('/yarn-supply/send') && sp.get('to') === 'SIZING'),
+  },
+  {
+    title: 'Sectional Warping',
+    href: '/yarn-supply/warping',
+    icon: 'bi-diagram-2',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/warping') || (p.startsWith('/yarn-supply/send') && sp.get('to') === 'WARPING'),
   },
   {
     title: 'Sara Textile stock',
