@@ -312,10 +312,19 @@ export function yarnRequestShareText(q: YarnRequest): string {
     `*Sara Textile — Yarn request*`,
     ``,
     `Yarn: ${q.yarnType}`,
-    q.kg > 0 ? `Quantity: ${fmtKg(q.kg)}${q.bags ? ` (${bagsText(q.bags)})` : ''}` : `Count: ${bagsText(q.bags)}`,
+    `Number of bags: ${q.bags ? bagsText(q.bags) : '—'}`,
+    `Weight: ${q.kg > 0 ? fmtKg(q.kg) : '—'}`,
     q.neededBy ? `Needed by: ${longDateFromYmd(q.neededBy)}` : '',
     q.note ? `Note: ${q.note}` : '',
-    q.sentKg > 0 ? `Sent so far: ${fmtKg(q.sentKg)}${q.kg > 0 ? ` · Remaining: ${fmtKg(requestRemainingKg(q))}` : ''}` : '',
+    q.sentKg > 0
+      ? `Sent so far: ${fmtKg(q.sentKg)}${
+          q.kg > 0
+            ? ` · Remaining: ${fmtKg(requestRemainingKg(q))}`
+            : q.bags
+              ? ` · Remaining: ${bagsText(Math.max(0, q.bags - q.sentBags))}`
+              : ''
+        }`
+      : '',
     q.requestedBy ? `Requested by: ${q.requestedBy}` : '',
   ]
     .filter((l, i) => l !== '' || i === 1)
