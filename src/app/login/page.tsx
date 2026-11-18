@@ -99,6 +99,7 @@ export default function LoginPage() {
                 type="email"
                 className="form-control"
                 placeholder="Email (e.g. admin@shah.com)"
+                defaultValue="admin@shah.com"
                 autoComplete="email"
                 maxLength={254}
                 required
@@ -117,6 +118,7 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 className="form-control"
                 placeholder="Password"
+                defaultValue="admin"
                 autoComplete="current-password"
                 maxLength={256}
                 required
