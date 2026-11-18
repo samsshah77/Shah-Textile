@@ -14,7 +14,7 @@ export function PictureStrip({
   kind,
   editable,
   max = 12,
-  label = 'Tasveer lagayein',
+  label = 'Add photo',
 }: {
   urls: string[]
   onChange: (next: string[]) => void
@@ -35,14 +35,14 @@ export function PictureStrip({
     try {
       for (const f of Array.from(files)) {
         if (next.length >= max) {
-          setError(`Zyada se zyada ${max} tasveerein.`)
+          setError(`At most ${max} photos.`)
           break
         }
         next.push(await uploadImageFile(f, kind))
         onChange([...next])
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Tasveer upload nahi hui.')
+      setError(e instanceof Error ? e.message : 'Photo did not upload.')
     } finally {
       setBusy(false)
       if (input.current) input.current.value = ''
@@ -54,7 +54,7 @@ export function PictureStrip({
       <div className="flex flex-wrap items-center gap-2">
         {urls.map((u) => (
           <div key={u} className="relative">
-            <a href={u} target="_blank" rel="noreferrer" title="Bari tasveer dekhein">
+            <a href={u} target="_blank" rel="noreferrer" title="View large photo">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={u} alt="" className="size-16 rounded-md border border-slate-300 object-cover" />
             </a>
@@ -63,7 +63,7 @@ export function PictureStrip({
                 type="button"
                 onClick={() => onChange(urls.filter((x) => x !== u))}
                 className="absolute -right-1.5 -top-1.5 rounded-full bg-rose-600 p-0.5 text-white shadow cursor-pointer"
-                aria-label="Tasveer hatayein"
+                aria-label="Remove photo"
               >
                 <X className="size-3" />
               </button>
@@ -81,7 +81,7 @@ export function PictureStrip({
             {busy ? 'Upload…' : label}
           </button>
         )}
-        {!editable && urls.length === 0 && <span className="text-[11px] text-slate-400">Koi tasveer nahi</span>}
+        {!editable && urls.length === 0 && <span className="text-[11px] text-slate-400">No photo</span>}
       </div>
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden onChange={(e) => void add(e.target.files)} />
       {error && <div className="text-[11px] text-rose-700">{error}</div>}

@@ -157,7 +157,7 @@ export function AddQualityModal({
                       list="quality-warp-stock"
                       data-add-q-field="warpYarn"
                       className="form-control"
-                      placeholder="Beam stock se warp likho"
+                      placeholder="Warp from the beam stock"
                       value={addForm.warpYarn}
                       onChange={(e) => setAddForm({ ...addForm, warpYarn: e.target.value })}
                       onKeyDown={(e) => handleAddFormKeyDown(e, 'warpYarn')}
@@ -173,7 +173,7 @@ export function AddQualityModal({
                       list="quality-weft-stock"
                       data-add-q-field="weftYarn"
                       className="form-control"
-                      placeholder="Yarn stock se weft likho"
+                      placeholder="Weft from the yarn stock"
                       value={addForm.weftYarn}
                       onChange={(e) => setAddForm({ ...addForm, weftYarn: e.target.value })}
                       onKeyDown={(e) => handleAddFormKeyDown(e, 'weftYarn')}

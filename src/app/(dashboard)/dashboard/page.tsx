@@ -118,6 +118,9 @@ export default function DashboardPage() {
   // "Monthly Tracking" links only for people who may open Tracking (Administration → Permissions).
   const { canView } = useAuth()
   const trackingOk = canView('tracking')
+  // Links to the Production Sheet / Daily Entry only for people who may open them (e.g. not the owner's view-only login).
+  const sheetOk = canView('prod_sheet')
+  const entryOk = canView('prod_entry')
   const productionToday = getProductionToday()
   const productionYesterday = getProductionYesterday()
   // Opens on mid-month (10 Nov) so user can navigate back & forward across 1 to 24 Nov.
@@ -218,16 +221,23 @@ export default function DashboardPage() {
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 mt-3 pt-1">
         <DateNav value={selectedDate} onChange={setSelectedDate} max={productionToday} />
 
-        <Link href={sheetHref} className="btn btn-sm btn-primary ms-auto">
-          Open Production Sheet
-          <i className="bi bi-arrow-right-short ms-1" />
-        </Link>
+        {sheetOk && (
+          <Link href={sheetHref} className="btn btn-sm btn-primary ms-auto">
+            Open Production Sheet
+            <i className="bi bi-arrow-right-short ms-1" />
+          </Link>
+        )}
       </div>
 
       {!loading && !hasSheet && (
         <div className="alert alert-light border py-2 mb-3 small" role="status">
-          Is date ki production sheet abhi enter nahi hui — zeros dikh rahe hain. Pehle{' '}
-          <Link href="/floor/production">Production</Link> se data bharo.
+          The production sheet for this date is not entered yet — showing zeros.
+          {entryOk && (
+            <>
+              {' '}
+              First enter data from <Link href="/floor/production">Production</Link>.
+            </>
+          )}
         </div>
       )}
 
@@ -290,10 +300,12 @@ export default function DashboardPage() {
         <div className="col-lg-7">
           <div className="card h-100">
             <div className="card-header d-flex justify-content-between align-items-center">
-              <h3 className="card-title mb-0">Production — aakhri {CHART_DAYS} din</h3>
-              <Link href={sheetHref} className="small">
-                Production Sheet
-              </Link>
+              <h3 className="card-title mb-0">Production — last {CHART_DAYS} days</h3>
+              {sheetOk && (
+                <Link href={sheetHref} className="small">
+                  Production Sheet
+                </Link>
+              )}
             </div>
             <div className="card-body">
               {daySeries.length > 0 ? (
@@ -305,7 +317,7 @@ export default function DashboardPage() {
                 </>
               ) : (
                 <p className="text-dark small mb-0">
-                  Abhi koi entered production day chart ke liye available nahi.
+                  No entered production day is available for the chart yet.
                 </p>
               )}
             </div>
@@ -346,8 +358,8 @@ export default function DashboardPage() {
             <strong>Shah Textile</strong> — 34 Rapier &amp; PU looms
           </p>
           <p className="text-dark mb-0 small">
-            Dashboard sirf floor production sheets se data leta hai (dummy history nahi). Date
-            calendar se koi bhi entered din dekho — default{' '}
+            The dashboard takes data only from the floor production sheets (no dummy history). Use the date
+            calendar to see any entered day — default{' '}
             <strong>{shortDay(productionYesterday)}</strong> (Yesterday).
           </p>
         </div>

@@ -132,14 +132,14 @@ export default function StaffSalariesPage() {
   const saveRecalc = () => {
     if (!isEditable || staleRows.length === 0 || hasUnsavedChanges) return
     askConfirm({
-      title: 'Naya (Excel jaisa) hisab save karein?',
-      message: `${staleRows.length} logon ka OT paise ke saath save hoga (jaise Excel). Synopsis total ${formatNumber(staleSynopsis.before, 2)} → ${formatNumber(staleSynopsis.after, 2)}.`,
+      title: 'Save the new (Excel-style) calculation?',
+      message: `OT for ${staleRows.length} people will be saved with paise (like Excel). Synopsis total ${formatNumber(staleSynopsis.before, 2)} → ${formatNumber(staleSynopsis.after, 2)}.`,
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveStaffSalaries(staffList)
         commitSaved(staffList)
         setSavedRows(staffList)
-        showSuccess('Saved', 'Staff sheet naye hisab se save ho gayi.')
+        showSuccess('Saved', 'Staff sheet saved with the new calculation.')
       },
     })
   }
@@ -242,7 +242,7 @@ export default function StaffSalariesPage() {
     if (!row) return
     const empName = row?.employeeName || 'Staff Member'
     askConfirm({
-      ...removeRowConfirm(empName, 'is mahine ki Staff sheet'),
+      ...removeRowConfirm(empName, 'this month’s Staff sheet'),
       onConfirm: () => {
         const updated = staffList
           .filter((item) => item.id !== id)
@@ -269,7 +269,7 @@ export default function StaffSalariesPage() {
     if (!canEditAccounts) return
     askConfirm({
       title: 'Save staff salaries?',
-      message: 'Staff salary calculations save ho jayengi.',
+      message: 'Staff salary calculations will be saved.',
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveStaffSalaries(staffList)
@@ -282,7 +282,7 @@ export default function StaffSalariesPage() {
   const handleDiscard = () => {
     askConfirm({
       title: 'Discard unsaved changes?',
-      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      message: 'Your unsaved edits will be undone. Continue?',
       confirmText: 'Discard',
       onConfirm: () => {
         setStaffList(discardChanges())
@@ -328,7 +328,7 @@ export default function StaffSalariesPage() {
                             askConfirm({
                               title: 'Unsaved Changes',
                               message:
-                                'Aap ke paas unsaved changes hain. Agar aap month change karein ge toh unsaved changes zaya ho jayengi. Proceed karein?',
+                                'You have unsaved changes. If you change the month, they will be lost. Continue?',
                               confirmText: 'Discard & Switch',
                               onConfirm: async () => {
                                 await payrollService.setActiveSalariedMonthAsync(m)
@@ -413,17 +413,17 @@ export default function StaffSalariesPage() {
       {staleRows.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 print:hidden">
           <span>
-            Is mahine ki save ki hui raqam purane hisab (OT round) se hai. Excel jaisa hisab (paise ke saath) se{' '}
-            <strong>{staleRows.length}</strong> logon ka OT thora badalta hai — Synopsis total{' '}
+            This month was saved with the old calculation (OT rounded). With the Excel-style calculation (with paise),{' '}
+            <strong>{staleRows.length}</strong> people’s OT changes a little — Synopsis total{' '}
             <strong>{formatNumber(staleSynopsis.before, 2)}</strong> → <strong>{formatNumber(staleSynopsis.after, 2)}</strong>.
-            Table naya hisab dikha raha hai.
+            The table is showing the new calculation.
           </span>
           {isEditable ? (
             <button type="button" onClick={saveRecalc} className="rounded-md bg-sky-700 px-3 py-1.5 font-semibold text-white cursor-pointer">
-              Naya hisab save karein
+              Save new calculation
             </button>
           ) : canEditAccounts ? (
-            <span className="font-semibold">Mahina locked hai — pehle unlock karein, phir save.</span>
+            <span className="font-semibold">Month is locked — unlock it first, then save.</span>
           ) : null}
         </div>
       )}

@@ -297,7 +297,7 @@ export function usePayrollDirtyTracker<T extends { id?: string }>(
         return
       }
       const ok = window.confirm(
-        `Aap ke paas ${dirtyCount} unsaved changes hain. Agar aap switch karein ge toh unsaved edits zaya ho jayengi. Proceed karein?`
+        `You have ${dirtyCount} unsaved changes. If you switch, they will be lost. Continue?`
       )
       if (ok) {
         discardChanges()

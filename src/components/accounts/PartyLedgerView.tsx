@@ -75,7 +75,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
   const tableMinWidth = Object.values(widths).reduce((a, b) => a + b, 0)
 
   const removePayment = async (id: string, version: number) => {
-    if (!window.confirm('Yeh entry delete karein?')) return
+    if (!window.confirm('Delete this entry?')) return
     await accountsApi.deletePayment(id, version).catch(() => {})
   }
 
@@ -99,9 +99,9 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                     type="button"
                     onClick={() => setPaying('OPENING')}
                     className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer"
-                    title="ERP se pehle ka hisab (Opening balance / purane register se)"
+                    title="Balance from before the ERP (opening balance / from the old register)"
                   >
-                    Purana Hisab
+                    Old Balance
                   </button>
                   <button type="button" onClick={() => setEditing(true)} className="erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
                     <Pencil className="size-3.5" /> Edit party
@@ -126,7 +126,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
               {(
                 [
                   ...(ledger.opening ? [['Balance b/f', ledger.opening, 'text-slate-600']] : []),
-                  ...(ledger.summary.opening ? [['Purana Hisab', ledger.summary.opening, 'text-amber-700']] : []),
+                  ...(ledger.summary.opening ? [['Old Balance', ledger.summary.opening, 'text-amber-700']] : []),
                   ['Bills', ledger.summary.purchases, 'text-slate-900'],
                   ['Paid', ledger.summary.paid, 'text-emerald-700'],
                   ...(ledger.summary.adjusted ? [['Adjustments', ledger.summary.adjusted, 'text-sky-700']] : []),
@@ -139,13 +139,13 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                 </div>
               ))}
               <div className="erp-card p-3">
-                <div className="text-[10px] font-bold uppercase text-slate-500">Purana Pending Bill</div>
+                <div className="text-[10px] font-bold uppercase text-slate-500">Oldest Pending Bill</div>
                 {ledger.oldestUnpaid ? (
                   <div className="text-sm font-black font-mono text-rose-700">
                     {ledger.oldestUnpaid} <span className="text-[11px] font-bold">({ageLabel(ledger.oldestUnpaid)})</span>
                   </div>
                 ) : (
-                  <div className="text-sm font-black text-emerald-700">Sab bills paid</div>
+                  <div className="text-sm font-black text-emerald-700">All bills paid</div>
                 )}
               </div>
             </div>
@@ -280,7 +280,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                       <tr className="bg-amber-50/60 italic">
                         <td className={cn(cell, 'px-2 text-center')}>-</td>
                         <td className={cn(cell, 'px-2 text-center')} />
-                        <td className={cn(cell, 'px-2')}>Balance b/f — Pichla Hisab</td>
+                        <td className={cn(cell, 'px-2')}>Balance b/f — Previous Balance</td>
                         <td className={cell} colSpan={2} />
                         <td className={cn(cell, 'px-2 text-right font-mono font-bold')}>{rs(ledger.opening)}</td>
                         <td className={cell} />
@@ -290,7 +290,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                     {ledger.rows.length === 0 ? (
                       <tr>
                         <td colSpan={8} className={cn(cell, 'py-8 text-center text-muted-foreground')}>
-                          {period} mein koi bill ya payment nahi.
+                          No bill or payment in {period}.
                         </td>
                       </tr>
                     ) : (
@@ -323,7 +323,7 @@ export function PartyLedgerView({ slug, kind }: { slug: string; kind: PartyKind 
                             {canEditAccounts && (
                               <td className={cn(cell, 'text-center whitespace-nowrap print:hidden')}>
                                 {r.payment && (
-                                  <button type="button" onClick={() => setEditPay(r.payment!)} className="p-1 text-slate-400 hover:text-sky-700 cursor-pointer" aria-label="Edit entry" title="Badlein / tasveer lagayein">
+                                  <button type="button" onClick={() => setEditPay(r.payment!)} className="p-1 text-slate-400 hover:text-sky-700 cursor-pointer" aria-label="Edit entry" title="Change / add photo">
                                     <Pencil className="size-3.5" />
                                   </button>
                                 )}
@@ -429,19 +429,19 @@ export function PaymentForm({
       }
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save nahi hua.')
+      setError(err instanceof Error ? err.message : 'Could not save.')
     } finally {
       setBusy(false)
     }
   }
   const title = existing
     ? existing.kind === 'PAYMENT'
-      ? 'Payment badlein'
+      ? 'Change payment'
       : existing.kind === 'OPENING'
-        ? 'Purana Hisab badlein'
-        : 'Adjustment badlein'
+        ? 'Change Old Balance'
+        : 'Change adjustment'
     : opening
-      ? 'Purana Hisab (Opening Balance)'
+      ? 'Old Balance (Opening Balance)'
       : 'Payment'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
@@ -449,22 +449,22 @@ export function PaymentForm({
         <h3 className="font-bold text-sm">{title}</h3>
         {!existing && !opening && (
           <p className="text-[11px] text-slate-500">
-            Jitni raqam di — poori ya aadhi. Ye sab se purane bill se kat-ti hai; balance apne aap hisab ho jata hai.
+            The amount paid — full or part. It clears the oldest bill first; the balance is worked out by itself.
           </p>
         )}
         {opening && (
           <p className="text-[11px] text-slate-500">
-            July 2026 se pehle ka jo hisab purane register / Excel mein tha. Hum ne dena hai to seedhi raqam (jaise 25000);
-            party ko advance diya hua hai to minus mein (jaise -5000). Ye sab se pehle wala bill maana jata hai.
+            The balance from before July 2026 in the old register / Excel. If we owe them, enter the amount (e.g. 25000);
+            if the party was given an advance, enter it as minus (e.g. -5000). It counts as the very first bill.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Tareekh *</span>
+            <span className="text-[11px] font-semibold text-slate-600">Date *</span>
             <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className={input} />
           </label>
           <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Raqam *</span>
+            <span className="text-[11px] font-semibold text-slate-600">Amount *</span>
             <input
               type="number"
               min={isPayment ? 0.01 : undefined}
@@ -477,12 +477,12 @@ export function PaymentForm({
           </label>
         </div>
         <label className="block space-y-1">
-          <span className="text-[11px] font-semibold text-slate-600">Note (cheque no., bank, waghera)</span>
+          <span className="text-[11px] font-semibold text-slate-600">Note (cheque no., bank, etc.)</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Meezan cheque 34378721" className={input} />
         </label>
         <div className="space-y-1">
-          <span className="text-[11px] font-semibold text-slate-600">Tasveer (cheque / raseed)</span>
-          <PictureStrip urls={pictures} onChange={setPictures} kind="bill" editable max={6} label="Tasveer lagayein" />
+          <span className="text-[11px] font-semibold text-slate-600">Photo (cheque / receipt)</span>
+          <PictureStrip urls={pictures} onChange={setPictures} kind="bill" editable max={6} label="Add photo" />
         </div>
         {error && <div className="alert alert-danger py-2 px-3 small mb-0">{error}</div>}
         <div className="flex justify-end gap-2">

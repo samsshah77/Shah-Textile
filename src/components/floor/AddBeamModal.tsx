@@ -208,19 +208,19 @@ export function AddBeamModal({
     e.preventDefault()
     const trimmedNo = beamNo.trim()
     if (!trimmedNo) {
-      setError('Beam ID likho.')
+      setError('Enter the Beam ID.')
       focusField('beamNo')
       return
     }
 
     if (!swLot.trim()) {
-      setError('Sw # zaroori hai.')
+      setError('Sw # is required.')
       focusField('swLot')
       return
     }
 
     if (existingBeamNos.some((no) => no.toLowerCase() === trimmedNo.toLowerCase())) {
-      setError(`Beam "${trimmedNo}" pehle se maujood hai.`)
+      setError(`Beam "${trimmedNo}" already exists.`)
       focusField('beamNo')
       return
     }

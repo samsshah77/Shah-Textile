@@ -1,11 +1,12 @@
 'use client'
 
-import { Suspense, useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import type { AccessArea } from '@/lib/access'
+import { markVerifiedSeen, newVerifiedCount, VERIFIED_SEEN_EVENT, verifiedSeenAt } from '@/lib/floor/yarnSupply'
 import {
   closeSidebar,
   ensureSidebarOverlay,
@@ -17,6 +18,8 @@ interface NavLeaf {
   href: string
   icon: string
   activeCheck: (pathname: string, searchParams: URLSearchParams) => boolean
+  badge?: number | null
+  badgeClass?: string
   /** A sub-menu inside a group (Administration → Salary / Accounts for the admin). */
   children?: NavLeaf[]
 }
@@ -67,7 +70,7 @@ const FLOOR_ITEMS: NavLeaf[] = [
       (sp.get('tab') === 'yarn' || sp.get('tab') === 'weft-stock'),
   },
   {
-    title: 'Quality',
+    title: 'Active Qualities',
     href: '/floor/production?tab=quality',
     icon: 'bi-tags',
     activeCheck: (p, sp) =>
@@ -92,6 +95,64 @@ const FLOOR_ITEMS: NavLeaf[] = [
     icon: 'bi-exclamation-diamond',
     activeCheck: (p, sp) =>
       (p === '/floor/production' && sp.get('tab') === 'fabric-fault') || p.startsWith('/floor/fault-reports'),
+  },
+]
+
+/** Yarn Supply module (the supplier, and Javed Sir with View): its tabs on the side. */
+const SUPPLIER_YARN_ITEMS: NavLeaf[] = [
+  {
+    title: 'Requests from Shah Textile',
+    href: '/yarn-supply?tab=requests',
+    icon: 'bi-clipboard-check',
+    activeCheck: (p, sp) => p === '/yarn-supply' && (!sp.get('tab') || sp.get('tab') === 'requests'),
+  },
+  {
+    title: 'Sent — waiting',
+    href: '/yarn-supply?tab=sent',
+    icon: 'bi-hourglass-split',
+    activeCheck: (p, sp) => p === '/yarn-supply' && sp.get('tab') === 'sent',
+  },
+  {
+    title: 'Verified',
+    href: '/yarn-supply?tab=verified',
+    icon: 'bi-check2-circle',
+    activeCheck: (p, sp) => p === '/yarn-supply' && sp.get('tab') === 'verified',
+  },
+  {
+    title: 'Send yarn',
+    href: '/yarn-supply/send',
+    icon: 'bi-send',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/send') && !['TWISTING', 'SIZING', 'WARPING'].includes(sp.get('to') || ''),
+  },
+  {
+    title: 'Fazal Umer Stock',
+    href: '/yarn-supply/store?tab=stock',
+    icon: 'bi-shop',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/store') && sp.get('tab') !== 'out',
+  },
+  {
+    title: 'Twisting',
+    href: '/yarn-supply/twisting',
+    icon: 'bi-arrow-repeat',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/twisting') || (p.startsWith('/yarn-supply/send') && sp.get('to') === 'TWISTING'),
+  },
+  {
+    title: 'Sizing',
+    href: '/yarn-supply/sizing',
+    icon: 'bi-diagram-3',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/sizing') || (p.startsWith('/yarn-supply/send') && sp.get('to') === 'SIZING'),
+  },
+  {
+    title: 'Sectional Warping',
+    href: '/yarn-supply/warping',
+    icon: 'bi-diagram-2',
+    activeCheck: (p, sp) => p.startsWith('/yarn-supply/warping') || (p.startsWith('/yarn-supply/send') && sp.get('to') === 'WARPING'),
+  },
+  {
+    title: 'Shah Textile stock',
+    href: '/yarn-supply?tab=stock',
+    icon: 'bi-box-seam',
+    activeCheck: (p, sp) => p === '/yarn-supply' && sp.get('tab') === 'stock',
   },
 ]
 
@@ -156,7 +217,7 @@ const PAYROLL_ITEMS: NavLeaf[] = [
     activeCheck: (p) => p === '/payroll/employees',
   },
   {
-    title: 'Advance (Peshgi)',
+    title: 'Advance',
     href: '/payroll/advances',
     icon: 'bi-cash-coin',
     activeCheck: (p) => p === '/payroll/advances',
@@ -271,13 +332,11 @@ const FLOOR_ITEM_AREA: Record<string, AccessArea | 'any'> = {
   Looms: 'prod_looms',
   Beams: 'prod_beams',
   'Yarn Stock': 'prod_yarn',
-  Quality: 'prod_quality',
+  'Active Qualities': 'prod_quality',
   'Quality Ends': 'prod_quality',
   'Data Check': 'prod_entry',
   'Fabric Fault': 'prod_fabric_fault',
 }
-
-const anyActive = (items: NavLeaf[]) => (p: string, sp: URLSearchParams) => items.some((i) => i.activeCheck(p, sp))
 
 const closeOnMobile = () => {
   if (isSidebarMobileViewport()) closeSidebar()
@@ -291,7 +350,12 @@ function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: st
       <li className="nav-item">
         <Link href={item.href} className={cn('nav-link', active && 'active')} onClick={closeOnMobile}>
           <i className={cn('nav-icon bi', item.icon)} />
-          <p>{item.title}</p>
+          <p className="d-flex align-items-center justify-content-between w-100">
+            <span className="sara-nav-label">{item.title}</span>
+            {item.badge ? (
+              <span className={cn('badge rounded-pill ms-auto', item.badgeClass || 'bg-primary text-white')}>{item.badge}</span>
+            ) : null}
+          </p>
         </Link>
       </li>
     )
@@ -317,7 +381,7 @@ function NavItem({ item, pathname, searchParams }: { item: NavLeaf; pathname: st
 function SidebarContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { canViewAccounts, canViewPayroll, canViewProduction, canView, isAdmin } = useAuth()
+  const { canViewAccounts, canViewPayroll, canViewProduction, canView, canEdit, isAdmin } = useAuth()
 
   useEffect(() => {
     ensureSidebarOverlay()
@@ -338,15 +402,73 @@ function SidebarContent() {
   const showFaultTable = canView('prod_fabric_fault')
   const showTracking = canView('tracking')
   const showArchive = canView('quality_archive')
+  const showYarnSupply = canView('yarn_supply')
+  const canSendYarn = canEdit('yarn_supply')
   const areaKey = FLOOR_ITEMS.map((i) => {
     const area = FLOOR_ITEM_AREA[i.title]
     return area === 'any' ? (canViewProduction ? 1 : 0) : area && canView(area) ? 1 : 0
   }).join('')
   /** Only the fault page (Kamran): the old "Floor Fault" menu. */
   const faultOnly = showFault && !canViewProduction && !showTracking
+  const supplierOnly = showYarnSupply && !canViewProduction && !showFault && !showTracking
   const showDashboard = canViewProduction || showTracking
 
+  const [supplierCounts, setSupplierCounts] = useState<{ requests: number; waiting: number }>({ requests: 0, waiting: 0 })
+  const [verifiedLots, setVerifiedLots] = useState<Array<{ status: string; verifiedAt: string | null; destination?: string }>>([])
+  const [seenAt, setSeenAt] = useState(() => verifiedSeenAt())
+  useEffect(() => {
+    const onSeen = () => setSeenAt(verifiedSeenAt())
+    window.addEventListener(VERIFIED_SEEN_EVENT, onSeen)
+    return () => window.removeEventListener(VERIFIED_SEEN_EVENT, onSeen)
+  }, [])
+  const newVerified = newVerifiedCount(verifiedLots, seenAt)
+  const canSeeYarnSidebar = supplierOnly || showYarnSupply || areaKey[3] === '1'
+  useEffect(() => {
+    if (!canSeeYarnSidebar) return
+    let alive = true
+    const load = () => {
+      fetch('/api/floor/yarn-supply', { credentials: 'same-origin', cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!alive || !d?.ok) return
+          const reqs = Array.isArray(d.requests) ? d.requests.filter((q: { status?: string }) => q.status === 'OPEN').length : 0
+          const wait = Array.isArray(d.dispatches) ? d.dispatches.filter((x: { status?: string }) => x.status !== 'VERIFIED').length : 0
+          setSupplierCounts({ requests: reqs, waiting: wait })
+          const lots = Array.isArray(d.dispatches) ? d.dispatches : []
+          if (verifiedSeenAt() == null) markVerifiedSeen(lots)
+          setVerifiedLots(lots)
+        })
+        .catch(() => undefined)
+    }
+    load()
+    window.addEventListener('focus', load)
+    const t = setInterval(load, 30_000)
+    return () => {
+      alive = false
+      window.removeEventListener('focus', load)
+      clearInterval(t)
+    }
+  }, [canSeeYarnSidebar, pathname])
+
   const trees: NavTree[] = useMemo(() => {
+    // Yarn Supply module: the same tabs for the supplier and Javed Sir (Send yarn only with Edit).
+    const yarnTree: NavTree = {
+      title: 'Yarn Supply',
+      icon: 'bi-truck',
+      items: SUPPLIER_YARN_ITEMS.filter((item) => canSendYarn || item.href !== '/yarn-supply/send').map((item) => {
+        if (item.href === '/yarn-supply?tab=requests') {
+          return { ...item, badge: supplierCounts.requests, badgeClass: 'bg-primary text-white' }
+        }
+        if (item.href === '/yarn-supply?tab=sent') {
+          return { ...item, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
+        }
+        if (item.href === '/yarn-supply?tab=verified') {
+          return { ...item, badge: newVerified, badgeClass: 'bg-success text-white' }
+        }
+        return item
+      }),
+    }
+    if (supplierOnly) return [yarnTree]
     if (faultOnly) {
       return [
         {
@@ -357,12 +479,17 @@ function SidebarContent() {
       ]
     }
 
-    const floorItems = [
-      ...FLOOR_ITEMS.filter((_, idx) => areaKey[idx] === '1'),
+    const floorItems: NavLeaf[] = [
+      ...FLOOR_ITEMS.filter((_, idx) => areaKey[idx] === '1').map((item) =>
+        item.title === 'Yarn Stock' && supplierCounts.waiting > 0
+          ? { ...item, badge: supplierCounts.waiting, badgeClass: 'bg-warning text-dark' }
+          : item
+      ),
       // One "Fabric Fault" entry: the Fault Table when allowed (its tab bar opens Fault Add),
       // otherwise Fault Add alone.
       ...(showFault && !showFaultTable ? [KAMRAN_FAULT_ITEM] : []),
     ]
+
     const list: NavTree[] = []
     if (floorItems.length) {
       list.push({
@@ -371,41 +498,28 @@ function SidebarContent() {
         items: floorItems,
       })
     }
-    if (canViewAccounts) {
-      list.push({
-        title: 'Accounts',
-        icon: 'bi-calculator',
-        items: ACCOUNTS_ITEMS,
-      })
-    }
-    if (canViewPayroll) {
-      list.push({
-        title: 'Salary & Wages',
-        icon: 'bi-cash-stack',
-        items: PAYROLL_ITEMS,
-      })
-    }
+    // Each module is its own menu: Yarn Supply, Accounts, Salary & Wages, then Administration.
+    if (showYarnSupply) list.push(yarnTree)
+    if (canViewAccounts) list.push({ title: 'Accounts', icon: 'bi-calculator', items: ACCOUNTS_ITEMS })
+    if (canViewPayroll) list.push({ title: 'Salary & Wages', icon: 'bi-cash-stack', items: PAYROLL_ITEMS })
     if (isAdmin) {
       list.push({
         title: 'Administration',
         icon: 'bi-shield-lock',
-        items: [
-          ...ADMIN_ITEMS,
-          ...(showArchive ? [QUALITY_ARCHIVE_ITEM] : []),
-        ],
+        items: [...ADMIN_ITEMS, ...(showArchive ? [QUALITY_ARCHIVE_ITEM] : [])],
       })
     } else if (showArchive) {
       list.push({ title: 'System', icon: 'bi-archive', items: [QUALITY_ARCHIVE_ITEM] })
     }
     return list
-  }, [faultOnly, areaKey, showFault, showFaultTable, showArchive, canViewAccounts, canViewPayroll, isAdmin])
+  }, [faultOnly, supplierOnly, supplierCounts, newVerified, areaKey, showFault, showFaultTable, showArchive, showYarnSupply, canSendYarn, canViewAccounts, canViewPayroll, isAdmin])
 
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/')
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
       <div className="sidebar-brand d-flex align-items-center justify-content-between pe-2">
-        <Link href={showDashboard ? "/dashboard" : showFault ? "/floor/fault-reports" : "/dashboard"} className="brand-link flex-grow-1">
+        <Link href={showDashboard ? "/dashboard" : showFault ? "/floor/fault-reports" : showYarnSupply ? "/yarn-supply" : "/dashboard"} className="brand-link flex-grow-1">
           <img
             src="/shahtextile.png"
             alt="Shah Textile"

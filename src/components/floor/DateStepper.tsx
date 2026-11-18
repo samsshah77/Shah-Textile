@@ -1,6 +1,7 @@
 'use client'
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { NamedDateInput } from '@/components/shared/NamedDateInput'
 import { PRODUCTION_START, getCalendarToday, shiftProductionDate } from '@/constants/productionCalendar'
 
 export function DateStepper({
@@ -9,6 +10,7 @@ export function DateStepper({
   min = PRODUCTION_START,
   max,
   required,
+  disabled,
   size = 'md',
   ariaLabel,
   allowFuture = true,
@@ -18,6 +20,7 @@ export function DateStepper({
   min?: string
   max?: string
   required?: boolean
+  disabled?: boolean
   size?: 'sm' | 'md'
   ariaLabel?: string
   allowFuture?: boolean
@@ -42,28 +45,29 @@ export function DateStepper({
         className={`btn ${sm ? 'btn-sm' : ''} btn-outline-secondary px-2 d-inline-flex align-items-center justify-content-center`}
         title="Previous day (<)"
         aria-label="Previous day"
-        disabled={atMin}
+        disabled={disabled || atMin}
         onClick={() => shift(-1)}
       >
         <ChevronLeft className={sm ? 'size-3.5' : 'size-4'} />
       </button>
-      <input
-        type="date"
-        className={`form-control ${sm ? 'form-control-sm fw-semibold' : ''}`}
-        style={{ minWidth: sm ? 140 : 0 }}
+      <NamedDateInput
+        size={size}
+        minWidth={sm ? 140 : 0}
+        className={sm ? '' : 'flex-grow-1'}
         value={value}
         min={min}
         max={cap}
         required={required}
-        aria-label={ariaLabel}
-        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        ariaLabel={ariaLabel}
+        onChange={onChange}
       />
       <button
         type="button"
         className={`btn ${sm ? 'btn-sm' : ''} btn-outline-secondary px-2 d-inline-flex align-items-center justify-content-center`}
         title="Next day (>)"
         aria-label="Next day"
-        disabled={atMax}
+        disabled={disabled || atMax}
         onClick={() => shift(1)}
       >
         <ChevronRight className={sm ? 'size-3.5' : 'size-4'} />
@@ -71,3 +75,4 @@ export function DateStepper({
     </div>
   )
 }
+

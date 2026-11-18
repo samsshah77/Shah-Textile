@@ -11,6 +11,20 @@ import { cn } from '@/lib/utils'
 
 type NavDir = 'up' | 'down' | 'left' | 'right'
 
+/**
+ * Select the cell's text on focus, so typing replaces it. Selected right away, and once more on
+ * the next frame (a mouse click can clear the first selection) — but only if nothing was typed
+ * in between: with fast typing (Enter → "114") the late select used to grab the first digits
+ * and the next key replaced them, leaving "4".
+ */
+function selectOnFocus(target: HTMLInputElement) {
+  const before = target.value
+  target.select?.()
+  requestAnimationFrame(() => {
+    if (document.activeElement === target && target.value === before) target.select?.()
+  })
+}
+
 function focusNavCell(row: number, col: number) {
   const next = document.querySelector<HTMLElement>(
     `[data-nav-row="${row}"][data-nav-col="${col}"]`
@@ -164,8 +178,7 @@ export function NumericCellInput({
       onFocus={(e) => {
         setFocused(true)
         setText(value === 0 ? '' : String(value))
-        const target = e.currentTarget
-        requestAnimationFrame(() => target?.select?.())
+        selectOnFocus(e.currentTarget)
         onFocus?.(e)
       }}
       onBlur={(e) => {
@@ -249,8 +262,7 @@ export function TextCellInput({
       value={value}
       className={cn(isDirty && 'payroll-cell-dirty', className)}
       onFocus={(e) => {
-        const target = e.currentTarget
-        requestAnimationFrame(() => target?.select?.())
+        selectOnFocus(e.currentTarget)
         onFocus?.(e)
       }}
       onChange={(e) => onValueChange(e.target.value)}

@@ -77,7 +77,7 @@ export function ProductionSheetExportModal({
           <div className="p-2.5 bg-light rounded-3 border d-flex align-items-center gap-2 mb-3">
             <Info className="size-4 text-primary shrink-0" />
             <div className="small text-secondary" style={{ fontSize: '0.8rem', lineHeight: 1.4 }}>
-              <strong>By Default Landscape:</strong> Sheet auto-landscape orientation me print aur save hogi.
+              <strong>By Default Landscape:</strong> The sheet prints and saves in landscape.
             </div>
           </div>
 
@@ -108,7 +108,7 @@ export function ProductionSheetExportModal({
                 <Printer className="size-6 mb-2 text-primary" />
                 <span className="fw-bold fs-6">Print Sheet</span>
                 <span className="text-secondary mt-0.5" style={{ fontSize: '0.74rem' }}>
-                  Printer se hard copy
+                  Print a paper copy
                 </span>
               </button>
             </div>

@@ -242,7 +242,7 @@ export function FloorEntryTable({
       done++
     }
     setScanOpen(false)
-    setFeedbackMsg({ type: 'success', text: `Register photo se ${done} looms bhar diye. Table check kar lein, phir Finalize / Submit.` })
+    setFeedbackMsg({ type: 'success', text: `Filled ${done} looms from the register photo. Check the table, then Finalize / Submit.` })
   }
 
   const handleRemovePart = (e: DailyLoomProductionEntry) => {
@@ -252,22 +252,22 @@ export function FloorEntryTable({
     const label = (e.qualityName || '').trim() || `Part ${seg}`
     showConfirm({
       title: `Part ${seg} delete?`,
-      message: `Loom #${e.loomNumber} se "${label}" (P${seg}) hata denge. Is part ke meters bhi delete ho jayenge.`,
+      message: `Remove "${label}" (P${seg}) from Loom #${e.loomNumber}? This part's meters will be deleted too.`,
       type: 'confirm',
       confirmText: 'Delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         const ok = onRemoveQualitySegment(e.loomNumber, seg)
         if (ok) {
-          setFeedbackMsg({ type: 'success', text: `Loom #${e.loomNumber} Part ${seg} delete ho gaya.` })
+          setFeedbackMsg({ type: 'success', text: `Loom #${e.loomNumber} Part ${seg} deleted.` })
           showSuccessSoon({
             title: `Part ${seg} deleted`,
-            message: `Loom #${e.loomNumber}: "${label}" hata diya.`,
+            message: `Loom #${e.loomNumber}: "${label}" removed.`,
           })
         } else {
           showError({
-            title: 'Delete nahi hua',
-            message: 'Dobara try karo.',
+            title: 'Not deleted',
+            message: 'Please try again.',
           })
         }
       },
@@ -279,17 +279,17 @@ export function FloorEntryTable({
     showConfirm({
       title: 'Reset Daily Entry?',
       message:
-        'Is date ke saare Roller Hours, Shift A aur Shift B zero ho jayenge. Quality / Lot same rahenge.',
+        'All Roller Hours, Shift A and Shift B for this date will be set to zero. Quality / Lot stay the same.',
       type: 'confirm',
-      confirmText: 'Haan, zero karo',
+      confirmText: 'Yes, set to zero',
       cancelText: 'Cancel',
       onConfirm: () => {
         const editor = user?.name || (isAdmin ? 'Javed Sir' : 'Ahmer')
         onResetDayMeters(editor)
-        setFeedbackMsg({ type: 'success', text: 'Daily Entry meters zero ho gaye.' })
+        setFeedbackMsg({ type: 'success', text: 'Daily Entry meters set to zero.' })
         showSuccessSoon({
           title: 'Reset Done',
-          message: 'Daily Entry meters zero ho gaye.',
+          message: 'Daily Entry meters set to zero.',
         })
       },
     })
@@ -307,7 +307,7 @@ export function FloorEntryTable({
         setEditedSinceFinalize(false)
         showSuccessSoon({
           title: 'Finalized',
-          message: 'Production sheet finalize ho gayi.',
+          message: 'Production sheet finalized.',
         })
       } else {
         setFeedbackMsg({ type: 'danger', text: res.error || 'Finalize failed' })
@@ -351,7 +351,7 @@ export function FloorEntryTable({
           setTableEdit(false)
           showSuccessSoon({
             title: 'Saved',
-            message: 'Daily entry edits save ho gayi hain.',
+            message: 'Daily entry changes saved.',
           })
         } else {
           setTableEdit(true)
@@ -370,7 +370,7 @@ export function FloorEntryTable({
         <div className="alert alert-info py-2 px-3 mx-3 mt-3 mb-0 d-flex flex-wrap align-items-center justify-content-between gap-2 small">
           <div>
             <i className="bi bi-info-circle-fill me-1 text-primary" />
-            <strong>Ahmer ne entries punch ki hain:</strong> Review kar ke Finalize karein.
+            <strong>Ahmer has entered the data:</strong> review it, then Finalize.
           </div>
           <button
             type="button"
@@ -434,11 +434,11 @@ export function FloorEntryTable({
               type="button"
               className="btn btn-sm btn-outline-primary"
               disabled={isSubmitting}
-              title="Register ki photo se Weight, A, B bharein (check karne ke baad)"
+              title="Fill Weight, A, B from a photo of the register (after checking)"
               onClick={() => setScanOpen(true)}
             >
               <i className="bi bi-camera me-1" />
-              Register se bharein
+              Fill from register
             </button>
           )}
           <ViewModeToggle mode={mode} onChange={setMode} />
@@ -449,9 +449,9 @@ export function FloorEntryTable({
             title={
               resetDisabled
                 ? isApproved
-                  ? 'Finalized — pehle Edit karke change karo, phir Reset chalega'
+                  ? 'Finalized — press Edit first, then Reset will work'
                   : 'Reset locked'
-                : 'Zero Roller Hours + Shift A/B (confirmation ke baad)'
+                : 'Set Roller Hours + Shift A/B to zero (after confirmation)'
             }
             onClick={handleResetDay}
           >
@@ -576,13 +576,13 @@ export function FloorEntryTable({
               <label className="small mb-0">Remarks</label>
               <div
                 className="small text-secondary"
-                title="Remarks system se aate hain — Daily Entry pe edit nahi"
+                title="Remarks come from the system — not editable in Daily Entry"
               >
                 {e.remarks || '—'}
               </div>
 
               <label className="small mb-0">SW #</label>
-              <div className="small text-secondary" title="Beam pe jo Sw# hai — Daily Entry pe edit nahi">
+              <div className="small text-secondary" title="The Sw# on the beam — not editable in Daily Entry">
                 {e.lot || '—'}
               </div>
 
@@ -591,7 +591,7 @@ export function FloorEntryTable({
                 type="button"
                 className="btn btn-sm btn-outline-secondary text-start w-100"
                 onClick={() => setFaultDialogEntry(e)}
-                title="Shift A / Shift B alag fault"
+                title="Separate fault for Shift A / Shift B"
               >
                 <span className="text-truncate d-inline-block w-100" style={{ maxWidth: '100%' }}>
                   {fabricFaultPreview(e) || (canEdit ? 'Shift A / B fault…' : '—')}
@@ -778,8 +778,8 @@ export function FloorEntryTable({
                       className="px-1 text-truncate text-secondary"
                       title={
                         e.remarks
-                          ? `${e.remarks} (system — edit nahi)`
-                          : 'Remarks system se aate hain — Daily Entry pe edit nahi'
+                          ? `${e.remarks} (system — not editable)`
+                          : 'Remarks come from the system — not editable in Daily Entry'
                       }
                     >
                       {e.remarks || '—'}
@@ -788,7 +788,7 @@ export function FloorEntryTable({
                   <td className="px-1">
                     <div
                       className="px-1 text-truncate text-secondary"
-                      title={e.lot ? `${e.lot} (from beam Sw#)` : 'Beam pe Sw# set karo'}
+                      title={e.lot ? `${e.lot} (from beam Sw#)` : 'Set the Sw# on the beam'}
                     >
                       {e.lot || '—'}
                     </div>

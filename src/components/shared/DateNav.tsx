@@ -1,6 +1,7 @@
 'use client'
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { NamedDateInput } from '@/components/shared/NamedDateInput'
 import {
   PRODUCTION_START,
   getCalendarToday,
@@ -54,17 +55,15 @@ export function DateNav({
         >
           <ChevronLeft className="size-3.5" />
         </button>
-        <input
-          type="date"
-          className="form-control form-control-sm fw-semibold"
-          style={{ width: 'auto', minWidth: 140 }}
+        <NamedDateInput
+          size="sm"
+          minWidth={140}
           value={value}
           min={min}
           max={top}
           disabled={disabled}
-          aria-label="Date"
-          onChange={(e) => {
-            const v = e.target.value
+          ariaLabel="Date"
+          onChange={(v) => {
             if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v >= min && v <= top) onChange(v)
           }}
         />

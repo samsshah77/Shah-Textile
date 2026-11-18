@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     const actor = await currentUser(req)
     if (!actor) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     if (!allows((await accessFor(actor)).access, 'accounts', 'view'))
-      return NextResponse.json({ ok: false, error: 'Accounts dekhne ki ijazat nahi.' }, { status: 403 })
+      return NextResponse.json({ ok: false, error: 'You do not have permission to view Accounts.' }, { status: 403 })
     await ensureFloorPayrollTables()
     const store = await dbAccountsGetAll()
     return NextResponse.json({ ok: true, store })
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
  */
 export async function PUT() {
   return NextResponse.json(
-    { ok: false, error: 'Accounts ka naya version aa gaya hai — page refresh karein (Ctrl+F5).' },
+    { ok: false, error: 'A new version of Accounts is out — refresh the page (Ctrl+F5).' },
     { status: 410 }
   )
 }

@@ -9,7 +9,7 @@ export const runtime = 'nodejs'
 
 const MAX_BYTES = 10 * 1024 * 1024
 const MAX_FILES = 20
-const deny = () => NextResponse.json({ error: 'Quality Archive sirf admin dekh sakta hai.' }, { status: 403 })
+const deny = () => NextResponse.json({ error: 'Only admin can view the Quality Archive.' }, { status: 403 })
 
 /** The archived quality lines (read-only) and whether the one-time import is done. */
 export async function GET(request: NextRequest) {
@@ -27,18 +27,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const admin = await requireAdminUser(request)
   if (!admin) return deny()
-  if (await archiveSealed()) return NextResponse.json({ error: 'Archive band hai — ab is mein kuch add nahi ho sakta.' }, { status: 409 })
+  if (await archiveSealed()) return NextResponse.json({ error: 'The archive is closed — nothing more can be added.' }, { status: 409 })
   const form = await request.formData().catch(() => null)
   const action = form?.get('action') === 'save' ? 'save' : 'preview'
   const list = (form?.getAll('file') ?? []).filter((f): f is File => typeof f !== 'string')
-  if (!list.length) return NextResponse.json({ error: 'Excel files chunein' }, { status: 400 })
-  if (list.length > MAX_FILES) return NextResponse.json({ error: `Ek dafa mein ${MAX_FILES} se zyada files nahi` }, { status: 400 })
+  if (!list.length) return NextResponse.json({ error: 'Select Excel files' }, { status: 400 })
+  if (list.length > MAX_FILES) return NextResponse.json({ error: `No more than ${MAX_FILES} files at once` }, { status: 400 })
   const files: Array<{ buf: Uint8Array; fileName: string }> = []
   for (const f of list) {
-    if (!/\.xlsx$/i.test(f.name)) return NextResponse.json({ error: `${f.name}: sirf .xlsx file (Excel) chalegi` }, { status: 400 })
-    if (f.size > MAX_BYTES) return NextResponse.json({ error: `${f.name}: 10 MB se bari hai` }, { status: 413 })
+    if (!/\.xlsx$/i.test(f.name)) return NextResponse.json({ error: `${f.name}: only .xlsx (Excel) files are allowed` }, { status: 400 })
+    if (f.size > MAX_BYTES) return NextResponse.json({ error: `${f.name}: is larger than 10 MB` }, { status: 413 })
     const buf = new Uint8Array(await f.arrayBuffer())
-    if (!looksLikeXlsx(buf)) return NextResponse.json({ error: `${f.name}: asal Excel (.xlsx) file nahi lagti` }, { status: 400 })
+    if (!looksLikeXlsx(buf)) return NextResponse.json({ error: `${f.name}: does not look like a real Excel (.xlsx) file` }, { status: 400 })
     files.push({ buf, fileName: f.name })
   }
   try {
@@ -56,6 +56,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, saved })
   } catch (err) {
     console.error('[quality-archive]', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Files parh nahi saka' }, { status: 400 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Could not read the files' }, { status: 400 })
   }
 }

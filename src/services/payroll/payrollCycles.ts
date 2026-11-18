@@ -39,7 +39,7 @@ export function applySalariedMonthGenerateToStore(
 } {
   const m = (month || '').trim()
   if (!/^\d{4}-\d{2}$/.test(m)) {
-    return { ok: false, message: 'Month format YYYY-MM chahiye.', staff: 0, contract: 0, patch: {} }
+    return { ok: false, message: 'Month must be in YYYY-MM format.', staff: 0, contract: 0, patch: {} }
   }
 
   const previous = new Map(memoryStore)
@@ -99,7 +99,7 @@ export function applySalariedMonthGenerateToStore(
       }
       return {
         ok: true,
-        message: `${formatPayrollMonthLabel(m)} pehle se maujood hai — active month set.`,
+        message: `${formatPayrollMonthLabel(m)} already exists — set as the active month.`,
         staff: allStaff.filter((r) => r.month === m).length,
         contract: allContract.filter((r) => r.month === m).length,
         patch: { [STORAGE_KEYS.HR_META]: meta },
@@ -174,7 +174,7 @@ export function applySalariedMonthGenerateToStore(
     if (newStaff.length === 0 && newContract.length === 0) {
       return {
         ok: false,
-        message: 'General Wages me koi Staff / Company Contract person nahi mila.',
+        message: 'No Staff / Company Contract person found in General Wages.',
         staff: 0,
         contract: 0,
         patch: {},
@@ -251,7 +251,7 @@ export function applySalariedMonthGenerateToStore(
 
     return {
       ok: true,
-      message: `${formatPayrollMonthLabel(m)}: ${newStaff.length} Staff + ${newContract.length} Contract + ${newEffCount} Efficiency — Postgres save. Refresh ke baad bhi rahega.`,
+      message: `${formatPayrollMonthLabel(m)}: ${newStaff.length} Staff + ${newContract.length} Contract + ${newEffCount} Efficiency — saved to the database. It stays after refresh.`,
       staff: newStaff.length,
       contract: newContract.length,
       patch,

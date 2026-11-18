@@ -74,13 +74,13 @@ export function emailErrorText(err: unknown): string {
   const e = err as { code?: string; responseCode?: number; message?: string; errors?: Array<{ code?: string; message?: string }> }
   const code = e?.code || e?.errors?.[0]?.code || ''
   const msg = e?.message || e?.errors?.[0]?.message || ''
-  if (code === 'EAUTH' || e?.responseCode === 535) return 'Email ya password ghalat hai (SMTP_USER / SMTP_PASS check karein).'
+  if (code === 'EAUTH' || e?.responseCode === 535) return 'Email or password is wrong (check SMTP_USER / SMTP_PASS).'
   if (['ECONNREFUSED', 'ETIMEDOUT', 'ECONNECTION', 'ESOCKET', 'EDNS', 'ENOTFOUND'].includes(code) && !/certificate/i.test(msg))
-    return `Mail server se rabta nahi ho saka (${code}). SMTP_HOST / SMTP_PORT check karein — isi server par ho to SMTP_HOST=localhost likhein.`
+    return `Could not reach the mail server (${code}). Check SMTP_HOST / SMTP_PORT — if it is on this server, set SMTP_HOST=localhost.`
   if (/certificate|self.signed|altname/i.test(msg) || /CERT|SELF_SIGNED/.test(code))
-    return 'Mail server ka certificate match nahi hua. Isi server ka mail ho to SMTP_HOST=localhost likhein.'
-  if (e?.responseCode && e.responseCode >= 500) return `Mail server ne mana kiya (${e.responseCode}): ${msg}`
-  return msg || code || 'Email nahi gayi (wajah maloom nahi — server log dekhein).'
+    return 'The mail server certificate did not match. If the mail is on this server, set SMTP_HOST=localhost.'
+  if (e?.responseCode && e.responseCode >= 500) return `The mail server refused (${e.responseCode}): ${msg}`
+  return msg || code || 'Email not sent (reason unknown — check the server log).'
 }
 
 export async function sendEmail({
@@ -96,7 +96,7 @@ export async function sendEmail({
       return {
         success: false,
         error:
-          'Server par SMTP / Gmail settings configure nahi hain. (GMAIL_USER & GMAIL_APP_PASS ya SMTP_HOST env add karein). Aap "Open Email App" se bhi direct email bhej sakte hain.',
+          'SMTP / Gmail settings are not set up on the server. (Add GMAIL_USER & GMAIL_APP_PASS or SMTP_HOST env). You can also send the email directly with "Open Email App".',
       }
     }
 
@@ -114,12 +114,15 @@ export async function sendEmail({
       subject,
       text,
       html,
-      attachments: attachments?.map((a) => ({
-        filename: a.filename,
-        content: a.content,
-        encoding: (a.encoding || 'base64') as 'base64',
-        contentType: a.contentType || 'application/pdf',
-      })),
+      attachments: attachments?.map((a) => {
+        const raw = a.content.includes(',') ? a.content.split(',')[1] : a.content
+        return {
+          filename: a.filename,
+          content: raw.trim(),
+          encoding: (a.encoding || 'base64') as 'base64',
+          contentType: a.contentType || 'application/pdf',
+        }
+      }),
     })
 
     return { success: true, messageId: info.messageId }

@@ -23,6 +23,7 @@ const KINDS = {
   loom: { dir: 'looms', prefix: 'loom' },
   profile: { dir: 'profiles', prefix: 'profile' },
   bill: { dir: 'bills', prefix: 'bill' },
+  'yarn-request': { dir: 'yarn-requests', prefix: 'yarn-req' },
 } as const
 type Kind = keyof typeof KINDS
 
@@ -30,6 +31,7 @@ async function mayUpload(user: NonNullable<Awaited<ReturnType<typeof currentUser
   const { access } = await accessFor(user)
   if (kind === 'loom') return allows(access, 'prod_looms', 'edit')
   if (kind === 'profile') return allows(access, 'payroll', 'edit')
+  if (kind === 'yarn-request') return allows(access, 'prod_yarn', 'edit')
   return allows(access, 'accounts', 'edit')
 }
 
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
   const kindParam = request.nextUrl.searchParams.get('kind') || 'loom'
   if (!(kindParam in KINDS)) return NextResponse.json({ error: 'Unknown upload kind' }, { status: 400 })
   const kind = kindParam as Kind
-  if (!(await mayUpload(user, kind))) return NextResponse.json({ error: 'Is cheez ki tasveer lagane ki ijazat nahi.' }, { status: 403 })
+  if (!(await mayUpload(user, kind))) return NextResponse.json({ error: 'You do not have permission to add a photo here.' }, { status: 403 })
 
   let form: FormData
   try {
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer())
   const ext = sniffImage(buffer)
-  if (!ext) return NextResponse.json({ error: 'Sirf JPG, PNG, WEBP ya GIF tasveer lag sakti hai.' }, { status: 400 })
+  if (!ext) return NextResponse.json({ error: 'Only JPG, PNG, WEBP or GIF photos are allowed.' }, { status: 400 })
 
   const { dir, prefix } = KINDS[kind]
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')

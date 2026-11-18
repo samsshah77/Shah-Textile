@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { monthLabel } from '@/lib/accounts/util'
 import type { MonthLock } from '@/lib/accounts/types'
 import { accountsApi } from '@/services/accounts/accountsApi'
+import { SectionLoader } from '@/components/shared/Loaders'
 
 /** Month dropdown used on every Accounts page. */
 export function MonthPicker({
@@ -39,7 +40,7 @@ export function MonthPicker({
       <input
         type="month"
         aria-label="Pick another month"
-        title="Koi aur mahina"
+        title="Another month"
         value=""
         onChange={(e) => e.target.value && onChange(e.target.value)}
         className="w-5 bg-transparent text-transparent cursor-pointer"
@@ -62,8 +63,8 @@ export function LockControl({
   const toggle = async () => {
     const next = !lock.locked
     const msg = next
-      ? `${monthLabel(lock.month)} lock karein? Lock ke baad is mahine ka koi bill, petty cash ya cost statement nahi badlega.`
-      : `${monthLabel(lock.month)} unlock karein?`
+      ? `Lock ${monthLabel(lock.month)}? After locking, no bill, petty cash or cost statement of this month can change.`
+      : `Unlock ${monthLabel(lock.month)}?`
     if (!window.confirm(msg)) return
     setBusy(true)
     try {
@@ -196,7 +197,7 @@ export function LoadState({
   if (error && !hasData) {
     return (
       <div className="alert alert-danger py-3 px-4 rounded-xl text-sm border border-rose-200 bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200 shadow-xs">
-        <p className="font-semibold mb-1">Accounts data load nahi ho saka</p>
+        <p className="font-semibold mb-1">Could not load accounts data</p>
         <p className="text-xs opacity-90">{error}</p>
       </div>
     )
@@ -208,6 +209,5 @@ export function LoadState({
     if (variant === 'statement') return <AccountsCostStatementSkeleton />
     return <AccountsTableSkeleton rows={rows} cols={cols} />
   }
-
   return <>{children}</>
 }

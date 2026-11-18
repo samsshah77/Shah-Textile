@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { resolveLoomCondition } from '@/constants/loomConditions'
 import { useAlertDialog } from '@/context/AlertDialogContext'
+import { useQualityTargets } from '@/lib/floor/qualityTargets'
 import { peekQualityAssignFlashIds, clearQualityAssignFlashIds } from '@/lib/qualityAssignFlash'
 import type { QualityMasterTableProps, FlashTone } from '@/components/floor/quality/qualityMasterParts'
 import { qualitiesAsOfDay, DEFAULT_WIDTHS, qualityStatusCounts, QUALITY_FLASH_MS, FLASH_CLASS } from '@/components/floor/quality/qualityMasterParts'
@@ -43,6 +44,10 @@ export function useQualityCore(props: QualityMasterTableProps) {
   )
   const { canEditProduction } = useAuth()
   const { showConfirm, showSuccessSoon, showInfo, showError } = useAlertDialog()
+  // Target (meters) per quality — its own store; Balance = Target − Overall.
+  const { targets, saveTarget } = useQualityTargets(
+    useCallback((message: string) => showError({ title: 'Target not saved', message }), [showError])
+  )
   const [modeLocal, setModeLocal] = useState<TableGridMode>('table')
   const [tableEditLocal, setTableEditLocal] = useState(false)
   const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set())
@@ -380,7 +385,7 @@ export function useQualityCore(props: QualityMasterTableProps) {
             setTableEdit(false)
             showSuccessSoon({
               title: 'Saved',
-              message: 'Quality edits save ho gayi hain.',
+              message: 'Quality changes saved.',
             })
           } else {
             setTableEdit(true)
@@ -396,16 +401,16 @@ export function useQualityCore(props: QualityMasterTableProps) {
     if (!masterEdit) return
     if (qualityHistoryOnActivePastDay(q, sheetDate)) return
     showConfirm({
-      title: 'Quality Delete Karein?',
-      message: `Kya aap waqai quality "${q.name}" ko delete karna chahte hain? Ye permanent delete ho jayegi.`,
+      title: 'Delete quality?',
+      message: `Delete quality "${q.name}"? It will be deleted permanently.`,
       type: 'confirm',
-      confirmText: 'Haan, Delete Karein',
+      confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         onDelete(q.id)
         showSuccessSoon({
           title: 'Deleted',
-          message: `"${q.name}" delete ho gayi.`,
+          message: `"${q.name}" deleted.`,
         })
       },
     })
@@ -467,7 +472,7 @@ export function useQualityCore(props: QualityMasterTableProps) {
         <span
           className="badge text-bg-warning"
           style={{ fontSize: '0.65rem' }}
-          title="Hold — past history (Resume Hold tab se)"
+          title="Hold — past history (resume it from the Hold tab)"
         >
           H
         </span>
@@ -478,7 +483,7 @@ export function useQualityCore(props: QualityMasterTableProps) {
         <span
           className="badge text-bg-secondary"
           style={{ fontSize: '0.65rem' }}
-          title="Ended — past history (us din active thi; Ends tab pe ab)"
+          title="Ended — past history (it was active on that day; now in the Ends tab)"
         >
           E
         </span>
@@ -557,6 +562,8 @@ export function useQualityCore(props: QualityMasterTableProps) {
     beamEndLooms,
     availableLooms,
     productionByQuality,
+    targets,
+    saveTarget,
     tableMinWidth,
     canOps,
     canArchiveOps,

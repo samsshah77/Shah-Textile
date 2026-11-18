@@ -33,5 +33,9 @@ export function defaultAccess(f: AccessFacts): AccessMap {
   map.fault_reports = f.isFaultInspector ? 'edit' : 'hide'
   map.tracking = f.isFaultInspector || role === 'accountant' || !f.floorView ? 'hide' : 'view'
   map.quality_archive = role === 'admin' ? 'view' : 'hide'
+  // Yarn Supply (the supplier's page): Javed Sir sees it; the supplier is given Edit on Permissions.
+  map.yarn_supply = role === 'admin' ? 'view' : 'hide'
+  // Yarn Supply (the supplier's page): Javed Sir gives the supplier Edit; the admin sees it.
+  map.yarn_supply = role === 'admin' ? 'view' : 'hide'
   return map
 }

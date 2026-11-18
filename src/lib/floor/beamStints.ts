@@ -12,13 +12,23 @@ export type BeamStint = {
   swLot: string | null
   warp: string
   qualityId: string | null
+  /** The beam as it was in this run (older servers may not send these). */
+  reed?: number
+  width?: number
+  totalThreads?: number
+  beamRepeat?: string | null
+  loomType?: string
+  /** History rows of this run (for Ended → Edit). */
+  firstId?: string
+  closeId?: string | null
+  closeOffLoom?: boolean
 }
 
 /** Every beam-on-loom stint that overlaps from…to (read-only). */
 export async function fetchBeamStints(from: string, to: string): Promise<BeamStint[]> {
   const r = await fetch(`/api/floor/beam-history?stints=1&from=${from}&to=${to}`, { credentials: 'same-origin', cache: 'no-store' })
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(d?.error || 'Beams load nahi ho sake.')
+  if (!r.ok) throw new Error(d?.error || 'Could not load beams.')
   return Array.isArray(d.stints) ? d.stints : []
 }
 
@@ -53,3 +63,105 @@ export function rowsFromBeams(entries: DailyLoomProductionEntry[], beams: BeamSt
 export function beamMadeMeters(entries: DailyLoomProductionEntry[], beams: BeamStint[], today: string): number {
   return rowsFromBeams(entries, beams, today).reduce((sum, e) => sum + Math.max(0, entryMeters(e)), 0)
 }
+
+/** Ended → Edit: change the day a beam came off, or remove a record. Throws the server's message. */
+export async function editBeamStint(body: {
+  action: 'setStart' | 'setEnd' | 'remove' | 'add' | 'details'
+  beamNo: string
+  /** Not for 'add'. */
+  firstId?: string
+  loom?: number
+  swLot?: string | null
+  warp?: string
+  length?: number
+  from?: string
+  to?: string
+  oldFrom?: string
+  oldTo?: string
+}): Promise<void> {
+  const r = await fetch('/api/floor/beam-history', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not save.')
+}
+
+/**
+ * Beams table, a past date in Edit: change the details of the older (ended) run the beam was in
+ * on `date` on `loom`. Only that run changes, not the beam as it is now. Throws the server's message.
+ */
+export async function editRunOnDay(
+  beamNo: string,
+  date: string,
+  loom: number,
+  patch: {
+    swLot?: string | null
+    warp?: string
+    length?: number
+    reed?: number
+    width?: number
+    totalThreads?: number
+    beamRepeat?: string | null
+    loomType?: string
+  }
+): Promise<void> {
+  const r = await fetch('/api/floor/beam-history', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'dayDetails', beamNo, date, loom, ...patch }),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not save.')
+}
+
+/** Every beam as it stood at the end of `date` (Beams tab, past days). */
+export async function fetchBeamsAsOf<T>(date: string): Promise<T[]> {
+  const r = await fetch(`/api/floor/beam-history?date=${date}`, { credentials: 'same-origin', cache: 'no-store' })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(d?.error || 'Could not load beams.')
+  return Array.isArray(d.beams) ? d.beams : []
+}
+
+/** Every run of one beam, oldest first (Beam History dialog). */
+export async function fetchBeamRuns(beamNo: string): Promise<BeamStint[]> {
+  const r = await fetch(`/api/floor/beam-history?beam=${encodeURIComponent(beamNo)}`, { credentials: 'same-origin', cache: 'no-store' })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(d?.error || 'Could not load beam history.')
+  return Array.isArray(d.runs) ? d.runs : []
+}
+
+export type RunLotPlan = {
+  lot: string
+  empty: string[]
+  same: string[]
+  other: Array<{ date: string; lot: string }>
+  noRow: string[]
+}
+
+async function postHistory<T>(body: Record<string, unknown>): Promise<T> {
+  const r = await fetch('/api/floor/beam-history', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.ok) throw new Error(d?.error || 'Could not save.')
+  return d as T
+}
+
+/** Beam History: which Daily Entry days of a run would get its Sw # (nothing is written). */
+export const planRunLots = (beamNo: string, firstId: string) =>
+  postHistory<{ loom: number; from: string; to: string; plan: RunLotPlan }>({ action: 'lotPlan', beamNo, firstId })
+
+/** Beam History: write the run's Sw # into the empty Sw # cells of Daily Entry. */
+export const fillRunLots = (beamNo: string, firstId: string) =>
+  postHistory<{ loom: number; lot: string; filled: string[]; failed: Array<{ date: string; reason: string }> }>({
+    action: 'fillLots',
+    beamNo,
+    firstId,
+  })

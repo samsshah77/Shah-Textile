@@ -30,7 +30,7 @@ function resolvePayrollPage(pathname: string, sp: URLSearchParams): string | nul
   if (pathname === '/payroll/profiles/new') return 'Register'
   if (pathname.startsWith('/payroll/profiles/')) return null // loaded async
   if (pathname === '/payroll/employees') return 'General Wages Register'
-  if (pathname === '/payroll/advances') return 'Advance (Peshgi)'
+  if (pathname === '/payroll/advances') return 'Advance'
   if (pathname === '/payroll/staff') return 'Staff Salary & OT'
   if (pathname === '/payroll/efficiency') return 'Efficiency'
   if (pathname === '/payroll/helpers') return 'Helpers'
@@ -74,18 +74,46 @@ function resolveFloorPage(pathname: string, sp: URLSearchParams): string {
   if (pathname.startsWith('/floor/reports')) return 'Reports'
   if (pathname.startsWith('/floor/challan')) return 'Challan'
   if (pathname.startsWith('/floor/fault-reports')) return 'Fabric Fault'
+  if (pathname.startsWith('/floor/yarn-request')) return 'Request yarn'
   if (pathname === '/floor/production' || pathname.startsWith('/floor/production')) {
     const tab = sp.get('tab')
     if (tab === 'looms') return 'Looms'
     if (tab === 'beams') return 'Beams'
     if (tab === 'yarn') return 'Yarn'
-    if (tab === 'quality') return 'Quality'
+    if (tab === 'quality') return 'Active Qualities'
     if (tab === 'quality-ends') return 'Quality Ends'
     if (tab === 'entry') return 'Production Entry'
     if (tab === 'fabric-fault') return 'Fabric Fault'
     return 'Production'
   }
   return 'Floor'
+}
+
+/** Yarn Supply: the open tab's name (same names as the sidebar). */
+function resolveYarnSupplyPage(pathname: string, sp: URLSearchParams): string {
+  if (pathname.startsWith('/yarn-supply/send')) {
+    if (sp.get('id')) return 'Correct yarn sent'
+    const to = sp.get('to')
+    if (to === 'TWISTING') return 'Issue to Twisting'
+    if (to === 'SIZING') return 'Send to Sizing'
+    if (to === 'WARPING') return 'Send to Sectional Warping'
+    return 'Send yarn'
+  }
+  if (pathname.startsWith('/yarn-supply/challan')) return 'Challan'
+  if (pathname.startsWith('/yarn-supply/twisting')) return 'Twisting'
+  if (pathname.startsWith('/yarn-supply/sizing')) return 'Sizing'
+  if (pathname.startsWith('/yarn-supply/warping')) return 'Sectional Warping'
+  if (pathname.startsWith('/yarn-supply/store')) {
+    const tab = sp.get('tab')
+    if (tab === 'out') return 'Sizing'
+    if (tab === 'twist') return 'Twisting'
+    return 'Fazal Umer Stock'
+  }
+  const tab = sp.get('tab')
+  if (tab === 'sent') return 'Sent — waiting'
+  if (tab === 'verified') return 'Verified'
+  if (tab === 'stock') return 'Shah Textile stock'
+  return 'Requests from Shah Textile'
 }
 
 function resolveAdminPage(pathname: string): string {
@@ -165,6 +193,9 @@ function HeaderContent() {
     }
     if (pathname.startsWith('/floor')) {
       return { section: 'Floor Operations', page: resolveFloorPage(pathname, searchParams) }
+    }
+    if (pathname.startsWith('/yarn-supply')) {
+      return { section: 'Yarn Supply', page: resolveYarnSupplyPage(pathname, searchParams) }
     }
     return { section: 'Shah Textile', page: null as string | null }
   }, [pathname, searchParams, profilePageLabel])

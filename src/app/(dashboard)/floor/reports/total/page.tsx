@@ -31,6 +31,8 @@ import {
 import { longDateFromYmd } from '@/lib/longDate'
 import type { DailyLoomProductionEntry, MonthlyMatrixDay } from '@/types/production'
 import type { QualityMaster } from '@/services/productionMastersService'
+import { LoadingChip } from '@/components/shared/Loaders'
+import { DateStepper } from '@/components/floor/DateStepper'
 
 function buildMonthOptions(): { value: string; label: string }[] {
   // Production months (2nd → 1st of next month): on the 1st the open month is still the last one.
@@ -218,6 +220,8 @@ function formatShortDate(dateStr?: string | null) {
 
 /** Excel “Total” tab — day×loom meters matrix + fortnight / monthly rollups + charts. */
 function ProductionTotalTrackingContent() {
+  // "Open Production Sheet" only for people who may open it (not the owner's view-only login).
+  const sheetOk = useAuth().canView('prod_sheet')
   const searchParams = useSearchParams()
   const qualityId = searchParams.get('quality')
   const qualityNameParam = searchParams.get('name')
@@ -707,15 +711,13 @@ function ProductionTotalTrackingContent() {
                   </option>
                 ))}
               </select>
-              <input
-                type="date"
-                className="form-control form-control-sm fw-semibold"
-                style={{ width: 'auto', minWidth: 140 }}
+              <DateStepper
+                size="sm"
                 value={asOf}
                 max={getProductionToday()}
                 disabled={loading}
-                onChange={(e) => e.target.value && setAsOf(e.target.value)}
-                aria-label="Tracking date"
+                ariaLabel="Tracking date"
+                onChange={(next) => next && setAsOf(next)}
               />
               <ExportPdfButton filename={`Monthly-Tracking-${asOf}`} />
             </div>
@@ -738,16 +740,14 @@ function ProductionTotalTrackingContent() {
                 (Ended {formatShortDate(qualityFocus.endedOn)})
               </span>
             )}
-            {loading && (
-              <span className="ms-2 badge text-bg-light border">Loading…</span>
-            )}
+            {loading && <LoadingChip />}
             {!loading && qualityMonthTotal != null && (
               <span className="ms-2 badge text-bg-light border">
                 {formatNumber(qualityMonthTotal, 0)} m this run / month
               </span>
             )}
             {!loading && qualityMonthTotal === 0 && (
-              <span className="ms-2 small text-warning">Abhi is run pe production start nahi hui.</span>
+              <span className="ms-2 small text-warning">No production on this run yet.</span>
             )}
           </div>
         </div>
@@ -773,7 +773,7 @@ function ProductionTotalTrackingContent() {
           <MetricCard
             title={view === 'shifts' ? 'Shift A month' : 'Month total'}
             value={formatTotal(qualityMonthTotal ?? matrix.grandTotalMeters)}
-            subValue={`${qualityFocus ? `${qualityFocus.name} · ` : ''}${longDateFromYmd(asOf)} tak`}
+            subValue={`${qualityFocus ? `${qualityFocus.name} · ` : ''}up to ${longDateFromYmd(asOf)}`}
             biIcon="bi-calendar3"
             colorVariant="primary"
           />
@@ -939,10 +939,12 @@ function ProductionTotalTrackingContent() {
                   ? 'Active looms — Loom × Day'
                   : 'Total matrix — Loom × Day (meters)'}
           </h3>
-          <Link href="/floor/production" className="btn btn-sm btn-primary">
-            Open Production Sheet
-            <i className="bi bi-arrow-right-short ms-1" />
-          </Link>
+          {sheetOk && (
+            <Link href="/floor/production" className="btn btn-sm btn-primary">
+              Open Production Sheet
+              <i className="bi bi-arrow-right-short ms-1" />
+            </Link>
+          )}
         </div>
         <TablePanScroll className="card-body p-0">
           <table className="table table-sm table-bordered mb-0 align-middle text-nowrap">
@@ -1171,7 +1173,7 @@ export default function ProductionTotalTrackingPage() {
     return (
       <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 m-3 fw-medium">
         <i className="bi bi-shield-lock-fill text-warning fs-5 flex-shrink-0" />
-        <span>Tracking dekhne ki ijazat nahi.</span>
+        <span>You do not have permission to view Tracking.</span>
       </div>
     )
   }

@@ -11,7 +11,9 @@ import { formatSwLotForDailyEntry } from '@/services/beamTrack'
 import { longDateFromYmd } from '@/lib/longDate'
 import type { BeamMaster, MountBeamResult } from '@/services/productionMastersService'
 import { useAlertDialog } from '@/context/AlertDialogContext'
-import { beamMadeMeters, entryMeters, fetchBeamStints, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
+import { BeamHistoryDialog } from '@/components/floor/BeamHistoryDialog'
+import { beamMadeMeters, editBeamStint, entryMeters, fetchBeamStints, rowsFromBeams, type BeamStint } from '@/lib/floor/beamStints'
+import { SectionLoader } from '@/components/shared/Loaders'
 
 type EndedRow = BeamStint & {
   to: string
@@ -49,6 +51,7 @@ export function BeamEndedHistory({
   const [editing, setEditing] = useState(false)
   // Bumped after a restore so the history is read again.
   const [reload, setReload] = useState(0)
+  const [historyBeam, setHistoryBeam] = useState<string | null>(null)
   // Rows put back on their loom here — hidden at once, before the history is read again.
   const [restored, setRestored] = useState<string[]>([])
   // What was loaded, and for which month (a different month = still loading).
@@ -62,7 +65,7 @@ export function BeamEndedHistory({
         if (live) setLoaded({ month, stints: list, error: '' })
       })
       .catch((err) => {
-        if (live) setLoaded({ month, stints: [], error: err instanceof Error ? err.message : 'Beams load nahi ho sake.' })
+        if (live) setLoaded({ month, stints: [], error: err instanceof Error ? err.message : 'Could not load beams.' })
       })
     return () => {
       live = false
@@ -104,28 +107,69 @@ export function BeamEndedHistory({
   const restore = (r: EndedRow) => {
     if (!onRestore) return
     showConfirm({
-      title: `Beam ${r.beamNo} wapis Loom ${r.loom} pe?`,
-      message: `Beam ${r.beamNo}${r.swLot ? ` (${formatSwLotForDailyEntry(r.swLot)})` : ''} ghalti se End hua tha? Ye wapis Loom ${r.loom} pe lag jayega, ${longDateFromYmd(r.from)} se (jaise pehle tha), aur Ended list se hat jayega.`,
+      title: `Put beam ${r.beamNo} back on Loom ${r.loom}?`,
+      message: `Beam ${r.beamNo}${r.swLot ? ` (${formatSwLotForDailyEntry(r.swLot)})` : ''} was ended by mistake? It goes back on Loom ${r.loom} from ${longDateFromYmd(r.from)} (as before) and leaves the Ended list.`,
       type: 'confirm',
-      confirmText: 'Haan, wapis lagao',
+      confirmText: 'Yes, put it back',
       cancelText: 'Cancel',
       onConfirm: () => {
         const res = onRestore(r.beamNo, r.loom, r.from, r.to)
         if (!res.ok) {
-          showError({ title: 'Wapis nahi laga', message: res.message || 'Beam wapis nahi lag saka.' })
+          showError({ title: 'Not put back', message: res.message || 'Could not put the beam back.' })
           return
         }
         setRestored((list) => [...list, `${r.beamNo}|${r.loom}|${r.from}`])
         // The save goes to the server in the background; read the history again after it.
         window.setTimeout(() => setReload((n) => n + 1), 2500)
         showSuccessSoon({
-          title: 'Beam wapis loom pe',
-          message: `Beam ${r.beamNo} dobara Loom ${r.loom} pe laga hai. Looms table mein Loom ${r.loom} ka status wapis Running kar dein agar B/End / B/Cut pe hai.`,
+          title: 'Beam back on the loom',
+          message: `Beam ${r.beamNo} is on Loom ${r.loom} again. If Loom ${r.loom} shows B/End / B/Cut in the Looms table, set it back to Running.`,
         })
       },
     })
   }
   const showActions = editing && canEdit && Boolean(onRestore)
+  /** Utra date can be changed / record removed: an ended run that went off every loom. */
+  const editable = (r: EndedRow) => Boolean(r.firstId && r.closeOffLoom)
+
+  const runEdit = async (body: Parameters<typeof editBeamStint>[0], done: string) => {
+    try {
+      await editBeamStint(body)
+      setReload((n) => n + 1)
+      showSuccessSoon({ title: 'Saved', message: done })
+    } catch (err) {
+      showError({ title: 'Not saved', message: err instanceof Error ? err.message : 'Could not save.' })
+    }
+  }
+
+  const changeEnd = (r: EndedRow, to: string) => {
+    if (!r.firstId || !to || to === r.to) return
+    showConfirm({
+      title: `Beam ${r.beamNo} — change the Removed date?`,
+      message: `The date it came off Loom ${r.loom} changes from ${longDateFromYmd(r.to)} to ${longDateFromYmd(to)}. This beam's Days, Woven and Wastage are worked out again. Daily Entry production does not change.`,
+      type: 'confirm',
+      confirmText: 'Yes, change',
+      cancelText: 'Cancel',
+      onConfirm: () =>
+        runEdit(
+          { action: 'setEnd', beamNo: r.beamNo, firstId: r.firstId!, to, oldTo: r.to },
+          `Beam ${r.beamNo} Removed date set to ${longDateFromYmd(to)}.`
+        ),
+    })
+  }
+
+  const removeRecord = (r: EndedRow) => {
+    if (!r.firstId) return
+    showConfirm({
+      title: `Remove this record of beam ${r.beamNo}?`,
+      message: `Loom ${r.loom} · Mounted ${longDateFromYmd(r.from)} · Removed ${longDateFromYmd(r.to)}. Only remove it if it was created twice by mistake (the beam came off once). It leaves the Ended list and the beam figures; Daily Entry production does not change.`,
+      type: 'confirm',
+      confirmText: 'Yes, remove',
+      cancelText: 'Cancel',
+      onConfirm: () =>
+        runEdit({ action: 'remove', beamNo: r.beamNo, firstId: r.firstId!, oldTo: r.to }, `Record of beam ${r.beamNo} removed.`),
+    })
+  }
 
   const totals = useMemo(() => {
     let length = 0
@@ -148,9 +192,9 @@ export function BeamEndedHistory({
         {rows.length > 0 && (
           <div className="d-flex flex-wrap gap-2 small">
             <span className="badge text-bg-light border">{rows.length} beam{rows.length === 1 ? '' : 's'}</span>
-            <span className="badge text-bg-light border">Lambai {formatNumber(totals.length, 0)} m</span>
-            <span className="badge text-bg-success">Bana {formatNumber(totals.made, 0)} m</span>
-            <span className={`badge ${totals.wasted > 0 ? 'text-bg-danger' : 'text-bg-light border'}`}>Zaya {formatNumber(totals.wasted, 0)} m</span>
+            <span className="badge text-bg-light border">Length {formatNumber(totals.length, 0)} m</span>
+            <span className="badge text-bg-success">Woven {formatNumber(totals.made, 0)} m</span>
+            <span className={`badge ${totals.wasted > 0 ? 'text-bg-danger' : 'text-bg-light border'}`}>Wastage {formatNumber(totals.wasted, 0)} m</span>
           </div>
         )}
         {canEdit && onRestore && rows.length > 0 && (
@@ -166,11 +210,11 @@ export function BeamEndedHistory({
       </div>
       <TablePanScroll className="card-body p-0">
         {stints == null ? (
-          <div className="p-3 small text-secondary">Load ho raha hai…</div>
+          <SectionLoader minHeight={160} />
         ) : error ? (
           <div className="p-3 small text-danger">{error}</div>
         ) : rows.length === 0 ? (
-          <div className="p-3 small text-secondary">{range.label} mein koi beam loom se nahi utra.</div>
+          <div className="p-3 small text-secondary">No beams came off a loom in {range.label}.</div>
         ) : (
           <table className="table table-sm table-bordered align-middle mb-0 text-center sara-quality-table" style={{ fontSize: 13 }}>
             <thead>
@@ -180,21 +224,21 @@ export function BeamEndedHistory({
                 <th>Loom</th>
                 <th>Sw / Wp #</th>
                 <th>Warp</th>
-                <th>Laga</th>
-                <th>Utra</th>
-                <th>Din</th>
+                <th>Mounted</th>
+                <th>Removed</th>
+                <th>Days</th>
                 <th>Quality</th>
-                <th>Lambai (m)</th>
-                <th>Bana (m)</th>
-                <th>Zaya (m)</th>
-                {showActions && <th className="d-print-none">Ghalti?</th>}
+                <th>Length (m)</th>
+                <th>Woven (m)</th>
+                <th>Wastage (m)</th>
+                {showActions && <th className="d-print-none">Edit</th>}
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => {
                 const rest = r.length > 0 ? r.length - r.made : null
                 return (
-                  <tr key={`${r.beamNo}-${r.loom}-${r.from}`}>
+                  <tr key={`${r.beamNo}-${r.loom}-${r.from}-${r.firstId || ''}`}>
                     <td>{i + 1}</td>
                     <td className="fw-semibold">
                       <Link href={`/floor/reports/beam?beam=${encodeURIComponent(r.beamNo)}`}>{r.beamNo}</Link>
@@ -203,7 +247,31 @@ export function BeamEndedHistory({
                     <td>{r.swLot ? formatSwLotForDailyEntry(r.swLot) : '—'}</td>
                     <td className="text-start">{r.warp || '—'}</td>
                     <td>{longDateFromYmd(r.from)}</td>
-                    <td>{longDateFromYmd(r.to)}</td>
+                    <td>
+                      {showActions && editable(r) ? (
+                        <input
+                          type="date"
+                          className="form-control form-control-sm d-print-none"
+                          style={{ width: 'auto', minWidth: 140 }}
+                          key={r.to}
+                          defaultValue={r.to}
+                          min={r.from}
+                          max={today}
+                          onBlur={(e) => {
+                            const v = e.currentTarget.value
+                            if (v && v !== r.to) changeEnd(r, v)
+                            else e.currentTarget.value = r.to
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                          }}
+                          aria-label={`Beam ${r.beamNo} end date`}
+                          title="Change the Removed date"
+                        />
+                      ) : (
+                        longDateFromYmd(r.to)
+                      )}
+                    </td>
                     <td>{r.days || '—'}</td>
                     <td className="text-start">{r.qualities.length ? r.qualities.join(', ') : '—'}</td>
                     <td>{r.length > 0 ? formatNumber(r.length, 0) : '—'}</td>
@@ -213,20 +281,35 @@ export function BeamEndedHistory({
                         '—'
                       ) : (
                         <span className={rest > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold'}>
-                          {rest > 0 ? formatNumber(rest, 0) : `${formatNumber(-rest, 0)} zyada bana`}
+                          {rest > 0 ? formatNumber(rest, 0) : `${formatNumber(-rest, 0)} extra made`}
                         </span>
                       )}
                     </td>
                     {showActions && (
                       <td className="d-print-none">
-                        {restorable.has(r) ? (
-                          <button type="button" className="btn btn-sm btn-outline-primary py-0 text-nowrap" onClick={() => restore(r)}>
-                            <i className="bi bi-arrow-counterclockwise me-1" />
-                            Wapis loom pe
+                        <div className="d-flex flex-wrap gap-1 justify-content-center">
+                          {restorable.has(r) && (
+                            <button type="button" className="btn btn-sm btn-outline-primary py-0 text-nowrap" onClick={() => restore(r)}>
+                              <i className="bi bi-arrow-counterclockwise me-1" />
+                              Back on loom
+                            </button>
+                          )}
+                          {r.firstId && (
+                            <button type="button" className="btn btn-sm btn-outline-danger py-0 text-nowrap" onClick={() => removeRecord(r)}>
+                              <i className="bi bi-trash me-1" />
+                              Remove
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary py-0 text-nowrap"
+                            onClick={() => setHistoryBeam(r.beamNo)}
+                            title="All runs of this beam — correct the Mounted / Removed dates"
+                          >
+                            <i className="bi bi-clock-history me-1" />
+                            History
                           </button>
-                        ) : (
-                          <span className="text-secondary small" title="Beam ab kisi loom pe hai, dobara bhara gaya, ya baad mein phir laga">—</span>
-                        )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -236,10 +319,18 @@ export function BeamEndedHistory({
           </table>
         )}
       </TablePanScroll>
+      {historyBeam && (
+        <BeamHistoryDialog
+          beamNo={historyBeam}
+          canEdit={canEdit}
+          onClose={() => setHistoryBeam(null)}
+          onChanged={() => setReload((n) => n + 1)}
+        />
+      )}
       <div className="card-footer small text-secondary">
-        Beam history se: har line ek dafa loom se utarna. Beam dobara bhar ke lage tab bhi ye record waisa hi rehta hai.
-        Bana = us loom ki Daily Entry, us beam ke Sw/Wp lot ke din. Zaya = lambai − bana. Mahina upar date se badlein.
-        Ghalti se End hua beam: Edit → &quot;Wapis loom pe&quot;.
+        From the beam history: each line is one time a beam came off a loom. The record stays the same even after the beam is refilled and mounted again.
+        Woven = that loom’s Daily Entry on the days with this beam’s Sw/Wp lot. Wastage = length − woven. Change the month with the date above.
+        In Edit: change the Removed date, &quot;Remove&quot; a record created twice by mistake, or put a beam ended by mistake &quot;Back on loom&quot;.
       </div>
     </div>
   )

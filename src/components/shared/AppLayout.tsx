@@ -11,12 +11,16 @@ import { Sidebar } from '@/components/shared/Sidebar'
 import { Header } from '@/components/shared/Header'
 import { AdminLteAssets } from '@/components/shared/AdminLteAssets'
 import { NavigationProgress } from '@/components/shared/NavigationProgress'
+import { RouteLoader, Spinner } from '@/components/shared/Loaders'
 
 const BODY_ERP_CLASSES = ['layout-fixed', 'sidebar-expand-lg', 'bg-body-tertiary'] as const
 
 function MainContent({ children }: { children: React.ReactNode }) {
-  const { isQualityController, isFaultInspector, canView } = useAuth()
+  const { isQualityController, isFaultInspector, canView, canViewProduction, canViewAccounts, canViewPayroll } = useAuth()
   const faultAddAllowed = canView('fault_reports')
+  // The yarn supplier sees only Yarn Supply: anything else opens that page.
+  const supplierOnly =
+    canView('yarn_supply') && !canViewProduction && !canView('tracking') && !faultAddAllowed && !canViewAccounts && !canViewPayroll
   const faultTableAllowed = canView('prod_fabric_fault')
   const pathname = usePathname()
   const router = useRouter()
@@ -33,20 +37,28 @@ function MainContent({ children }: { children: React.ReactNode }) {
       }
       return
     }
+    if (supplierOnly) {
+      if (!pathname.startsWith('/yarn-supply')) router.replace('/yarn-supply')
+      return
+    }
     if (isQualityController) {
       if (pathname.startsWith('/payroll') || pathname.startsWith('/accounts')) {
         router.replace('/dashboard')
       }
     }
-  }, [isQualityController, isFaultInspector, faultAddAllowed, faultTableAllowed, pathname, router])
+  }, [isQualityController, isFaultInspector, faultAddAllowed, faultTableAllowed, supplierOnly, pathname, router])
 
   return (
     <main className="app-main bg-body-tertiary sara-app-main">
       <div className="sara-erp-topbar">
         <Header />
       </div>
-      <div className="app-content sara-app-content">
-        <div className="container-fluid">{children}</div>
+      <div className="sara-content-wrap">
+        <div className="app-content sara-app-content">
+          <div className="container-fluid">{children}</div>
+        </div>
+        {/* Over the page area only (header and sidebar stay usable). */}
+        <RouteLoader />
       </div>
     </main>
   )
@@ -102,14 +114,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <NavigationProgress />
       {isLoggingOut && (
-        <div
-          className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center"
-          style={{ zIndex: 99999, background: 'rgba(15,23,42,0.85)' }}
-        >
-          <div className="card shadow p-4 text-center" style={{ maxWidth: 280 }}>
-            <div className="spinner-border text-primary mb-3" role="status" />
-            <h3 className="fs-6 fw-bold mb-1">Signing Out...</h3>
-            <p className="text-secondary small mb-0">Clearing secure ERP session</p>
+        <div className="sara-fullscreen-loader sara-fullscreen-loader--dark" role="alertdialog" aria-busy="true" aria-label="Signing out">
+          <div className="sara-fullscreen-loader__card">
+            <Spinner size="lg" />
+            <div className="sara-fullscreen-loader__title">Signing out…</div>
+            <div className="sara-fullscreen-loader__sub">Closing the session</div>
           </div>
         </div>
       )}
@@ -120,12 +129,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </>
       ) : isLoading ? (
-        <div className="d-flex min-vh-100 align-items-center justify-content-center bg-body-tertiary">
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-2" role="status" />
-            <div className="text-secondary text-uppercase small fw-semibold tracking-wide">
-              Loading Shah Textile ERP...
-            </div>
+        <div className="sara-fullscreen-loader" aria-busy="true">
+          <div className="sara-fullscreen-loader__card">
+            <Spinner size="lg" />
+            <div className="sara-fullscreen-loader__title">Shah Textile ERP</div>
+            <div className="sara-fullscreen-loader__sub">Opening…</div>
           </div>
         </div>
       ) : (

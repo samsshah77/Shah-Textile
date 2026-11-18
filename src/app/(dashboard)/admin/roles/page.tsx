@@ -9,22 +9,19 @@ type User = { roleKey: string; status: string; isActive: boolean }
 
 /** What the three built-in roles can do, in plain words. */
 const BUILT_IN: Record<string, string> = {
-  admin: 'Sab kuch — Production, Users, System; Salary aur Accounts dekhna',
+  admin: 'Everything — Production, Users, System; view Salary and Accounts',
   quality_controller: 'Production: Daily Entry, Looms, Beams, Quality, Kamran Fault',
-  accountant: 'Accounts aur Salary (Tufail); Production Sheet dekhna',
+  accountant: 'Accounts and Salary (Tufail); view Production Sheet',
 }
 
-const ACCESS: Array<{ value: 'fault' | 'view'; label: string; hint: string }> = [
-  { value: 'fault', label: 'Production dekhna + Kamran Fault bhejna', hint: 'Faults ki photo / video / note bhej sakta hai. Production ke number nahi badal sakta.' },
-  { value: 'view', label: 'Production sirf dekhna', hint: 'Sirf dekh sakta hai, kuch badal nahi sakta.' },
-]
 
 /** Administration → Roles: see the roles, and make a new one with just a name and a ready-made access. */
 export default function AdminRolesPage() {
   const [roles, setRoles] = useState<Role[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState<{ label: string; department: string; access: 'fault' | 'view' }>({ label: '', department: '', access: 'fault' })
+  // Every new role starts as "view only"; what each person sees is set on the Permissions page.
+  const [form, setForm] = useState<{ label: string; department: string; access: 'view' }>({ label: '', department: '', access: 'view' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -38,7 +35,7 @@ export default function AdminRolesPage() {
       setRoles(r.roles || [])
       setUsers(u.users || [])
     } catch {
-      setError('Roles load nahi hue')
+      setError('Roles did not load')
     } finally {
       setLoading(false)
     }
@@ -62,12 +59,12 @@ export default function AdminRolesPage() {
         body: JSON.stringify(form),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Role nahi bana')
-      setNotice(`"${form.label}" role ban gaya. Ab Users tab mein kisi ko yeh role de sakte hain.`)
+      if (!res.ok) throw new Error(data.error || `Role not created (server ${res.status})`)
+      setNotice(`Role "${form.label}" created. You can now give this role to someone in the Users tab.`)
       setForm({ label: '', department: '', access: form.access })
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Role nahi bana')
+      setError(err instanceof Error ? err.message : 'Role not created')
     } finally {
       setSaving(false)
     }
@@ -83,35 +80,25 @@ export default function AdminRolesPage() {
       {notice && <div className="alert alert-success py-2 small">{notice}</div>}
 
       <div className="card shadow-sm mb-4">
-        <div className="card-header py-2 small fw-bold">Naya role banayein</div>
+        <div className="card-header py-2 small fw-bold">Create new role</div>
         <form className="card-body row g-2 align-items-end" onSubmit={create}>
-          <div className="col-12 col-md-4">
-            <label className="form-label small mb-1" htmlFor="nr-name">Role ka naam</label>
+          <div className="col-12 col-md-5">
+            <label className="form-label small mb-1" htmlFor="nr-name">Role name</label>
             <input id="nr-name" className="form-control form-control-sm" required minLength={2} maxLength={60} placeholder="Fault Inspector" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
           </div>
-          <div className="col-12 col-md-3">
-            <label className="form-label small mb-1" htmlFor="nr-dept">Department (chahein to)</label>
+          <div className="col-12 col-md-4">
+            <label className="form-label small mb-1" htmlFor="nr-dept">Department (optional)</label>
             <input id="nr-dept" className="form-control form-control-sm" maxLength={60} placeholder="Floor" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
           </div>
-          <div className="col-12 col-md-5">
-            <span className="form-label small mb-1 d-block">Yeh role kya kar sakega</span>
-            {ACCESS.map((a) => (
-              <div className="form-check" key={a.value}>
-                <input className="form-check-input" type="radio" name="nr-access" id={`nr-${a.value}`} checked={form.access === a.value} onChange={() => setForm({ ...form, access: a.value })} />
-                <label className="form-check-label small" htmlFor={`nr-${a.value}`}>
-                  {a.label}
-                  <span className="d-block text-secondary" style={{ fontSize: 11 }}>{a.hint}</span>
-                </label>
-              </div>
-            ))}
-          </div>
-          <div className="col-12 d-flex justify-content-end">
+          <div className="col-12 col-md-3 d-flex justify-content-md-end">
             <button type="submit" className="btn btn-sm btn-primary" disabled={saving}>
-              {saving ? 'Bana rahe hain…' : 'Role banayein'}
+              {saving ? 'Creating…' : 'Create role'}
             </button>
           </div>
           <div className="col-12 form-text small">
-            Daily Entry badalne ke liye Quality Controller role dein. Salary / Accounts ka role abhi sirf Tufail ke liye hai.
+            A new role can only view at first. After creating it, give it to someone in <strong>Users</strong>, then in{' '}
+            <strong>Permissions</strong> set Hide / View / Edit for each thing for that person. To change Daily Entry, give the
+            Quality Controller role; the Salary / Accounts role is only for Tufail for now.
           </div>
         </form>
       </div>
@@ -124,7 +111,7 @@ export default function AdminRolesPage() {
             <thead className="table-light">
               <tr>
                 <th>Role</th>
-                <th>Kya kar sakta hai</th>
+                <th>What it can do</th>
                 <th className="text-end">Log</th>
               </tr>
             </thead>

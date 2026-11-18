@@ -17,11 +17,11 @@ export const GET = accountsHandler(async () => {
 export const POST = accountsHandler(
   async (ctx) => {
     const raw = (await ctx.req.json().catch(() => null)) as { confirm?: unknown } | null
-    if (raw?.confirm !== 'RESET') throw new AccountsError(400, 'Tasdeeq ke liye RESET likhna zaroori hai.')
+    if (raw?.confirm !== 'RESET') throw new AccountsError(400, 'Type RESET to confirm.')
     const db = await repo.db()
     const pre = await previewReset(db)
-    if (pre.done) throw new AccountsError(409, `Ye reset ${pre.done.at} ko ho chuka hai — dobara nahi hoga.`, 'CONFLICT')
-    if (pre.lockedMonths.length) throw new AccountsError(423, `In mahinon ka lock pehle kholein: ${pre.lockedMonths.join(', ')}.`, 'LOCKED')
+    if (pre.done) throw new AccountsError(409, `This reset was done on ${pre.done.at} — it will not run again.`, 'CONFLICT')
+    if (pre.lockedMonths.length) throw new AccountsError(423, `First unlock these months: ${pre.lockedMonths.join(', ')}.`, 'LOCKED')
     const snapshot = await takeSnapshot('before accounts reset to Jul–Sep files')
     const by = ctx.actor.name || ctx.actor.email || ctx.actor.id
     const result = await repo.inTx((tx) => applyReset(tx, by), 120000)

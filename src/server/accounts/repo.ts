@@ -173,7 +173,7 @@ export async function createParty(
   if (!slug) throw new AccountsError(400, 'Party name is empty.')
   const existing = await getParty(dbc, slug)
   if (existing) {
-    if (existing.active) throw new AccountsError(409, `"${existing.name}" pehle se maujood hai.`, 'CONFLICT')
+    if (existing.active) throw new AccountsError(409, `"${existing.name}" already exists.`, 'CONFLICT')
     // Re-adding a removed party brings it back with its history.
     await dbc.$executeRawUnsafe(
       `UPDATE "acc_parties" SET "active" = TRUE, "name" = $2, "kind" = $3, "category" = $4, "remarks" = $5,
@@ -230,7 +230,7 @@ export async function updateParty(
   const slug = slugifyPartyName(name)
   if (slug !== cur.slug) {
     const clash = await getParty(dbc, slug)
-    if (clash && clash.id !== id) throw new AccountsError(409, `"${clash.name}" naam pehle se maujood hai.`, 'CONFLICT')
+    if (clash && clash.id !== id) throw new AccountsError(409, `The name "${clash.name}" already exists.`, 'CONFLICT')
   }
   await dbc.$executeRawUnsafe(
     `UPDATE "acc_parties" SET "name"=$2,"slug"=$3,"kind"=$4,"category"=$5,"costBucket"=$6,"remarks"=$7,"active"=$8,
@@ -363,7 +363,7 @@ export async function createBill(
 /** Bump a bill's version only if the caller saw the latest one (else 409). */
 async function claimBill(dbc: Db, id: string, baseVersion: number): Promise<Bill> {
   const cur = await getBill(dbc, id)
-  if (!cur) throw new AccountsError(404, 'Bill not found (shayad delete ho chuka hai).', 'NOT_FOUND')
+  if (!cur) throw new AccountsError(404, 'Bill not found (maybe already deleted).', 'NOT_FOUND')
   await assertUnlocked(dbc, cur.month)
   const done = await dbc.$executeRawUnsafe(
     `UPDATE "acc_bills" SET "version" = "version" + 1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "version" = $2`,
@@ -588,7 +588,7 @@ export async function updatePayment(
   if (month !== before.month) await assertUnlocked(dbc, month)
   const amount = patch.amount ?? before.amount
   if (before.kind === 'PAYMENT' ? amount <= 0 : amount === 0)
-    throw new AccountsError(400, before.kind === 'PAYMENT' ? 'Amount 0 se zyada honi chahiye.' : 'Amount 0 nahi ho sakti.', 'BAD_INPUT')
+    throw new AccountsError(400, before.kind === 'PAYMENT' ? 'Amount must be more than 0.' : 'Amount cannot be 0.', 'BAD_INPUT')
   const done = await dbc.$executeRawUnsafe(
     `UPDATE "acc_payments" SET "date"=$3::date,"month"=$4,"amount"=$5,"reference"=$6,"remarks"=$7,"attachments"=$8::jsonb,
        "version"="version"+1,"updatedAt"=CURRENT_TIMESTAMP
@@ -674,7 +674,7 @@ export async function createPetty(
   if (p.kind === 'OPENING') {
     const before = await dbc.$queryRawUnsafe<Row[]>(`SELECT 1 FROM "acc_petty_cash" WHERE "month" < $1 LIMIT 1`, month)
     if (before.length)
-      throw new AccountsError(400, 'Balance b/f pichle mahine se khud aata hai — opening sirf pehle mahine mein di ja sakti hai.')
+      throw new AccountsError(400, 'Balance b/f comes from the previous month by itself — an opening can only be given in the first month.')
   }
   let sortOrder = p.sortOrder
   if (sortOrder == null) {

@@ -399,7 +399,7 @@ export const sheetsMethods = {
     if (!isClient()) return this.buildSheetForDate(dateStr)
     // In the day's save order, after any edits still on their way.
     const { data: reply } = await runAction(this.sheetKey(dateStr), { action: 'submitForApproval', date: dateStr })
-    const data = (reply || { ok: false, error: 'Server se raabta nahi ho saka.' }) as {
+    const data = (reply || { ok: false, error: 'Could not reach the server.' }) as {
       ok?: boolean
       error?: string
       entries?: DailyLoomProductionEntry[]
@@ -416,7 +416,7 @@ export const sheetsMethods = {
     if (!isClient()) return this.buildSheetForDate(dateStr)
     // In the day's save order, after any edits still on their way.
     const { data: reply } = await runAction(this.sheetKey(dateStr), { action: 'approveSheet', date: dateStr })
-    const data = (reply || { ok: false, error: 'Server se raabta nahi ho saka.' }) as {
+    const data = (reply || { ok: false, error: 'Could not reach the server.' }) as {
       ok?: boolean
       error?: string
       entries?: DailyLoomProductionEntry[]
@@ -436,7 +436,7 @@ export const sheetsMethods = {
     if (!isClient()) return this.buildSheetForDate(dateStr)
     // In the day's save order, after any edits still on their way.
     const { data: reply } = await runAction(this.sheetKey(dateStr), { action: 'unlockSheet', date: dateStr })
-    const data = (reply || { ok: false, error: 'Server se raabta nahi ho saka.' }) as {
+    const data = (reply || { ok: false, error: 'Could not reach the server.' }) as {
       ok?: boolean
       error?: string
       entries?: DailyLoomProductionEntry[]
@@ -464,7 +464,7 @@ export const sheetsMethods = {
     const sync = r.status === 200 && r.data?.ok ? (r.data.sync as { rows?: DailyLoomProductionEntry[]; hashes?: RowHashes } | undefined) : undefined
     if (sync?.rows) setSheetFromServer(dateStr, sync.rows, sync.hashes, { force: true })
     else
-      notifyFloorSaveProblem([400, 403, 409, 423].includes(r.status) ? r.status : 409, r.data?.error ? r.data : { error: 'Naya din server par nahi bana — internet check karke dobara koshish karein.' })
+      notifyFloorSaveProblem([400, 403, 409, 423].includes(r.status) ? r.status : 409, r.data?.error ? r.data : { error: 'The new day was not created on the server. Check the internet and try again.' })
     return this.buildSheetForDate(dateStr, { skipPersist: true })
   },
 

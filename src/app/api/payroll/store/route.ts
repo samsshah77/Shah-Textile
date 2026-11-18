@@ -21,7 +21,7 @@ export async function PUT(_req: NextRequest) {
     {
       ok: false,
       blocked: true,
-      error: 'Salary module update ho gaya hai — page refresh karein (F5). Is tab ki aakhri tabdeeli save nahi hui.',
+      error: 'The Salary module was updated — refresh the page (F5). The last change in this tab was not saved.',
     },
     { status: 409 }
   )

@@ -165,9 +165,9 @@ export function useContractPage() {
     if (!isEditable || staleRows.length === 0) return
     const r = (v: number) => Math.round(v).toLocaleString('en-US')
     askConfirm({
-      title: 'Naya (Excel jaisa) hisab save karein?',
+      title: 'Save the new (Excel-style) calculation?',
       message:
-        `${staleRows.length} logon ki raqam paise ke hisab se 1–2 rupay badlegi. ` +
+        `The amount for ${staleRows.length} people will change by 1–2 rupees (paise calculation). ` +
         `OT total ${r(staleTotals.otBefore)} → ${r(staleTotals.otAfter)}, ` +
         `Net total ${r(staleTotals.netBefore)} → ${r(staleTotals.netAfter)}.`,
       confirmText: 'Save',
@@ -175,7 +175,7 @@ export function useContractPage() {
         payrollService.saveContractSalaries(selectedMonth, contractList)
         commitSaved(contractList)
         setSavedRows(contractList)
-        showSuccess('Saved', 'Contract sheet naye hisab se save ho gayi.')
+        showSuccess('Saved', 'Contract sheet saved with the new calculation.')
       },
     })
   }
@@ -291,7 +291,7 @@ export function useContractPage() {
     if (!row) return
     const empName = row?.employeeName || 'Contract Employee'
     askConfirm({
-      ...removeRowConfirm(empName, 'is mahine ki Contract sheet'),
+      ...removeRowConfirm(empName, 'this month’s Contract sheet'),
       onConfirm: () => {
         const filtered = contractList
           .filter((c) => c.id !== id)
@@ -306,7 +306,7 @@ export function useContractPage() {
     if (!canEditAccounts) return
     askConfirm({
       title: 'Save contract sheet?',
-      message: 'Contract salaries save ho jayengi.',
+      message: 'Contract salaries will be saved.',
       confirmText: 'Save',
       onConfirm: () => {
         payrollService.saveContractSalaries(selectedMonth, contractList)
@@ -319,7 +319,7 @@ export function useContractPage() {
   const handleDiscard = () => {
     askConfirm({
       title: 'Discard unsaved changes?',
-      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      message: 'Your unsaved edits will be undone. Continue?',
       confirmText: 'Discard',
       onConfirm: () => {
         setContractList(discardChanges())

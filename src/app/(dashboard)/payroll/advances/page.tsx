@@ -165,7 +165,7 @@ export default function SalaryAdvancesPage() {
     if (!selectedEmployeeId) {
       showError(
         'Employee required',
-        'Advance-eligible employee Profiles se select karo (Advance Eligible enable hona chahiye).'
+        'Select an advance-eligible employee from Profiles (Advance Eligible must be turned on).'
       )
       return
     }
@@ -178,7 +178,7 @@ export default function SalaryAdvancesPage() {
     if (existing) {
       showError(
         'Already exists',
-        `"${employeeName}" ka advance ${formatMonthName(selectedMonth)} me pehle se hai (Rs. ${formatNumber(existing.amount || 0)}). Amount table me edit karo.`
+        `"${employeeName}" already has an advance in ${formatMonthName(selectedMonth)} (Rs. ${formatNumber(existing.amount || 0)}). Edit the amount in the table.`
       )
       return
     }
@@ -203,9 +203,9 @@ export default function SalaryAdvancesPage() {
     resetAddForm()
     if (ok) {
       commitSaved(updated)
-      showSuccess('Advance saved', `"${employeeName}" ka advance record ho gaya.`)
+      showSuccess('Advance saved', `Advance for "${employeeName}" saved.`)
     } else {
-      showError('Save failed', 'Advance local me save hua lekin server pe nahi gaya. Dobara Save dabao.')
+      showError('Save failed', 'Advance was saved on this computer but did not reach the server. Press Save again.')
     }
   }
 
@@ -219,10 +219,10 @@ export default function SalaryAdvancesPage() {
       message: (
         <div className="space-y-2 text-xs text-slate-600 text-left">
           <p>
-            Kya aap waqai <strong>{empName || 'Employee'}</strong> ka yeh advance record delete karna chahte hain?
+            Are you sure you want to delete this advance record of <strong>{empName || 'Employee'}</strong>?
           </p>
           <div className="rounded-md bg-amber-50 p-2.5 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-            <strong>Notice:</strong> Delete option abhi ke liye hai. In future, direct delete karne ke bajaye employee ko sirf <strong>Resign</strong> mark kiya jaye ga taake audit history mehfooz rahe.
+            <strong>Notice:</strong> Delete is available for now. In future, instead of deleting, the employee will only be marked <strong>Resign</strong> so the audit history stays safe.
           </div>
         </div>
       ),
@@ -255,7 +255,7 @@ export default function SalaryAdvancesPage() {
           commitSaved(advances)
           showSuccess('Saved', 'Advances successfully saved.')
         } else {
-          showError('Save failed', 'Advances server pe save nahi huay. Dobara Save dabao.')
+          showError('Save failed', 'Advances were not saved on the server. Press Save again.')
         }
       },
     })
@@ -264,7 +264,7 @@ export default function SalaryAdvancesPage() {
   const handleDiscard = () => {
     askConfirm({
       title: 'Discard unsaved changes?',
-      message: 'Aap ke unsaved edits revert ho jayenge. Proceed karein?',
+      message: 'Your unsaved edits will be undone. Continue?',
       confirmText: 'Discard',
       onConfirm: () => {
         setAdvances(discardChanges())
@@ -313,7 +313,7 @@ export default function SalaryAdvancesPage() {
     <div className="space-y-6 print:space-y-2">
       <div className="print:hidden">
         <PageHeader
-          title="Salary Advances (Peshgi)"
+          title="Salary Advances"
           showTitle={false}
           breadcrumbs={[
             { label: 'Home', href: '/dashboard' },
@@ -334,7 +334,7 @@ export default function SalaryAdvancesPage() {
                             askConfirm({
                               title: 'Unsaved changes',
                               message:
-                                'Aap ke paas unsaved edits hain. Month badalne se yeh discard ho jayenge. Proceed karein?',
+                                'You have unsaved edits. Changing the month will discard them. Continue?',
                               confirmText: 'Discard & Switch',
                               onConfirm: async () => {
                                 await payrollService.setActiveSalariedMonthAsync(m)
@@ -536,7 +536,7 @@ export default function SalaryAdvancesPage() {
       {/* Printable Sheet */}
       <div className="erp-card p-5 sm:p-6 print:border-none print:p-0 font-sans">
         {/* Sheet Header */}
-        <SheetHeader title="ADVANCE SALARY REGISTER (PESHGI)" subtitle={`Month: ${formatMonthName(selectedMonth)}`} />
+        <SheetHeader title="ADVANCE SALARY REGISTER" subtitle={`Month: ${formatMonthName(selectedMonth)}`} />
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
           <table data-no-tidy

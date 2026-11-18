@@ -2,13 +2,14 @@
 
 import { QUALITY_FABRIC_TYPES, normalizeFabricType, qualityHistoryOnActivePastDay } from '@/services/productionMastersService'
 import { NumericCellInput, TextCellInput } from '@/components/shared/NumericCellInput'
+import { BalanceText, TargetInput, metersText } from '@/components/floor/quality/QualityTargetCell'
 import { EmptyPlaceholder } from '@/components/shared/EmptyPlaceholder'
 import { formatShortDate, LoomListCell } from '@/components/floor/quality/qualityMasterParts'
 import type { QualityMasterTableState } from './useQualityMasterTable'
 
 /** Active quality cards. */
 export function QualityActiveGrid({ t }: { t: QualityMasterTableState }) {
-  const { onUpdate, sheetDate, qualityStartDay, patchQualityStart, orderedForView, assignedByQuality, productionByQuality, masterEdit, editActive, handleDelete, rowClassFor, PastHistoryBadge, rowMenu, openTrack, emptyCopy } = t
+  const { onUpdate, sheetDate, qualityStartDay, patchQualityStart, orderedForView, assignedByQuality, productionByQuality, targets, saveTarget, masterEdit, editActive, handleDelete, rowClassFor, PastHistoryBadge, rowMenu, openTrack, emptyCopy } = t
   return (
     <div className="master-grid">
       {orderedForView.length === 0 ? (
@@ -104,7 +105,7 @@ export function QualityActiveGrid({ t }: { t: QualityMasterTableState }) {
                 type="date"
                 className="form-control form-control-sm"
                 value={qualityStartDay(q)}
-                title="Start date — is se pehle quality / Track nahi dikhegi"
+                title="Start date — the quality / Track will not show before this date"
                 onChange={(e) => patchQualityStart(q, e.target.value)}
               />
             ) : (
@@ -223,6 +224,22 @@ export function QualityActiveGrid({ t }: { t: QualityMasterTableState }) {
               <span className="small text-muted">Overall:</span>
               <span className="small fw-bold text-success font-monospace">
                 {overall > 0 ? `${overall.toLocaleString()} m` : '0 m'}
+              </span>
+            </div>
+            <div className="d-flex justify-content-between align-items-center mt-1 gap-2">
+              <span className="small text-muted">Target:</span>
+              {rowMasterEdit ? (
+                <div style={{ width: 110 }}>
+                  <TargetInput value={targets[q.id] || 0} onSave={(m) => saveTarget(q.id, m)} />
+                </div>
+              ) : (
+                <span className="small fw-semibold font-monospace">{targets[q.id] ? metersText(targets[q.id]) : '—'}</span>
+              )}
+            </div>
+            <div className="d-flex justify-content-between align-items-center mt-1">
+              <span className="small text-muted">Balance:</span>
+              <span className="small">
+                <BalanceText target={targets[q.id] || 0} produced={overall} />
               </span>
             </div>
 

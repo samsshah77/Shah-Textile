@@ -58,8 +58,8 @@ export function FloorMonthLockBar({
     const next = !locked
     const ok = window.confirm(
       next
-        ? `${monthLabel(month)} ka production lock karein? Lock ke baad is mahine ki koi entry, yarn ya sheet nahi badlegi.`
-        : `${monthLabel(month)} ka production unlock karein? Phir is mahine mein tabdeeli ho sakegi.`
+        ? `Lock production for ${monthLabel(month)}? After locking, no entry, yarn or sheet in this month can be changed.`
+        : `Unlock production for ${monthLabel(month)}? Changes to this month will be allowed again.`
     )
     if (!ok) return
     setBusy(true)
@@ -67,7 +67,7 @@ export function FloorMonthLockBar({
     try {
       await setFloorMonthLock(month, next)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lock save nahi hua.')
+      setError(err instanceof Error ? err.message : 'Could not save the lock.')
     } finally {
       setBusy(false)
     }
@@ -107,7 +107,7 @@ export function FloorMonthLockBar({
         <span>
           <i className="bi bi-lock-fill me-1" />
           <strong>{monthLabel(month)} locked</strong>
-          {lock?.lockedBy ? ` — ${lock.lockedBy}` : ''}. Is mahine ka production sirf dekha ja sakta hai.
+          {lock?.lockedBy ? ` — ${lock.lockedBy}` : ''}. This month’s production is view-only.
         </span>
       ) : null}
       {isAdmin && variant === 'full' && lockButton('ms-auto')}

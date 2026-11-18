@@ -50,10 +50,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path: strin
 /** A bill / profile picture: login + Accounts / Salary view right; private folder first, old public spot second. */
 async function servePrivate(req: NextRequest, parts: string[], type: string) {
   const user = await currentUser(req)
-  if (!user) return new NextResponse('Login chahiye', { status: 401, headers: { 'Cache-Control': 'no-store' } })
+  if (!user) return new NextResponse('Login required', { status: 401, headers: { 'Cache-Control': 'no-store' } })
   const { access } = await accessFor(user)
   const area = parts[0] === 'bills' ? 'accounts' : 'payroll'
-  if (!allows(access, area, 'view')) return new NextResponse('Ijazat nahi', { status: 403, headers: { 'Cache-Control': 'no-store' } })
+  if (!allows(access, area, 'view')) return new NextResponse('No permission', { status: 403, headers: { 'Cache-Control': 'no-store' } })
   for (const root of [privateUploadsRoot(), publicUploadsRoot()]) {
     const file = path.join(root, ...parts)
     if (!file.startsWith(root + path.sep)) return new NextResponse('Not found', { status: 404 })

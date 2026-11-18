@@ -124,7 +124,7 @@ function parseRow<T>(schema: { safeParse: (v: unknown) => { success: boolean; da
   const r = schema.safeParse(row)
   if (!r.success) {
     const i = r.error?.issues[0]
-    throw new FloorBadRequest(`${label}: ${i ? `${i.path.join('.')} ${i.message}` : 'ghalat data'}`)
+    throw new FloorBadRequest(`${label}: ${i ? `${i.path.join('.')} ${i.message}` : 'invalid data'}`)
   }
   return r.data as T
 }
@@ -141,9 +141,9 @@ function assertFewDeletes(label: string, deletes: number, stored: number) {
 function listIds(cs: ListChangeSet) {
   const key = cs.key
   const upsertIds = cs.upserts.map((u) => rowIdOf(key, u.row))
-  if (upsertIds.some((id) => !id)) throw new FloorBadRequest('Har row ka id / number zaroori hai.')
-  if (new Set(upsertIds).size !== upsertIds.length) throw new FloorBadRequest('Ek hi row do dafa bheji gayi.')
-  if (key === FLOOR_KEYS.QUALITY && cs.deletes.length) throw new FloorBadRequest('Quality is tarah delete nahi hoti — Delete button use karein.')
+  if (upsertIds.some((id) => !id)) throw new FloorBadRequest('Every row needs an id / number.')
+  if (new Set(upsertIds).size !== upsertIds.length) throw new FloorBadRequest('The same row was sent twice.')
+  if (key === FLOOR_KEYS.QUALITY && cs.deletes.length) throw new FloorBadRequest('A quality cannot be deleted this way. Use the Delete button.')
   return { upsertIds, ids: [...upsertIds, ...cs.deletes.map((d) => d.id)] }
 }
 
@@ -289,7 +289,7 @@ async function applySheetRowsTx(
     const raw = ch.entry as unknown as DailyLoomProductionEntry & { _clearQuality?: boolean }
     const segmentIndex = sheetSegmentFromRow({ segmentIndex: raw.segmentIndex, payload: raw })
     const id = sheetRowId({ loomNumber: raw.loomNumber, segmentIndex })
-    if (ids.includes(id)) throw new FloorBadRequest(`Loom ${id} do dafa bheja gaya.`)
+    if (ids.includes(id)) throw new FloorBadRequest(`Loom ${id} was sent twice.`)
     ids.push(id)
     const prev = stored.get(id)
     const c = checkRowBase(id, ch.base, prev ? rowHash(prev) : null, 'upsert')
@@ -364,9 +364,9 @@ export async function applyBatch(
 ): Promise<BatchResult> {
   const order = [FLOOR_KEYS.LOOMS, FLOOR_KEYS.BEAMS, FLOOR_KEYS.QUALITY] as string[]
   const lists = [...input.lists].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
-  if (new Set(lists.map((l) => l.key)).size !== lists.length) throw new FloorBadRequest('Ek list do dafa bheji gayi.')
+  if (new Set(lists.map((l) => l.key)).size !== lists.length) throw new FloorBadRequest('The same list was sent twice.')
   const days = [...input.days].sort((a, b) => a.date.localeCompare(b.date))
-  if (new Set(days.map((d) => d.date)).size !== days.length) throw new FloorBadRequest('Ek din do dafa bheja gaya.')
+  if (new Set(days.map((d) => d.date)).size !== days.length) throw new FloorBadRequest('The same day was sent twice.')
   for (const d of days) await assertDateOpen(d.date)
   for (const l of lists) listIds(l)
 

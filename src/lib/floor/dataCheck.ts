@@ -29,24 +29,24 @@ export function findFloorProblems(days: Array<{ date: string; rows: DailyLoomPro
         out.push({
           kind: 'false-loss',
           ...where,
-          detail: `Quality nahi / khatam (${e.qualityName || '—'}${isQualityEndedSheetRow(e) ? ', Quality Ended' : ''}) aur meters 0 — phir bhi loss ${loss} m likha hai (report mein jhoothi loss).`,
+          detail: `No quality / quality ended (${e.qualityName || '—'}${isQualityEndedSheetRow(e) ? ', Quality Ended' : ''}) and 0 meters, but a loss of ${loss} m is entered (a false loss in the report).`,
         })
       }
       if (m > 0 && !namedQualityOnRow(e.qualityName)) {
-        out.push({ kind: 'meters-no-quality', ...where, detail: `${m} m likhe hain magar quality ka naam nahi.` })
+        out.push({ kind: 'meters-no-quality', ...where, detail: `${m} m entered but no quality name.` })
       }
       if (m > 0) {
         const want = withRowMetrics(e)
         const off: string[] = []
-        if (Math.abs((Number(e.totalMeters) || 0) - want.totalMeters) > 1) off.push(`total ${e.totalMeters ?? '-'} (hona chahiye ${want.totalMeters})`)
+        if (Math.abs((Number(e.totalMeters) || 0) - want.totalMeters) > 1) off.push(`total ${e.totalMeters ?? '-'} (should be ${want.totalMeters})`)
         if (Math.abs((Number(e.efficiencyPercentage) || 0) - want.efficiencyPercentage) > 1)
-          off.push(`efficiency ${e.efficiencyPercentage ?? '-'}% (hona chahiye ${want.efficiencyPercentage}%)`)
-        if (off.length) out.push({ kind: 'figures', ...where, detail: `Hisaab nahi milta: ${off.join(', ')}.` })
+          off.push(`efficiency ${e.efficiencyPercentage ?? '-'}% (should be ${want.efficiencyPercentage}%)`)
+        if (off.length) out.push({ kind: 'figures', ...where, detail: `Figures do not add up: ${off.join(', ')}.` })
       }
     }
     if (date < today && rows.length && !rows.some((e) => e.approvalStatus === 'APPROVED')) {
       const withMeters = rows.filter((e) => meters(e) > 0).length
-      if (withMeters) out.push({ kind: 'not-approved', date, detail: `Din approve nahi hua (${withMeters} looms par meters).` })
+      if (withMeters) out.push({ kind: 'not-approved', date, detail: `Day not approved (${withMeters} looms have meters).` })
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || (a.loomNumber || 0) - (b.loomNumber || 0))

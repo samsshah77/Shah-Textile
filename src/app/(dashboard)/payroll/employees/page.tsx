@@ -177,7 +177,7 @@ export default function GeneralWagesPage() {
       title: 'Generate salary month?',
       message: (
         <>
-          <strong>{label}</strong> generate hoga — Staff / Contract / Advances / Net Payment isi month pe shift ho jayenge.
+          <strong>{label}</strong> will be generated — Staff / Contract / Advances / Net Payment will move to this month.
         </>
       ),
       confirmText: 'Generate',
@@ -285,7 +285,7 @@ export default function GeneralWagesPage() {
     if (!canEditAccounts) return
     askConfirm({
       title: 'Save General Wages?',
-      message: 'Employee roster save hoga aur related sheets sync ho jayengi.',
+      message: 'The employee list will be saved and the related sheets will be updated.',
       confirmText: 'Save',
       onConfirm: () => {
         if (crossSheetSyncTimer.current) {
@@ -302,7 +302,7 @@ export default function GeneralWagesPage() {
   const handleDiscard = () => {
     askConfirm({
       title: 'Discard unsaved changes?',
-      message: 'Unsaved edits revert ho jayenge. Proceed karein?',
+      message: 'Your unsaved edits will be undone. Continue?',
       confirmText: 'Discard',
       onConfirm: () => {
         setEmployees(discardChanges())
@@ -440,7 +440,7 @@ export default function GeneralWagesPage() {
                 Generate salary month
               </h3>
               <p className="mt-1.5 text-[13px] text-slate-600">
-                Naya month select karo, phir Generate confirm karo.
+                Select the new month, then confirm Generate.
               </p>
               <label className="mt-4 block space-y-1.5">
                 <span className="text-xs font-semibold text-slate-700">Month</span>

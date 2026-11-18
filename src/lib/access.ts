@@ -14,8 +14,10 @@ export const ACCESS_AREAS = [
   { key: 'prod_looms', label: 'Looms', group: 'Production', edit: true },
   { key: 'prod_beams', label: 'Beams', group: 'Production', edit: true },
   { key: 'prod_yarn', label: 'Yarn Stock', group: 'Production', edit: true },
-  { key: 'prod_quality', label: 'Quality', group: 'Production', edit: true },
+  { key: 'yarn_supply', label: 'Yarn Supply — Supplier entry (sends yarn)', group: 'Production', edit: true },
+  { key: 'prod_quality', label: 'Quality (Active Qualities + Quality Ends)', group: 'Production', edit: true },
   { key: 'fault_reports', label: 'Fabric Fault — Fault Add (Kamran)', group: 'Production', edit: true },
+  { key: 'yarn_supply', label: 'Yarn Supply — Supplier entry (yarn sent to the mill)', group: 'Production', edit: true },
   { key: 'tracking', label: 'Tracking (Dashboard)', group: 'Production', edit: false },
   { key: 'quality_archive', label: 'Quality Archive', group: 'System', edit: false },
 ] as const

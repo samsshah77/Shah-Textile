@@ -29,7 +29,8 @@ export function karachiToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
-async function inYarnTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+/** One yarn change at a time (shared with Yarn Supply → Verify). */
+export async function inYarnTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
       await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext('floor:yarn'))::text`)
@@ -39,7 +40,8 @@ async function inYarnTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   )
 }
 
-async function insertMovement(
+/** Records one movement and returns its id. */
+export async function insertMovement(
   tx: Tx,
   m: {
     type: 'INWARD' | 'OUTWARD'
@@ -55,11 +57,12 @@ async function insertMovement(
   }
 ) {
   const prefix = m.kind === 'CORRECTION' ? 'mov-fix' : m.kind === 'OPENING' ? 'mov-open' : m.type === 'INWARD' ? 'mov-in' : 'mov-iss'
+  const id = newId(prefix)
   await tx.$executeRawUnsafe(
     `INSERT INTO "floor_yarn_movements"
       ("id","type","yarnId","yarnType","date","weightKg","weightLbs","bags","loomNumber","pick","lotOrSupplier","createdAt","updatedAt","kind")
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CURRENT_TIMESTAMP,$13)`,
-    newId(prefix),
+    id,
     m.type,
     m.yarnId,
     m.yarnType,
@@ -73,6 +76,19 @@ async function insertMovement(
     new Date().toISOString(),
     m.kind || 'NORMAL'
   )
+  return id
+}
+
+/** "20/1 Pv-China" and "20/1-pv china" are the same yarn (same rule as the Add Yarn form). */
+export const yarnNameKey = (s: string) => s.toLowerCase().replace(/[\s\-_.]+/g, '')
+
+/** The stock row for this yarn name — made when it is new. */
+export async function yarnRowFor(tx: Tx, yarnType: string) {
+  const key = yarnNameKey(yarnType)
+  const all = await tx.floorYarn.findMany()
+  const found = all.find((y) => yarnNameKey(y.yarnType) === key)
+  if (found) return found
+  return tx.floorYarn.create({ data: { id: newId('yarn'), yarnType: yarnType.trim() } })
 }
 
 /** Recompute the cached totals of the given yarns (all when omitted) from movements. */
@@ -109,7 +125,7 @@ export async function yarnSnapshot() {
 
 async function findYarn(tx: Tx, id: string) {
   const y = await tx.floorYarn.findUnique({ where: { id } })
-  if (!y) throw new YarnError('Ye yarn list mein nahi mila (shayad delete ho chuka). Page refresh karein.', 404)
+  if (!y) throw new YarnError('This yarn was not found (it may have been deleted). Please refresh the page.', 404)
   return y
 }
 
@@ -290,4 +306,39 @@ export async function reconcileYarnOnce(): Promise<{ ran: boolean; fixed: string
   })
   if (fixed.length) console.log('[floor] yarn totals now come from movements; differences carried over:', JSON.stringify(fixed))
   return { ran: true, fixed }
+}
+
+/**
+ * Reset Sara Textile's Yarn Stock, keeping only verified deliveries from Fazal Umer
+ * received on or after `keepDate` (defaults to today in Asia/Karachi).
+ */
+export async function resetMillYarnStock(keepDate = karachiToday()): Promise<{ keepDate: string; keptMovements: number }> {
+  return inYarnTx(async (tx) => {
+    const kept = await tx.$queryRawUnsafe<Array<{ movementId: string }>>(
+      `SELECT "movementId" FROM "floor_yarn_dispatches"
+       WHERE "destination" = 'MILL'
+         AND "status" = 'VERIFIED'
+         AND "deletedAt" IS NULL
+         AND "receivedDate" >= $1
+         AND "movementId" IS NOT NULL`,
+      keepDate
+    )
+    const keepIds = kept.map((r) => r.movementId).filter(Boolean)
+
+    if (keepIds.length > 0) {
+      await tx.$executeRawUnsafe(
+        `DELETE FROM "floor_yarn_movements" WHERE NOT ("id" = ANY($1::text[]))`,
+        keepIds
+      )
+    } else {
+      await tx.$executeRawUnsafe(`DELETE FROM "floor_yarn_movements"`)
+    }
+    await tx.$executeRawUnsafe(`DELETE FROM "floor_yarn_issuances"`)
+    await recomputeYarnTotals(tx)
+    await tx.$executeRawUnsafe(
+      `DELETE FROM "floor_yarns" y
+       WHERE NOT EXISTS (SELECT 1 FROM "floor_yarn_movements" m WHERE m."yarnId" = y."id")`
+    )
+    return { keepDate, keptMovements: keepIds.length }
+  })
 }

@@ -142,9 +142,9 @@ export interface ResetResult {
 export async function applyReset(dbc: Db, by: string): Promise<ResetResult> {
   await dbc.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7712003)`)
   const pre = await previewReset(dbc)
-  if (pre.done) throw new AccountsError(409, `Ye reset ${pre.done.at} ko ho chuka hai — dobara nahi hoga.`, 'CONFLICT')
+  if (pre.done) throw new AccountsError(409, `This reset was done on ${pre.done.at} — it will not run again.`, 'CONFLICT')
   if (pre.lockedMonths.length)
-    throw new AccountsError(423, `In mahinon ka lock pehle kholein: ${pre.lockedMonths.join(', ')}.`, 'LOCKED')
+    throw new AccountsError(423, `First unlock these months: ${pre.lockedMonths.join(', ')}.`, 'LOCKED')
 
   const bills = await dbc.$executeRawUnsafe(`DELETE FROM "acc_bills" WHERE "month" < $1`, RESET_KEEP_FROM)
   const payments = await dbc.$executeRawUnsafe(

@@ -132,11 +132,11 @@ export const beamsMethods = {
       const maxBeams = isTwin ? 2 : 1
       const mountedBeams = getMountedBeamsOnLoom(beams, loomNum)
       if (mountedBeams.length >= maxBeams) {
-        const names = mountedBeams.map((b) => `"${b.beamNo}"`).join(' aur ')
+        const names = mountedBeams.map((b) => `"${b.beamNo}"`).join(' and ')
         throw new Error(
           isTwin
-            ? `Loom ${loomNum} Twin Beam loom hai aur is par pehle se 2 Beams (${names}) lage hain. Pehle kisi ek beam ko Store / Sizing pe shift karein, phir naya beam lagaen.`
-            : `Loom ${loomNum} pe pehle se Beam ${names} laga hai. Pehle us beam ko Store / Sizing pe shift karein, phir naya beam lagaen.`
+            ? `Loom ${loomNum} is a twin-beam loom and already has 2 beams (${names}). Move one of them to Store / Sizing first, then mount the new beam.`
+            : `Loom ${loomNum} already has beam ${names}. Move that beam to Store / Sizing first, then mount the new beam.`
         )
       }
     }
@@ -214,7 +214,7 @@ export const beamsMethods = {
         ok: false,
         beams: current,
         loomNumber,
-        message: `Beam "${beamNo}" nahi mila.`,
+        message: `Beam "${beamNo}" not found.`,
       }
     }
 
@@ -224,15 +224,15 @@ export const beamsMethods = {
     const mountedBeams = getMountedBeamsOnLoom(current, loomNumber, beamNo)
 
     if (mountedBeams.length >= maxBeams) {
-      const names = mountedBeams.map((b) => `"${b.beamNo}"`).join(' aur ')
+      const names = mountedBeams.map((b) => `"${b.beamNo}"`).join(' and ')
       return {
         ok: false,
         beams: current,
         loomNumber,
         blockingBeamNo: mountedBeams[0]?.beamNo,
         message: isTwin
-          ? `Loom ${loomNumber} Twin Beam loom hai aur is par pehle se 2 Beams (${names}) lage hain.\n\nPehle kisi ek beam ki location Store ya Sizing pe change karein, phir ye beam lagaen.`
-          : `Loom ${loomNumber} pe pehle se Beam ${names} laga hai.\n\nPehle us beam ki location Store ya Sizing pe change karein, phir ye beam lagaen.`,
+          ? `Loom ${loomNumber} is a twin-beam loom and already has 2 beams (${names}).\n\nMove one of them to Store or Sizing first, then mount this beam.`
+          : `Loom ${loomNumber} already has beam ${names}.\n\nMove that beam to Store or Sizing first, then mount this beam.`,
       }
     }
 
@@ -319,9 +319,9 @@ export const beamsMethods = {
     endedOn: string | null
   ): MountBeamResult {
     const beam = this.getBeams().find((b) => b.beamNo === beamNo)
-    if (!beam) return { ok: false, beams: this.getBeams(), loomNumber, message: `Beam "${beamNo}" nahi mila.` }
+    if (!beam) return { ok: false, beams: this.getBeams(), loomNumber, message: `Beam "${beamNo}" not found.` }
     if (beam.usedInLoom) {
-      return { ok: false, beams: this.getBeams(), loomNumber, message: `Beam ${beamNo} pehle se Loom ${beam.usedInLoom} pe laga hai.` }
+      return { ok: false, beams: this.getBeams(), loomNumber, message: `Beam ${beamNo} is already on Loom ${beam.usedInLoom}.` }
     }
     const res = this.mountBeam(beamNo, loomNumber, mountedOn)
     if (!res.ok) return res

@@ -130,7 +130,7 @@ const titleOf = (sheets: XlsxSheet[]): string => {
 
 function parse(buf: Uint8Array) {
   const sheets = readXlsx(buf)
-  if (!sheets.length) throw new Error('Is file mein koi sheet nahi mili.')
+  if (!sheets.length) throw new Error('No sheet found in this file.')
   return sheets.map((s) => ({ sheet: s, rows: qualityRows(s) }))
 }
 
@@ -181,12 +181,12 @@ export async function saveArchiveBatch(
     year: yearOf(f.fileName),
     id: `qa_${Date.now().toString(36)}${randomBytes(4).toString('hex')}`,
   }))
-  if (new Set(prepared.map((p) => p.sha256)).size !== prepared.length) throw new Error('Ek hi file do dafa chuni gayi hai.')
+  if (new Set(prepared.map((p) => p.sha256)).size !== prepared.length) throw new Error('The same file was selected twice.')
   return prisma.$transaction(
     async (tx) => {
       await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext('quality_archive_write'))::text`)
       const [{ n }] = await tx.$queryRawUnsafe<Array<{ n: number }>>(`SELECT count(*)::int AS n FROM "quality_archive_files"`)
-      if (Number(n) > 0) throw new Error('Archive pehle se save ho chuka hai — is mein ab kuch add nahi ho sakta.')
+      if (Number(n) > 0) throw new Error('The archive is already saved — nothing more can be added to it.')
       for (const f of prepared) {
         await tx.$executeRawUnsafe(
           `INSERT INTO "quality_archive_files" ("id","fileName","sha256","size","year","title","content","uploadedBy","uploadedById")

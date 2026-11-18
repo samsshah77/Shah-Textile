@@ -62,7 +62,7 @@ export default function PettyCashMonthlyPage() {
               {rows && rows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                    Abhi koi petty cash entry nahi.
+                    No petty cash entries yet.
                   </td>
                 </tr>
               )}

@@ -20,6 +20,7 @@ import { ArrowLeft, Clock, Loader2, Pencil, UserPlus, UserX, X, History } from '
 import { ProfileAvatar } from '@/components/payroll/ProfileAvatar'
 import { PayrollMonthSelect } from '@/components/payroll/PayrollMonthSelect'
 import { EmployeeSalaryHistoryModal } from '@/components/payroll/EmployeeSalaryHistoryModal'
+import { SectionLoader } from '@/components/shared/Loaders'
 
 const DOJ_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
 
@@ -35,7 +36,7 @@ export const FORM_KINDS = [
   { id: 'salaried' as const, label: 'Staff / Company Contract', hint: 'Monthly salary' },
   { id: 'weaver' as const, label: 'Weaver', hint: 'Daily wage' },
   { id: 'helper' as const, label: 'Helper / Winder', hint: 'Daily wage' },
-  { id: 'contractor' as const, label: 'Contractor', hint: 'Bill ya Fix Salary' },
+  { id: 'contractor' as const, label: 'Contractor', hint: 'Bill or Fixed Salary' },
 ]
 
 export type FormKind = (typeof FORM_KINDS)[number]['id']
@@ -294,7 +295,7 @@ export function EmployeeProfileForm({
       return
     }
     if (pastJob) {
-      setError('Ye purane mahine ka record hai — profile badalne ke liye mojooda mahina chunein.')
+      setError('This is an old month’s record — select the current month to change the profile.')
       return
     }
     if (!name || !designation) {
@@ -391,7 +392,7 @@ export function EmployeeProfileForm({
         await payrollService.updateEmployeeAsync(editingEmployee.id, payload, targetMonth)
         const dojLabel = doj ? toDojDisplay(doj) : ''
         const dojNote = dojLabel
-          ? ` DOJ ${dojLabel}: earlier months se tables update.`
+          ? ` DOJ ${dojLabel}: tables of earlier months updated.`
           : ''
         setMessage(
           `Saved. ${isDaily ? `Daily wage Rs. ${formatNumber(numDailyWage)}` : formatCurrency(numSalary)} for ${formatPayrollMonthLabel(targetMonth)}.${dojNote}`
@@ -425,10 +426,7 @@ export function EmployeeProfileForm({
 
   if (!ready) {
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-500 py-12">
-        <Loader2 className="size-4 animate-spin" />
-        Loading…
-      </div>
+      <SectionLoader label="Loading profile…" minHeight={320} />
     )
   }
 
@@ -520,9 +518,9 @@ export function EmployeeProfileForm({
 
       {pastJob && (
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-          {formatPayrollMonthLabel(activeMonth)} mein ye <b>{pastJob.was}</b> the ({pastJob.sheet} sheet ke mutabiq) — ab
-          profile <b>{pastJob.now}</b> hai. Ye us mahine ka record hai, is liye yahan edit band hai. Profile badalne ke liye
-          upar se mojooda (ya baad ka) mahina chunein.
+          In {formatPayrollMonthLabel(activeMonth)} this person was <b>{pastJob.was}</b> (as per the {pastJob.sheet} sheet) — now
+          the profile is <b>{pastJob.now}</b>. This is that month’s record, so editing is off here. To change the profile,
+          select the current (or a later) month at the top.
         </div>
       )}
       {error && (
@@ -572,11 +570,11 @@ export function EmployeeProfileForm({
                 max={1}
                 label="Photo"
               />
-              <span className="text-[10px] text-slate-500">Save dabane par photo profile mein lagegi</span>
+              <span className="text-[10px] text-slate-500">The photo is added to the profile when you press Save</span>
             </div>
           )}
           {mode === 'edit' && !isFormEditing && canEditAccounts && (
-            <p className="mt-3 text-[11px] text-slate-500">View only — top pe Edit dabao</p>
+            <p className="mt-3 text-[11px] text-slate-500">View only — press Edit at the top</p>
           )}
           {phone && <p className="mt-2 font-mono text-[11px] text-slate-600">{phone}</p>}
           {doj && <p className="mt-1 text-[11px] text-slate-600">DOJ {toDojDisplay(doj)}</p>}
@@ -770,7 +768,7 @@ export function EmployeeProfileForm({
                     checked={efficiencyEligible}
                     onChange={(e) => setEfficiencyEligible(e.target.checked)}
                   />
-                  Efficiency table mein shamil
+                  Include in Efficiency table
                 </label>
               )}
             </div>
@@ -837,8 +835,8 @@ export function EmployeeProfileForm({
                   value={contractorBasisValue}
                   onChange={(e) => setContractorBasisValue(e.target.value === 'BILL' ? 'BILL' : 'SALARY')}
                 >
-                  <option value="SALARY">Fix Salary — 1–30/31</option>
-                  <option value="BILL">Bill — amount bill ke mutabiq</option>
+                  <option value="SALARY">Fixed Salary — 1–30/31</option>
+                  <option value="BILL">Bill — amount as per bill</option>
                 </select>
               </label>
               <label className="flex items-center gap-2 pt-1 text-xs text-slate-700">
@@ -848,10 +846,10 @@ export function EmployeeProfileForm({
                   checked={paidMidMonth}
                   onChange={(e) => setPaidMidMonth(e.target.checked)}
                 />
-                1–15 mein bhi payment (1–15 sheet par bhi aaye ga)
+                Also paid in 1–15 (also comes on the 1–15 sheet)
               </label>
               <span className="block text-[11px] text-slate-500">
-                Har contractor 1–30/31 (month end) sheet par aata hai.
+                Every contractor comes on the 1–30/31 (month end) sheet.
               </span>
             </div>
           )}
@@ -892,7 +890,7 @@ export function EmployeeProfileForm({
               onChange={(e) => setDoj(e.target.value)}
             />
             <span className="block text-[11px] text-slate-500 mt-0.5">
-              Save ke baad DOJ se pehle ke months se hat jayega. Agar joining 15 ke baad ho to sirf Weaver/Helper/Contractor ki 1-15 fortnight sheet se hatayega — Staff/Contract monthly pe nahi.
+              After saving, the person is removed from months before the DOJ. If joining is after the 15th, they are removed only from the Weaver/Helper/Contractor 1–15 fortnight sheet — not from the monthly Staff/Contract sheets.
             </span>
           </label>
 
@@ -927,7 +925,7 @@ export function EmployeeProfileForm({
                 onChange={(e) => setResignedAt(e.target.value)}
               />
               <span className="block text-[11px] text-slate-500 mt-0.5">
-                Agar resign date 1–15 hai to us mahine ki Weaver/Helper/Contractor 16–31 sheet se automatic hat jayega.
+                If the resign date is 1–15, the person is removed automatically from that month’s Weaver/Helper/Contractor 16–31 sheet.
               </span>
             </label>
           )}
@@ -941,8 +939,8 @@ export function EmployeeProfileForm({
               className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0066cc]"
             />
             <span>
-              <span className="block text-xs font-semibold text-slate-800">Advance Eligible (Peshgi)</span>
-              <span className="block text-[11px] text-slate-500">Advance form search list me dikhega.</span>
+              <span className="block text-xs font-semibold text-slate-800">Advance Eligible</span>
+              <span className="block text-[11px] text-slate-500">Shows in the Advance form search list.</span>
             </span>
           </label>
 

@@ -24,7 +24,7 @@ import {
 } from '@/services/productionMastersService'
 import type { BeamMaster } from '@/services/production/masterTypes'
 import { getMountedBeamsOnLoom } from '@/services/production/loomBeamHelpers'
-import { PRODUCTION_TODAY } from '@/constants/productionCalendar'
+import { PRODUCTION_TODAY, getProductionTodayMonth } from '@/constants/productionCalendar'
 import { LoomCategory, type LoomStatus } from '@/types/loom'
 import { DailyLoomProductionEntry } from '@/types/production'
 import { LoomPictureThumb } from '@/components/floor/LoomPictureThumb'
@@ -79,6 +79,8 @@ interface LoomMasterTableProps {
   beams?: BeamMaster[]
   /** End (Empty Beam) a beam that came off a loom; dateStr = the sheet day. */
   onEndBeam?: (beamNo: string, dateStr: string) => void
+  /** Past day: the beams as they stood that day, for the "Attach beam" note. */
+  noteBeams?: BeamMaster[] | null
 }
 
 export function LoomMasterTable({
@@ -99,6 +101,7 @@ export function LoomMasterTable({
   onAddModalOpenChange,
   beams = [],
   onEndBeam,
+  noteBeams,
 }: LoomMasterTableProps) {
   const [mode, setMode] = useState<TableGridMode>('table')
   const [modelFilter, setModelFilter] = useState<'ALL' | LoomCategory>('ALL')
@@ -128,8 +131,8 @@ export function LoomMasterTable({
         .map((s) => `${formatShortDate(s.date)} → "${s.qualityName}"`)
         .join('; ')
       showError({
-        title: 'Kuch din pehle se busy the',
-        message: `L#${loomNumber} pe ye din doosri quality pe pehle se lage hue the, is liye wahan nahi badla: ${detail}. Selected date pe agar pehle se meters/quality thi to same-day part 2 ban sakti hai; baaki busy din skip.`,
+        title: 'Some days were already busy',
+        message: `On L#${loomNumber} these days already had another quality, so they were not changed: ${detail}. If the selected date already had meters / a quality, a same-day Part 2 can be added; other busy days are skipped.`,
       })
     }
   }
@@ -196,12 +199,16 @@ export function LoomMasterTable({
    * Running looms with a quality on sheetDate but no beam mounted — the beam still has to be
    * attached in the Beams table. Only checked when the beams register was passed in.
    */
+  const beamsForNote = noteBeams ?? beams
+  // Alerts start from this month: a date in an earlier month shows none.
+  const alertsOn = String(sheetDate).slice(0, 7) >= getProductionTodayMonth()
   const needsBeam = (loom: LoomMaster) =>
-    beams.length > 0 &&
+    alertsOn &&
+    beamsForNote.length > 0 &&
     loom.isActive !== false &&
     dayStatus(loom) === 'RUNNING' &&
     Boolean(dayQualitySelectValue(loom)) &&
-    getMountedBeamsOnLoom(beams, loom.loomNumber).length === 0
+    getMountedBeamsOnLoom(beamsForNote, loom.loomNumber).length === 0
   const loomsNeedingBeam = filteredLooms.filter(needsBeam)
 
   /**
@@ -221,16 +228,16 @@ export function LoomMasterTable({
       .map((b) => (b.swLot ? `${b.beamNo} (${formatSwLotForDailyEntry(b.swLot)})` : b.beamNo))
       .join(', ')
     showConfirm({
-      title: `Beam bhi End karein?`,
-      message: `Loom #${loom.loomNumber} ${label} pe gaya. Is pe Beam ${names} laga hai — beam ko bhi End (Empty Beam) kar dein? ${longDateFromYmd(sheetDate)} ki date se.\n\n"Abhi nahi" karein to Beams table mein ye beam laal rang mein dikhega jab tak wahan End na karein.`,
+      title: `End the beam too?`,
+      message: `Loom #${loom.loomNumber} is now on ${label}. It has beam ${names} — end the beam too (move to Empty Beam) from ${longDateFromYmd(sheetDate)}?\n\nIf you choose "Not now", the beam is shown in red in the Beams table until you end it there.`,
       type: 'confirm',
-      confirmText: 'Haan, beam End karo',
-      cancelText: 'Abhi nahi',
+      confirmText: 'Yes, end the beam',
+      cancelText: 'Not now',
       onConfirm: () => {
         for (const b of mounted) onEndBeam(b.beamNo, sheetDate)
         showSuccessSoon({
-          title: 'Beam End ho gaya',
-          message: `Beam ${mounted.map((b) => b.beamNo).join(', ')} Empty Beam mein chala gaya. Ghalti se hua ho to Beams → Ended → Edit se wapis loom pe laga sakte hain.`,
+          title: 'Beam ended',
+          message: `Beam ${mounted.map((b) => b.beamNo).join(', ')} moved to Empty Beam. If this was a mistake, put it back on the loom from Beams → Ended → Edit.`,
         })
       },
     })
@@ -240,8 +247,8 @@ export function LoomMasterTable({
     if (!onAddQualitySegment || !editActive) return
     if (!dayHasNamedPose(loom)) {
       showError({
-        title: 'Pehle Part 1 quality lagao',
-        message: `Loom #${loom.loomNumber} pe is date (${formatShortDate(sheetDate)}) pe pehle quality assign karo, phir Part 2 banao.`,
+        title: 'Assign the Part 1 quality first',
+        message: `Assign a quality to Loom #${loom.loomNumber} on ${formatShortDate(sheetDate)} first, then add Part 2.`,
       })
       return
     }
@@ -258,16 +265,16 @@ export function LoomMasterTable({
     if (!onAddQualitySegment || !part2QualityId) return
     if (daySegmentCount(loom) >= MAX_SAME_DAY_QUALITY_SEGMENTS) {
       showError({
-        title: 'Sirf Part 2 tak',
-        message: `Loom #${loom.loomNumber} pe pehle se Part 2 hai. Extra part delete karke phir try karo.`,
+        title: 'Up to Part 2 only',
+        message: `Loom #${loom.loomNumber} already has a Part 2. Delete the extra part and try again.`,
       })
       return
     }
     const q = qualities.find((item) => item.id === part2QualityId)
     const label = q ? qualityDisplayName(q, qualities) : part2QualityId
     showConfirm({
-      title: 'Part 2 add karein?',
-      message: `Loom #${loom.loomNumber} pe ${formatShortDate(sheetDate)} ko Part 2 → "${label}". Pehli quality / meters same rahengi.`,
+      title: 'Add Part 2?',
+      message: `Loom #${loom.loomNumber} on ${formatShortDate(sheetDate)}: Part 2 → "${label}". The first quality / meters stay the same.`,
       type: 'confirm',
       confirmText: 'Part 2',
       cancelText: 'Cancel',
@@ -278,13 +285,13 @@ export function LoomMasterTable({
         if (ok) {
           showSuccessSoon({
             title: 'Part 2 added',
-            message: `Loom #${loom.loomNumber}: "${label}" — Daily Entry / Sheet pe Part 2 dikhegi.`,
+            message: `Loom #${loom.loomNumber}: "${label}" — Part 2 shows in Daily Entry / Sheet.`,
           })
         } else {
           showError({
-            title: 'Part add nahi hua',
+            title: 'Part not added',
             message:
-              'Sirf Part 2 tak allowed hai, ya pehle loom pe Part 1 quality check karo.',
+              'Only up to Part 2 is allowed; also check that the loom has a Part 1 quality.',
           })
         }
       },
@@ -296,7 +303,7 @@ export function LoomMasterTable({
     const label = (qualityName || '').trim() || `Part ${seg}`
     showConfirm({
       title: `Part ${seg} delete?`,
-      message: `Loom #${loom.loomNumber} pe ${formatShortDate(sheetDate)} se "${label}" (P${seg}) hata denge. Meters bhi delete ho jayenge.`,
+      message: `Remove "${label}" (P${seg}) from Loom #${loom.loomNumber} from ${formatShortDate(sheetDate)}? Its meters will be deleted too.`,
       type: 'confirm',
       confirmText: 'Delete',
       cancelText: 'Cancel',
@@ -305,12 +312,12 @@ export function LoomMasterTable({
         if (ok) {
           showSuccessSoon({
             title: `Part ${seg} deleted`,
-            message: `Loom #${loom.loomNumber}: "${label}" hata diya.`,
+            message: `Loom #${loom.loomNumber}: "${label}" removed.`,
           })
         } else {
           showError({
-            title: 'Delete nahi hua',
-            message: 'Dobara try karo.',
+            title: 'Not deleted',
+            message: 'Please try again.',
           })
         }
       },
@@ -382,7 +389,7 @@ export function LoomMasterTable({
               picking ? 'btn-warning' : 'btn-outline-warning'
             }`}
             style={{ fontSize: '0.65rem', lineHeight: 1.2, opacity: picking ? 1 : undefined }}
-            title="Part 2 — same day dusri quality"
+            title="Part 2 — second quality on the same day"
             onClick={(e) => {
               e.stopPropagation()
               if (picking) {
@@ -414,7 +421,7 @@ export function LoomMasterTable({
             </div>
             {part2Opts.length === 0 ? (
               <div className="small text-muted mb-2">
-                Is din pe aur Active quality nahi — pehle Quality tab se nayi Active banao, ya dusri quality free karo.
+                No other Active quality on this day. Add a new Active quality in the Quality tab first, or free up another quality.
               </div>
             ) : (
               <select
@@ -545,20 +552,37 @@ export function LoomMasterTable({
    * Quality that ended on/before this day and has not been replaced on the loom:
    * shown as "Ended · NAME" (not "—") until a new quality is assigned.
    */
-  const endedQualityName = (loom: LoomMaster): string | null => {
+  const endedQualityInfo = (loom: LoomMaster): { name: string; date: string } | null => {
     const day = String(sheetDate || '').slice(0, 10)
     const rows = dayRows.filter((e) => e.loomNumber === loom.loomNumber)
+    /** The day this quality ended on this loom (per-loom end if recorded, else the quality's end). */
+    const endDay = (q: QualityMaster | null | undefined, fallback: string) => {
+      const onLoom = (q?.loomEnds || [])
+        .filter((e) => Number(e.loomNumber) === loom.loomNumber && (!day || e.date <= day))
+        .map((e) => e.date)
+        .sort()
+      return onLoom[onLoom.length - 1] || (q?.endedOn ? String(q.endedOn).slice(0, 10) : '') || fallback
+    }
     for (const row of rows) {
       if (!namedPose(row.qualityName)) continue
-      if (isQualityEndedSheetRow(row)) return (row.qualityName || '').trim()
       const owner = qualityRunThatOwnsSheetEntry({ ...row, date: day || row.date }, qualities, day || row.date)
+      if (isQualityEndedSheetRow(row)) {
+        // The quality on this row: its run owner, else by id, else the ended quality of that name.
+        const name = (row.qualityName || '').trim()
+        const q =
+          owner ||
+          (row.qualityId ? qualities.find((x) => x.id === row.qualityId) : undefined) ||
+          qualities.find((x) => normalizeQualityStatus(x.status) === 'ENDED' && x.name.trim().toLowerCase() === name.toLowerCase())
+        return { name, date: endDay(q, '') }
+      }
       if (owner && normalizeQualityStatus(owner.status) === 'ENDED') {
         const stamp = owner.endedOn ? String(owner.endedOn).slice(0, 10) : ''
-        if (stamp && day && stamp < day) return (row.qualityName || '').trim()
+        if (stamp && day && stamp < day) return { name: (row.qualityName || '').trim(), date: endDay(owner, stamp) }
       }
     }
     return null
   }
+  const endedQualityName = (loom: LoomMaster): string | null => endedQualityInfo(loom)?.name ?? null
 
   const qualityLabel = (loom: LoomMaster) => {
     const parts = dayQualityParts(loom)
@@ -587,12 +611,24 @@ export function LoomMasterTable({
     const parts = dayQualityParts(loom)
     const canRemovePart = Boolean(onRemoveQualitySegment) && editActive
     if (parts.length === 0) {
-      const ended = endedQualityName(loom)
-      if (ended) {
+      const endedInfo = endedQualityInfo(loom)
+      if (endedInfo) {
+        const ended = endedInfo.name
         return (
-          <span className="d-inline-flex align-items-center gap-1 text-muted" title={`${ended} ended — assign a new quality to start`}>
-            <span className="badge text-bg-secondary" style={{ fontSize: '0.65rem' }}>Ended</span>
-            <span className="text-truncate">{ended}</span>
+          <span
+            className="d-inline-flex flex-column text-muted"
+            style={{ lineHeight: 1.2 }}
+            title={`${ended} ended${endedInfo.date ? ` on ${formatShortDate(endedInfo.date)}` : ''} — assign a new quality to start`}
+          >
+            <span className="d-inline-flex align-items-center gap-1">
+              <span className="badge text-bg-secondary" style={{ fontSize: '0.65rem' }}>Ended</span>
+              <span className="text-truncate">{ended}</span>
+            </span>
+            {endedInfo.date && (
+              <span className="fw-normal" style={{ fontSize: '0.68rem' }}>
+                Ended on {formatShortDate(endedInfo.date)}
+              </span>
+            )}
           </span>
         )
       }
@@ -658,7 +694,7 @@ export function LoomMasterTable({
             setTableEdit(false)
             showSuccessSoon({
               title: 'Saved',
-              message: 'Loom edits save ho gayi hain.',
+              message: 'Loom changes saved.',
             })
           } else {
             setTableEdit(true)
@@ -679,16 +715,16 @@ export function LoomMasterTable({
     if (!masterEdit || !onDelete) return
     const label = l.name || `Loom ${l.loomNumber}`
     showConfirm({
-      title: 'Loom Delete Karein?',
-      message: `Kya aap waqai "${label}" (Loom #${l.loomNumber}) ko delete karna chahte hain?`,
+      title: 'Delete loom?',
+      message: `Delete "${label}" (Loom #${l.loomNumber})?`,
       type: 'confirm',
-      confirmText: 'Haan, Delete Karein',
+      confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         onDelete(l.loomNumber)
         showSuccessSoon({
           title: 'Deleted',
-          message: `"${label}" delete ho gayi.`,
+          message: `"${label}" deleted.`,
         })
       },
     })
@@ -725,8 +761,8 @@ export function LoomMasterTable({
           {tableEdit && (
             <div className="small text-warning mt-1 mb-0">
               {mode === 'table'
-                ? 'Table edit — RPM, Quality, Status · loom # pe hover → +P2 (same-day Part 2)'
-                : 'Grid edit — full master + Delete · loom # pe hover → +P2'}
+                ? 'Table edit — RPM, Quality, Status · hover the loom # → +P2 (same-day Part 2)'
+                : 'Grid edit — full master + Delete · hover the loom # → +P2'}
             </div>
           )}
         </div>
@@ -762,9 +798,9 @@ export function LoomMasterTable({
       {loomsNeedingBeam.length > 0 && (
         <div className="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0 py-2 px-3 small">
           <i className="bi bi-exclamation-triangle-fill me-1" />
-          <span className="fw-semibold">Running hain, quality lagi hai, lekin beam attach nahi:</span>{' '}
+          <span className="fw-semibold">Running with a quality but no beam attached:</span>{' '}
           {loomsNeedingBeam.map((l) => `Loom ${l.loomNumber}`).join(', ')}
-          <span className="text-secondary"> — Beams table mein beam lagayen.</span>
+          <span className="text-secondary"> — mount a beam in the Beams table.</span>
         </div>
       )}
 
@@ -975,7 +1011,7 @@ export function LoomMasterTable({
                   {needsBeam(l) && (
                     <div className="text-warning-emphasis fw-semibold mt-1" style={{ fontSize: '0.72rem' }}>
                       <i className="bi bi-exclamation-triangle-fill me-1" />
-                      Beam attach karein
+                      Attach beam
                     </div>
                   )}
                 </div>
@@ -1128,7 +1164,7 @@ export function LoomMasterTable({
                         {needsBeam(l) && (
                           <span className="text-warning-emphasis fw-semibold text-nowrap mt-0.5" style={{ fontSize: '0.68rem' }}>
                             <i className="bi bi-exclamation-triangle-fill me-1" />
-                            Beam attach karein
+                            Attach beam
                           </span>
                         )}
                         {!opsEdit && dayStatus(l) !== 'RUNNING' && sheetDate && (
@@ -1154,7 +1190,7 @@ export function LoomMasterTable({
           onAdd(partial)
           showSuccessSoon({
             title: 'Loom Added',
-            message: 'Naya loom add ho gaya.',
+            message: 'New loom added.',
           })
         }}
         suggestedLoomNumber={nextLoomNumber}

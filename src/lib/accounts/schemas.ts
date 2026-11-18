@@ -19,8 +19,8 @@ export const lineInput = z.object({
 })
 
 /** A picture of the paper bill, uploaded through /api/upload?kind=bill. */
-const attachment = z.string().regex(/^\/uploads\/bills\/[\w.-]{1,120}$/, 'Bill ki tasveer ka link ghalat hai.')
-const attachments = z.array(attachment).max(12, 'Ek bill par 12 se zyada tasveerein nahi.')
+const attachment = z.string().regex(/^\/uploads\/bills\/[\w.-]{1,120}$/, 'The bill photo link is wrong.')
+const attachments = z.array(attachment).max(12, 'No more than 12 photos on one bill.')
 
 export const billCreate = z.object({
   month,
@@ -149,6 +149,14 @@ export const costInputs = z.object({
     .optional(),
   storeInventory: z.array(namedAmount).max(200).optional(),
   monthlyProductionMeters: z.coerce.number().finite().min(0).max(1e9).nullable().optional(),
+  labels: z
+    .record(z.string().regex(/^[a-zA-Z0-9_]{1,40}$/), z.string().trim().max(120))
+    .refine((r) => Object.keys(r).length <= 60, 'Too many names')
+    .optional(),
+  order: z
+    .record(z.string().regex(/^[a-zA-Z0-9_]{1,40}$/), z.array(z.string().max(200)).max(300))
+    .refine((r) => Object.keys(r).length <= 20, 'Too many lists')
+    .optional(),
 })
 
 export const costSave = z.object({

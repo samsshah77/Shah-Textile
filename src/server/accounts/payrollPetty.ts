@@ -39,13 +39,13 @@ export function planPayrollPettyCopy(rows: OldRow[]): { items: PettyCopyPlanItem
     const month = /^\d{4}-\d{2}$/.test(r.month || '') ? (r.month as string) : ''
     const description = String(r.description || '').trim()
     if (/balance\s*b\s*\/?\s*f/i.test(description)) {
-      skipped.push(`${month} ${r.fortnight || ''}: "${description}" (balance Accounts khud aage le jata hai)`)
+      skipped.push(`${month} ${r.fortnight || ''}: "${description}" (Accounts carries the balance forward by itself)`)
       continue
     }
     const raw = String(r.date || '').slice(0, 10)
     const date = isoDate(raw) ? raw : month ? `${month}-${r.fortnight === '16-31' ? '16' : '01'}` : ''
     if (!date) {
-      skipped.push(`"${description}" (tareekh / mahina nahi)`)
+      skipped.push(`"${description}" (no date / month)`)
       continue
     }
     const dr = Math.round((Number(r.drAmount) || 0) * 100) / 100
@@ -88,7 +88,7 @@ export async function copyPayrollPettyCash(dbc: Db): Promise<{ ran: boolean; cop
     const credit = it.kind === 'CASH_IN' ? 0 : it.amount
     const fp = fingerprint(it.date, it.description, debit, credit)
     if (have.has(fp)) {
-      skipped.push(`${it.date} "${it.description}" ${it.amount} (Accounts mein pehle se hai)`)
+      skipped.push(`${it.date} "${it.description}" ${it.amount} (already in Accounts)`)
       continue
     }
     try {

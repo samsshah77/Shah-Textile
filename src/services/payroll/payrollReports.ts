@@ -58,7 +58,7 @@ export function buildFortnightSynopsis(
       month,
       title: `Salary Expense 1 to 15 (${month}) - 1st Fortnight Disbursal Voucher`,
       items: [
-        { serialNo: 1, description: 'ADVANCE (Peshgi)', amount: totalAdvance },
+        { serialNo: 1, description: 'ADVANCE', amount: totalAdvance },
         {
           serialNo: 2,
           description: 'WEAVERS WAGES (Basic + Extra Looms + Allowance)',
@@ -251,7 +251,7 @@ export function buildMonthlyGrandSummary(
     grandSynopsisItems: [
       {
         serialNo: 1,
-        description: 'Advance / Peshgi (1st half, salaries se wapas katti)',
+        description: 'Advance (1st half, deducted back from salaries)',
         amount: totalAdvance1,
         chequeAmount: 0,
         advance: 0,
@@ -339,7 +339,7 @@ export function buildMonthlyGrandSummary(
       },
       {
         serialNo: 12,
-        description: 'Petty Cash (1st half + 2nd half cheque ke saath)',
+        description: 'Petty Cash (1st half + with the 2nd half cheque)',
         amount: f1.pettyCashInflow + f2.pettyCashInflow,
         chequeAmount: 0,
         advance: 0,

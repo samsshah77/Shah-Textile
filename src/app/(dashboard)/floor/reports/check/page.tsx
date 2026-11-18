@@ -19,10 +19,10 @@ type CheckResult = {
 }
 
 const KIND: Record<FloorProblem['kind'], string> = {
-  'false-loss': 'Jhoothi loss',
-  figures: 'Hisaab nahi milta',
-  'meters-no-quality': 'Meters, quality nahi',
-  'not-approved': 'Approve nahi hua',
+  'false-loss': 'False loss',
+  figures: 'Figures do not add up',
+  'meters-no-quality': 'Meters without quality',
+  'not-approved': 'Not approved',
 }
 
 /**
@@ -45,9 +45,9 @@ export default function FloorDataCheckPage() {
         if (j.ok) {
           setData(j)
           setError(null)
-        } else setError(j.error || 'Check nahi chala.')
+        } else setError(j.error || 'The check did not run.')
       })
-      .catch(() => live && setError('Server se raabta nahi hua.'))
+      .catch(() => live && setError('Could not reach the server.'))
     return () => {
       live = false
     }
@@ -73,26 +73,26 @@ export default function FloorDataCheckPage() {
         }
       />
       <div className="alert alert-info py-2 small mb-0">
-        Ye page sirf dikhata hai — kuch nahi badalta. Ghalat row Daily Entry par us din khol kar theek karein.
+        This page only shows problems — it changes nothing. Fix a wrong row by opening that day in Daily Entry.
       </div>
       {error && <div className="alert alert-danger">{error}</div>}
-      {!shown && !error && <ProductionTableSkeleton rows={8} cols={4} title="Production check ho raha hai..." />}
+      {!shown && !error && <ProductionTableSkeleton rows={8} cols={4} title="Checking production..." />}
       {shown && (
         <>
           <div className={total ? 'alert alert-warning py-2 small' : 'alert alert-success py-2 small'}>
-            {shown.days} din check hue — {total ? `${total} cheezein dekhne wali hain.` : 'sab theek hai.'}
+            {shown.days} days checked — {total ? `${total} items need attention.` : 'everything is fine.'}
           </div>
           {shown.problems.length > 0 && (
             <div className="card">
-              <div className="card-header fw-semibold small">Rows / din</div>
+              <div className="card-header fw-semibold small">Rows / day</div>
               <div className="table-responsive">
                 <table className="table table-sm mb-0 small">
                   <thead>
                     <tr>
                       <th>Date</th>
                       <th>Loom</th>
-                      <th>Kya</th>
-                      <th>Tafseel</th>
+                      <th>Issue</th>
+                      <th>Details</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -119,18 +119,18 @@ export default function FloorDataCheckPage() {
               <ul className="list-group list-group-flush small">
                 {shown.mismatches.map((m) => (
                   <li key={`m${m.date}`} className="list-group-item">
-                    {m.date}: report ke totals saved sheet se nahi milte (page refresh karein; rahe to batayein).
+                    {m.date}: report totals do not match the saved sheet (refresh the page; if it stays, report it).
                   </li>
                 ))}
                 {shown.unlinked.map((u) => (
                   <li key={`u${u.date}${u.loomNumber}`} className="list-group-item">
-                    {u.date} · Loom {u.loomNumber}: “{u.qualityName}” Quality Master mein nahi.
+                    {u.date} · Loom {u.loomNumber}: “{u.qualityName}” is not in Quality Master.
                   </li>
                 ))}
                 {shown.outsideRun.map((o) => (
                   <li key={`o${o.date}${o.loomNumber}`} className="list-group-item">
                     {o.date} · Loom {o.loomNumber}: “{o.qualityName}”{' '}
-                    {o.startedOn && o.date < o.startedOn ? `start date (${o.startedOn}) se pehle` : `end date (${o.endedOn}) ke baad meters`}.
+                    {o.startedOn && o.date < o.startedOn ? `before the start date (${o.startedOn})` : `meters after the end date (${o.endedOn})`}.
                   </li>
                 ))}
               </ul>

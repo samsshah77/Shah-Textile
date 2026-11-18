@@ -245,7 +245,7 @@ async function flush(): Promise<void> {
     failedRequest = { id, body }
     retryDelay = Math.min(retryDelay ? retryDelay * 2 : 3000, 30000)
     notifyPayrollSaveProblem(
-      'Salary save nahi hua — internet / server check karein. Dobara koshish ho rahi hai; page band na karein.',
+      'Salary was not saved — check the internet / server. Trying again; do not close the page.',
       status || 503
     )
     retryTimer = setTimeout(() => void flush(), retryDelay)
@@ -255,7 +255,7 @@ async function flush(): Promise<void> {
     // Refused (stale data, no permission, bad input): load the server's data again so
     // the screen never shows something that is not saved.
     failedRequest = null
-    notifyPayrollSaveProblem(String(reply?.error || 'Save nahi hua.'), status)
+    notifyPayrollSaveProblem(String(reply?.error || 'Not saved.'), status)
     settle(false)
     await reloadFromServer()
     releaseWaiters(false)
@@ -420,7 +420,7 @@ export async function hydratePayrollFromDb(): Promise<void> {
         versions?: Record<string, Record<string, number>>
       } | null
       if (!res.ok || !data?.ok || !data.store) {
-        throw new Error(data?.error || `Salary data load nahi hua (${res.status}).`)
+        throw new Error(data?.error || `Salary data could not load (${res.status}).`)
       }
       memoryStore.clear()
       confirmed.clear()
@@ -437,7 +437,7 @@ export async function hydratePayrollFromDb(): Promise<void> {
     } catch (err) {
       console.error('[payroll] load failed', err)
       hydratePromise = null
-      setLoadState({ status: 'error', message: err instanceof Error ? err.message : 'Salary data load nahi hua.' })
+      setLoadState({ status: 'error', message: err instanceof Error ? err.message : 'Salary data could not load.' })
     }
   })()
 

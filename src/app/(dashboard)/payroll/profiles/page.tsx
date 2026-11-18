@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useSyncExternalStore } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -52,7 +52,17 @@ function EmployeeProfilesContent() {
   const [activeMonth, setActiveMonth] = useState<string>('2026-09')
   const [search, setSearch] = useState(initialSearch)
   const [filterCategory, setFilterCategory] = useState<string>(initialTab)
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid')
+  // Grid (cards) by default; the last choice is remembered on this browser.
+  const [, bumpView] = useState(0)
+  const viewMode = useSyncExternalStore(noSubscribe, readProfilesView, () => 'grid' as const)
+  const setViewMode = (v: 'table' | 'grid') => {
+    try {
+      window.localStorage.setItem(PROFILES_VIEW_KEY, v)
+    } catch {
+      // ignore
+    }
+    bumpView((n) => n + 1)
+  }
   const [statusNotice, setStatusNotice] = useState<string | null>(null)
   const [selectedHistoryEmp, setSelectedHistoryEmp] = useState<EmployeeProfile | null>(null)
 
@@ -130,7 +140,7 @@ function EmployeeProfilesContent() {
   }
 
   return (
-    <main className="w-full max-w-6xl space-y-4 px-1 pb-16 pt-6 sm:pt-8">
+    <main className="w-full space-y-3 px-1 pb-16 pt-2">
       {statusNotice && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
           <CheckCircle2 className="size-3.5 shrink-0" />
@@ -139,9 +149,9 @@ function EmployeeProfilesContent() {
       )}
 
       {/* Toolbar */}
-      <div className="flex flex-nowrap items-center justify-between gap-2 overflow-x-auto pb-1">
-        <div className="inline-flex shrink-0 items-center gap-1.5">
-          <div className="relative min-w-[200px] w-64">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2 print:hidden">
+        <div className="flex flex-1 flex-wrap items-center gap-1.5 min-w-0">
+          <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
@@ -167,7 +177,7 @@ function EmployeeProfilesContent() {
             }
           />
         </div>
-        <div className="inline-flex shrink-0 items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Link href="/payroll/employees" className="erp-btn-secondary text-xs !min-h-9 !h-9 !text-slate-800">
             <FileSpreadsheet className="size-3.5 text-emerald-600" />
             General Wages
@@ -190,7 +200,7 @@ function EmployeeProfilesContent() {
       </div>
 
       {/* Filters + view */}
-      <div className="flex flex-wrap items-center gap-2 justify-between border-b border-slate-200 pb-2">
+      <div className="flex flex-wrap items-center gap-2 justify-between border-b border-slate-200 pb-2 print:border-0">
         <div className="flex flex-wrap items-center gap-0.5">
             {HR_TABS.map((tab) => {
               const count = getCategoryCount(tab.id)
@@ -347,7 +357,7 @@ function EmployeeProfilesContent() {
       )}
 
       {viewMode === 'grid' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.length === 0 ? (
             <div className="col-span-full py-10 text-center text-slate-400 text-sm">
               No profiles match this filter.
@@ -362,21 +372,22 @@ function EmployeeProfilesContent() {
                     type="button"
                   onClick={() => openProfile(emp.id)}
                     className={cn(
-                    'text-left rounded-lg border bg-white p-3.5 transition-colors cursor-pointer hover:border-[#0066cc]',
+                    'text-left rounded-lg border bg-white p-4 transition-colors cursor-pointer hover:border-[#0066cc] hover:shadow-sm',
                     isResigned ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200'
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex items-center gap-3.5 min-w-0">
                       <ProfileAvatar
                         name={emp.name}
                         photoUrl={emp.photoUrl}
                         category={cat}
                         size="lg"
+                        className="h-20 w-20 text-2xl"
                       />
                       <div className="min-w-0 pt-0.5">
                         <p className="text-[10px] font-mono text-slate-400">#{emp.serialNo}</p>
-                        <h3 className="font-semibold text-slate-900 text-sm leading-snug truncate">{emp.name}</h3>
+                        <h3 className="font-semibold text-slate-900 text-base leading-snug truncate">{emp.name}</h3>
                         <p className="text-xs text-slate-600 mt-0.5 truncate">{emp.designation}</p>
                       </div>
                     </div>
@@ -404,7 +415,7 @@ function EmployeeProfilesContent() {
 
       {filterCategory === 'RESIGNED' && (
         <p className="mt-3 text-xs text-rose-700">
-          Resigned archive — profile kholo: Re-Join ya permanent Delete wahan milenge.
+          Resigned archive — open a profile to find Re-Join or permanent Delete.
         </p>
       )}
 
@@ -417,6 +428,16 @@ function EmployeeProfilesContent() {
       )}
     </main>
   )
+}
+
+const PROFILES_VIEW_KEY = 'sara_hr_profiles_view'
+const noSubscribe = () => () => {}
+function readProfilesView(): 'table' | 'grid' {
+  try {
+    return window.localStorage.getItem(PROFILES_VIEW_KEY) === 'table' ? 'table' : 'grid'
+  } catch {
+    return 'grid'
+  }
 }
 
 export default function EmployeeProfilesPage() {

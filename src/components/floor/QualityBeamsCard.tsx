@@ -77,7 +77,7 @@ export function QualityBeamsCard({
       })
       .catch((err) => {
         if (live) {
-          setError(err instanceof Error ? err.message : 'Beams load nahi ho sake.')
+          setError(err instanceof Error ? err.message : 'Could not load beams.')
           setStints([])
         }
       })
@@ -177,37 +177,37 @@ export function QualityBeamsCard({
   return (
     <div className="card mb-3">
       <div className="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <h3 className="card-title mb-0">Beams — is quality mein</h3>
+        <h3 className="card-title mb-0">Beams in this quality</h3>
         {rows.length > 0 && (
           <div className="d-flex flex-wrap gap-2 small">
             <span className="badge text-bg-light border">{rows.length} lot{rows.length === 1 ? '' : 's'}</span>
-            <span className="badge text-bg-light border">Lambai {formatNumber(totals.length, 0)} m</span>
-            <span className="badge text-bg-success">Bana {formatNumber(totals.made, 0)} m</span>
-            {totals.wasted !== 0 && <span className="badge text-bg-danger">Zaya {formatNumber(totals.wasted, 0)} m</span>}
-            {totals.left !== 0 && <span className="badge text-bg-warning">Beam pe baqi {formatNumber(totals.left, 0)} m</span>}
+            <span className="badge text-bg-light border">Length {formatNumber(totals.length, 0)} m</span>
+            <span className="badge text-bg-success">Woven {formatNumber(totals.made, 0)} m</span>
+            {totals.wasted !== 0 && <span className="badge text-bg-danger">Wastage {formatNumber(totals.wasted, 0)} m</span>}
+            {totals.left !== 0 && <span className="badge text-bg-warning">Left on beams {formatNumber(totals.left, 0)} m</span>}
           </div>
         )}
       </div>
       <TablePanScroll className="card-body p-0">
         {stints == null ? (
-          <div className="p-3 small text-secondary">Beams load ho rahe hain…</div>
+          <div className="p-3 small text-secondary">Loading beams…</div>
         ) : error ? (
           <div className="p-3 small text-danger">{error}</div>
         ) : rows.length === 0 ? (
-          <div className="p-3 small text-secondary">Is quality ki Daily Entry mein abhi koi production nahi.</div>
+          <div className="p-3 small text-secondary">No production for this quality in Daily Entry yet.</div>
         ) : (
           <table className="table table-sm table-bordered align-middle mb-0 text-center" style={{ fontSize: 13 }}>
             <thead>
               <tr>
                 <th>Loom</th>
                 <th>Sw / Wp #</th>
-                <th>Kab se – kab tak</th>
-                <th>Din</th>
-                <th>Is quality mein bana (m)</th>
+                <th>From – to</th>
+                <th>Days</th>
+                <th>Woven in this quality (m)</th>
                 <th>Beam #</th>
-                <th>Beam lambai (m)</th>
-                <th>Beam pe kul bana (m)</th>
-                <th>Zaya / Baqi (m)</th>
+                <th>Beam length (m)</th>
+                <th>Total woven on beam (m)</th>
+                <th>Wastage / Left (m)</th>
               </tr>
             </thead>
             <tbody>
@@ -216,7 +216,7 @@ export function QualityBeamsCard({
                 return (
                   <tr key={r.key}>
                     <td className="fw-semibold">{r.loom}</td>
-                    <td>{r.lot ? formatSwLotForDailyEntry(r.lot) : <span className="text-secondary fst-italic">Lot nahi likha</span>}</td>
+                    <td>{r.lot ? formatSwLotForDailyEntry(r.lot) : <span className="text-secondary fst-italic">No lot entered</span>}</td>
                     <td>
                       {shortDate(r.from)}
                       {r.to !== r.from ? ` – ${shortDate(r.to)}` : ''}
@@ -225,13 +225,13 @@ export function QualityBeamsCard({
                     <td className="fw-semibold">{formatNumber(r.qualityMeters, 0)}</td>
                     <td>
                       {r.beams.length === 0 ? (
-                        <span className="text-secondary" title="Beam register / history mein is loom + lot ka record nahi">—</span>
+                        <span className="text-secondary" title="No record of this loom + lot in the beam register / history">—</span>
                       ) : (
                         r.beams.map((b, i) => (
                           <span key={`${b.beamNo}-${b.from}`}>
                             {i > 0 ? ', ' : ''}
                             <Link href={`/floor/reports/beam?beam=${encodeURIComponent(b.beamNo)}`}>{b.beamNo}</Link>
-                            {b.to == null && <span className="badge text-bg-success ms-1">Laga hua</span>}
+                            {b.to == null && <span className="badge text-bg-success ms-1">On loom</span>}
                           </span>
                         ))
                       )}
@@ -243,10 +243,10 @@ export function QualityBeamsCard({
                         '—'
                       ) : r.ended ? (
                         <span className={rest > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold'}>
-                          {rest > 0 ? `${formatNumber(rest, 0)} zaya` : `${formatNumber(-rest, 0)} zyada bana`}
+                          {rest > 0 ? `${formatNumber(rest, 0)} wasted` : `${formatNumber(-rest, 0)} extra made`}
                         </span>
                       ) : (
-                        <span className="text-secondary">{formatNumber(rest, 0)} baqi</span>
+                        <span className="text-secondary">{formatNumber(rest, 0)} left</span>
                       )}
                     </td>
                   </tr>
@@ -257,8 +257,8 @@ export function QualityBeamsCard({
         )}
       </TablePanScroll>
       <div className="card-footer small text-secondary">
-        Har line Daily Entry se: is quality ki production loom aur Sw/Wp lot ke hisaab se. Beam #, lambai aur zaya beam
-        history se, jahan us loom + lot ka record mila. Zaya = lambai − beam pe kul bana (beam utarne ke baad).
+        Each line comes from Daily Entry: this quality’s production by loom and Sw/Wp lot. Beam #, length and wastage come
+        from the beam history where that loom + lot was found. Wastage = length − total woven on the beam (after it comes off).
       </div>
     </div>
   )

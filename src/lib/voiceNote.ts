@@ -12,7 +12,7 @@ export const MAX_VOICE_SECONDS = 120
 
 export async function startVoiceNote(onAutoStop?: () => void): Promise<VoiceRecording> {
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-    throw new Error('Is browser mein mic nahi chalta (Chrome istemal karein, website https par ho).')
+    throw new Error('The mic does not work in this browser (use Chrome, and the website must be on https).')
   }
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
   const recorder = new MediaRecorder(stream)

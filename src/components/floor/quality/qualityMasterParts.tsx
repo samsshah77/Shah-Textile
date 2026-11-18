@@ -51,6 +51,8 @@ export const DEFAULT_WIDTHS: Record<string, number> = {
   gsm: 80,
   start: 118,
   production: 105,
+  target: 100,
+  balance: 105,
   actions: 140,
   endedOn: 95,
 }

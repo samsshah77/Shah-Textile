@@ -186,7 +186,7 @@ export function AddLoomModal({
                         <i className="bi bi-layers-half text-primary me-1" /> Twin Beam Loom
                       </label>
                       <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                        Is loom par 2 beams ek sath issue/mount kiye ja sakte hain
+                        This loom can have 2 beams mounted at the same time
                       </span>
                     </div>
                     <input

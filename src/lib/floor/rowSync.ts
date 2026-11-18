@@ -142,8 +142,8 @@ export function checkRowBase(
 }
 
 export const CONFLICT_MESSAGE =
-  'Ye tabdeeli save nahi hui: isi dauran kisi aur computer / tab se yehi row badli gayi. ' +
-  'Taaza data load kar diya gaya hai — apni tabdeeli dobara karein.'
+  'This change was not saved: the same row was changed from another computer or tab at the same time. ' +
+  'The latest data has been loaded. Please make your change again.'
 
 export const STALE_PAGE_MESSAGE =
-  'Ye page purana hai (system update ho chuka hai). Page refresh karein, phir dobara save karein.'
+  'This page is out of date (the system was updated). Refresh the page, then save again.'

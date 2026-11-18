@@ -141,13 +141,13 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
               {month !== 'all' && (
                 <label className="flex items-center gap-1.5 text-xs text-slate-600">
                   <input type="checkbox" className="sara-allow-readonly" checked={showIdle} onChange={(e) => setShowIdle(e.target.checked)} />
-                  Is mahine bina bill walay bhi dikhayein
+                  Also show those with no bill this month
                 </label>
               )}
               {removedCount > 0 && (
                 <label className="flex items-center gap-1.5 text-xs text-slate-600">
                   <input type="checkbox" className="sara-allow-readonly" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
-                  Removed bhi dikhayein ({removedCount})
+                  Also show removed ({removedCount})
                 </label>
               )}
               <span className="text-xs text-slate-500 font-semibold">
@@ -246,7 +246,7 @@ export function PartyDirectory({ kind }: { kind: PartyKind }) {
                 {shown.length === 0 ? (
                   <tr>
                     <td colSpan={canEditAccounts ? 6 : 5} className="py-10 text-center text-muted-foreground">
-                      {month === 'all' || showIdle ? `Koi ${noun.toLowerCase()} nahi mila.` : `${period} mein kisi ${noun.toLowerCase()} ka bill nahi.`}
+                      {month === 'all' || showIdle ? `No ${noun.toLowerCase()} found.` : `No ${noun.toLowerCase()} has a bill in ${period}.`}
                     </td>
                   </tr>
                 ) : (
@@ -321,7 +321,7 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
       }
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save nahi hua.')
+      setError(err instanceof Error ? err.message : 'Could not save.')
     } finally {
       setBusy(false)
     }
@@ -334,7 +334,7 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
       await accountsApi.updateParty(party.id, party.version, { active })
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save nahi hua.')
+      setError(err instanceof Error ? err.message : 'Could not save.')
     } finally {
       setBusy(false)
     }
@@ -373,7 +373,7 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
             </label>
           </div>
           <label className="block space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Payable kis account se (A/P Synopsis)</span>
+            <span className="text-[11px] font-semibold text-slate-600">Payable from which account (A/P Synopsis)</span>
             <select value={account} onChange={(e) => setAccount(e.target.value as PayAccount)} className={input}>
               <option value="SARA">Shah Textile</option>
               <option value="FOI">FOI</option>
@@ -390,14 +390,14 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
           {confirmRemove && party && (
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-2 text-xs text-rose-800">
               <div className="flex items-center gap-2 font-bold">
-                <AlertTriangle className="size-4" /> &quot;{party.name}&quot; ko list se hata dein?
+                <AlertTriangle className="size-4" /> Remove &quot;{party.name}&quot; from the list?
               </div>
               <p className="text-rose-700">
-                Ye Daily Inward ki dropdown mein nahi aayegi. Purane bills aur hisaab waisay hi rahenge, aur &quot;Bring back&quot; se wapas aa sakti hai.
+                It will not show in the Daily Inward dropdown. Old bills and balances stay as they are, and it can come back with &quot;Bring back&quot;.
               </p>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setConfirmRemove(false)} className="erp-btn-secondary text-xs cursor-pointer">
-                  Nahi
+                  No
                 </button>
                 <button
                   type="button"
@@ -405,7 +405,7 @@ export function PartyForm({ kind, party, onClose }: { kind: PartyKind; party?: P
                   onClick={() => setActive(false)}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 text-white cursor-pointer disabled:opacity-60"
                 >
-                  Haan, hata dein
+                  Yes, remove
                 </button>
               </div>
             </div>

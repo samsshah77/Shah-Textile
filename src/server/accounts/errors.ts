@@ -12,9 +12,9 @@ export class AccountsError extends Error {
 export const staleError = () =>
   new AccountsError(
     409,
-    'Yeh entry kisi aur tab ya computer se pehle hi badal chuki hai — page refresh karein, phir dobara tabdeeli karein.',
+    'This entry was already changed from another tab or computer — refresh the page, then make the change again.',
     'STALE'
   )
 
 export const lockedError = (month: string) =>
-  new AccountsError(423, `${month} lock hai — pehle Tufail unlock karein.`, 'LOCKED')
+  new AccountsError(423, `${month} is locked — Tufail must unlock it first.`, 'LOCKED')

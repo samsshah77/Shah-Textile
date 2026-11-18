@@ -8,12 +8,12 @@ import { z } from 'zod'
 
 export const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Tareekh YYYY-MM-DD honi chahiye')
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
   .refine((s) => {
     const d = new Date(`${s}T00:00:00Z`)
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
-  }, 'Ghalat tareekh')
-export const monthStr = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Mahina YYYY-MM hona chahiye')
+  }, 'Invalid date')
+export const monthStr = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Month must be YYYY-MM')
 
 const num = (min: number, max: number) => z.number().finite().min(min).max(max)
 const optNum = (min: number, max: number) => num(min, max).optional().nullable()
@@ -141,7 +141,7 @@ export const yarnCorrectSchema = z
     bags: z.number().int().min(0).max(1_000_000).optional(),
     date: isoDate,
   })
-  .refine((v) => v.receivedKg !== undefined || v.issuedKg !== undefined || v.bags !== undefined, 'Kuch to badlein')
+  .refine((v) => v.receivedKg !== undefined || v.issuedKg !== undefined || v.bags !== undefined, 'Nothing to change')
 
 export const yarnAddSchema = z.object({
   yarnType: z.string().trim().min(1).max(120),
@@ -162,7 +162,7 @@ export const monthLockSchema = z.object({ month: monthStr, locked: z.boolean() }
 /** First problem of a failed parse, in plain words. */
 export function zodMessage(err: z.ZodError): string {
   const i = err.issues[0]
-  if (!i) return 'Ghalat data.'
+  if (!i) return 'Invalid data.'
   const where = i.path.length ? `${i.path.join('.')}: ` : ''
   return `${where}${i.message}`
 }

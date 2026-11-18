@@ -269,8 +269,8 @@ export const loomsMethods = {
       if (target && startDay && day && day < startDay) {
         notifyFloorSaveProblem(409, {
           error:
-            `"${target.name}" ki start date ${startDay} hai — ${day} par loom ${loomNumber} par nahi lag sakti. ` +
-            `Upar se ${startDay} (ya baad ki) date chunein, ya Quality Master mein start date theek karein.`,
+            `"${target.name}" starts on ${startDay}, so it cannot be put on loom ${loomNumber} on ${day}. ` +
+            `Pick ${startDay} or a later date at the top, or correct the start date in Quality Master.`,
         })
         return this.getLooms()
       }

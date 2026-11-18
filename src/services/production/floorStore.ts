@@ -317,7 +317,7 @@ export async function setFloorMonthLock(month: string, locked: boolean): Promise
     body: JSON.stringify({ action: 'setMonthLock', month, locked }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Month lock save nahi hua.')
+  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Could not save the month lock.')
   rememberMonthLocks(data.monthLocks)
   return floorMonthLocks
 }

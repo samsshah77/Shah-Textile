@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useProductionGrid } from '@/hooks/useProductionGrid'
 import { ProductionSheetTable, type SheetTextSize } from '@/components/floor/ProductionSheetTable'
@@ -28,9 +29,11 @@ import { ExportPdfButton, exportSheetPdf } from '@/components/shared/ExportPdfBu
 import { WhatsAppShareButton } from '@/components/shared/WhatsAppShareButton'
 import { productionWhatsAppText } from '@/lib/floor/shareText'
 import { qualityWhatsAppText, type QualityShareData } from '@/lib/floor/qualityShare'
+import { yarnWhatsAppText } from '@/lib/floor/yarnShare'
 // jsPDF (~350 KB) loads only when a PDF is actually made.
 const loadProductionPdf = () => import('@/lib/floor/generateProductionPdf')
 const loadQualityPdf = () => import('@/lib/floor/generateQualityPdf')
+const loadYarnPdf = () => import('@/lib/floor/generateYarnPdf')
 import { type TableGridMode } from '@/components/shared/ViewModeToggle'
 import { useAuth } from '@/context/AuthContext'
 import { PRODUCTION_TAB_AREA } from '@/lib/access'
@@ -40,6 +43,9 @@ import { FloorMonthLockBar, useFloorMonthLocked } from '@/components/floor/Floor
 import { getCalendarToday, getProductionToday, productionMonthBounds, productionMonthOf } from '@/constants/productionCalendar'
 import { monthOptions } from '@/services/floorReportsClient'
 import { DateNav } from '@/components/shared/DateNav'
+import { fetchBeamsAsOf } from '@/lib/floor/beamStints'
+import { longDateFromYmd } from '@/lib/longDate'
+import type { BeamMaster } from '@/services/production/masterTypes'
 
 function ProductionWorkspaceContent() {
   const router = useRouter()
@@ -100,6 +106,8 @@ function ProductionWorkspaceContent() {
   const [fabricFaultEdit, setFabricFaultEdit] = useState(false)
   const [yarnEdit, setYarnEdit] = useState(false)
   const [yarnAddOpen, setYarnAddOpen] = useState(false)
+  const [yarnSection, setYarnSection] = useState<'stock' | 'supply'>('stock')
+  const [yarnRequestOpen, setYarnRequestOpen] = useState(false)
   const [sheetTextSize, setSheetTextSize] = useState<SheetTextSize>('normal')
   const [isSheetExportOpen, setIsSheetExportOpen] = useState(false)
 
@@ -212,7 +220,7 @@ function ProductionWorkspaceContent() {
     looms: 'Looms',
     beams: 'Beams',
     yarn: 'Yarn Stock',
-    quality: 'Quality',
+    quality: 'Active Qualities',
     'quality-ends': 'Quality Ends',
   }
 
@@ -232,7 +240,36 @@ function ProductionWorkspaceContent() {
   // Beams tab always shows the beams as they are now and stays editable on any date; a mount /
   // take-off done while a past date is selected is dated that day. (Beam changes are still
   // recorded day-wise on the server — floor_beam_history.)
-  const beamCounts = useMemo(() => beamStockCounts(beams), [beams])
+  // Past day: the beams as they stood that day (beam history) — Beams tab (view) and the
+  // Looms table's "beam attach karein" note. Today, or Beams with Edit on: the live beams.
+  const isPastDay = selectedDate < getCalendarToday()
+  const wantPastBeams = isPastDay && (isBeamsTab || currentTab === 'looms')
+  const [pastBeams, setPastBeams] = useState<{ date: string; beams: BeamMaster[] } | null>(null)
+  /** Bumped after an older run is changed in the Beams table — read the day again. */
+  const [pastBeamsTick, setPastBeamsTick] = useState(0)
+  useEffect(() => {
+    if (!wantPastBeams) return
+    let live = true
+    const load = () =>
+      fetchBeamsAsOf<BeamMaster>(selectedDate)
+        .then((list) => {
+          if (live) setPastBeams({ date: selectedDate, beams: list })
+        })
+        .catch(() => {
+          if (live) setPastBeams(null)
+        })
+    void load()
+    // A beam just mounted / taken off is saved to the server a moment later (then its history
+    // row is written): read the day again after that, so the view does not keep the old state.
+    const again = [setTimeout(() => void load(), 2500), setTimeout(() => void load(), 6000)]
+    return () => {
+      live = false
+      again.forEach(clearTimeout)
+    }
+  }, [wantPastBeams, selectedDate, beams, beamEdit, pastBeamsTick])
+  const dayBeams = wantPastBeams && pastBeams?.date === selectedDate ? pastBeams.beams : null
+  const showDayBeams = Boolean(dayBeams) && !beamEdit
+  const beamCounts = useMemo(() => beamStockCounts(showDayBeams && dayBeams ? dayBeams : beams), [beams, dayBeams, showDayBeams])
   const qualityCounts = useMemo(
     () => qualityStatusCounts(qualities, selectedDate),
     [qualities, selectedDate]
@@ -256,7 +293,7 @@ function ProductionWorkspaceContent() {
                     style={{ width: 'auto', minWidth: 160, height: '2.25rem' }}
                     value={endsMonth}
                     onChange={(e) => setEndsMonth(e.target.value)}
-                    aria-label="Mahina"
+                    aria-label="Month"
                   >
                     {endsMonthOptions.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -264,14 +301,12 @@ function ProductionWorkspaceContent() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="date"
-                    className="form-control form-control-sm fw-semibold"
-                    style={{ width: 'auto', minWidth: 140, height: '2.25rem' }}
+                  <DateStepper
+                    size="sm"
                     value={endsDate}
                     max={getProductionToday()}
-                    onChange={(e) => e.target.value && setEndsDate(e.target.value)}
-                    aria-label="Quality ends date"
+                    ariaLabel="Quality ends date"
+                    onChange={(next) => next && setEndsDate(next)}
                   />
                 </>
               )}
@@ -388,10 +423,10 @@ function ProductionWorkspaceContent() {
                     type="button"
                     className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5 shadow-xs"
                     onClick={() => setEntryScanOpen(true)}
-                    title="Register photo se Loom ke mutabiq Weight, Shift A aur Shift B auto-fill karein"
+                    title="Auto-fill Weight, Shift A and Shift B per loom from a register photo"
                   >
                     <i className="bi bi-camera-fill" />
-                    <span>Photo se Entry</span>
+                    <span>Entry from photo</span>
                   </button>
                 </>
               )}
@@ -408,7 +443,14 @@ function ProductionWorkspaceContent() {
               )}
 
               {isYarnTab && tabEdit && (
-                <>
+                yarnSection === 'supply' ? (
+                  <Link
+                    href="/floor/yarn-request?back=%2Ffloor%2Fproduction%3Ftab%3Dyarn"
+                    className="btn btn-sm btn-primary"
+                  >
+                    <i className="bi bi-plus-lg me-1" /> Request yarn
+                  </Link>
+                ) : (
                   <button
                     type="button"
                     className={`btn btn-sm ${yarnEdit ? 'btn-warning' : 'btn-outline-secondary'}`}
@@ -417,14 +459,7 @@ function ProductionWorkspaceContent() {
                     <i className={`bi ${yarnEdit ? 'bi-lock' : 'bi-pencil-square'} me-1`} />
                     {yarnEdit ? 'Done' : 'Edit'}
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-success"
-                    onClick={() => setYarnAddOpen(true)}
-                  >
-                    <i className="bi bi-plus-lg me-1" /> Add Inward Yarn
-                  </button>
-                </>
+                )
               )}
 
               {currentTab === 'sheet' ? (
@@ -442,7 +477,7 @@ function ProductionWorkspaceContent() {
                       type="button"
                       className={`btn ${sheetTextSize === 'large' ? 'btn-primary' : 'btn-outline-secondary'}`}
                       onClick={() => setSheetTextSize('large')}
-                      title="Large font size (+20% Bara)"
+                      title="Large font size (+20%)"
                     >
                       A+
                     </button>
@@ -450,7 +485,7 @@ function ProductionWorkspaceContent() {
                       type="button"
                       className={`btn ${sheetTextSize === 'xlarge' ? 'btn-primary' : 'btn-outline-secondary'}`}
                       onClick={() => setSheetTextSize('xlarge')}
-                      title="Extra Large font size (+40% Sab Se Bara)"
+                      title="Extra Large font size (+40%)"
                     >
                       A++
                     </button>
@@ -504,6 +539,24 @@ function ProductionWorkspaceContent() {
                     }}
                   />
                 </>
+              ) : isYarnTab ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1.5"
+                    onClick={() => void loadYarnPdf().then((m) => m.downloadYarnPdf(yarn, selectedDate))}
+                    title="PDF save"
+                  >
+                    <i className="bi bi-file-earmark-pdf" />
+                    <span>PDF</span>
+                  </button>
+                  <WhatsAppShareButton
+                    documentTitle={`Yarn Stock ${selectedDate}`}
+                    message={() => yarnWhatsAppText(selectedDate, yarn)}
+                    onDownloadPdf={() => void loadYarnPdf().then((m) => m.downloadYarnPdf(yarn, selectedDate))}
+                    getPdfAttachment={() => loadYarnPdf().then((m) => m.generateYarnPdfBase64(yarn, selectedDate))}
+                  />
+                </>
               ) : currentTab === 'quality-ends' ? (
                 <>
                   <ExportPdfButton
@@ -555,7 +608,7 @@ function ProductionWorkspaceContent() {
           <div className="alert alert-warning border-warning-subtle text-dark d-flex align-items-center gap-2 py-2 px-3 mb-0 fw-medium" role="status">
             <i className="bi bi-shield-lock-fill text-warning fs-5 flex-shrink-0" />
             <span>
-              <strong>View only</strong> — is tab mein tabdeeli ki ijazat nahi.
+              <strong>View only</strong> — you cannot make changes in this tab.
             </span>
           </div>
         )}
@@ -614,6 +667,7 @@ function ProductionWorkspaceContent() {
                 sheetDate={selectedDate}
                 onUpdate={updateLoom}
                 beams={beams}
+                noteBeams={currentTab === 'looms' ? dayBeams : null}
                 onEndBeam={sendBeamToSizing}
                 onAddQualitySegment={addQualitySegment}
                 onRemoveQualitySegment={removeQualitySegment}
@@ -637,9 +691,25 @@ function ProductionWorkspaceContent() {
               />
             )}
 
+            {currentTab === 'beams' && beamFilter !== 'ENDED' && isPastDay && beamEdit && (
+              <div className="alert alert-warning py-2 mb-2 small d-print-none" role="status">
+                <i className="bi bi-pencil-square me-1" />
+                Edit shows the <strong>current (live) list</strong>. Beams mounted / removed here are dated{' '}
+                {longDateFromYmd(selectedDate)}. A <strong>grey-blue row</strong> is a beam that was in an older run on this day
+                (now ended): it shows that run, and changes there change that run only. To correct dates, use the beam’s{' '}
+                <strong>History</strong> button.
+              </div>
+            )}
+            {currentTab === 'beams' && beamFilter !== 'ENDED' && showDayBeams && (
+              <div className="alert alert-info py-2 mb-2 small d-print-none" role="status">
+                <i className="bi bi-clock-history me-1" />
+                Beams as they were on <strong>{longDateFromYmd(selectedDate)}</strong> (view only). To mount / remove a beam,
+                press Edit — the current list opens and changes are dated this day.
+              </div>
+            )}
             {currentTab === 'beams' && beamFilter !== 'ENDED' && (
               <BeamMasterTable
-                beams={beams}
+                beams={showDayBeams && dayBeams ? dayBeams : beams}
                 looms={looms}
                 qualities={qualities}
                 selectedDate={selectedDate}
@@ -651,7 +721,10 @@ function ProductionWorkspaceContent() {
                 onSendToSizing={sendBeamToSizing}
                 entries={entries}
                 onDelete={deleteBeam}
-                readOnly={!tabEdit}
+                readOnly={!tabEdit || showDayBeams}
+                historyEdit={tabEdit}
+                dayState={isPastDay && pastBeams?.date === selectedDate ? pastBeams.beams : undefined}
+                onDayStateChanged={() => setPastBeamsTick((n) => n + 1)}
                 filter={beamFilter}
                 onFilterChange={setBeamFilter}
                 toolbarInChrome
@@ -694,6 +767,10 @@ function ProductionWorkspaceContent() {
                 onTableEditChange={setYarnEdit}
                 addModalOpen={yarnAddOpen}
                 onAddModalOpenChange={setYarnAddOpen}
+                section={yarnSection}
+                onSectionChange={setYarnSection}
+                requestModalOpen={yarnRequestOpen}
+                onRequestModalOpenChange={setYarnRequestOpen}
               />
             )}
 

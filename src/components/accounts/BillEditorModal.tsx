@@ -71,9 +71,9 @@ export function BillEditorModal({
     const lines: LineDraft[] = rows
       .filter((r) => r.description.trim())
       .map((r) => ({ id: r.id, description: r.description.trim(), machine: r.machine, quantity: Number(r.quantity) || 0, rate: Number(r.rate) || 0 }))
-    if (!partyName.trim()) return setError('Party name likhein.')
-    if (!lines.length) return setError('Kam az kam ek item ki description likhein.')
-    if (!date.startsWith(month) && !window.confirm(`Bill ki date ${date} hai magar yeh ${monthLabel(month)} ki sheet mein jayega. Theek hai?`)) return
+    if (!partyName.trim()) return setError('Enter the party name.')
+    if (!lines.length) return setError('Enter the description of at least one item.')
+    if (!date.startsWith(month) && !window.confirm(`The bill date is ${date} but it will go on the ${monthLabel(month)} sheet. OK?`)) return
     setBusy(true)
     try {
       if (bill) {
@@ -95,20 +95,20 @@ export function BillEditorModal({
         )
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save nahi hua.')
+      setError(err instanceof Error ? err.message : 'Could not save.')
     } finally {
       setBusy(false)
     }
   }
 
   const remove = async () => {
-    if (!bill || !window.confirm(`Bill ${bill.billNo || '-'} (${party?.name || ''}) ke tamam ${bill.lines.length} items delete karein?`)) return
+    if (!bill || !window.confirm(`Delete all ${bill.lines.length} items of bill ${bill.billNo || '-'} (${party?.name || ''})?`)) return
     setBusy(true)
     try {
       await accountsApi.deleteBill(bill.id, bill.version)
       onSaved(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete nahi hua.')
+      setError(err instanceof Error ? err.message : 'Could not delete.')
     } finally {
       setBusy(false)
     }
@@ -151,7 +151,7 @@ export function BillEditorModal({
                 required
                 value={partyName}
                 onChange={(e) => setPartyName(e.target.value)}
-                placeholder="Naam likhein ya list se chunein"
+                placeholder="Type a name or select from the list"
                 className={input}
               />
               <datalist id="acc-party-list">
@@ -165,11 +165,11 @@ export function BillEditorModal({
                 (matched ? (
                   <span className="text-[11px] text-slate-500">
                     {matched.kind === 'WORKSHOP' ? 'Workshop' : 'Trader'}
-                    {!matched.active && ' · removed party — save karne se wapas aa jayegi'}
+                    {!matched.active && ' · removed party — saving will bring it back'}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2 text-[11px] text-amber-700">
-                    Nayi party banegi:
+                    New party will be created:
                     <select value={newKind} onChange={(e) => setNewKind(e.target.value as PartyKind)} className="border rounded px-1 py-0.5 text-[11px]">
                       <option value="TRADER">Trader</option>
                       <option value="WORKSHOP">Workshop</option>
@@ -201,7 +201,7 @@ export function BillEditorModal({
                     </td>
                     <td className="px-1">
                       <select value={r.machine} onChange={(e) => setRow(r.key, { machine: e.target.value })} className={input} aria-label={`Item ${i + 1} machine`}>
-                        <option value="">— chunein —</option>
+                        <option value="">— select —</option>
                         {[...new Set([...MACHINE_OPTIONS, r.machine].filter(Boolean))].map((m) => (
                           <option key={m} value={m}>
                             {m}
@@ -247,7 +247,7 @@ export function BillEditorModal({
           </label>
 
           <div className="space-y-1">
-            <span className="text-[11px] font-semibold text-slate-600">Bill ki tasveer (kaghaz wala bill)</span>
+            <span className="text-[11px] font-semibold text-slate-600">Bill photo (paper bill)</span>
             <PictureStrip urls={attachments} onChange={setAttachments} kind="bill" editable label="Bill photo" />
           </div>
 

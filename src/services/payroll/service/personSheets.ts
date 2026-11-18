@@ -158,7 +158,7 @@ export const personSheetMethods = {
       !before || !employeeBelongsInMonth(before, p.month, p.fortnight) || Boolean(joinBefore && p.month < joinBefore)
     const keepNote = (label: string, p: Period) =>
       warnings.push(
-        `${after.name}: ${label} ${p.month}${p.fortnight ? ` (${p.fortnight})` : ''} ki row mein data likha hua hai — wo row nahi hatai; zaroorat ho to khud saaf karein.`
+        `${after.name}: ${label} ${p.month}${p.fortnight ? ` (${p.fortnight})` : ''} row has data entered — that row was not removed; clear it yourself if needed.`
       )
 
     // ---- Staff / Company Contract / Weavers / Helpers

@@ -110,16 +110,16 @@ export function LoomPicturesGallery({
   const confirmRemoveAt = (i: number) => {
     if (!onImagesChange || uploading) return
     showConfirm({
-      title: 'Photo Delete Karein?',
-      message: 'Kya aap ye photo delete karna chahte hain? Ye action undo nahi hoga.',
+      title: 'Delete photo?',
+      message: 'Delete this photo? This cannot be undone.',
       type: 'confirm',
-      confirmText: 'Haan, Delete',
+      confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       onConfirm: () => {
         applyRemoveAt(i)
         showSuccessSoon({
           title: 'Deleted',
-          message: 'Photo delete ho gayi.',
+          message: 'Photo deleted.',
         })
       },
     })
@@ -364,7 +364,7 @@ export function LoomPicturesGallery({
                 onClose()
                 showSuccessSoon({
                   title: 'Saved',
-                  message: 'Loom photos save ho gayi hain.',
+                  message: 'Loom photos saved.',
                 })
               }}
             >

@@ -40,12 +40,12 @@ export default function QualityArchivePage() {
     try {
       const res = await fetch('/api/admin/quality-archive', { credentials: 'same-origin', cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Load nahi hua')
+      if (!res.ok) throw new Error(data.error || 'Could not load')
       setRows(data.rows)
       setSealed(Boolean(data.sealed))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Load nahi hua')
+      setError(e instanceof Error ? e.message : 'Could not load')
     }
   }, [])
 
@@ -64,7 +64,7 @@ export default function QualityArchivePage() {
         </h1>
         <span className="badge text-bg-secondary">
           <i className="bi bi-lock-fill me-1" />
-          Sirf record — koi badal ya mita nahi sakta
+          Record only — nobody can change or delete it
         </span>
       </div>
       {error && <div className="alert alert-danger py-2">{error}</div>}
@@ -120,9 +120,9 @@ function SearchView({ rows }: { rows: ArchiveRow[] }) {
   return (
     <div className="card">
       <div className="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
-        <input className="form-control form-control-sm" style={{ maxWidth: 280 }} placeholder="Naam, warp, weft…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
+        <input className="form-control form-control-sm" style={{ maxWidth: 280 }} placeholder="Name, warp, weft…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
         <select className="form-select form-select-sm" style={{ width: 110 }} value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year">
-          <option value="">Sab saal</option>
+          <option value="">All years</option>
           {years.map((y) => (
             <option key={y} value={y}>
               {y}
@@ -140,7 +140,7 @@ function SearchView({ rows }: { rows: ArchiveRow[] }) {
         <input className="form-control form-control-sm" style={{ width: 80 }} placeholder="Reed" inputMode="numeric" value={reed} onChange={(e) => setReed(e.target.value)} aria-label="Reed" />
         <input className="form-control form-control-sm" style={{ width: 80 }} placeholder="Pick" inputMode="numeric" value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Pick" />
         <button type="button" className="btn btn-sm btn-link text-secondary" onClick={clear}>
-          Saaf karein
+          Clear
         </button>
         <span className="small text-secondary ms-auto">
           {list.length} qualities · <strong>{n0(total)}</strong> meter
@@ -180,7 +180,7 @@ function SearchView({ rows }: { rows: ArchiveRow[] }) {
             {!list.length && (
               <tr>
                 <td colSpan={8} className="text-center text-secondary py-4">
-                  Kuch nahi mila
+                  Nothing found
                 </td>
               </tr>
             )}
@@ -188,7 +188,7 @@ function SearchView({ rows }: { rows: ArchiveRow[] }) {
         </table>
       </div>
       <div className="card-footer small text-secondary">
-        2020 aur 2021 ki files dono Nov 2020 se shuru hoti hain, is liye kuch qualities dono saal mein hain (Excel ki tarah). Total dekhte waqt saal chunein.
+        The 2020 and 2021 files both start from Nov 2020, so some qualities are in both years (like the Excel). Select a year when looking at totals.
       </div>
     </div>
   )
@@ -221,21 +221,21 @@ function OneTimeImport({ onDone }: { onDone: () => Promise<void> }) {
     try {
       setPreviews((await post(chosen, 'preview')).previews)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Files parh nahi saka')
+      setError(e instanceof Error ? e.message : 'Could not read the files')
     } finally {
       setBusy(false)
     }
   }
 
   const save = async () => {
-    if (!window.confirm(`${files.length} files hamesha ke liye save hon gi aur archive band ho jaye ga.\n\nIs ke baad na kuch add, na badal, na mita sakte hain (admin bhi nahi). Upar ki list check kar li?\n\nSave karein?`)) return
+    if (!window.confirm(`${files.length} files will be saved forever and the archive will be closed.\n\nAfter this nothing can be added, changed or deleted (not even by admin). Have you checked the list above?\n\nSave?`)) return
     setBusy(true)
     setError('')
     try {
       await post(files, 'save')
       await onDone()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save nahi hua')
+      setError(e instanceof Error ? e.message : 'Could not save')
     } finally {
       setBusy(false)
     }
@@ -245,11 +245,11 @@ function OneTimeImport({ onDone }: { onDone: () => Promise<void> }) {
 
   return (
     <div className="card">
-      <div className="card-header py-2 fw-semibold">Ek dafa ka kaam: purani quality files daalein</div>
+      <div className="card-header py-2 fw-semibold">One-time job: add the old quality files</div>
       <div className="card-body">
         <p className="small text-secondary mb-2">
-          2020 se 2025 ki saari Excel files ek sath chunein. Pehle sirf parh kar dikhaya jaye ga; save ke baad archive band ho jaye ga aur yeh hissa nazar
-          nahi aaye ga.
+          Select all the 2020 to 2025 Excel files together. First they are only read and shown; after saving, the archive is closed and this part
+          will not show again.
         </p>
         <input type="file" className="form-control form-control-sm mb-3" style={{ maxWidth: 420 }} accept=".xlsx" multiple disabled={busy} onChange={(e) => void choose(e.target.files)} />
         {previews.length > 0 && (
@@ -257,8 +257,8 @@ function OneTimeImport({ onDone }: { onDone: () => Promise<void> }) {
             <thead className="table-light">
               <tr>
                 <th>File</th>
-                <th>Saal</th>
-                <th>Period (Excel se)</th>
+                <th>Year</th>
+                <th>Period (from Excel)</th>
                 <th>Sheets · qualities · meter</th>
               </tr>
             </thead>
@@ -280,7 +280,7 @@ function OneTimeImport({ onDone }: { onDone: () => Promise<void> }) {
             </tbody>
             <tfoot>
               <tr>
-                <th colSpan={3}>Kul</th>
+                <th colSpan={3}>Total</th>
                 <th>{totalRows} qualities</th>
               </tr>
             </tfoot>
@@ -289,7 +289,7 @@ function OneTimeImport({ onDone }: { onDone: () => Promise<void> }) {
         {error && <div className="alert alert-danger py-2">{error}</div>}
         <button type="button" className="btn btn-sm btn-primary" disabled={busy || !previews.length || previews.length !== files.length} onClick={() => void save()}>
           <i className="bi bi-lock-fill me-1" />
-          {busy ? 'Ruk jayein…' : `Hamesha ke liye save (${previews.length})`}
+          {busy ? 'Please wait…' : `Save forever (${previews.length})`}
         </button>
       </div>
     </div>

@@ -45,7 +45,7 @@ export default function PayablesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Payables"
-        subtitle="Har trader / workshop ka balance hisab. Payment purane bill se pehle kat-ti hai — is liye dikhta hai ke kab se paise pending hain."
+        subtitle="Balance of every trader / workshop. A payment clears the oldest bill first — so you can see since when money is pending."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className="h-9 rounded-md border border-slate-300 bg-background px-2 text-xs font-semibold">
@@ -55,11 +55,11 @@ export default function PayablesPage() {
             </select>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
               <input type="checkbox" className="sara-allow-readonly" checked={onlyOwed} onChange={(e) => setOnlyOwed(e.target.checked)} />
-              Sirf pending balance walay
+              Only with pending balance
             </label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Party dhoondein" className="sara-allow-readonly h-9 w-44 rounded-md border border-slate-300 bg-background pl-7 pr-2 text-xs" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search party" className="sara-allow-readonly h-9 w-44 rounded-md border border-slate-300 bg-background pl-7 pr-2 text-xs" />
             </div>
             <button type="button" onClick={() => window.print()} className="sara-allow-readonly erp-btn-secondary text-xs !min-h-9 !h-9 cursor-pointer">
               <Printer className="size-3.5" /> Print
@@ -74,8 +74,8 @@ export default function PayablesPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(
                 [
-                  ['Purana Hisab', tot((r) => r.opening), 'text-amber-700'],
-                  ['Bills (July se)', tot(billed), 'text-slate-900'],
+                  ['Old Balance', tot((r) => r.opening), 'text-amber-700'],
+                  ['Bills (from July)', tot(billed), 'text-slate-900'],
                   ['Paid', tot((r) => r.paid), 'text-emerald-700'],
                   ['Total Balance', tot((r) => r.balance), 'text-[#0066cc]'],
                 ] as Array<[string, number, string]>
@@ -97,7 +97,7 @@ export default function PayablesPage() {
               <table className="w-full min-w-[820px] border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-[10px] font-bold uppercase">
-                    {['S.No', 'Party', 'Purana Hisab', 'Bills (July se)', 'Paid', 'Balance', 'Purana Pending Bill', 'Akhri Payment'].map((h, i) => (
+                    {['S.No', 'Party', 'Old Balance', 'Bills (from July)', 'Paid', 'Balance', 'Oldest Pending Bill', 'Last Payment'].map((h, i) => (
                       <th key={h} className={cn(cell, 'px-2 py-2', i === 1 ? 'text-left' : i >= 2 && i <= 5 ? 'text-right' : 'text-center')}>
                         {h}
                       </th>
@@ -108,7 +108,7 @@ export default function PayablesPage() {
                   {rows.length === 0 ? (
                     <tr>
                       <td colSpan={8} className={cn(cell, 'py-8 text-center text-slate-500')}>
-                        Koi party nahi.
+                        No party.
                       </td>
                     </tr>
                   ) : (
@@ -131,8 +131,8 @@ export default function PayablesPage() {
                                   type="button"
                                   onClick={() => setEditOpening(r)}
                                   className="p-0.5 text-slate-400 hover:text-sky-700 cursor-pointer print:hidden"
-                                  aria-label={`${r.party.name}: purana hisab ${r.opening ? 'badlein' : 'daalein'}`}
-                                  title={r.opening ? 'Purana Hisab badlein' : 'Purana Hisab daalein (July 2026 se pehle ka)'}
+                                  aria-label={`${r.party.name}: ${r.opening ? 'change' : 'enter'} old balance`}
+                                  title={r.opening ? 'Change Old Balance' : 'Enter Old Balance (before July 2026)'}
                                 >
                                   <Pencil className="size-3" />
                                 </button>
@@ -143,7 +143,7 @@ export default function PayablesPage() {
                           <td className={cn(cell, 'px-2 text-right font-mono text-emerald-700')}>{r.paid ? rs(r.paid) : '-'}</td>
                           <td className={cn(cell, 'px-2 text-right font-mono font-black', r.balance < 0 && 'text-rose-600')}>
                             {rs(r.balance)}
-                            {r.balance < 0 && <div className="text-[9px] font-semibold">advance diya hua</div>}
+                            {r.balance < 0 && <div className="text-[9px] font-semibold">advance given</div>}
                           </td>
                           <td className={cn(cell, 'px-2 text-center font-mono')}>
                             {r.oldestUnpaid && r.balance >= 1 ? (
@@ -159,7 +159,7 @@ export default function PayablesPage() {
                                 </span>
                               </>
                             ) : (
-                              <span className="text-emerald-700 font-bold">Sab paid</span>
+                              <span className="text-emerald-700 font-bold">All paid</span>
                             )}
                           </td>
                           <td className={cn(cell, 'px-2 text-center font-mono text-slate-500')}>{r.lastPayment || '-'}</td>
@@ -183,9 +183,9 @@ export default function PayablesPage() {
               </table>
             </div>
             <p className="text-[11px] text-slate-500 print:hidden">
-              Bills Daily Inward se aate hain. Payment party ke naam par click kar ke &quot;Payment&quot; se daalein (tareekh, raqam, tasveer).
-              Aadhi payment bhi chalegi — wo sab se purane bill se kat-ti hai. Hisab July 2026 se hai: is se pehle ka jo
-              dena tha wo &quot;Purana Hisab&quot; mein ✏️ se daalein.
+              Bills come from Daily Inward. To enter a payment, click the party name and use &quot;Payment&quot; (date, amount, photo).
+              A part payment is fine too — it clears the oldest bill first. Accounts start from July 2026: anything owed before that,
+              enter in &quot;Old Balance&quot; with ✏️.
             </p>
             {editOpening && (
               <PaymentForm

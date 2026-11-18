@@ -21,28 +21,28 @@ export function qualityStatusActions(core: QualityCore) {
         .map((d) => `• ${formatShortDate(d.date)}: ${Math.round(d.meters).toLocaleString()} m (Loom ${d.looms.join(', ')})`)
         .join('\n')
       showConfirm({
-        title: 'Warning — aage ki production mit jayegi',
+        title: 'Warning — later production will be cleared',
         message:
-          `"${label}" ki production ${formatShortDate(endDate)} ke baad bhi darj hai:\n${lines}\n\n` +
-          `${formatShortDate(endDate)} ko End karne se in dinon ke meter, pick, reed, width sab 0 ho jayenge ` +
-          `aur "Quality Ended" likha aayega. Kul ${Math.round(later.meters).toLocaleString()} m hatenge. ` +
-          `Phir in dinon par nayi quality laga sakte hain. Kya aap sure hain?`,
+          `"${label}" has production entered after ${formatShortDate(endDate)}:\n${lines}\n\n` +
+          `Ending it on ${formatShortDate(endDate)} sets meters, pick, reed and width to 0 on those days ` +
+          `and marks them "Quality Ended". A total of ${Math.round(later.meters).toLocaleString()} m will be removed. ` +
+          `You can then put a new quality on those days. Are you sure?`,
         type: 'warning',
-        confirmText: 'Haan, End karo aur mitao',
+        confirmText: 'Yes, end and clear',
         cancelText: 'Cancel',
         onConfirm: () => {
           onUpdate(q.id, { status: 'ENDED', endedOn: endDate, _allowWipe: true } as Partial<QualityMaster>)
           showSuccessSoon({
             title: 'Quality Ended',
-            message: `"${label}" ${formatShortDate(endDate)} ko end. Baad ke dinon ki production 0 kar di gayi.`,
+            message: `"${label}" ended on ${formatShortDate(endDate)}. Production on later days was set to 0.`,
           })
         },
       })
       return
     }
     showConfirm({
-      title: 'Quality End Karein?',
-      message: `"${label}" ko ${formatShortDate(endDate)} pe end kar dein? Loom se bhi hata di jayegi.`,
+      title: 'End quality?',
+      message: `End "${label}" on ${formatShortDate(endDate)}? It will also be removed from the loom.`,
       type: 'confirm',
       confirmText: 'End',
       cancelText: 'Cancel',
@@ -50,7 +50,7 @@ export function qualityStatusActions(core: QualityCore) {
         onUpdate(q.id, { status: 'ENDED', endedOn: endDate })
         showSuccessSoon({
           title: 'Quality Ended',
-          message: `"${label}" Ends pe chali gayi.`,
+          message: `"${label}" moved to Ends.`,
         })
       },
     })
@@ -65,14 +65,14 @@ export function qualityStatusActions(core: QualityCore) {
     // Natural flow: past date Hold nahi — us din ki production / Track confuse ho jati.
     if (holdDate !== today) {
       showError({
-        title: 'Hold sirf aaj (Today)',
-        message: `Pichli date (${formatShortDate(holdDate)}) pe Hold nahi ho sakta. Us din ki production pehle se sheet pe hai — usko Hold se wipe / confuse nahi karna. Date picker se Today kholo, phir Hold karo.`,
+        title: 'Hold only on today',
+        message: `A quality cannot be put on Hold on a past date (${formatShortDate(holdDate)}). That day's production is already on the sheet. Open Today in the date picker, then press Hold.`,
       })
       return
     }
     showConfirm({
-      title: 'Quality Hold Karein?',
-      message: `"${label}" ko aaj Hold pe rakh dein? Loom se hata di jayegi; baad mein Resume se wapas Active kar sakte ho. Pichli dates ki production Same rehti hai.`,
+      title: 'Put quality on Hold?',
+      message: `Put "${label}" on Hold today? It will be removed from the loom; use Resume later to make it Active again. Production on past dates stays the same.`,
       type: 'confirm',
       confirmText: 'Hold',
       cancelText: 'Cancel',
@@ -80,7 +80,7 @@ export function qualityStatusActions(core: QualityCore) {
         onUpdate(q.id, { status: 'HOLD', endedOn: holdDate })
         showSuccessSoon({
           title: 'Quality On Hold',
-          message: `"${label}" aaj Hold pe chali gayi.`,
+          message: `"${label}" is on Hold from today.`,
         })
       },
     })
@@ -94,16 +94,16 @@ export function qualityStatusActions(core: QualityCore) {
     const liveSame = findLiveQualityByName(qualities, q.name, q.id)
     if (liveSame) {
       showError({
-        title: 'Resume nahi ho sakta',
-        message: `"${liveSame.name}" pehle se Active/Hold pe hai. Same naam do baar nahi chalega.`,
+        title: 'Cannot resume',
+        message: `"${liveSame.name}" is already in Active / Hold. The same name cannot run twice.`,
       })
       return
     }
     // Resume only on hold day or any later day — not from days before Hold (those are history-only).
     if (holdDate && resumeDate && resumeDate < holdDate) {
       showError({
-        title: 'Resume hold se pehle nahi',
-        message: `"${label}" Hold thi ${formatShortDate(holdDate)}. Pichle din (${formatShortDate(resumeDate)}) sirf history hain (H badge) — wahan se Resume nahi. Date picker pe Hold wali date ya uske baad koi din kholo, phir Resume.`,
+        title: 'Cannot resume before the hold date',
+        message: `"${label}" was put on Hold on ${formatShortDate(holdDate)}. Earlier days (${formatShortDate(resumeDate)}) are history only (H badge) and cannot be resumed from. Open the hold date or a later day in the date picker, then press Resume.`,
       })
       return
     }
@@ -113,11 +113,11 @@ export function qualityStatusActions(core: QualityCore) {
       conflicts.length > 0
         ? ` Busy looms skip: ${conflicts
             .map((c) => `L#${c.loomNumber} → "${c.qualityName}"`)
-            .join('; ')}. Free loom assign / meters baad mein.`
+            .join('; ')}. Assign free looms / meters afterwards.`
         : ''
     showConfirm({
       title: 'Quality Resume?',
-      message: `"${label}" ${formatShortDate(resumeDate)} se Active (aaj tak khali din). Hold thi: ${formatShortDate(holdDate)}. Busy din skip.${busyNote}`,
+      message: `"${label}" becomes Active from ${formatShortDate(resumeDate)} (empty days up to today). On hold since: ${formatShortDate(holdDate)}. Busy days are skipped.${busyNote}`,
       type: 'confirm',
       confirmText: 'Resume',
       cancelText: 'Cancel',
@@ -125,8 +125,8 @@ export function qualityStatusActions(core: QualityCore) {
         const ok = onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
         if (ok === false) {
           showError({
-            title: 'Resume nahi hua',
-            message: `"${label}" Active pe nahi aayi. Dobara try karo.`,
+            title: 'Resume failed',
+            message: `"${label}" did not move to Active. Please try again.`,
           })
           return
         }
@@ -135,7 +135,7 @@ export function qualityStatusActions(core: QualityCore) {
         onStatusFilterChange?.('ACTIVE')
         showSuccessSoon({
           title: 'Quality Resumed',
-          message: `"${label}" ${formatShortDate(resumeDate)} se Active. Hold thi ${formatShortDate(holdDate)}. Ab meters / loom assign kar sakte ho.${busyNote}`,
+          message: `"${label}" is Active from ${formatShortDate(resumeDate)} (was on Hold since ${formatShortDate(holdDate)}). You can now assign meters / looms.${busyNote}`,
         })
       },
     })
@@ -148,14 +148,14 @@ export function qualityStatusActions(core: QualityCore) {
     const liveSame = findLiveQualityByName(qualities, q.name, q.id)
     if (liveSame) {
       showError({
-        title: 'Same name Active pe pehle se hai',
-        message: `"${liveSame.name}" Active/Hold pe already hai. Same quality name do baar nahi ho sakta. Pehle usko End karo, ya sirf Continue use karo (purane meters). Reuse = naya run zero se — tabhi jab Active pe ye naam na ho.`,
+        title: 'The same name is already Active',
+        message: `"${liveSame.name}" is already in Active / Hold. A quality name cannot be used twice. End it first, or use Continue (keeps the old meters). Reuse starts a new run from zero and only works when this name is not Active.`,
       })
       return
     }
     showConfirm({
       title: 'Quality Reuse / Reassign?',
-      message: `"${label}" ka naya Active run banega — meters zero se. Purana Ends record month hisab / PDF ke liye waisa hi rahega.`,
+      message: `A new Active run of "${label}" will start with meters from zero. The old Ends record stays as it is for monthly totals / PDF.`,
       type: 'confirm',
       confirmText: 'Reuse',
       cancelText: 'Cancel',
@@ -163,15 +163,15 @@ export function qualityStatusActions(core: QualityCore) {
         const newId = onReassignEnded(q.id, day) || null
         if (!newId) {
           showError({
-            title: 'Reuse nahi hua',
-            message: `Same naam Active pe pehle se maujood hai, ya Ends row reuse nahi ho sakti.`,
+            title: 'Reuse failed',
+            message: `The same name is already Active, or this Ends row cannot be reused.`,
           })
           return
         }
         rememberQualityAssignFlash(newId)
         showSuccessSoon({
           title: 'Quality Reused',
-          message: `"${label}" Active pe naya run — zero se. Quality Active pe jao — thodi der highlight dikhegi.`,
+          message: `"${label}" has a new Active run from zero. Go to Active Qualities; it is highlighted for a moment.`,
         })
       },
     })
@@ -185,8 +185,8 @@ export function qualityStatusActions(core: QualityCore) {
     const liveSame = findLiveQualityByName(qualities, q.name, q.id)
     if (liveSame) {
       showError({
-        title: 'Continue nahi ho sakta',
-        message: `"${liveSame.name}" pehle se Active/Hold pe hai. Continue sirf tab jab galti se End hua ho aur Active pe same naam na ho. Agar zero se naya run chahiye to Reuse use karo.`,
+        title: 'Cannot continue',
+        message: `"${liveSame.name}" is already in Active / Hold. Continue is only for a quality ended by mistake when the same name is not Active. For a new run from zero, use Reuse.`,
       })
       return
     }
@@ -196,14 +196,14 @@ export function qualityStatusActions(core: QualityCore) {
         .map((c) => `L#${c.loomNumber} → "${c.qualityName}"`)
         .join('; ')
       showError({
-        title: 'Continue nahi ho sakta — loom busy',
-        message: `Ye looms ab doosri quality pe hain: ${detail}. Pehle free karo, phir Continue.`,
+        title: 'Cannot continue — loom busy',
+        message: `These looms are now on another quality: ${detail}. Free them first, then press Continue.`,
       })
       return
     }
     showConfirm({
       title: 'Quality Continue?',
-      message: `"${label}" galti se End hui thi? Active pe wapas — Ends se hat jayegi, purane meters same. Ended thi: ${formatShortDate(endDate)}.`,
+      message: `Was "${label}" ended by mistake? It goes back to Active and leaves Ends, keeping its old meters. Ended on: ${formatShortDate(endDate)}.`,
       type: 'confirm',
       confirmText: 'Continue',
       cancelText: 'Cancel',
@@ -211,8 +211,8 @@ export function qualityStatusActions(core: QualityCore) {
         const ok = onUpdate(q.id, { status: 'ACTIVE', endedOn: null })
         if (ok === false) {
           showError({
-            title: 'Continue nahi hua',
-            message: `"${label}" Ends se nahi hati. Agar same naam Active pe hai to pehle usko End karo, ya Reuse (zero se) use karo.`,
+            title: 'Continue failed',
+            message: `"${label}" did not leave Ends. If the same name is Active, end that one first, or use Reuse (from zero).`,
           })
           return
         }
@@ -220,7 +220,7 @@ export function qualityStatusActions(core: QualityCore) {
         onStatusFilterChange?.('ACTIVE')
         showSuccessSoon({
           title: 'Quality Continued',
-          message: `"${label}" Active pe aa gayi — purane meters same.`,
+          message: `"${label}" is back in Active with its old meters.`,
         })
       },
     })
@@ -285,7 +285,7 @@ export function qualityStatusActions(core: QualityCore) {
             <>
               <li>
                 <button type="button" className="dropdown-item" onClick={() => handleReassign(q)}>
-                  <i className="bi bi-arrow-repeat me-2" /> Reuse (zero se)
+                  <i className="bi bi-arrow-repeat me-2" /> Reuse (from zero)
                 </button>
               </li>
               <li>
@@ -309,8 +309,8 @@ export function qualityStatusActions(core: QualityCore) {
     // Re-add / reassign run with no meters yet → dialog only, never open Track page.
     if (!(overall > 0)) {
       showInfo({
-        title: 'Abhi Production Start Nahi Hui',
-        message: `"${qualityDisplayName(q, qualities)}" pe abhi production start nahi hui. Jab meters aayein tab Track zero se shuru hoga.`,
+        title: 'No production yet',
+        message: `"${qualityDisplayName(q, qualities)}" has no production yet. Track starts from zero once meters are entered.`,
       })
       return
     }
