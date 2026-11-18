@@ -23,8 +23,11 @@ async function handleAuthRouting(req: NextRequest) {
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
+    pathname.startsWith('/adminlte') ||
+    pathname.startsWith('/vendor') ||
+    pathname.startsWith('/avatars') ||
     pathname.startsWith('/favicon.ico') ||
-    pathname.match(/\.(svg|png|jpg|jpeg|gif|webp)$/)
+    pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|js|css|woff|woff2|ttf|ico|map)$/i)
   ) {
     return NextResponse.next()
   }
